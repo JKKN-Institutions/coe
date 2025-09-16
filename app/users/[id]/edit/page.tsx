@@ -2,16 +2,26 @@
 
 import { useEffect, useState } from "react"
 import { useParams } from "next/navigation"
-import UserForm from "@/components/users/user-form"
+import UserForm, { type UserPayload } from "@/components/users/user-form"
 import { Breadcrumb, BreadcrumbItem, BreadcrumbLink, BreadcrumbList, BreadcrumbPage, BreadcrumbSeparator } from "@/components/ui/breadcrumb"
 
 type Institution = { id: string; name: string }
+type User = {
+  id: string
+  name: string
+  email: string
+  role: UserPayload["role"]
+  institutionId: string | null
+  isActive: boolean
+  image: string | null
+  emailVerified?: string | null
+}
 
 export default function EditUserPage() {
   const params = useParams()
   const id = params?.id as string
   const [institutions, setInstitutions] = useState<Institution[]>([])
-  const [user, setUser] = useState<any | null>(null)
+  const [user, setUser] = useState<User | null>(null)
 
   useEffect(() => {
     void (async () => {
@@ -21,7 +31,7 @@ export default function EditUserPage() {
           fetch(`/api/users/${id}`),
         ])
         if (instRes.ok) setInstitutions((await instRes.json()) as Institution[])
-        if (userRes.ok) setUser(await userRes.json())
+        if (userRes.ok) setUser((await userRes.json()) as User)
       } catch {}
     })()
   }, [id])
