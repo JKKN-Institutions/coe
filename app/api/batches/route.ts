@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { supabaseServer } from '@/lib/supabase-server'
+import { getSupabaseServer } from '@/lib/supabase-server'
 
 export async function GET(req: NextRequest) {
   try {
@@ -9,7 +9,8 @@ export async function GET(req: NextRequest) {
     const program_id = searchParams.get('program_id')
     const academic_year = searchParams.get('academic_year')
 
-    let query = supabaseServer
+    const supabase = getSupabaseServer()
+    let query = supabase
       .from('batches')
       .select(`
         *,
@@ -115,7 +116,8 @@ export async function POST(req: NextRequest) {
       }, { status: 400 })
     }
 
-    const { data, error } = await supabaseServer.from('batches').insert({
+    const supabase2 = getSupabaseServer()
+    const { data, error } = await supabase2.from('batches').insert({
       program_id: String(program_id),
       batch_name: String(batch_name),
       batch_code: String(batch_code),

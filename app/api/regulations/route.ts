@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { supabaseServer } from '@/lib/supabase-server'
+import { getSupabaseServer } from '@/lib/supabase-server'
 
 export async function GET(req: NextRequest) {
   try {
@@ -8,7 +8,8 @@ export async function GET(req: NextRequest) {
     const status = searchParams.get('status')
     const regulation_year = searchParams.get('regulation_year')
 
-    let query = supabaseServer
+    const supabase = getSupabaseServer()
+    let query = supabase
       .from('regulations')
       .select('*')
       .order('created_at', { ascending: false })
@@ -111,7 +112,8 @@ export async function POST(req: NextRequest) {
       }, { status: 400 })
     }
 
-    const { data, error } = await supabaseServer.from('regulations').insert({
+    const supabase2 = getSupabaseServer()
+    const { data, error } = await supabase2.from('regulations').insert({
       regulation_year: Number(regulation_year),
       regulation_code: String(regulation_code),
       status: Boolean(status),

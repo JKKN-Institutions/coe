@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { randomUUID, createHash } from 'crypto'
-import { supabaseServer } from '@/lib/supabase-server'
+import { getSupabaseServer } from '@/lib/supabase-server'
 
 export async function GET(req: NextRequest) {
   try {
@@ -8,7 +8,8 @@ export async function GET(req: NextRequest) {
     const q = searchParams.get('q') || undefined
     
     // Build the base query
-    const query = supabaseServer.from('users').select('*').order('created_at', { ascending: false }).limit(100)
+    const supabase = getSupabaseServer()
+    const query = supabase.from('users').select('*').order('created_at', { ascending: false }).limit(100)
     
     if (q) {
       // Try name or email filter
@@ -44,7 +45,8 @@ export async function POST(req: NextRequest) {
 
     const id = randomUUID()
 
-    const { data, error } = await supabaseServer.from('users').insert({
+    const supabase2 = getSupabaseServer()
+    const { data, error } = await supabase2.from('users').insert({
       id,
       full_name: String(full_name),
       email: String(email),

@@ -1,10 +1,11 @@
 import { NextResponse } from 'next/server'
-import { supabaseServer } from '@/lib/supabase-server'
+import { getSupabaseServer } from '@/lib/supabase-server'
 
 export async function GET() {
   try {
     // Simple lightweight query to validate connectivity and auth
-    const { data, error } = await supabaseServer.from('users').select('id').limit(1)
+    const supabase = getSupabaseServer()
+    const { data, error } = await supabase.from('users').select('id').limit(1)
     if (error) {
       return NextResponse.json({ ok: false, error: error.message }, { status: 500 })
     }

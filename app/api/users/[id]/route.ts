@@ -1,11 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createHash } from 'crypto'
-import { supabaseServer } from '@/lib/supabase-server'
+import { getSupabaseServer } from '@/lib/supabase-server'
 
 export async function GET(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
     const { id } = await params
-    const { data, error } = await supabaseServer.from('users').select('*').eq('id', id).single()
+    const supabase = getSupabaseServer()
+    const { data, error } = await supabase.from('users').select('*').eq('id', id).single()
     if (error && error.code !== 'PGRST116') throw error
     if (!data) return NextResponse.json({ error: 'Not found' }, { status: 404 })
     return NextResponse.json(data)
@@ -35,7 +36,8 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
       updated_at: new Date().toISOString(),
     }
 
-    const { data: updated, error } = await supabaseServer.from('users').update(data).eq('id', id).select('*').single()
+    const supabase2 = getSupabaseServer()
+    const { data: updated, error } = await supabase2.from('users').update(data).eq('id', id).select('*').single()
     if (error) throw error
     return NextResponse.json(updated)
   } catch (err) {
@@ -46,7 +48,8 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
 export async function DELETE(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
     const { id } = await params
-    const { error } = await supabaseServer.from('users').delete().eq('id', id)
+    const supabase3 = getSupabaseServer()
+    const { error } = await supabase3.from('users').delete().eq('id', id)
     if (error) throw error
     return NextResponse.json({ message: 'User deleted successfully' })
   } catch (err) {

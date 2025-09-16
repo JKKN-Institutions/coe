@@ -1,10 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { supabaseServer } from '@/lib/supabase-server'
+import { getSupabaseServer } from '@/lib/supabase-server'
 
 export async function GET(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
+    const supabase = getSupabaseServer()
     const { id } = await params
-    const { data, error } = await supabaseServer
+    const { data, error } = await supabase
       .from('courses')
       .select(`
         *,
@@ -45,6 +46,7 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
 
 export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
+    const supabase = getSupabaseServer()
     const { id } = await params
     const body = await req.json()
     const { 
@@ -82,7 +84,7 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
       updated_at: new Date().toISOString(),
     }
 
-    const { data: updated, error } = await supabaseServer
+    const { data: updated, error } = await supabase
       .from('courses')
       .update(data)
       .eq('id', id)
@@ -114,8 +116,9 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
 
 export async function DELETE(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
+    const supabase = getSupabaseServer()
     const { id } = await params
-    const { error } = await supabaseServer.from('courses').delete().eq('id', id)
+    const { error } = await supabase.from('courses').delete().eq('id', id)
     if (error) throw error
     return NextResponse.json({ message: 'Course deleted successfully' })
   } catch (err) {

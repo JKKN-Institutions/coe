@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { supabaseServer } from '@/lib/supabase-server'
+import { getSupabaseServer } from '@/lib/supabase-server'
 
 export async function GET(req: NextRequest) {
   try {
@@ -10,7 +10,8 @@ export async function GET(req: NextRequest) {
     const course_level = searchParams.get('course_level')
     const is_active = searchParams.get('is_active')
 
-    let query = supabaseServer
+    const supabase = getSupabaseServer()
+    let query = supabase
       .from('courses')
       .select(`
         *,
@@ -158,7 +159,8 @@ export async function POST(req: NextRequest) {
       }, { status: 400 })
     }
 
-    const { data, error } = await supabaseServer.from('courses').insert({
+    const supabase2 = getSupabaseServer()
+    const { data, error } = await supabase2.from('courses').insert({
       program_id: String(program_id),
       course_code: String(course_code),
       course_title: String(course_title),

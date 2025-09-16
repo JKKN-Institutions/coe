@@ -1,10 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { supabaseServer } from '@/lib/supabase-server'
+import { getSupabaseServer } from '@/lib/supabase-server'
 
 export async function GET(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
+    const supabase = getSupabaseServer()
     const { id } = await params
-    const { data, error } = await supabaseServer
+    const { data, error } = await supabase
       .from('batches')
       .select(`
         *,
@@ -33,6 +34,7 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
 
 export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
+    const supabase = getSupabaseServer()
     const { id } = await params
     const body = await req.json()
     const { 
@@ -63,7 +65,7 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
     if (is_active !== undefined) updateData.is_active = Boolean(is_active)
     if (description !== undefined) updateData.description = description ? String(description) : null
 
-    const { data, error } = await supabaseServer
+    const { data, error } = await supabase
       .from('batches')
       .update(updateData)
       .eq('id', id)
@@ -93,8 +95,9 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
 
 export async function DELETE(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
+    const supabase = getSupabaseServer()
     const { id } = await params
-    const { error } = await supabaseServer.from('batches').delete().eq('id', id)
+    const { error } = await supabase.from('batches').delete().eq('id', id)
     
     if (error) {
       if (error.code === 'PGRST116') { // No rows found

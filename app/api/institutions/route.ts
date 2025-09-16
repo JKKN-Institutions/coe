@@ -1,9 +1,10 @@
 import { NextResponse } from 'next/server'
-import { supabaseServer } from '@/lib/supabase-server'
+import { getSupabaseServer } from '@/lib/supabase-server'
 
 export async function GET() {
   try {
-    const { data, error } = await supabaseServer.from('institutions').select('id,name').order('name')
+    const supabase = getSupabaseServer()
+    const { data, error } = await supabase.from('institutions').select('id,name').order('name')
     if (error) throw error
     return NextResponse.json(data || [])
   } catch (e) {
