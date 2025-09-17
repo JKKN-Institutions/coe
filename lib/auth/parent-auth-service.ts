@@ -211,7 +211,6 @@ class ParentAuthService {
         });
         return {
           valid: false,
-          // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
           error: error.response?.data?.error || 'Validation failed'
         };
       }
@@ -464,4 +463,5 @@ class ParentAuthService {
   }
 }
 
-export default new ParentAuthService();
+const parentAuthService = new ParentAuthService();
+export default parentAuthService;

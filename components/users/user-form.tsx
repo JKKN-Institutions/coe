@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useMemo, useState } from "react"
+import { useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
 import { toast } from "sonner"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -361,7 +361,7 @@ export default function UserForm({
             />
             <p className="text-xs text-muted-foreground flex items-center gap-1">
               <Info className="h-3 w-3" />
-              Optional. Enter a valid image URL for the user's profile picture.
+              Optional. Enter a valid image URL for the user&apos;s profile picture.
             </p>
           </div>
 
@@ -377,7 +377,7 @@ export default function UserForm({
             />
             <p className="text-xs text-muted-foreground flex items-center gap-1">
               <Info className="h-3 w-3" />
-              Optional. Set when the user's email was verified.
+              Optional. Set when the user&apos;s email was verified.
             </p>
           </div>
 
