@@ -115,11 +115,14 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
   return (
     <Sidebar collapsible="icon" {...props}>
       <SidebarHeader>
-        <div className="flex items-center gap-2 px-2">
-          <div className="h-7 w-7 flex items-center justify-center rounded-md bg-green-100">
-            <span className="text-green-600 font-bold">J</span>
+        <div className="flex items-center gap-3 px-3 py-2">
+          <div className="h-8 w-8 flex items-center justify-center rounded-lg bg-gradient-to-br from-primary to-primary/80 shadow-md">
+            <span className="text-primary-foreground font-bold text-sm">J</span>
           </div>
-          <span className="font-semibold group-data-[collapsible=icon]:hidden">JKKN COE</span>
+          <div className="group-data-[collapsible=icon]:hidden">
+            <span className="font-bold text-lg">JKKN COE</span>
+            <p className="text-xs text-muted-foreground">Controller of Examination</p>
+          </div>
         </div>
       </SidebarHeader>
       <SidebarContent>

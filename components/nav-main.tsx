@@ -76,10 +76,10 @@ export function NavMain({
           if (!item.items || item.items.length === 0) {
             return (
               <SidebarMenuItem key={item.title}>
-                <SidebarMenuButton asChild tooltip={item.title}>
-                  <a href={item.url}>
-                    {item.icon && <item.icon />}
-                    <span>{item.title}</span>
+                <SidebarMenuButton asChild tooltip={item.title} className="hover:bg-accent/50 transition-colors duration-200">
+                  <a href={item.url} className="flex items-center gap-3">
+                    {item.icon && <item.icon className="h-4 w-4" />}
+                    <span className="font-medium">{item.title}</span>
                   </a>
                 </SidebarMenuButton>
               </SidebarMenuItem>
@@ -97,20 +97,20 @@ export function NavMain({
             >
               <SidebarMenuItem aria-hidden={item.title === "Master"}>
                 <CollapsibleTrigger asChild>
-                  <SidebarMenuButton tooltip={item.title}>
-                    {item.icon && <item.icon />}
-                    <span>{item.title}</span>
-                    <ChevronRight className="ml-auto transition-transform duration-200 group-data-[state=open]/collapsible:rotate-90" />
+                  <SidebarMenuButton tooltip={item.title} className="hover:bg-accent/50 transition-colors duration-200">
+                    {item.icon && <item.icon className="h-4 w-4" />}
+                    <span className="font-medium">{item.title}</span>
+                    <ChevronRight className="ml-auto h-4 w-4 transition-transform duration-200 group-data-[state=open]/collapsible:rotate-90" />
                   </SidebarMenuButton>
                 </CollapsibleTrigger>
-                <CollapsibleContent>
+                <CollapsibleContent className="animate-slide-down">
                   <SidebarMenuSub>
                     {item.items?.map((subItem) => (
                       <SidebarMenuSubItem key={subItem.title}>
-                        <SidebarMenuSubButton asChild>
-                          <a href={subItem.url}>
-                            {subItem.icon && <subItem.icon />}
-                            <span>{subItem.title}</span>
+                        <SidebarMenuSubButton asChild className="hover:bg-accent/30 transition-colors duration-200">
+                          <a href={subItem.url} className="flex items-center gap-3">
+                            {subItem.icon && <subItem.icon className="h-4 w-4" />}
+                            <span className="text-sm">{subItem.title}</span>
                           </a>
                         </SidebarMenuSubButton>
                       </SidebarMenuSubItem>

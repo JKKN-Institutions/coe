@@ -6,6 +6,7 @@ import { Separator } from "@/components/ui/separator"
 import { SidebarInset, SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar"
 import { ModeToggle } from "@/components/mode-toggle"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { Button } from "@/components/ui/button"
 import { Users, BookOpen, UserCheck, BarChart3 } from "lucide-react"
 import { useAuth } from "@/lib/auth/auth-context"
 
@@ -48,86 +49,129 @@ export default function Page() {
           </div>
         </header>
 
-        <div className="flex flex-1 flex-col gap-4 p-4 pt-0">
-          <Card className="rounded-xl border bg-[#166534] text-white shadow-md">
-            <CardContent className="flex items-start justify-between p-6">
-              <div>
-                <h2 className="text-2xl md:text-3xl font-semibold">Welcome back{user?.full_name ? `, ${user.full_name.split(" ")[0]}!` : ", User!"}</h2>
-                <p className="mt-2 text-white/90">Here&apos;s what&apos;s happening at J K K N COE today</p>
+        <div className="flex flex-1 flex-col gap-4 sm:gap-6 p-4 sm:p-6 pt-0">
+          <Card className="rounded-xl border bg-gradient-to-r from-primary to-primary/80 text-primary-foreground shadow-lg hover:shadow-xl transition-all duration-300 animate-fade-in">
+            <CardContent className="flex flex-col sm:flex-row items-start justify-between gap-4 p-6 sm:p-8">
+              <div className="space-y-2">
+                <h2 className="text-2xl sm:text-3xl lg:text-4xl font-bold text-primary-foreground">
+                  Welcome back{user?.full_name ? `, ${user.full_name.split(" ")[0]}!` : ", User!"}
+                </h2>
+                <p className="text-base sm:text-lg text-primary-foreground/90">
+                  Here&apos;s what&apos;s happening at J K K N COE today
+                </p>
               </div>
-              <div className="text-right">
-                <div className="text-xl font-semibold tracking-wider">{timeString}</div>
+              <div className="text-left sm:text-right space-y-1">
+                <div className="text-xl sm:text-2xl font-bold tracking-wider">{timeString}</div>
                 <div className="text-sm opacity-90">{dateString}</div>
               </div>
             </CardContent>
           </Card>
 
-          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-            <Card>
-              <CardHeader className="pb-2">
-                <CardTitle className="text-sm text-muted-foreground">Total Students</CardTitle>
+          <div className="grid gap-4 sm:gap-6 grid-cols-1 sm:grid-cols-2 lg:grid-cols-4">
+            <Card className="hover-lift animate-slide-up" style={{ animationDelay: "0.1s" }}>
+              <CardHeader className="pb-3">
+                <CardTitle className="text-sm font-medium text-muted-foreground">Total Students</CardTitle>
               </CardHeader>
               <CardContent className="flex items-center justify-between">
-                <div>
-                  <div className="text-xl font-semibold">1,247</div>
-                  <div className="text-xs text-emerald-600 mt-1">+12% from last month</div>
+                <div className="space-y-1">
+                  <div className="text-2xl font-bold">1,247</div>
+                  <div className="text-xs text-success flex items-center gap-1">
+                    <span className="inline-block w-0 h-0 border-l-[3px] border-r-[3px] border-b-[6px] border-l-transparent border-r-transparent border-b-success"></span>
+                    +12% from last month
+                  </div>
                 </div>
-                <Users className="text-muted-foreground" />
+                <div className="h-12 w-12 rounded-full bg-primary/10 flex items-center justify-center">
+                  <Users className="h-6 w-6 text-primary" />
+                </div>
               </CardContent>
             </Card>
 
-            <Card>
-              <CardHeader className="pb-2">
-                <CardTitle className="text-sm text-muted-foreground">Active Courses</CardTitle>
+            <Card className="hover-lift animate-slide-up" style={{ animationDelay: "0.2s" }}>
+              <CardHeader className="pb-3">
+                <CardTitle className="text-sm font-medium text-muted-foreground">Active Courses</CardTitle>
               </CardHeader>
               <CardContent className="flex items-center justify-between">
-                <div>
-                  <div className="text-xl font-semibold">24</div>
-                  <div className="text-xs text-emerald-600 mt-1">+3 from last month</div>
+                <div className="space-y-1">
+                  <div className="text-2xl font-bold">24</div>
+                  <div className="text-xs text-success flex items-center gap-1">
+                    <span className="inline-block w-0 h-0 border-l-[3px] border-r-[3px] border-b-[6px] border-l-transparent border-r-transparent border-b-success"></span>
+                    +3 from last month
+                  </div>
                 </div>
-                <BookOpen className="text-muted-foreground" />
+                <div className="h-12 w-12 rounded-full bg-info/10 flex items-center justify-center">
+                  <BookOpen className="h-6 w-6 text-info" />
+                </div>
               </CardContent>
             </Card>
 
-            <Card>
-              <CardHeader className="pb-2">
-                <CardTitle className="text-sm text-muted-foreground">Faculty Members</CardTitle>
+            <Card className="hover-lift animate-slide-up" style={{ animationDelay: "0.3s" }}>
+              <CardHeader className="pb-3">
+                <CardTitle className="text-sm font-medium text-muted-foreground">Faculty Members</CardTitle>
               </CardHeader>
               <CardContent className="flex items-center justify-between">
-                <div>
-                  <div className="text-xl font-semibold">89</div>
-                  <div className="text-xs text-emerald-600 mt-1">+5 from last month</div>
+                <div className="space-y-1">
+                  <div className="text-2xl font-bold">89</div>
+                  <div className="text-xs text-success flex items-center gap-1">
+                    <span className="inline-block w-0 h-0 border-l-[3px] border-r-[3px] border-b-[6px] border-l-transparent border-r-transparent border-b-success"></span>
+                    +5 from last month
+                  </div>
                 </div>
-                <UserCheck className="text-muted-foreground" />
+                <div className="h-12 w-12 rounded-full bg-warning/10 flex items-center justify-center">
+                  <UserCheck className="h-6 w-6 text-warning" />
+                </div>
               </CardContent>
             </Card>
 
-            <Card>
-              <CardHeader className="pb-2">
-                <CardTitle className="text-sm text-muted-foreground">Completion Rate</CardTitle>
+            <Card className="hover-lift animate-slide-up" style={{ animationDelay: "0.4s" }}>
+              <CardHeader className="pb-3">
+                <CardTitle className="text-sm font-medium text-muted-foreground">Completion Rate</CardTitle>
               </CardHeader>
               <CardContent className="flex items-center justify-between">
-                <div>
-                  <div className="text-xl font-semibold">94.2%</div>
-                  <div className="text-xs text-emerald-600 mt-1">+2.1% from last month</div>
+                <div className="space-y-1">
+                  <div className="text-2xl font-bold">94.2%</div>
+                  <div className="text-xs text-success flex items-center gap-1">
+                    <span className="inline-block w-0 h-0 border-l-[3px] border-r-[3px] border-b-[6px] border-l-transparent border-r-transparent border-b-success"></span>
+                    +2.1% from last month
+                  </div>
                 </div>
-                <BarChart3 className="text-muted-foreground" />
+                <div className="h-12 w-12 rounded-full bg-success/10 flex items-center justify-center">
+                  <BarChart3 className="h-6 w-6 text-success" />
+                </div>
               </CardContent>
             </Card>
           </div>
 
-          <Card>
-            <CardHeader className="flex-row items-center justify-between">
-              <CardTitle>Recent Activities</CardTitle>
-              <button className="px-3 py-1.5 text-sm rounded-md border hover:bg-accent">View All</button>
+          <Card className="hover-lift animate-slide-up" style={{ animationDelay: "0.5s" }}>
+            <CardHeader className="flex-row items-center justify-between pb-4">
+              <CardTitle className="text-heading">Recent Activities</CardTitle>
+              <Button variant="outline" size="sm" className="hover-lift">
+                View All
+              </Button>
             </CardHeader>
-            <CardContent>
-              <div className="flex items-start gap-3 py-2">
-                <span className="mt-1 h-2 w-2 rounded-full bg-emerald-500" />
-                <div>
-                  <div className="text-sm">New student enrollment - CSE Batch 2024</div>
+            <CardContent className="space-y-4">
+              <div className="flex items-start gap-4 p-3 rounded-lg hover:bg-muted/50 transition-colors">
+                <div className="mt-1 h-2 w-2 rounded-full bg-success animate-pulse" />
+                <div className="flex-1">
+                  <div className="text-sm font-medium">New student enrollment - CSE Batch 2024</div>
                   <div className="text-xs text-muted-foreground mt-1">10:30 AM</div>
                 </div>
+                <div className="text-xs text-success font-medium">New</div>
+              </div>
+              <div className="flex items-start gap-4 p-3 rounded-lg hover:bg-muted/50 transition-colors">
+                <div className="mt-1 h-2 w-2 rounded-full bg-info" />
+                <div className="flex-1">
+                  <div className="text-sm font-medium">Course registration deadline approaching</div>
+                  <div className="text-xs text-muted-foreground mt-1">09:15 AM</div>
+                </div>
+                <div className="text-xs text-info font-medium">Info</div>
+              </div>
+              <div className="flex items-start gap-4 p-3 rounded-lg hover:bg-muted/50 transition-colors">
+                <div className="mt-1 h-2 w-2 rounded-full bg-warning" />
+                <div className="flex-1">
+                  <div className="text-sm font-medium">Examination schedule updated</div>
+                  <div className="text-xs text-muted-foreground mt-1">08:45 AM</div>
+                </div>
+                <div className="text-xs text-warning font-medium">Updated</div>
               </div>
             </CardContent>
           </Card>

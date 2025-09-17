@@ -29,6 +29,7 @@ import {
 } from "@/components/ui/table"
 import { Card, CardContent, CardHeader } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
+import { StatusBadge } from "@/components/ui/status-badge"
 import { AppSidebar } from "@/components/app-sidebar"
 import { SidebarProvider, SidebarInset, SidebarTrigger } from "@/components/ui/sidebar"
 import { Separator } from "@/components/ui/separator"
@@ -229,72 +230,72 @@ export default function UsersPage() {
 
           {/* Header Section */}
           <div className="flex items-center justify-between flex-shrink-0">
-            <div>
-              <h1 className="text-2xl font-bold tracking-tight">Users</h1>
-              <p className="text-sm text-muted-foreground">
+            <div className="space-y-1">
+              <h1 className="text-heading">Users</h1>
+              <p className="text-subheading">
                 Manage users and their details
               </p>
             </div>
           </div>
 
           {/* Scorecard Section */}
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 flex-shrink-0">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 flex-shrink-0">
             {/* Total Users */}
-            <Card>
-              <CardContent className="p-4">
+            <Card className="hover-lift animate-slide-up" style={{ animationDelay: "0.1s" }}>
+              <CardContent className="p-6">
                 <div className="flex items-center justify-between">
-                  <div>
+                  <div className="space-y-1">
                     <p className="text-sm font-medium text-muted-foreground">Total Users</p>
                     <p className="text-2xl font-bold">{users.length}</p>
                   </div>
-                  <div className="h-8 w-8 rounded-full bg-blue-100 dark:bg-blue-900/20 flex items-center justify-center">
-                    <Users className="h-4 w-4 text-blue-600 dark:text-blue-400" />
+                  <div className="h-12 w-12 rounded-full bg-primary/10 flex items-center justify-center">
+                    <Users className="h-6 w-6 text-primary" />
                   </div>
                 </div>
               </CardContent>
             </Card>
 
             {/* Active Users */}
-            <Card>
-              <CardContent className="p-4">
+            <Card className="hover-lift animate-slide-up" style={{ animationDelay: "0.2s" }}>
+              <CardContent className="p-6">
                 <div className="flex items-center justify-between">
-                  <div>
+                  <div className="space-y-1">
                     <p className="text-sm font-medium text-muted-foreground">Active Users</p>
-                    <p className="text-2xl font-bold text-green-600">
+                    <p className="text-2xl font-bold text-success">
                       {users.filter(user => user.is_active).length}
                     </p>
                   </div>
-                  <div className="h-8 w-8 rounded-full bg-green-100 dark:bg-green-900/20 flex items-center justify-center">
-                    <UserCheck className="h-4 w-4 text-green-600 dark:text-green-400" />
+                  <div className="h-12 w-12 rounded-full bg-success/10 flex items-center justify-center">
+                    <UserCheck className="h-6 w-6 text-success" />
                   </div>
                 </div>
               </CardContent>
             </Card>
 
             {/* Inactive Users */}
-            <Card>
-              <CardContent className="p-4">
+            <Card className="hover-lift animate-slide-up" style={{ animationDelay: "0.3s" }}>
+              <CardContent className="p-6">
                 <div className="flex items-center justify-between">
-                  <div>
+                  <div className="space-y-1">
                     <p className="text-sm font-medium text-muted-foreground">Inactive Users</p>
-                    <p className="text-2xl font-bold text-red-600">
+                    <p className="text-2xl font-bold text-destructive">
                       {users.filter(user => !user.is_active).length}
                     </p>
                   </div>
-                  <div className="h-8 w-8 rounded-full bg-red-100 dark:bg-red-900/20 flex items-center justify-center">
-                    <UserX className="h-4 w-4 text-red-600 dark:text-red-400" />
+                  <div className="h-12 w-12 rounded-full bg-destructive/10 flex items-center justify-center">
+                    <UserX className="h-6 w-6 text-destructive" />
                   </div>
                 </div>
               </CardContent>
             </Card>
 
             {/* New This Month */}
-            <Card>
-              <CardContent className="p-4">
+            <Card className="hover-lift animate-slide-up" style={{ animationDelay: "0.4s" }}>
+              <CardContent className="p-6">
                 <div className="flex items-center justify-between">
-                  <div>
+                  <div className="space-y-1">
                     <p className="text-sm font-medium text-muted-foreground">New This Month</p>
-                    <p className="text-2xl font-bold text-blue-600">
+                    <p className="text-2xl font-bold text-info">
                       {users.filter(user => {
                         const userDate = new Date(user.created_at)
                         const now = new Date()
@@ -302,8 +303,8 @@ export default function UsersPage() {
                       }).length}
                     </p>
                   </div>
-                  <div className="h-8 w-8 rounded-full bg-purple-100 dark:bg-purple-900/20 flex items-center justify-center">
-                    <TrendingUp className="h-4 w-4 text-purple-600 dark:text-purple-400" />
+                  <div className="h-12 w-12 rounded-full bg-info/10 flex items-center justify-center">
+                    <TrendingUp className="h-6 w-6 text-info" />
                   </div>
                 </div>
               </CardContent>
@@ -311,13 +312,13 @@ export default function UsersPage() {
           </div>
 
           {/* Action Bar */}
-          <Card className="flex-1 flex flex-col min-h-0">
-            <CardHeader className="flex-shrink-0 p-4">
-              <div className="flex flex-col sm:flex-row gap-3 items-start sm:items-center justify-between">
-                <div className="flex flex-col sm:flex-row gap-3 w-full sm:w-auto">
+          <Card className="flex-1 flex flex-col min-h-0 hover-lift">
+            <CardHeader className="flex-shrink-0 p-6">
+              <div className="flex flex-col lg:flex-row gap-4 items-start lg:items-center justify-between">
+                <div className="flex flex-col sm:flex-row gap-3 w-full lg:w-auto">
                   {/* Filter Dropdown */}
                   <Select value={statusFilter} onValueChange={setStatusFilter}>
-                    <SelectTrigger className="w-[180px]">
+                    <SelectTrigger className="w-full sm:w-[180px]">
                       <SelectValue placeholder="All Status" />
                     </SelectTrigger>
                     <SelectContent>
@@ -341,83 +342,95 @@ export default function UsersPage() {
                 </div>
 
                 {/* Action Buttons */}
-                <div className="flex gap-1.5">
-                  <Button variant="outline" size="sm" className="text-xs px-2">
-                    <Download className="h-3 w-3 mr-1" />
+                <div className="flex flex-wrap gap-2">
+                  <Button variant="outline" size="sm" className="hover-lift">
+                    <Download className="h-4 w-4 mr-2" />
                     Download
                   </Button>
-                  <Button variant="outline" size="sm" className="text-xs px-2">
-                    <Upload className="h-3 w-3 mr-1" />
+                  <Button variant="outline" size="sm" className="hover-lift">
+                    <Upload className="h-4 w-4 mr-2" />
                     Export
                   </Button>
-                  <Button variant="outline" size="sm" className="text-xs px-2">
-                    <Upload className="h-3 w-3 mr-1" />
+                  <Button variant="outline" size="sm" className="hover-lift">
+                    <Upload className="h-4 w-4 mr-2" />
                     Upload
                   </Button>
                   <Button 
                     size="sm" 
-                    className="text-xs px-2"
+                    className="hover-lift"
                     onClick={() => window.location.href = '/user/add'}
                   >
-                    <PlusCircle className="h-3 w-3 mr-1" />
+                    <PlusCircle className="h-4 w-4 mr-2" />
                     Add User
                   </Button>
-                  <Button variant="outline" size="sm" className="text-xs px-2">
-                    <Settings className="h-3 w-3" />
+                  <Button variant="outline" size="sm" className="hover-lift">
+                    <Settings className="h-4 w-4" />
                   </Button>
                 </div>
               </div>
             </CardHeader>
 
-            <CardContent className="p-4 pt-0 flex-1 flex flex-col min-h-0">
+            <CardContent className="p-6 pt-0 flex-1 flex flex-col min-h-0">
               {/* Data Table */}
-              <div className="flex-1 rounded-md border">
+              <div className="flex-1 rounded-lg border overflow-hidden">
                 <Table>
                   <TableHeader>
-                    <TableRow>
-                      <TableHead className="w-[100px]">Code</TableHead>
-                      <TableHead>Name</TableHead>
-                      <TableHead>Contact</TableHead>
-                      <TableHead className="w-[100px]">Status</TableHead>
-                      <TableHead className="w-[120px]">Created At ↓</TableHead>
-                      <TableHead className="w-[100px]">Actions</TableHead>
+                    <TableRow className="bg-muted/50">
+                      <TableHead className="w-[100px] font-semibold">Code</TableHead>
+                      <TableHead className="font-semibold">Name</TableHead>
+                      <TableHead className="font-semibold">Contact</TableHead>
+                      <TableHead className="w-[100px] font-semibold">Status</TableHead>
+                      <TableHead className="w-[120px] font-semibold">Created At ↓</TableHead>
+                      <TableHead className="w-[100px] font-semibold">Actions</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
                     {loading ? (
                       <TableRow>
-                        <TableCell colSpan={6} className="h-24 text-center">
-                          Loading users...
+                        <TableCell colSpan={6} className="h-32 text-center">
+                          <div className="flex flex-col items-center gap-2">
+                            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+                            <p className="text-muted-foreground">Loading users...</p>
+                          </div>
                         </TableCell>
                       </TableRow>
                     ) : filteredUsers.length > 0 ? (
-                      filteredUsers.map((user) => (
-                        <TableRow key={user.id}>
-                          <TableCell className="font-medium">
+                      filteredUsers.map((user, index) => (
+                        <TableRow 
+                          key={user.id} 
+                          className="hover:bg-muted/50 transition-colors animate-slide-up"
+                          style={{ animationDelay: `${index * 0.05}s` }}
+                        >
+                          <TableCell className="font-mono text-sm">
                             {user.id.slice(0, 8).toUpperCase()}
                           </TableCell>
                           <TableCell>
-                            <div>
+                            <div className="space-y-1">
                               <div className="font-medium">{user.full_name}</div>
                               <div className="text-sm text-muted-foreground">{user.email}</div>
                             </div>
                           </TableCell>
-                          <TableCell>{user.phone || "N/A"}</TableCell>
+                          <TableCell className="text-sm">
+                            {user.phone || <span className="text-muted-foreground">N/A</span>}
+                          </TableCell>
                           <TableCell>
-                            <Badge variant={getStatusBadgeVariant(user)}>
+                            <StatusBadge 
+                              variant={user.is_active ? "success" : user.is_verified ? "secondary" : "warning"}
+                              size="sm"
+                            >
                               {getStatusText(user)}
-                            </Badge>
+                            </StatusBadge>
                           </TableCell>
                           <TableCell className="text-sm text-muted-foreground">
                             {formatDate(user.created_at)}
                           </TableCell>
                           <TableCell>
-                            <div className="flex items-center gap-2">
+                            <div className="flex items-center gap-1">
                               <Button
                                 variant="outline"
                                 size="sm"
                                 onClick={() => window.location.href = `/user/edit/${user.id}`}
-                                className="h-8 w-8 p-0"
+                                className="h-8 w-8 p-0 hover-lift"
                               >
                                 <Edit className="h-4 w-4" />
                               </Button>
@@ -426,7 +439,7 @@ export default function UsersPage() {
                                   <Button
                                     variant="outline"
                                     size="sm"
-                                    className="h-8 w-8 p-0 text-red-600 hover:text-red-700 hover:bg-red-50"
+                                    className="h-8 w-8 p-0 text-destructive hover:text-destructive hover:bg-destructive/10 hover-lift"
                                   >
                                     <Trash2 className="h-4 w-4" />
                                   </Button>
@@ -442,7 +455,7 @@ export default function UsersPage() {
                                     <AlertDialogCancel>Cancel</AlertDialogCancel>
                                     <AlertDialogAction
                                       onClick={() => handleDeleteUser(user.id)}
-                                      className="bg-red-600 hover:bg-red-700"
+                                      className="bg-destructive hover:bg-destructive/90"
                                     >
                                       Delete
                                     </AlertDialogAction>
@@ -455,8 +468,12 @@ export default function UsersPage() {
                       ))
                     ) : (
                       <TableRow>
-                        <TableCell colSpan={6} className="h-24 text-center">
-                          No users found.
+                        <TableCell colSpan={6} className="h-32 text-center">
+                          <div className="flex flex-col items-center gap-2">
+                            <Users className="h-12 w-12 text-muted-foreground" />
+                            <p className="text-muted-foreground">No users found.</p>
+                            <p className="text-sm text-muted-foreground">Try adjusting your search or filter criteria.</p>
+                          </div>
                         </TableCell>
                       </TableRow>
                     )}
@@ -465,33 +482,33 @@ export default function UsersPage() {
               </div>
 
               {/* Footer Info + Pagination */}
-              <div className="flex items-center justify-between space-x-2 py-3 mt-3 flex-shrink-0">
+              <div className="flex flex-col sm:flex-row items-center justify-between gap-4 py-4 mt-4 flex-shrink-0 border-t">
                 <div className="text-sm text-muted-foreground">
-                  Showing {filteredUsers.length} of {users.length} users
+                  Showing <span className="font-medium">{filteredUsers.length}</span> of <span className="font-medium">{users.length}</span> users
                 </div>
-                <div className="flex items-center space-x-2">
+                <div className="flex items-center gap-2">
                   <Button
                     variant="outline"
                     size="sm"
-                    className="text-xs px-2"
                     onClick={() => setCurrentPage(currentPage - 1)}
                     disabled={currentPage === 1}
+                    className="hover-lift"
                   >
-                    <ChevronLeft className="h-3 w-3 mr-1" />
-                    Prev
+                    <ChevronLeft className="h-4 w-4 mr-1" />
+                    Previous
                   </Button>
-                  <div className="text-xs text-muted-foreground">
-                    Page {currentPage} of {Math.ceil(filteredUsers.length / itemsPerPage)}
+                  <div className="flex items-center gap-1 px-3 py-1 rounded-md bg-muted text-sm">
+                    Page <span className="font-medium">{currentPage}</span> of <span className="font-medium">{Math.ceil(filteredUsers.length / itemsPerPage)}</span>
                   </div>
                   <Button
                     variant="outline"
                     size="sm"
-                    className="text-xs px-2"
                     onClick={() => setCurrentPage(currentPage + 1)}
                     disabled={currentPage >= Math.ceil(filteredUsers.length / itemsPerPage)}
+                    className="hover-lift"
                   >
                     Next
-                    <ChevronRight className="h-3 w-3 ml-1" />
+                    <ChevronRight className="h-4 w-4 ml-1" />
                   </Button>
                 </div>
               </div>

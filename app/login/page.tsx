@@ -41,29 +41,49 @@ export default function LoginPage() {
   }
 
   return (
-    <div className='flex flex-col items-center justify-center min-h-screen bg-background p-4'>
-      <div className='mb-8 text-center'>
-        <h1 className='text-4xl font-bold'>JKKN COE</h1>
-        <p className='text-muted-foreground'>Controller of Examination</p>
+    <div className='flex flex-col items-center justify-center min-h-screen bg-gradient-to-br from-background to-muted/20 p-4'>
+      <div className='mb-12 text-center animate-fade-in'>
+        <div className='mb-6 flex justify-center'>
+          <div className='h-16 w-16 flex items-center justify-center rounded-2xl bg-gradient-to-br from-primary to-primary/80 shadow-lg'>
+            <span className='text-primary-foreground font-bold text-2xl'>J</span>
+          </div>
+        </div>
+        <h1 className='text-display mb-2'>JKKN COE</h1>
+        <p className='text-subheading'>Controller of Examination</p>
       </div>
-      <Card className='w-full max-w-sm'>
-        <CardHeader className='text-center'>
-          <CardTitle className='text-2xl'>Welcome Back</CardTitle>
-          <CardDescription>
-            Click the button below to sign in via MyJKKN.
+      
+      <Card className='w-full max-w-md shadow-xl hover:shadow-2xl transition-all duration-300 animate-scale-in'>
+        <CardHeader className='text-center pb-4'>
+          <CardTitle className='text-heading'>Welcome Back</CardTitle>
+          <CardDescription className='text-body'>
+            Click the button below to sign in via MyJKKN authentication system.
           </CardDescription>
         </CardHeader>
-        <CardContent>
-          <Button onClick={handleLogin} className='w-full' size='lg'>
-            <LogIn className='mr-2 h-4 w-4' /> Sign in with MyJKKN
+        <CardContent className='space-y-6'>
+          <Button 
+            onClick={handleLogin} 
+            className='w-full hover-lift' 
+            size='lg'
+          >
+            <LogIn className='mr-2 h-5 w-5' /> 
+            Sign in with MyJKKN
           </Button>
+          
+          <div className='text-center'>
+            <p className='text-xs text-muted-foreground'>
+              Secure authentication powered by MyJKKN
+            </p>
+          </div>
         </CardContent>
       </Card>
-      <footer className='mt-8 text-center text-sm text-muted-foreground'>
-        <p>
-          This is the Controller of Examination application integrated with the MyJKKN parent authentication
-          system.
-        </p>
+      
+      <footer className='mt-12 text-center animate-fade-in' style={{ animationDelay: '0.3s' }}>
+        <div className='max-w-md'>
+          <p className='text-caption'>
+            This is the Controller of Examination application integrated with the MyJKKN parent authentication
+            system for secure and seamless access.
+          </p>
+        </div>
       </footer>
     </div>
   );

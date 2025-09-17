@@ -41,6 +41,18 @@ const config: Config = {
   				DEFAULT: 'hsl(var(--destructive))',
   				foreground: 'hsl(var(--destructive-foreground))'
   			},
+  			warning: {
+  				DEFAULT: 'hsl(var(--warning))',
+  				foreground: 'hsl(var(--warning-foreground))'
+  			},
+  			success: {
+  				DEFAULT: 'hsl(var(--success))',
+  				foreground: 'hsl(var(--success-foreground))'
+  			},
+  			info: {
+  				DEFAULT: 'hsl(var(--info))',
+  				foreground: 'hsl(var(--info-foreground))'
+  			},
   			border: 'hsl(var(--border))',
   			input: 'hsl(var(--input))',
   			ring: 'hsl(var(--ring))',
@@ -75,10 +87,69 @@ const config: Config = {
   				to: {
   					transform: 'rotate(360deg)'
   				}
+  			},
+  			fadeIn: {
+  				'0%': { opacity: '0' },
+  				'100%': { opacity: '1' }
+  			},
+  			slideUp: {
+  				'0%': { 
+  					opacity: '0',
+  					transform: 'translateY(10px)'
+  				},
+  				'100%': { 
+  					opacity: '1',
+  					transform: 'translateY(0)'
+  				}
+  			},
+  			slideDown: {
+  				'0%': { 
+  					opacity: '0',
+  					transform: 'translateY(-10px)'
+  				},
+  				'100%': { 
+  					opacity: '1',
+  					transform: 'translateY(0)'
+  				}
+  			},
+  			scaleIn: {
+  				'0%': { 
+  					opacity: '0',
+  					transform: 'scale(0.95)'
+  				},
+  				'100%': { 
+  					opacity: '1',
+  					transform: 'scale(1)'
+  				}
+  			},
+  			bounceSubtle: {
+  				'0%, 20%, 50%, 80%, 100%': {
+  					transform: 'translateY(0)'
+  				},
+  				'40%': {
+  					transform: 'translateY(-4px)'
+  				},
+  				'60%': {
+  					transform: 'translateY(-2px)'
+  				}
+  			},
+  			shimmer: {
+  				'0%': {
+  					backgroundPosition: '-200% 0'
+  				},
+  				'100%': {
+  					backgroundPosition: '200% 0'
+  				}
   			}
   		},
   		animation: {
-  			spin: 'spin 1s linear infinite'
+  			spin: 'spin 1s linear infinite',
+  			fadeIn: 'fadeIn 0.5s ease-in-out',
+  			slideUp: 'slideUp 0.3s ease-out',
+  			slideDown: 'slideDown 0.3s ease-out',
+  			scaleIn: 'scaleIn 0.2s ease-out',
+  			bounceSubtle: 'bounceSubtle 0.6s ease-in-out',
+  			shimmer: 'shimmer 1.5s infinite'
   		}
   	}
   },
