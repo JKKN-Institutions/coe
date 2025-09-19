@@ -51,7 +51,7 @@ class ParentAuthService {
     };
 
     const missingVars = Object.entries(requiredEnvVars)
-      .filter(([_, value]) => !value)
+      .filter(([, value]) => !value)
       .map(([key]) => key);
 
     if (missingVars.length > 0) {
@@ -224,7 +224,7 @@ class ParentAuthService {
         clearTimeout(timeoutId);
 
         // If it's a timeout or network error, return a valid response with cached user data
-        if ((error as any)?.name === 'AbortError' || (error as any)?.code === 'ECONNABORTED') {
+        if ((error as Error & { code?: string })?.name === 'AbortError' || (error as Error & { code?: string })?.code === 'ECONNABORTED') {
           console.warn('Token validation timed out, using cached session');
           const cachedUser = this.getUser();
           if (cachedUser) {
