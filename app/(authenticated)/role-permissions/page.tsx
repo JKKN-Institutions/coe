@@ -4,7 +4,7 @@ import { useState, useEffect } from "react"
 import Link from "next/link"
 import { AppFooter } from "@/components/app-footer"
 import {
-  Breadcrumb,
+  Breadcrumb, 
   BreadcrumbItem,
   BreadcrumbLink,
   BreadcrumbList,
@@ -153,8 +153,8 @@ export default function RolePermissionsPage() {
     .sort((a, b) => {
       if (!sortColumn) return 0
 
-      let aValue: any
-      let bValue: any
+      let aValue: string | boolean
+      let bValue: string | boolean
 
       switch (sortColumn) {
         case 'role_name':

@@ -151,8 +151,8 @@ export default function UserRolesPage() {
     .sort((a, b) => {
       if (!sortColumn) return 0
 
-      let aValue: any
-      let bValue: any
+      let aValue: string | boolean
+      let bValue: string | boolean
 
       switch (sortColumn) {
         case 'full_name':

@@ -360,7 +360,7 @@ export default function EditRegulationPage() {
                           step="0.01"
                           min="0"
                           value={formData.maximum_internal}
-                          onChange={(e) => handleInputChange('maximum_internal', parseFloat(e.target.value) || 0)}
+                          onChange={(e) => handleInputChange("maximum_internal", parseFloat(e.target.value) || 0)}
                         />
                       </div>
                       <div className="space-y-2">
@@ -371,7 +371,7 @@ export default function EditRegulationPage() {
                           step="0.01"
                           min="0"
                           value={formData.maximum_external}
-                          onChange={(e) => handleInputChange('maximum_external', parseFloat(e.target.value) || 0)}
+                          onChange={(e) => handleInputChange("maximum_external", parseFloat(e.target.value) || 0)}
                         />
                       </div>
                       <div className="space-y-2">
@@ -382,7 +382,7 @@ export default function EditRegulationPage() {
                           step="0.01"
                           min="0"
                           value={formData.maximum_total}
-                          onChange={(e) => handleInputChange('maximum_total', parseFloat(e.target.value) || 0)}
+                          onChange={(e) => handleInputChange("maximum_total", parseFloat(e.target.value) || 0)}
                         />
                       </div>
                       <div className="space-y-2">

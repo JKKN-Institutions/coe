@@ -9,7 +9,7 @@ export function RegisterServiceWorker() {
         try {
           // First, unregister any old service workers
           const registrations = await navigator.serviceWorker.getRegistrations();
-          for (let registration of registrations) {
+          for (const registration of registrations) {
             if (registration.scope.includes(window.location.origin)) {
               await registration.unregister();
               console.log('Unregistered old service worker:', registration.scope);

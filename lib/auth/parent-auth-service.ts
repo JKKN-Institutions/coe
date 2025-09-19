@@ -220,7 +220,7 @@ class ParentAuthService {
         );
         clearTimeout(timeoutId);
         return response.data;
-      } catch (error: any) {
+      } catch (error: unknown) {
         clearTimeout(timeoutId);
 
         // If it's a timeout or network error, return a valid response with cached user data
@@ -504,4 +504,5 @@ class ParentAuthService {
 }
 
 const parentAuthService = new ParentAuthService();
+
 export default parentAuthService;

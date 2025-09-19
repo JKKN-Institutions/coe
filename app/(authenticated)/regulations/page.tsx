@@ -149,8 +149,8 @@ export default function RegulationsPage() {
     .sort((a, b) => {
       if (!sortColumn) return 0
 
-      let aValue: any
-      let bValue: any
+      let aValue: string | number
+      let bValue: string | number
 
       switch (sortColumn) {
         case 'regulation_code':
@@ -470,7 +470,7 @@ export default function RegulationsPage() {
       if (!file) return
 
       try {
-        let dataToImport: any[] = []
+        let dataToImport: Partial<Regulation>[] = []
 
         if (file.name.endsWith('.json')) {
           const reader = new FileReader()
@@ -523,7 +523,7 @@ export default function RegulationsPage() {
             const worksheet = workbook.Sheets[workbook.SheetNames[0]]
             const jsonData = XLSX.utils.sheet_to_json(worksheet)
 
-            dataToImport = jsonData.map((row: any) => ({
+            dataToImport = jsonData.map((row: Record<string, unknown>) => ({
               regulation_code: row['Regulation Code'] || '',
               regulation_year: row['Year'] || new Date().getFullYear(),
               status: row['Status'] === 'Active',
@@ -549,7 +549,7 @@ export default function RegulationsPage() {
     }
 
     // Helper function to process import
-    async function processImport(dataToImport: any[]) {
+    async function processImport(dataToImport: Partial<Regulation>[]) {
       try {
         // Send data to API
         let successCount = 0

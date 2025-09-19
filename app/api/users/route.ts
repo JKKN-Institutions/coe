@@ -50,7 +50,7 @@ export async function GET(req: NextRequest) {
     // we'll match by role_name instead
     const roleNames = [...new Set(users.filter(user => user.role).map(user => user.role))]
 
-    let roles: any[] = []
+    let roles: Array<{id: string, role_name: string, role_description: string, is_active: boolean}> = []
     if (roleNames.length > 0) {
       const { data: rolesData, error: rolesError } = await supabase
         .from('roles')

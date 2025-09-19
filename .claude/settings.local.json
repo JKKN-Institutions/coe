@@ -1,15 +1,8 @@
 {
   "permissions": {
     "allow": [
-      "Bash(npm install:*)",
-      "Bash(npm run dev:*)",
-      "Bash(npm uninstall:*)",
-      "Bash(taskkill:*)",
-      "Bash(powershell:*)",
-      "Bash(timeout:*)",
-      "Bash(netstat:*)",
-      "Bash(findstr:*)",
-      "Bash(dir C:UsersJKKNDownloadsjkkncoecoepublic*.js)"
+      "Bash(npx eslint:*)",
+      "Bash(npm run build:*)"
     ],
     "deny": [],
     "ask": []
