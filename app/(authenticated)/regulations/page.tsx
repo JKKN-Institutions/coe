@@ -523,20 +523,20 @@ export default function RegulationsPage() {
             const worksheet = workbook.Sheets[workbook.SheetNames[0]]
             const jsonData = XLSX.utils.sheet_to_json(worksheet)
 
-            dataToImport = jsonData.map((row: Record<string, unknown>) => ({
-              regulation_code: row['Regulation Code'] || '',
-              regulation_year: row['Year'] || new Date().getFullYear(),
+            dataToImport = (jsonData as Record<string, unknown>[]).map((row) => ({
+              regulation_code: String(row['Regulation Code'] || ''),
+              regulation_year: Number(row['Year']) || new Date().getFullYear(),
               status: row['Status'] === 'Active',
-              minimum_internal: row['Min Internal'] || 0,
-              minimum_external: row['Min External'] || 0,
-              minimum_attendance: row['Min Attendance'] || 0,
-              minimum_total: row['Min Total'] || 0,
-              maximum_internal: row['Max Internal'] || 0,
-              maximum_external: row['Max External'] || 0,
-              maximum_total: row['Max Total'] || 0,
-              maximum_qp_marks: row['Max QP Marks'] || 0,
-              condonation_range_start: row['Condonation Start'] || 0,
-              condonation_range_end: row['Condonation End'] || 0
+              minimum_internal: Number(row['Min Internal']) || 0,
+              minimum_external: Number(row['Min External']) || 0,
+              minimum_attendance: Number(row['Min Attendance']) || 0,
+              minimum_total: Number(row['Min Total']) || 0,
+              maximum_internal: Number(row['Max Internal']) || 0,
+              maximum_external: Number(row['Max External']) || 0,
+              maximum_total: Number(row['Max Total']) || 0,
+              maximum_qp_marks: Number(row['Max QP Marks']) || 0,
+              condonation_range_start: Number(row['Condonation Start']) || 0,
+              condonation_range_end: Number(row['Condonation End']) || 0
             }))
             await processImport(dataToImport)
           }

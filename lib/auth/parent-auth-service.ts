@@ -224,7 +224,7 @@ class ParentAuthService {
         clearTimeout(timeoutId);
 
         // If it's a timeout or network error, return a valid response with cached user data
-        if (error.name === 'AbortError' || error.code === 'ECONNABORTED') {
+        if ((error as any)?.name === 'AbortError' || (error as any)?.code === 'ECONNABORTED') {
           console.warn('Token validation timed out, using cached session');
           const cachedUser = this.getUser();
           if (cachedUser) {

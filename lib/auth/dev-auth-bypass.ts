@@ -4,51 +4,37 @@
  * WARNING: Only use in development environment!
  */
 
-import { ParentAppUser, AuthSession } from './types';
+import { ParentAppUser, AuthSession } from './parent-auth-service';
 
 const DEV_USER: ParentAppUser = {
   id: 'dev-user-001',
   email: 'developer@jkkn.ac.in',
-  name: 'Development User',
-  avatar_url: '',
+  full_name: 'Development User',
   role: 'admin',
-  department: 'Computer Science',
   permissions: {
-    regulations: {
-      view: true,
-      create: true,
-      edit: true,
-      delete: true
-    },
-    courses: {
-      view: true,
-      create: true,
-      edit: true,
-      delete: true
-    },
-    batches: {
-      view: true,
-      create: true,
-      edit: true,
-      delete: true
-    },
-    users: {
-      view: true,
-      create: true,
-      edit: true,
-      delete: true
-    }
-  },
-  created_at: new Date().toISOString(),
-  updated_at: new Date().toISOString()
+    'regulations.view': true,
+    'regulations.create': true,
+    'regulations.edit': true,
+    'regulations.delete': true,
+    'courses.view': true,
+    'courses.create': true,
+    'courses.edit': true,
+    'courses.delete': true,
+    'batches.view': true,
+    'batches.create': true,
+    'batches.edit': true,
+    'batches.delete': true,
+    'users.view': true,
+    'users.create': true,
+    'users.edit': true,
+    'users.delete': true
+  }
 };
 
 const DEV_SESSION: AuthSession = {
-  access_token: 'dev-access-token',
-  refresh_token: 'dev-refresh-token',
-  expires_in: 3600,
+  id: 'dev-session-001',
   expires_at: new Date(Date.now() + 3600 * 1000).toISOString(),
-  token_type: 'Bearer'
+  created_at: new Date().toISOString()
 };
 
 export class DevAuthBypass {
@@ -79,8 +65,8 @@ export class DevAuthBypass {
     }
 
     // Store dev user and session in localStorage
-    localStorage.setItem('auth_token', DEV_SESSION.access_token);
-    localStorage.setItem('refresh_token', DEV_SESSION.refresh_token);
+    localStorage.setItem('auth_token', 'dev-access-token');
+    localStorage.setItem('refresh_token', 'dev-refresh-token');
     localStorage.setItem('user_data', JSON.stringify(DEV_USER));
     localStorage.setItem('auth_session', JSON.stringify(DEV_SESSION));
 
