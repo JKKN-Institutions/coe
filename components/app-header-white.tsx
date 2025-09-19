@@ -57,7 +57,7 @@ export function AppHeaderWhite({
         <SidebarTrigger className="-ml-1 text-slate-700 dark:text-slate-300 hover:text-emerald-600 hover:bg-emerald-50 dark:hover:text-emerald-400 dark:hover:bg-emerald-950/50 transition-all duration-300 rounded-md" />
         <Separator orientation="vertical" className="mr-2 h-6 bg-slate-200 dark:bg-slate-700" />
         <div className="flex items-center gap-3">
-          
+           
           <div>
             <div className="text-base md:text-lg font-bold text-slate-800 dark:text-slate-100">
               {title}

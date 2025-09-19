@@ -160,6 +160,7 @@ export default function AddRegulationPage() {
                       </div>
                     </div>
                   </CardHeader>
+                  
                   <CardContent className="pt-0">
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
                       {/* Regulation Year */}

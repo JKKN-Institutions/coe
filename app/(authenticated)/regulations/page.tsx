@@ -67,7 +67,7 @@ import {
 
 // Regulation type definition
 interface Regulation {
-  id: number
+  id: number 
   regulation_year: number
   regulation_code: string
   status: boolean

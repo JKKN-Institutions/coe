@@ -45,7 +45,7 @@ export function AppHeader({
     
     return `${day}-${month}-${year} | ${weekday} | ${time}`
   }
-
+ 
   return (
     <header className={`flex h-16 shrink-0 items-center justify-between px-6 bg-gradient-to-r from-emerald-600 via-green-600 to-teal-600 text-white shadow-2xl relative overflow-hidden ${className}`}>
       {/* Animated background pattern */}
