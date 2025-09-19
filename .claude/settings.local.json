@@ -6,7 +6,10 @@
       "Bash(npm uninstall:*)",
       "Bash(taskkill:*)",
       "Bash(powershell:*)",
-      "Bash(timeout:*)"
+      "Bash(timeout:*)",
+      "Bash(netstat:*)",
+      "Bash(findstr:*)",
+      "Bash(dir C:UsersJKKNDownloadsjkkncoecoepublic*.js)"
     ],
     "deny": [],
     "ask": []

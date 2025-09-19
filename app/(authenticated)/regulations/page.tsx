@@ -2,6 +2,8 @@
 
 import { useState, useEffect } from "react"
 import Link from "next/link"
+import * as XLSX from "xlsx"
+import { AppFooter } from "@/components/app-footer"
 import {
   Breadcrumb,
   BreadcrumbItem,
@@ -30,9 +32,8 @@ import {
 import { Card, CardContent, CardHeader } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { AppSidebar } from "@/components/app-sidebar"
-import { SidebarProvider, SidebarInset, SidebarTrigger } from "@/components/ui/sidebar"
-import { Separator } from "@/components/ui/separator"
-import { ModeToggle } from "@/components/mode-toggle"
+import { AppHeader } from "@/components/app-header"
+import { SidebarProvider, SidebarInset } from "@/components/ui/sidebar"
 import {
   AlertDialog,
   AlertDialogAction,
@@ -58,6 +59,10 @@ import {
   TrendingUp,
   Edit,
   Trash2,
+  ArrowUpDown,
+  ArrowUp,
+  ArrowDown,
+  FileSpreadsheet,
 } from "lucide-react"
 
 // Regulation type definition
@@ -86,9 +91,10 @@ export default function RegulationsPage() {
   const [searchTerm, setSearchTerm] = useState("")
   const [statusFilter, setStatusFilter] = useState("all")
   const [yearFilter, setYearFilter] = useState("all")
-  const [currentPage, setCurrentPage] = useState(1)
-  const [currentTime, setCurrentTime] = useState<Date | null>(null)
   const [deleteRegulationId, setDeleteRegulationId] = useState<number | null>(null)
+  const [sortColumn, setSortColumn] = useState<string | null>(null)
+  const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc')
+  const [currentPage, setCurrentPage] = useState(1)
   const itemsPerPage = 10
 
   // Fetch regulations from API
@@ -119,27 +125,60 @@ export default function RegulationsPage() {
     fetchRegulations()
   }, [])
 
-  // Update time every second (client-side only)
-  useEffect(() => {
-    setCurrentTime(new Date())
-    
-    const timer = setInterval(() => {
-      setCurrentTime(new Date())
-    }, 1000)
+  // Handle sorting
+  const handleSort = (column: string) => {
+    if (sortColumn === column) {
+      setSortDirection(sortDirection === 'asc' ? 'desc' : 'asc')
+    } else {
+      setSortColumn(column)
+      setSortDirection('asc')
+    }
+  }
 
-    return () => clearInterval(timer)
-  }, [])
+  // Filter and sort regulations
+  const filteredRegulations = regulations
+    .filter((regulation) => {
+      const matchesSearch = regulation.regulation_code.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                           regulation.regulation_year.toString().includes(searchTerm)
+      const matchesStatus = statusFilter === "all" ||
+                           (statusFilter === "active" && regulation.status) ||
+                           (statusFilter === "inactive" && !regulation.status)
+      const matchesYear = yearFilter === "all" || regulation.regulation_year.toString() === yearFilter
+      return matchesSearch && matchesStatus && matchesYear
+    })
+    .sort((a, b) => {
+      if (!sortColumn) return 0
 
-  // Filter regulations based on search and filters
-  const filteredRegulations = regulations.filter((regulation) => {
-    const matchesSearch = regulation.regulation_code.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         regulation.regulation_year.toString().includes(searchTerm)
-    const matchesStatus = statusFilter === "all" || 
-                         (statusFilter === "active" && regulation.status) ||
-                         (statusFilter === "inactive" && !regulation.status)
-    const matchesYear = yearFilter === "all" || regulation.regulation_year.toString() === yearFilter
-    return matchesSearch && matchesStatus && matchesYear
-  })
+      let aValue: any
+      let bValue: any
+
+      switch (sortColumn) {
+        case 'regulation_code':
+          aValue = a.regulation_code.toLowerCase()
+          bValue = b.regulation_code.toLowerCase()
+          break
+        case 'regulation_year':
+          aValue = a.regulation_year
+          bValue = b.regulation_year
+          break
+        case 'status':
+          aValue = a.status ? 1 : 0
+          bValue = b.status ? 1 : 0
+          break
+        case 'created_at':
+          aValue = new Date(a.created_at).getTime()
+          bValue = new Date(b.created_at).getTime()
+          break
+        default:
+          return 0
+      }
+
+      if (sortDirection === 'asc') {
+        return aValue > bValue ? 1 : aValue < bValue ? -1 : 0
+      } else {
+        return aValue < bValue ? 1 : aValue > bValue ? -1 : 0
+      }
+    })
 
   const getStatusBadgeVariant = (regulation: Regulation) => {
     return regulation.status ? "default" : "secondary"
@@ -147,6 +186,15 @@ export default function RegulationsPage() {
 
   const getStatusText = (regulation: Regulation) => {
     return regulation.status ? "Active" : "Inactive"
+  }
+
+  const getSortIcon = (column: string) => {
+    if (sortColumn !== column) {
+      return <ArrowUpDown className="h-3 w-3 text-muted-foreground" />
+    }
+    return sortDirection === 'asc'
+      ? <ArrowUp className="h-3 w-3" />
+      : <ArrowDown className="h-3 w-3" />
   }
 
   const formatDate = (dateString: string) => {
@@ -174,51 +222,396 @@ export default function RegulationsPage() {
     }
   }
 
-  const formatCurrentDateTime = (date: Date | null) => {
-    if (!date) return "Loading..."
-    
-    const day = date.getDate().toString().padStart(2, '0')
-    const month = (date.getMonth() + 1).toString().padStart(2, '0')
-    const year = date.getFullYear()
-    const weekday = date.toLocaleDateString('en-US', { weekday: 'short' }).toUpperCase()
-    const time = date.toLocaleTimeString('en-US', {
-      hour: '2-digit',
-      minute: '2-digit',
-      second: '2-digit',
-      hour12: true
+
+  // Download function - downloads filtered data as JSON
+  const handleDownload = () => {
+    const dataToDownload = filteredRegulations
+    const jsonData = JSON.stringify(dataToDownload, null, 2)
+    const blob = new Blob([jsonData], { type: 'application/json' })
+    const url = URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    link.href = url
+    link.download = `regulations_${new Date().toISOString().split('T')[0]}.json`
+    document.body.appendChild(link)
+    link.click()
+    document.body.removeChild(link)
+    URL.revokeObjectURL(url)
+  }
+
+  // Template Export function - exports Excel template with headers and sample data
+  const handleTemplateExport = () => {
+    // Prepare headers
+    const headers = ['Regulation Code', 'Year', 'Status', 'Min Internal', 'Min External', 'Min Attendance', 'Min Total', 'Max Internal', 'Max External', 'Max Total', 'Max QP Marks', 'Condonation Start', 'Condonation End']
+
+    // Sample data - one row with example values
+    const sampleData = [{
+      'Regulation Code': 'R25',
+      'Year': 2024,
+      'Status': 'Active',
+      'Min Internal': 14,
+      'Min External': 26,
+      'Min Attendance': 75,
+      'Min Total': 40,
+      'Max Internal': 40,
+      'Max External': 60,
+      'Max Total': 100,
+      'Max QP Marks': 100,
+      'Condonation Start': 65,
+      'Condonation End': 74
+    }]
+
+    // Create workbook and worksheet
+    const ws = XLSX.utils.json_to_sheet(sampleData)
+    const wb = XLSX.utils.book_new()
+
+    // Define column widths
+    const colWidths = [
+      { wch: 18 },  // Regulation Code
+      { wch: 10 },  // Year
+      { wch: 10 },  // Status
+      { wch: 12 },  // Min Internal
+      { wch: 12 },  // Min External
+      { wch: 15 },  // Min Attendance
+      { wch: 10 },  // Min Total
+      { wch: 12 },  // Max Internal
+      { wch: 12 },  // Max External
+      { wch: 10 },  // Max Total
+      { wch: 12 },  // Max QP Marks
+      { wch: 18 },  // Condonation Start
+      { wch: 18 }   // Condonation End
+    ]
+    ws['!cols'] = colWidths
+
+    // Apply header styling
+    const range = XLSX.utils.decode_range(ws['!ref'] || 'A1')
+
+    // Style headers (first row)
+    for (let col = range.s.c; col <= range.e.c; col++) {
+      const cellAddress = XLSX.utils.encode_cell({ r: 0, c: col })
+      if (!ws[cellAddress]) continue
+
+      ws[cellAddress].s = {
+        font: {
+          bold: true,
+          name: 'Arial',
+          sz: 11,
+          color: { rgb: 'FFFFFF' }
+        },
+        fill: {
+          fgColor: { rgb: '0066CC' },
+          bgColor: { rgb: '0066CC' },
+          patternType: 'solid'
+        },
+        alignment: {
+          horizontal: 'center',
+          vertical: 'center'
+        },
+        border: {
+          top: { style: 'thin', color: { rgb: '000000' } },
+          bottom: { style: 'thin', color: { rgb: '000000' } },
+          left: { style: 'thin', color: { rgb: '000000' } },
+          right: { style: 'thin', color: { rgb: '000000' } }
+        }
+      }
+    }
+
+    // Style sample data row
+    for (let col = range.s.c; col <= range.e.c; col++) {
+      const cellAddress = XLSX.utils.encode_cell({ r: 1, c: col })
+      if (!ws[cellAddress]) continue
+
+      ws[cellAddress].s = {
+        font: {
+          name: 'Arial',
+          sz: 10,
+          color: { rgb: '666666' },
+          italic: true
+        },
+        fill: {
+          fgColor: { rgb: 'F0F0F0' },
+          bgColor: { rgb: 'F0F0F0' },
+          patternType: 'solid'
+        },
+        border: {
+          top: { style: 'thin', color: { rgb: '000000' } },
+          bottom: { style: 'thin', color: { rgb: '000000' } },
+          left: { style: 'thin', color: { rgb: '000000' } },
+          right: { style: 'thin', color: { rgb: '000000' } }
+        }
+      }
+    }
+
+    // Add instructions as a comment in the first cell
+    if (!ws.A1.c) ws.A1.c = []
+    ws.A1.c.push({
+      a: 'Template Instructions',
+      t: 'This is a template for importing regulations data.\n\nInstructions:\n1. Replace the sample data with your actual data\n2. Keep the header row as is\n3. Status should be either "Active" or "Inactive"\n4. All numeric fields should contain numbers only\n5. Save the file and use the Import button to upload'
     })
-    
-    return `${day}-${month}-${year} | ${weekday} | ${time}`
+
+    // Add worksheet to workbook
+    XLSX.utils.book_append_sheet(wb, ws, 'Regulations Template')
+
+    // Write the file
+    XLSX.writeFile(wb, `regulations_template_${new Date().toISOString().split('T')[0]}.xlsx`)
+  }
+
+  // Export function - exports filtered data as Excel with formatting
+  const handleExport = () => {
+    // Prepare headers with S.No
+    const headers = ['S.No', 'Regulation Code', 'Year', 'Status', 'Min Internal', 'Min External', 'Min Attendance', 'Min Total', 'Max Internal', 'Max External', 'Max Total', 'Max QP Marks', 'Condonation Start', 'Condonation End']
+
+    // Prepare data with S.No starting from 1
+    const excelData = filteredRegulations.map((reg, index) => ({
+      'S.No': index + 1,
+      'Regulation Code': reg.regulation_code,
+      'Year': reg.regulation_year,
+      'Status': reg.status ? 'Active' : 'Inactive',
+      'Min Internal': reg.minimum_internal,
+      'Min External': reg.minimum_external,
+      'Min Attendance': reg.minimum_attendance,
+      'Min Total': reg.minimum_total,
+      'Max Internal': reg.maximum_internal,
+      'Max External': reg.maximum_external,
+      'Max Total': reg.maximum_total,
+      'Max QP Marks': reg.maximum_qp_marks,
+      'Condonation Start': reg.condonation_range_start,
+      'Condonation End': reg.condonation_range_end
+    }))
+
+    // Create workbook and worksheet
+    const ws = XLSX.utils.json_to_sheet(excelData)
+    const wb = XLSX.utils.book_new()
+
+    // Define column widths
+    const colWidths = [
+      { wch: 5 },   // S.No
+      { wch: 15 },  // Regulation Code
+      { wch: 8 },   // Year
+      { wch: 10 },  // Status
+      { wch: 12 },  // Min Internal
+      { wch: 12 },  // Min External
+      { wch: 15 },  // Min Attendance
+      { wch: 10 },  // Min Total
+      { wch: 12 },  // Max Internal
+      { wch: 12 },  // Max External
+      { wch: 10 },  // Max Total
+      { wch: 12 },  // Max QP Marks
+      { wch: 15 },  // Condonation Start
+      { wch: 15 }   // Condonation End
+    ]
+    ws['!cols'] = colWidths
+
+    // Apply header styling
+    const range = XLSX.utils.decode_range(ws['!ref'] || 'A1')
+
+    // Style headers (first row)
+    for (let col = range.s.c; col <= range.e.c; col++) {
+      const cellAddress = XLSX.utils.encode_cell({ r: 0, c: col })
+      if (!ws[cellAddress]) continue
+
+      ws[cellAddress].s = {
+        font: {
+          bold: true,
+          name: 'Times New Roman',
+          sz: 11
+        },
+        fill: {
+          fgColor: { rgb: '16a34a' },
+          bgColor: { rgb: '16a34a' },
+          patternType: 'solid'
+        },
+        alignment: {
+          horizontal: 'center',
+          vertical: 'center'
+        },
+        border: {
+          top: { style: 'thin', color: { rgb: '000000' } },
+          bottom: { style: 'thin', color: { rgb: '000000' } },
+          left: { style: 'thin', color: { rgb: '000000' } },
+          right: { style: 'thin', color: { rgb: '000000' } }
+        }
+      }
+    }
+
+    // Apply data cell styling (Times New Roman font)
+    for (let row = 1; row <= range.e.r; row++) {
+      for (let col = range.s.c; col <= range.e.c; col++) {
+        const cellAddress = XLSX.utils.encode_cell({ r: row, c: col })
+        if (!ws[cellAddress]) continue
+
+        if (!ws[cellAddress].s) ws[cellAddress].s = {}
+        ws[cellAddress].s.font = {
+          name: 'Times New Roman',
+          sz: 11
+        }
+        ws[cellAddress].s.border = {
+          top: { style: 'thin', color: { rgb: '000000' } },
+          bottom: { style: 'thin', color: { rgb: '000000' } },
+          left: { style: 'thin', color: { rgb: '000000' } },
+          right: { style: 'thin', color: { rgb: '000000' } }
+        }
+      }
+    }
+
+    // Add worksheet to workbook
+    XLSX.utils.book_append_sheet(wb, ws, 'Regulations')
+
+    // Write the file
+    XLSX.writeFile(wb, `regulations_export_${new Date().toISOString().split('T')[0]}.xlsx`)
+  }
+
+  // Import function - handles file upload (JSON, CSV, Excel)
+  const handleImport = () => {
+    const input = document.createElement('input')
+    input.type = 'file'
+    input.accept = '.json,.csv,.xlsx,.xls'
+    input.onchange = async (e) => {
+      const file = (e.target as HTMLInputElement).files?.[0]
+      if (!file) return
+
+      try {
+        let dataToImport: any[] = []
+
+        if (file.name.endsWith('.json')) {
+          const reader = new FileReader()
+          reader.onload = async (event) => {
+            const content = event.target?.result as string
+            dataToImport = JSON.parse(content)
+            await processImport(dataToImport)
+          }
+          reader.readAsText(file)
+        } else if (file.name.endsWith('.csv')) {
+          const reader = new FileReader()
+          reader.onload = async (event) => {
+            const content = event.target?.result as string
+            // Parse CSV
+            const lines = content.split('\n')
+            const headers = lines[0].split(',').map(h => h.replace(/"/g, '').trim())
+
+            const hasSNo = headers[0] === 'S.No'
+            const startIndex = hasSNo ? 1 : 0
+
+            for (let i = 1; i < lines.length; i++) {
+              if (!lines[i].trim()) continue
+              const values = lines[i].match(/(".*?"|[^,]+)/g)?.map(v => v.replace(/"/g, '').trim()) || []
+
+              const regulation: Partial<Regulation> = {
+                regulation_code: values[startIndex] || '',
+                regulation_year: parseInt(values[startIndex + 1]) || new Date().getFullYear(),
+                status: values[startIndex + 2] === 'Active',
+                minimum_internal: parseFloat(values[startIndex + 3]) || 0,
+                minimum_external: parseFloat(values[startIndex + 4]) || 0,
+                minimum_attendance: parseFloat(values[startIndex + 5]) || 0,
+                minimum_total: parseFloat(values[startIndex + 6]) || 0,
+                maximum_internal: parseFloat(values[startIndex + 7]) || 0,
+                maximum_external: parseFloat(values[startIndex + 8]) || 0,
+                maximum_total: parseFloat(values[startIndex + 9]) || 0,
+                maximum_qp_marks: parseFloat(values[startIndex + 10]) || 0,
+                condonation_range_start: parseFloat(values[startIndex + 11]) || 0,
+                condonation_range_end: parseFloat(values[startIndex + 12]) || 0
+              }
+              dataToImport.push(regulation)
+            }
+            await processImport(dataToImport)
+          }
+          reader.readAsText(file)
+        } else if (file.name.endsWith('.xlsx') || file.name.endsWith('.xls')) {
+          const reader = new FileReader()
+          reader.onload = async (event) => {
+            const data = new Uint8Array(event.target?.result as ArrayBuffer)
+            const workbook = XLSX.read(data, { type: 'array' })
+            const worksheet = workbook.Sheets[workbook.SheetNames[0]]
+            const jsonData = XLSX.utils.sheet_to_json(worksheet)
+
+            dataToImport = jsonData.map((row: any) => ({
+              regulation_code: row['Regulation Code'] || '',
+              regulation_year: row['Year'] || new Date().getFullYear(),
+              status: row['Status'] === 'Active',
+              minimum_internal: row['Min Internal'] || 0,
+              minimum_external: row['Min External'] || 0,
+              minimum_attendance: row['Min Attendance'] || 0,
+              minimum_total: row['Min Total'] || 0,
+              maximum_internal: row['Max Internal'] || 0,
+              maximum_external: row['Max External'] || 0,
+              maximum_total: row['Max Total'] || 0,
+              maximum_qp_marks: row['Max QP Marks'] || 0,
+              condonation_range_start: row['Condonation Start'] || 0,
+              condonation_range_end: row['Condonation End'] || 0
+            }))
+            await processImport(dataToImport)
+          }
+          reader.readAsArrayBuffer(file)
+        }
+      } catch (error) {
+        alert('Error reading file. Please check the file format.')
+        console.error('File read error:', error)
+      }
+    }
+
+    // Helper function to process import
+    async function processImport(dataToImport: any[]) {
+      try {
+        // Send data to API
+        let successCount = 0
+        let failCount = 0
+
+        for (const regulation of dataToImport) {
+          try {
+            const response = await fetch('/api/regulations', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(regulation)
+            })
+
+            if (response.ok) {
+              successCount++
+            } else {
+              failCount++
+            }
+          } catch (error) {
+            failCount++
+          }
+        }
+
+        // Refresh the regulations list
+        const response = await fetch('/api/regulations')
+        if (response.ok) {
+          const data = await response.json()
+          setRegulations(data)
+        }
+
+        alert(`Import completed!\nSuccessful: ${successCount}\nFailed: ${failCount}`)
+
+      } catch (error) {
+        alert('Error importing file. Please check the file format.')
+        console.error('Import error:', error)
+      }
+    }
+
+    input.click()
   }
 
   // Get unique years for year filter
   const uniqueYears = [...new Set(regulations.map(r => r.regulation_year))].sort((a, b) => b - a)
 
-  return (
-    <div className="h-screen">
-      <SidebarProvider>
-        <AppSidebar />
-        <SidebarInset className="flex flex-col h-screen">
-          {/* Main Header */}
-          <header className="flex h-16 shrink-0 items-center justify-between px-6 border-b bg-background text-foreground">
-            <div className="flex items-center gap-4">
-              <SidebarTrigger className="-ml-1 text-foreground hover:bg-accent" />
-              <Separator orientation="vertical" className="mr-2 h-6 bg-border" />
-              <div>
-                <div className="text-base md:text-lg font-semibold">JKKN Controller of Examination Portal</div>
-              </div>
-            </div>
-            <div className="flex items-center gap-4">
-              <div className="text-right">
-                <div className="text-sm font-medium text-foreground">
-                  {formatCurrentDateTime(currentTime)}
-                </div>
-              </div>
-              <ModeToggle />
-            </div>
-          </header>
+  // Calculate pagination
+  const totalPages = Math.ceil(filteredRegulations.length / itemsPerPage)
+  const startIndex = (currentPage - 1) * itemsPerPage
+  const endIndex = startIndex + itemsPerPage
+  const paginatedRegulations = filteredRegulations.slice(startIndex, endIndex)
 
-          <div className="flex flex-col flex-1 p-3 space-y-3 overflow-y-auto">
+  // Reset to first page when filters change
+  useEffect(() => {
+    setCurrentPage(1)
+  }, [searchTerm, statusFilter, yearFilter, sortColumn, sortDirection])
+
+  return (
+    <SidebarProvider>
+      <AppSidebar />
+      <SidebarInset className="flex flex-col min-h-screen">
+        <AppHeader />
+
+        <div className="flex flex-1 flex-col gap-4 p-4 pt-0 overflow-y-auto">
             {/* Breadcrumb Navigation */}
             <div className="flex items-center gap-2 flex-shrink-0">
               <Breadcrumb>
@@ -239,25 +632,25 @@ export default function RegulationsPage() {
             {/* Header Section */}
             <div className="flex items-center justify-between flex-shrink-0">
               <div>
-                <h1 className="text-2xl font-bold tracking-tight">Regulations</h1>
-                <p className="text-sm text-muted-foreground">
+                <h1 className="text-xl font-bold tracking-tight">Regulations</h1>
+                <p className="text-xs text-muted-foreground">
                   Manage examination regulations and their details
                 </p>
               </div>
             </div>
 
             {/* Scorecard Section */}
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 flex-shrink-0">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3 flex-shrink-0">
               {/* Total Regulations */}
               <Card>
-                <CardContent className="p-4">
+                <CardContent className="p-3">
                   <div className="flex items-center justify-between">
                     <div>
-                      <p className="text-sm font-medium text-muted-foreground">Total Regulations</p>
-                      <p className="text-2xl font-bold">{regulations.length}</p>
+                      <p className="text-xs font-medium text-muted-foreground">Total Regulations</p>
+                      <p className="text-xl font-bold">{regulations.length}</p>
                     </div>
-                    <div className="h-8 w-8 rounded-full bg-blue-100 dark:bg-blue-900/20 flex items-center justify-center">
-                      <LibraryBig className="h-4 w-4 text-blue-600 dark:text-blue-400" />
+                    <div className="h-7 w-7 rounded-full bg-blue-100 dark:bg-blue-900/20 flex items-center justify-center">
+                      <LibraryBig className="h-3 w-3 text-blue-600 dark:text-blue-400" />
                     </div>
                   </div>
                 </CardContent>
@@ -265,16 +658,16 @@ export default function RegulationsPage() {
 
               {/* Active Regulations */}
               <Card>
-                <CardContent className="p-4">
+                <CardContent className="p-3">
                   <div className="flex items-center justify-between">
                     <div>
-                      <p className="text-sm font-medium text-muted-foreground">Active Regulations</p>
-                      <p className="text-2xl font-bold text-green-600">
+                      <p className="text-xs font-medium text-muted-foreground">Active Regulations</p>
+                      <p className="text-xl font-bold text-green-600">
                         {regulations.filter(regulation => regulation.status).length}
                       </p>
                     </div>
-                    <div className="h-8 w-8 rounded-full bg-green-100 dark:bg-green-900/20 flex items-center justify-center">
-                      <FileText className="h-4 w-4 text-green-600 dark:text-green-400" />
+                    <div className="h-7 w-7 rounded-full bg-green-100 dark:bg-green-900/20 flex items-center justify-center">
+                      <FileText className="h-3 w-3 text-green-600 dark:text-green-400" />
                     </div>
                   </div>
                 </CardContent>
@@ -282,16 +675,16 @@ export default function RegulationsPage() {
 
               {/* Inactive Regulations */}
               <Card>
-                <CardContent className="p-4">
+                <CardContent className="p-3">
                   <div className="flex items-center justify-between">
                     <div>
-                      <p className="text-sm font-medium text-muted-foreground">Inactive Regulations</p>
-                      <p className="text-2xl font-bold text-red-600">
+                      <p className="text-xs font-medium text-muted-foreground">Inactive Regulations</p>
+                      <p className="text-xl font-bold text-red-600">
                         {regulations.filter(regulation => !regulation.status).length}
                       </p>
                     </div>
-                    <div className="h-8 w-8 rounded-full bg-red-100 dark:bg-red-900/20 flex items-center justify-center">
-                      <LibraryBig className="h-4 w-4 text-red-600 dark:text-red-400" />
+                    <div className="h-7 w-7 rounded-full bg-red-100 dark:bg-red-900/20 flex items-center justify-center">
+                      <LibraryBig className="h-3 w-3 text-red-600 dark:text-red-400" />
                     </div>
                   </div>
                 </CardContent>
@@ -299,11 +692,11 @@ export default function RegulationsPage() {
 
               {/* New This Month */}
               <Card>
-                <CardContent className="p-4">
+                <CardContent className="p-3">
                   <div className="flex items-center justify-between">
                     <div>
-                      <p className="text-sm font-medium text-muted-foreground">New This Month</p>
-                      <p className="text-2xl font-bold text-blue-600">
+                      <p className="text-xs font-medium text-muted-foreground">New This Month</p>
+                      <p className="text-xl font-bold text-blue-600">
                         {regulations.filter(regulation => {
                           const regulationDate = new Date(regulation.created_at)
                           const now = new Date()
@@ -311,8 +704,8 @@ export default function RegulationsPage() {
                         }).length}
                       </p>
                     </div>
-                    <div className="h-8 w-8 rounded-full bg-purple-100 dark:bg-purple-900/20 flex items-center justify-center">
-                      <TrendingUp className="h-4 w-4 text-purple-600 dark:text-purple-400" />
+                    <div className="h-7 w-7 rounded-full bg-purple-100 dark:bg-purple-900/20 flex items-center justify-center">
+                      <TrendingUp className="h-3 w-3 text-purple-600 dark:text-purple-400" />
                     </div>
                   </div>
                 </CardContent>
@@ -321,12 +714,12 @@ export default function RegulationsPage() {
 
             {/* Action Bar */}
             <Card className="flex-1 flex flex-col min-h-0">
-              <CardHeader className="flex-shrink-0 p-4">
-                <div className="flex flex-col sm:flex-row gap-3 items-start sm:items-center justify-between">
-                  <div className="flex flex-col sm:flex-row gap-3 w-full sm:w-auto">
+              <CardHeader className="flex-shrink-0 p-3">
+                <div className="flex flex-col lg:flex-row gap-2 items-start lg:items-center justify-between">
+                  <div className="flex flex-col sm:flex-row gap-2 w-full lg:w-auto">
                     {/* Filter Dropdowns */}
                     <Select value={statusFilter} onValueChange={setStatusFilter}>
-                      <SelectTrigger className="w-[180px]">
+                      <SelectTrigger className="w-[140px] h-8">
                         <SelectValue placeholder="All Status" />
                       </SelectTrigger>
                       <SelectContent>
@@ -337,7 +730,7 @@ export default function RegulationsPage() {
                     </Select>
 
                     <Select value={yearFilter} onValueChange={setYearFilter}>
-                      <SelectTrigger className="w-[180px]">
+                      <SelectTrigger className="w-[140px] h-8">
                         <SelectValue placeholder="All Years" />
                       </SelectTrigger>
                       <SelectContent>
@@ -349,173 +742,259 @@ export default function RegulationsPage() {
                     </Select>
 
                     {/* Search Bar */}
-                    <div className="relative w-full sm:w-[300px]">
-                      <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                    <div className="relative w-full sm:w-[220px]">
+                      <Search className="absolute left-2 top-1/2 h-3 w-3 -translate-y-1/2 text-muted-foreground" />
                       <Input
                         placeholder="Search regulations…"
                         value={searchTerm}
                         onChange={(e) => setSearchTerm(e.target.value)}
-                        className="pl-10"
+                        className="pl-8 h-8 text-xs"
                       />
                     </div>
                   </div>
 
                   {/* Action Buttons */}
-                  <div className="flex gap-1.5">
-                    <Button variant="outline" size="sm" className="text-xs px-2">
+                  <div className="flex gap-1 flex-wrap">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="text-xs px-2 h-8"
+                      onClick={handleTemplateExport}
+                    >
+                      <FileSpreadsheet className="h-3 w-3 mr-1" />
+                      Template
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="text-xs px-2 h-8"
+                      onClick={handleDownload}
+                    >
+                      <Download className="h-3 w-3 mr-1" />
+                      Json
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="text-xs px-2 h-8"
+                      onClick={handleExport}
+                    >
                       <Download className="h-3 w-3 mr-1" />
                       Download
                     </Button>
-                    <Button variant="outline" size="sm" className="text-xs px-2">
-                      <Upload className="h-3 w-3 mr-1" />
-                      Export
-                    </Button>
-                    <Button variant="outline" size="sm" className="text-xs px-2">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="text-xs px-2 h-8"
+                      onClick={handleImport}
+                    >
                       <Upload className="h-3 w-3 mr-1" />
                       Upload
                     </Button>
-                    <Button 
-                      size="sm" 
-                      className="text-xs px-2"
+                    <Button
+                      size="sm"
+                      className="text-xs px-2 h-8"
                       onClick={() => window.location.href = '/regulations/add'}
                     >
                       <PlusCircle className="h-3 w-3 mr-1" />
-                      Add Regulation
+                      Add
                     </Button>
-                    <Button variant="outline" size="sm" className="text-xs px-2">
+                    <Button variant="outline" size="sm" className="text-xs px-1 h-8">
                       <Settings className="h-3 w-3" />
                     </Button>
                   </div>
                 </div>
               </CardHeader>
 
-              <CardContent className="p-4 pt-0 flex-1 flex flex-col min-h-0">
+              <CardContent className="p-3 pt-0 flex-1 flex flex-col min-h-0">
                 {/* Data Table */}
-                <div className="flex-1 rounded-md border">
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead className="w-[100px]">Code</TableHead>
-                        <TableHead className="w-[80px]">Year</TableHead>
-                        <TableHead className="w-[100px]">Status</TableHead>
-                        <TableHead className="w-[120px]">Min Attendance</TableHead>
-                        <TableHead className="w-[120px]">Min Internal</TableHead>
-                        <TableHead className="w-[120px]">Min External</TableHead>
-                        <TableHead className="w-[120px]">Created At ↓</TableHead>
-                        <TableHead className="w-[100px]">Actions</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {loading ? (
+                <div className="rounded-md border overflow-hidden" style={{ height: '440px' }}>
+                  <div className="h-full overflow-auto">
+                    <Table>
+                      <TableHeader className="sticky top-0 z-10 bg-slate-50 dark:bg-slate-900/50">
                         <TableRow>
-                          <TableCell colSpan={8} className="h-24 text-center">
-                            Loading regulations...
-                          </TableCell>
+                          <TableHead className="w-[150px] text-xs">
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => handleSort('regulation_code')}
+                              className="h-auto p-0 font-medium hover:bg-transparent"
+                            >
+                              Regulation Code
+                              <span className="ml-1">
+                                {getSortIcon('regulation_code')}
+                              </span>
+                            </Button>
+                          </TableHead>
+                          <TableHead className="w-[100px] text-xs">
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => handleSort('regulation_year')}
+                              className="h-auto p-0 font-medium hover:bg-transparent"
+                            >
+                              Year
+                              <span className="ml-1">
+                                {getSortIcon('regulation_year')}
+                              </span>
+                            </Button>
+                          </TableHead>
+                          <TableHead className="w-[100px] text-xs">
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => handleSort('status')}
+                              className="h-auto p-0 font-medium hover:bg-transparent"
+                            >
+                              Status
+                              <span className="ml-1">
+                                {getSortIcon('status')}
+                              </span>
+                            </Button>
+                          </TableHead>
+                          <TableHead className="w-[120px] text-xs">
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => handleSort('created_at')}
+                              className="h-auto p-0 font-medium hover:bg-transparent"
+                            >
+                              Created
+                              <span className="ml-1">
+                                {getSortIcon('created_at')}
+                              </span>
+                            </Button>
+                          </TableHead>
+                          <TableHead className="w-[120px] text-xs text-center">Actions</TableHead>
                         </TableRow>
-                      ) : filteredRegulations.length > 0 ? (
-                        filteredRegulations.map((regulation) => (
-                          <TableRow key={regulation.id}>
-                            <TableCell className="font-medium">
-                              {regulation.regulation_code}
+                      </TableHeader>
+                      <TableBody>
+                        {loading ? (
+                          <TableRow>
+                            <TableCell colSpan={5} className="h-24 text-center text-xs">
+                              Loading regulations...
                             </TableCell>
-                            <TableCell>
-                              {regulation.regulation_year}
-                            </TableCell>
-                            <TableCell>
-                              <Badge variant={getStatusBadgeVariant(regulation)}>
-                                {getStatusText(regulation)}
-                              </Badge>
-                            </TableCell>
-                            <TableCell>
-                              {regulation.minimum_attendance}%
-                            </TableCell>
-                            <TableCell>
-                              {regulation.minimum_internal}
-                            </TableCell>
-                            <TableCell>
-                              {regulation.minimum_external}
-                            </TableCell>
-                            <TableCell className="text-sm text-muted-foreground">
-                              {formatDate(regulation.created_at)}
-                            </TableCell>
-                            <TableCell>
-                              <div className="flex items-center gap-2">
-                                <Button
-                                  variant="outline"
-                                  size="sm"
-                                  onClick={() => window.location.href = `/regulations/edit/${regulation.id}`}
-                                  className="h-8 w-8 p-0"
-                                >
-                                  <Edit className="h-4 w-4" />
-                                </Button>
-                                <AlertDialog>
-                                  <AlertDialogTrigger asChild>
+                          </TableRow>
+                        ) : paginatedRegulations.length > 0 ? (
+                          <>
+                            {paginatedRegulations.map((regulation) => (
+                              <TableRow key={regulation.id}>
+                                <TableCell className="font-medium text-xs">
+                                  {regulation.regulation_code}
+                                </TableCell>
+                                <TableCell className="text-xs">
+                                  {regulation.regulation_year}
+                                </TableCell>
+                                <TableCell>
+                                  <Badge variant={getStatusBadgeVariant(regulation)} className="text-xs">
+                                    {getStatusText(regulation)}
+                                  </Badge>
+                                </TableCell>
+                                <TableCell className="text-xs text-muted-foreground">
+                                  {formatDate(regulation.created_at)}
+                                </TableCell>
+                                <TableCell>
+                                  <div className="flex items-center justify-center gap-1">
                                     <Button
                                       variant="outline"
                                       size="sm"
-                                      className="h-8 w-8 p-0 text-red-600 hover:text-red-700 hover:bg-red-50"
+                                      onClick={() => window.location.href = `/regulations/edit/${regulation.id}`}
+                                      className="h-7 w-7 p-0"
                                     >
-                                      <Trash2 className="h-4 w-4" />
+                                      <Edit className="h-3 w-3" />
                                     </Button>
-                                  </AlertDialogTrigger>
-                                  <AlertDialogContent>
-                                    <AlertDialogHeader>
-                                      <AlertDialogTitle>Delete Regulation</AlertDialogTitle>
-                                      <AlertDialogDescription>
-                                        Are you sure you want to delete this regulation? This action cannot be undone.
-                                      </AlertDialogDescription>
-                                    </AlertDialogHeader>
-                                    <AlertDialogFooter>
-                                      <AlertDialogCancel>Cancel</AlertDialogCancel>
-                                      <AlertDialogAction
-                                        onClick={() => handleDeleteRegulation(regulation.id)}
-                                        className="bg-red-600 hover:bg-red-700"
-                                      >
-                                        Delete
-                                      </AlertDialogAction>
-                                    </AlertDialogFooter>
-                                  </AlertDialogContent>
-                                </AlertDialog>
-                              </div>
-                            </TableCell>
-                          </TableRow>
-                        ))
-                      ) : (
-                        <TableRow>
-                          <TableCell colSpan={8} className="h-24 text-center">
-                            No regulations found.
-                          </TableCell>
-                        </TableRow>
-                      )}
-                    </TableBody>
-                  </Table>
+                                    <AlertDialog>
+                                      <AlertDialogTrigger asChild>
+                                        <Button
+                                          variant="outline"
+                                          size="sm"
+                                          className="h-7 w-7 p-0 text-red-600 hover:text-red-700 hover:bg-red-50"
+                                        >
+                                          <Trash2 className="h-3 w-3" />
+                                        </Button>
+                                      </AlertDialogTrigger>
+                                      <AlertDialogContent>
+                                        <AlertDialogHeader>
+                                          <AlertDialogTitle>Delete Regulation</AlertDialogTitle>
+                                          <AlertDialogDescription>
+                                            Are you sure you want to delete this regulation? This action cannot be undone.
+                                          </AlertDialogDescription>
+                                        </AlertDialogHeader>
+                                        <AlertDialogFooter>
+                                          <AlertDialogCancel>Cancel</AlertDialogCancel>
+                                          <AlertDialogAction
+                                            onClick={() => handleDeleteRegulation(regulation.id)}
+                                            className="bg-red-600 hover:bg-red-700"
+                                          >
+                                            Delete
+                                          </AlertDialogAction>
+                                        </AlertDialogFooter>
+                                      </AlertDialogContent>
+                                    </AlertDialog>
+                                  </div>
+                                </TableCell>
+                              </TableRow>
+                            ))}
+                            {/* Fill empty rows to maintain consistent height */}
+                            {Array.from({ length: Math.max(0, itemsPerPage - paginatedRegulations.length) }).map((_, index) => (
+                              <TableRow key={`empty-${index}`}>
+                                <TableCell>&nbsp;</TableCell>
+                                <TableCell>&nbsp;</TableCell>
+                                <TableCell>&nbsp;</TableCell>
+                                <TableCell>&nbsp;</TableCell>
+                                <TableCell>&nbsp;</TableCell>
+                              </TableRow>
+                            ))}
+                          </>
+                        ) : (
+                          <>
+                            <TableRow>
+                              <TableCell colSpan={5} className="text-center text-xs">
+                                No regulations found.
+                              </TableCell>
+                            </TableRow>
+                            {/* Fill remaining rows */}
+                            {Array.from({ length: itemsPerPage - 1 }).map((_, index) => (
+                              <TableRow key={`empty-no-data-${index}`}>
+                                <TableCell>&nbsp;</TableCell>
+                                <TableCell>&nbsp;</TableCell>
+                                <TableCell>&nbsp;</TableCell>
+                                <TableCell>&nbsp;</TableCell>
+                                <TableCell>&nbsp;</TableCell>
+                              </TableRow>
+                            ))}
+                          </>
+                        )}
+                      </TableBody>
+                    </Table>
+                  </div>
                 </div>
 
-                {/* Footer Info + Pagination */}
-                <div className="flex items-center justify-between space-x-2 py-3 mt-3 flex-shrink-0">
-                  <div className="text-sm text-muted-foreground">
-                    Showing {filteredRegulations.length} of {regulations.length} regulations
+                {/* Pagination Controls */}
+                <div className="flex items-center justify-between space-x-2 py-2 mt-2">
+                  <div className="text-xs text-muted-foreground">
+                    Showing {filteredRegulations.length === 0 ? 0 : startIndex + 1}-{Math.min(endIndex, filteredRegulations.length)} of {filteredRegulations.length} regulations
                   </div>
-                  <div className="flex items-center space-x-2">
+                  <div className="flex items-center gap-2">
                     <Button
                       variant="outline"
                       size="sm"
-                      className="text-xs px-2"
-                      onClick={() => setCurrentPage(currentPage - 1)}
+                      onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
                       disabled={currentPage === 1}
+                      className="h-7 px-2 text-xs"
                     >
                       <ChevronLeft className="h-3 w-3 mr-1" />
-                      Prev
+                      Previous
                     </Button>
-                    <div className="text-xs text-muted-foreground">
-                      Page {currentPage} of {Math.ceil(filteredRegulations.length / itemsPerPage)}
+                    <div className="text-xs text-muted-foreground px-2">
+                      Page {currentPage} of {totalPages || 1}
                     </div>
                     <Button
                       variant="outline"
                       size="sm"
-                      className="text-xs px-2"
-                      onClick={() => setCurrentPage(currentPage + 1)}
-                      disabled={currentPage >= Math.ceil(filteredRegulations.length / itemsPerPage)}
+                      onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
+                      disabled={currentPage >= totalPages}
+                      className="h-7 px-2 text-xs"
                     >
                       Next
                       <ChevronRight className="h-3 w-3 ml-1" />
@@ -524,16 +1003,9 @@ export default function RegulationsPage() {
                 </div>
               </CardContent>
             </Card>
-          </div>
-
-          {/* Footer */}
-          <footer className="flex h-12 shrink-0 items-center justify-center bg-muted/50 border-t px-6">
-            <p className="text-sm text-muted-foreground">
-              Developed by JKKN Educational Institution © {new Date().getFullYear()}. All Rights Reserved.
-            </p>
-          </footer>
-        </SidebarInset>
-      </SidebarProvider>
-    </div>
+        </div>
+        <AppFooter />
+      </SidebarInset>
+    </SidebarProvider>
   )
 }

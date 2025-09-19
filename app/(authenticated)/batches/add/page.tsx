@@ -14,6 +14,7 @@ import { AppSidebar } from "@/components/app-sidebar"
 import { SidebarProvider, SidebarInset, SidebarTrigger } from "@/components/ui/sidebar"
 import { Separator } from "@/components/ui/separator"
 import { ModeToggle } from "@/components/mode-toggle"
+import { AppFooter } from "@/components/app-footer"
 import { Save, X, ArrowLeft } from "lucide-react"
 
 interface Program {
@@ -128,7 +129,7 @@ export default function AddBatchPage() {
     <div className="h-screen">
       <SidebarProvider>
         <AppSidebar />
-        <SidebarInset className="flex flex-col h-screen">
+        <SidebarInset className="flex flex-col min-h-screen">
           {/* Main Header */}
           <header className="flex h-16 shrink-0 items-center justify-between px-6 border-b bg-background text-foreground">
             <div className="flex items-center gap-4">
@@ -353,12 +354,7 @@ export default function AddBatchPage() {
             </Card>
           </div>
 
-          {/* Footer */}
-          <footer className="flex h-12 shrink-0 items-center justify-center bg-muted/50 border-t px-6">
-            <p className="text-sm text-muted-foreground">
-              Developed by JKKN Educational Institution © {new Date().getFullYear()}. All Rights Reserved.
-            </p>
-          </footer>
+          <AppFooter />
         </SidebarInset>
       </SidebarProvider>
     </div>

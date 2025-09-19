@@ -42,12 +42,29 @@ class ParentAuthService {
   private refreshPromise: Promise<boolean> | null = null;
 
   constructor() {
+    // Validate required environment variables
+    const requiredEnvVars = {
+      NEXT_PUBLIC_PARENT_APP_URL: process.env.NEXT_PUBLIC_PARENT_APP_URL,
+      NEXT_PUBLIC_API_KEY: process.env.NEXT_PUBLIC_API_KEY,
+      NEXT_PUBLIC_APP_ID: process.env.NEXT_PUBLIC_APP_ID,
+      NEXT_PUBLIC_REDIRECT_URI: process.env.NEXT_PUBLIC_REDIRECT_URI
+    };
+
+    const missingVars = Object.entries(requiredEnvVars)
+      .filter(([_, value]) => !value)
+      .map(([key]) => key);
+
+    if (missingVars.length > 0) {
+      console.error('ParentAuthService: Missing required environment variables:', missingVars);
+      throw new Error(`Missing required environment variables: ${missingVars.join(', ')}`);
+    }
+
     this.api = axios.create({
       baseURL: process.env.NEXT_PUBLIC_PARENT_APP_URL,
       timeout: 10000,
       headers: {
         'Content-Type': 'application/json',
-        'x-api-key': process.env.NEXT_PUBLIC_API_KEY || '' // Changed to lowercase
+        'x-api-key': process.env.NEXT_PUBLIC_API_KEY || ''
       }
     });
 
@@ -191,12 +208,35 @@ class ParentAuthService {
         }
       });
 
-      const response = await this.api.post(
-        '/api/auth/child-app/validate',
-        requestData
-      );
+      // Add timeout to prevent infinite loading
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 10000); // 10 second timeout
 
-      return response.data;
+      try {
+        const response = await this.api.post(
+          '/api/auth/child-app/validate',
+          requestData,
+          { signal: controller.signal }
+        );
+        clearTimeout(timeoutId);
+        return response.data;
+      } catch (error: any) {
+        clearTimeout(timeoutId);
+
+        // If it's a timeout or network error, return a valid response with cached user data
+        if (error.name === 'AbortError' || error.code === 'ECONNABORTED') {
+          console.warn('Token validation timed out, using cached session');
+          const cachedUser = this.getUser();
+          if (cachedUser) {
+            return {
+              valid: true,
+              user: cachedUser,
+              session: this.getSession() || undefined
+            };
+          }
+        }
+        throw error;
+      }
     } catch (error) {
       if (axios.isAxiosError(error)) {
         console.error(

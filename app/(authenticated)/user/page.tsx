@@ -31,9 +31,9 @@ import { Card, CardContent, CardHeader } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { StatusBadge } from "@/components/ui/status-badge"
 import { AppSidebar } from "@/components/app-sidebar"
-import { SidebarProvider, SidebarInset, SidebarTrigger } from "@/components/ui/sidebar"
-import { Separator } from "@/components/ui/separator"
-import { ModeToggle } from "@/components/mode-toggle"
+import { AppHeader } from "@/components/app-header"
+import { SidebarProvider, SidebarInset } from "@/components/ui/sidebar"
+import { AppFooter } from "@/components/app-footer"
 import {
   AlertDialog,
   AlertDialogAction,
@@ -188,25 +188,8 @@ export default function UsersPage() {
     <div className="h-screen">
       <SidebarProvider>
         <AppSidebar />
-        <SidebarInset className="flex flex-col h-screen">
-          {/* Main Header */}
-          <header className="flex h-16 shrink-0 items-center justify-between px-6 border-b bg-background text-foreground">
-            <div className="flex items-center gap-4">
-              <SidebarTrigger className="-ml-1 text-foreground hover:bg-accent" />
-              <Separator orientation="vertical" className="mr-2 h-6 bg-border" />
-              <div>
-                <div className="text-base md:text-lg font-semibold">JKKN Controller of Examination Portal</div>
-              </div>
-            </div>
-            <div className="flex items-center gap-4">
-              <div className="text-right">
-                <div className="text-sm font-medium text-foreground">
-                  {formatCurrentDateTime(currentTime)}
-                </div>
-              </div>
-              <ModeToggle />
-            </div>
-          </header>
+        <SidebarInset className="flex flex-col min-h-screen">
+          <AppHeader />
 
           {/* Secondary Header with Breadcrumb */}
 
@@ -516,12 +499,7 @@ export default function UsersPage() {
           </Card>
           </div>
 
-          {/* Footer */}
-          <footer className="flex h-12 shrink-0 items-center justify-center bg-muted/50 border-t px-6">
-            <p className="text-sm text-muted-foreground">
-              Developed by JKKN Educational Institution © {new Date().getFullYear()}. All Rights Reserved.
-            </p>
-          </footer>
+          <AppFooter />
         </SidebarInset>
       </SidebarProvider>
     </div>

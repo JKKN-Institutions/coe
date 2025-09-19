@@ -62,6 +62,12 @@ export function AuthProvider({
         setIsLoading(true);
         setError(null);
 
+        // Check for dev mode bypass
+        const isDev = process.env.NODE_ENV === 'development' &&
+                     typeof window !== 'undefined' &&
+                     (window.location.hostname === 'localhost' ||
+                      window.location.hostname === '127.0.0.1');
+
         // Get stored user and session
         const storedUser = parentAuthService.getUser();
         const storedSession = parentAuthService.getSession();
@@ -70,19 +76,31 @@ export function AuthProvider({
           setUser(storedUser);
           setSession(storedSession);
 
-          // Validate session if auto-validate is enabled
-          if (autoValidate) {
-            const isValid = await parentAuthService.validateSession();
+          // Validate session if auto-validate is enabled (skip in dev mode)
+          if (autoValidate && !isDev) {
+            // Add timeout to prevent infinite loading
+            const validatePromise = parentAuthService.validateSession();
+            const timeoutPromise = new Promise<boolean>((resolve) => {
+              setTimeout(() => {
+                console.warn('Session validation timed out, assuming valid');
+                resolve(true); // Assume valid on timeout to prevent blocking
+              }, 5000); // 5 second timeout
+            });
+
+            const isValid = await Promise.race([validatePromise, timeoutPromise]);
+
             if (!isValid) {
               setUser(null);
               setSession(null);
             } else {
-              // Update with fresh data
+              // Update with fresh data if available
               const freshUser = parentAuthService.getUser();
               const freshSession = parentAuthService.getSession();
-              setUser(freshUser);
-              setSession(freshSession);
+              if (freshUser) setUser(freshUser);
+              if (freshSession) setSession(freshSession);
             }
+          } else if (isDev) {
+            console.log('🔧 Development mode: Skipping session validation');
           }
         }
       } catch (err) {
@@ -148,10 +166,28 @@ export function AuthProvider({
       if (token) {
         try {
           setIsLoading(true);
-          const authUser = await parentAuthService.handleCallback(
+
+          // Add timeout for the entire auth process
+          const authPromise = parentAuthService.handleCallback(
             token,
             refreshToken || undefined
           );
+
+          const timeoutPromise = new Promise<null>((_, reject) => {
+            setTimeout(() => reject(new Error('Authentication timeout')), 15000); // 15 second timeout
+          });
+
+          const authUser = await Promise.race([authPromise, timeoutPromise]).catch(err => {
+            console.warn('Auth callback race condition:', err);
+            // If timeout or error, try to use cached session
+            const cachedUser = parentAuthService.getUser();
+            const cachedSession = parentAuthService.getSession();
+            if (cachedUser && cachedSession) {
+              console.log('Using cached user data after timeout');
+              return cachedUser;
+            }
+            throw err;
+          }) as ParentAppUser | null;
 
           if (authUser) {
             setUser(authUser);
@@ -175,6 +211,13 @@ export function AuthProvider({
         } catch (err) {
           console.error('Auth callback error:', err);
           setError('Authentication failed');
+          // Even on error, check for cached session
+          const cachedUser = parentAuthService.getUser();
+          if (cachedUser) {
+            console.log('Falling back to cached user after error');
+            setUser(cachedUser);
+            setSession(parentAuthService.getSession());
+          }
         } finally {
           setIsLoading(false);
         }

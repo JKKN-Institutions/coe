@@ -12,13 +12,13 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 
-export function ModeToggle() {
+export function ModeToggle1() {
   const { setTheme } = useTheme()
 
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
-        <Badge variant="secondary" className="binline-flex items-center rounded-md border text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 hover:bg-secondary/80 bg-gradient-to-r from-emerald-500/30 to-teal-500/30 text-white border-white/40 hover:from-emerald-400/40 hover:to-teal-400/40 transition-all duration-300 shadow-lg backdrop-blur-sm p-2">
+        <Badge variant="secondary" className="bg-gradient-to-r from-emerald-500/90 to-teal-600/90 text-white border-0 hover:from-emerald-600 hover:to-teal-700 transition-all duration-300 shadow-sm p-2 cursor-pointer">
           <Sun className="h-4 w-4 scale-100 rotate-0 transition-all dark:scale-0 dark:-rotate-90" />
           <Moon className="absolute h-4 w-4 scale-0 rotate-90 transition-all dark:scale-100 dark:rotate-0" />
           <span className="sr-only">Toggle theme</span>

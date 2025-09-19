@@ -36,6 +36,7 @@ import {
   UserPlus,
   Pencil,
   Home,
+  Key,
 } from "lucide-react"
 
 import { NavMain } from "@/components/nav-main"
@@ -63,6 +64,8 @@ const data = {
       isActive: false,
       items: [
         { title: "Users", url: "/user", icon: Users },
+        { title: "User Roles", url: "/user-roles", icon: Shield },
+        { title: "Role Permissions", url: "/role-permissions", icon: Key },
         { title: "Regulation", url: "/regulations", icon: LibraryBig },
         { title: "Batches", url: "/batches", icon: SquareStack },
         { title: "Programme", url: "#", icon: GraduationCap },
@@ -114,13 +117,13 @@ const data = {
 export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
   return (
     <Sidebar collapsible="icon" {...props}>
-      <SidebarHeader>
-        <div className="flex items-center gap-3 px-3 py-2">
-          <div className="h-8 w-8 flex items-center justify-center rounded-lg bg-gradient-to-br from-primary to-primary/80 shadow-md">
-            <span className="text-primary-foreground font-bold text-sm">J</span>
+      <SidebarHeader className="h-16 flex items-center">
+        <div className="flex items-center gap-3 px-3">
+        <div className="h-10 w-10 flex items-center justify-center rounded-xl bg-gradient-to-br from-emerald-500 to-teal-600 shadow-md">
+            <span className="text-white font-bold text-lg">J</span>
           </div>
           <div className="group-data-[collapsible=icon]:hidden">
-            <span className="font-bold text-lg">JKKN COE</span>
+            <span className="font-bold text-sm">JKKN COE</span>
             <p className="text-xs text-muted-foreground">Controller of Examination</p>
           </div>
         </div>

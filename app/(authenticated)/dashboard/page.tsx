@@ -2,9 +2,9 @@
 
 import { useEffect, useState } from "react"
 import { AppSidebar } from "@/components/app-sidebar"
-import { Separator } from "@/components/ui/separator"
-import { SidebarInset, SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar"
-import { ModeToggle } from "@/components/mode-toggle"
+import { AppHeaderWhite } from "@/components/app-header-white"
+import { AppFooter } from "@/components/app-footer"
+import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Users, BookOpen, UserCheck, BarChart3 } from "lucide-react"
@@ -37,32 +37,26 @@ export default function Page() {
   return (
     <SidebarProvider>
       <AppSidebar />
-      <SidebarInset>
-        <header className="flex h-16 shrink-0 items-center gap-2 transition-[width,height] ease-linear group-has-[[data-collapsible=icon]]/sidebar-wrapper:h-12">
-          <div className="flex items-center gap-2 px-4">
-            <SidebarTrigger className="-ml-1" />
-            <Separator orientation="vertical" className="mr-2 h-4" />
-            <div className="text-base md:text-lg font-semibold">JKKN Controller of Examination Portal</div>
-          </div>
-          <div className="ml-auto px-4">
-            <ModeToggle />
-          </div>
-        </header>
+      <SidebarInset className="flex flex-col min-h-screen">
+        <AppHeaderWhite />
 
-        <div className="flex flex-1 flex-col gap-4 sm:gap-6 p-4 sm:p-6 pt-0">
-          <Card className="rounded-xl border bg-gradient-to-r from-primary to-primary/80 text-primary-foreground shadow-lg hover:shadow-xl transition-all duration-300 animate-fade-in">
-            <CardContent className="flex flex-col sm:flex-row items-start justify-between gap-4 p-6 sm:p-8">
+        <div className="flex flex-1 flex-col gap-4 sm:gap-6 p-4 sm:p-6 pt-0 overflow-y-auto">
+          <Card className="rounded-xl border-0 bg-gradient-to-r from-emerald-600 via-green-600 to-teal-600 text-white shadow-2xl hover:shadow-xl transition-all duration-300 animate-fade-in relative overflow-hidden">
+            <div className="absolute inset-0 bg-gradient-to-r from-emerald-500/10 via-transparent to-teal-500/10 animate-pulse"></div>
+            <div className="absolute inset-0 bg-[radial-gradient(circle_at_30%_20%,rgba(255,255,255,0.1),transparent_50%)]"></div>
+            <div className="absolute inset-0 bg-[radial-gradient(circle_at_70%_80%,rgba(255,255,255,0.05),transparent_50%)]"></div>
+            <CardContent className="flex flex-col sm:flex-row items-start justify-between gap-4 p-6 sm:p-8 relative z-10">
               <div className="space-y-2">
-                <h2 className="text-2xl sm:text-3xl lg:text-4xl font-bold text-primary-foreground">
+                <h2 className="text-2xl sm:text-3xl lg:text-4xl font-bold text-white drop-shadow-lg">
                   Welcome back{user?.full_name ? `, ${user.full_name.split(" ")[0]}!` : ", User!"}
                 </h2>
-                <p className="text-base sm:text-lg text-primary-foreground/90">
+                <p className="text-base sm:text-lg text-emerald-200 opacity-90">
                   Here&apos;s what&apos;s happening at J K K N COE today
                 </p>
               </div>
               <div className="text-left sm:text-right space-y-1">
-                <div className="text-xl sm:text-2xl font-bold tracking-wider">{timeString}</div>
-                <div className="text-sm opacity-90">{dateString}</div>
+                <div className="text-xl sm:text-2xl font-bold tracking-wider text-white drop-shadow-md">{timeString}</div>
+                <div className="text-sm text-emerald-200 opacity-90">{dateString}</div>
               </div>
             </CardContent>
           </Card>
@@ -176,6 +170,7 @@ export default function Page() {
             </CardContent>
           </Card>
         </div>
+        <AppFooter />
       </SidebarInset>
     </SidebarProvider>
   )

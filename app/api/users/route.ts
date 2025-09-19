@@ -6,30 +6,80 @@ export async function GET(req: NextRequest) {
   try {
     const { searchParams } = new URL(req.url)
     const q = searchParams.get('q') || undefined
-    
-    // Build the base query
+
     const supabase = getSupabaseServer()
-    const query = supabase.from('users').select('*').order('created_at', { ascending: false }).limit(100)
-    
+
+    // First, get users
+    let usersQuery = supabase
+      .from('users')
+      .select(`
+        id,
+        full_name,
+        email,
+        role,
+        is_active,
+        created_at,
+        updated_at,
+        phone,
+        username,
+        bio,
+        website,
+        location,
+        date_of_birth,
+        avatar_url,
+        is_verified
+      `)
+      .order('created_at', { ascending: false })
+      .limit(100)
+
     if (q) {
-      // Try name or email filter
-      const { data, error } = await query.or(`full_name.ilike.%${q}%,email.ilike.%${q}%`)
-      if (error) throw error
-      return NextResponse.json(data || [])
+      usersQuery = usersQuery.or(`full_name.ilike.%${q}%,email.ilike.%${q}%`)
     }
-    
-    const { data, error } = await query
-    if (error) {
-      console.error('Supabase error:', error)
-      throw error
+
+    const { data: users, error: usersError } = await usersQuery
+    if (usersError) {
+      console.error('Users fetch error:', usersError)
+      throw usersError
     }
-    
-    return NextResponse.json(data || [])
+
+    if (!users || users.length === 0) {
+      return NextResponse.json([])
+    }
+
+    // Since the users table has role as a string field, not a foreign key to roles table,
+    // we'll match by role_name instead
+    const roleNames = [...new Set(users.filter(user => user.role).map(user => user.role))]
+
+    let roles: any[] = []
+    if (roleNames.length > 0) {
+      const { data: rolesData, error: rolesError } = await supabase
+        .from('roles')
+        .select('id, role_name, role_description, is_active')
+        .in('role_name', roleNames)
+
+      if (rolesError) {
+        console.error('Roles fetch error:', rolesError)
+      } else {
+        roles = rolesData || []
+      }
+    }
+
+    // Combine users with their roles
+    const usersWithRoles = users.map(user => {
+      const userRole = roles.find(role => role.role_name === user.role)
+      return {
+        ...user,
+        role_id: userRole?.id || null, // Map to role_id for frontend compatibility
+        roles: userRole || null
+      }
+    })
+
+    return NextResponse.json(usersWithRoles)
   } catch (err) {
     console.error('API Error:', err)
-    return NextResponse.json({ 
-      error: 'Failed to fetch users', 
-      details: err instanceof Error ? err.message : 'Unknown error' 
+    return NextResponse.json({
+      error: 'Failed to fetch users',
+      details: err instanceof Error ? err.message : 'Unknown error'
     }, { status: 500 })
   }
 }
