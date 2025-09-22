@@ -1,5 +1,5 @@
 "use client"
- 
+
 import { useState, useEffect } from "react"
 import { useRouter, useParams } from "next/navigation"
 import Link from "next/link"
@@ -39,34 +39,31 @@ export default function EditRegulationPage() {
   const router = useRouter()
   const params = useParams()
   const regulationId = params.id as string
-  
+
   const [currentTime, setCurrentTime] = useState<Date | null>(null)
   const [loading, setLoading] = useState(false)
   const [regulation, setRegulation] = useState<Regulation | null>(null)
-  
+  const [error, setError] = useState<string | null>(null)
+
   const [formData, setFormData] = useState({
     regulation_year: "",
     regulation_code: "",
     status: true,
-    minimum_internal: 0,
-    minimum_external: 0,
+    minimum_internal: "",
+    minimum_external: "",
     minimum_attendance: "",
-    minimum_total: 0,
-    maximum_internal: 0,
-    maximum_external: 0,
-    maximum_total: 0,
-    maximum_qp_marks: 0,
-    condonation_range_start: 0,
-    condonation_range_end: 0
+    minimum_total: "",
+    maximum_internal: "",
+    maximum_external: "",
+    maximum_total: "",
+    maximum_qp_marks: "",
+    condonation_range_start: "",
+    condonation_range_end: ""
   })
 
-  // Update time every second
   useEffect(() => {
     setCurrentTime(new Date())
-    const timer = setInterval(() => {
-      setCurrentTime(new Date())
-    }, 1000)
-
+    const timer = setInterval(() => setCurrentTime(new Date()), 1000)
     return () => clearInterval(timer)
   }, [])
 
@@ -74,7 +71,6 @@ export default function EditRegulationPage() {
   useEffect(() => {
     const fetchData = async () => {
       try {
-        // Fetch regulation data
         const regulationResponse = await fetch(`/api/regulations/${regulationId}`)
         if (regulationResponse.ok) {
           const regulationData: Regulation = await regulationResponse.json()
@@ -83,82 +79,87 @@ export default function EditRegulationPage() {
             regulation_year: regulationData.regulation_year.toString(),
             regulation_code: regulationData.regulation_code,
             status: regulationData.status,
-            minimum_internal: regulationData.minimum_internal,
-            minimum_external: regulationData.minimum_external,
+            minimum_internal: regulationData.minimum_internal.toString(),
+            minimum_external: regulationData.minimum_external.toString(),
             minimum_attendance: regulationData.minimum_attendance.toString(),
-            minimum_total: regulationData.minimum_total,
-            maximum_internal: regulationData.maximum_internal,
-            maximum_external: regulationData.maximum_external,
-            maximum_total: regulationData.maximum_total,
-            maximum_qp_marks: regulationData.maximum_qp_marks,
-            condonation_range_start: regulationData.condonation_range_start,
-            condonation_range_end: regulationData.condonation_range_end
+            minimum_total: regulationData.minimum_total.toString(),
+            maximum_internal: regulationData.maximum_internal.toString(),
+            maximum_external: regulationData.maximum_external.toString(),
+            maximum_total: regulationData.maximum_total.toString(),
+            maximum_qp_marks: regulationData.maximum_qp_marks.toString(),
+            condonation_range_start: regulationData.condonation_range_start.toString(),
+            condonation_range_end: regulationData.condonation_range_end.toString()
           })
+        } else {
+          setError("Failed to fetch regulation data")
         }
       } catch (error) {
         console.error("Error fetching data:", error)
+        setError("An error occurred while fetching data")
       }
     }
 
-    if (regulationId) {
-      fetchData()
-    }
+    fetchData()
   }, [regulationId])
-
-  const formatCurrentDateTime = (date: Date | null) => {
-    if (!date) return "Loading..."
-    
-    const day = date.getDate().toString().padStart(2, '0')
-    const month = (date.getMonth() + 1).toString().padStart(2, '0')
-    const year = date.getFullYear()
-    const weekday = date.toLocaleDateString('en-US', { weekday: 'short' }).toUpperCase()
-    const time = date.toLocaleTimeString('en-US', {
-      hour: '2-digit',
-      minute: '2-digit',
-      second: '2-digit',
-      hour12: true
-    })
-    
-    return `${day}-${month}-${year} | ${weekday} | ${time}`
-  }
-
-  const handleInputChange = (field: string, value: string | number | boolean) => {
-    setFormData(prev => ({
-      ...prev,
-      [field]: value
-    }))
-  }
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setLoading(true)
+    setError(null)
+
+    if (!formData.regulation_year || !formData.regulation_code) {
+      setError("Please fill all required fields")
+      setLoading(false)
+      return
+    }
 
     try {
+      const payload = {
+        regulation_year: parseInt(formData.regulation_year),
+        regulation_code: formData.regulation_code,
+        status: formData.status,
+        minimum_internal: parseFloat(formData.minimum_internal) || 0,
+        minimum_external: parseFloat(formData.minimum_external) || 0,
+        minimum_attendance: parseFloat(formData.minimum_attendance) || 0,
+        minimum_total: parseFloat(formData.minimum_total) || 0,
+        maximum_internal: parseFloat(formData.maximum_internal) || 0,
+        maximum_external: parseFloat(formData.maximum_external) || 0,
+        maximum_total: parseFloat(formData.maximum_total) || 0,
+        maximum_qp_marks: parseFloat(formData.maximum_qp_marks) || 0,
+        condonation_range_start: parseFloat(formData.condonation_range_start) || 0,
+        condonation_range_end: parseFloat(formData.condonation_range_end) || 0
+      }
+
       const response = await fetch(`/api/regulations/${regulationId}`, {
-        method: 'PUT',
+        method: "PUT",
         headers: {
-          'Content-Type': 'application/json',
+          "Content-Type": "application/json",
         },
-        body: JSON.stringify({
-          ...formData,
-          regulation_year: parseInt(formData.regulation_year),
-          minimum_attendance: parseFloat(formData.minimum_attendance)
-        }),
+        body: JSON.stringify(payload),
       })
 
       if (response.ok) {
-        router.push('/regulations')
+        router.push("/regulations")
       } else {
         const errorData = await response.json()
-        console.error('Failed to update regulation:', errorData)
-        alert(`Failed to update regulation: ${errorData.error || 'Unknown error'}`)
+        setError(errorData.message || "Failed to update regulation")
       }
     } catch (error) {
-      console.error('Error updating regulation:', error)
-      alert(`Error updating regulation: ${error instanceof Error ? error.message : 'Unknown error'}`)
+      console.error("Error updating regulation:", error)
+      setError("An error occurred while updating the regulation")
     } finally {
       setLoading(false)
     }
+  }
+
+  const handleCancel = () => {
+    router.push("/regulations")
+  }
+
+  const formatCurrentDateTime = () => {
+    if (!currentTime) return ""
+    const options: Intl.DateTimeFormatOptions = { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit' }
+    return currentTime.toLocaleDateString('en-US', options)
   }
 
   if (!regulation) {
@@ -187,268 +188,327 @@ export default function EditRegulationPage() {
               </div>
             </div>
             <div className="flex items-center gap-4">
-              <div className="text-right">
-                <div className="text-sm font-medium text-foreground">
-                  {formatCurrentDateTime(currentTime)}
-                </div>
-              </div>
               <ModeToggle />
             </div>
           </header>
 
-          <div className="flex flex-col flex-1 p-3 space-y-3 overflow-y-auto">
-            {/* Breadcrumb Navigation */}
-            <div className="flex items-center gap-2 flex-shrink-0">
-              <Breadcrumb>
-                <BreadcrumbList>
-                  <BreadcrumbItem>
-                    <BreadcrumbLink asChild>
-                      <Link href="/" className="hover:text-primary">Dashboard</Link>
-                    </BreadcrumbLink>
-                  </BreadcrumbItem>
-                  <BreadcrumbSeparator />
-                  <BreadcrumbItem>
-                    <BreadcrumbLink asChild>
-                      <Link href="/regulations" className="hover:text-primary">Regulations</Link>
-                    </BreadcrumbLink>
-                  </BreadcrumbItem>
-                  <BreadcrumbSeparator />
-                  <BreadcrumbItem>
-                    <BreadcrumbPage>Edit</BreadcrumbPage>
-                  </BreadcrumbItem>
-                </BreadcrumbList>
-              </Breadcrumb>
-            </div>
-
-            {/* Page Header */}
-            <div className="flex items-center justify-between flex-shrink-0">
-              <div>
-                <h1 className="text-2xl font-bold tracking-tight">Edit Regulation</h1>
-                <p className="text-sm text-muted-foreground">
-                  Update the regulation details below
-                </p>
-              </div>
-            </div>
-
-            {/* Form Card */}
-            <Card className="flex-1">
-              <CardHeader>
-                <div className="flex items-center gap-2">
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => router.back()}
-                    className="h-8 w-8 p-0"
-                  >
-                    <ArrowLeft className="h-4 w-4" />
-                  </Button>
-                  <h2 className="text-lg font-semibold">Regulation Information</h2>
-                </div>
-              </CardHeader>
-              <CardContent>
-                <form onSubmit={handleSubmit} className="space-y-6">
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                    {/* Regulation Year */}
-                    <div className="space-y-2">
-                      <Label htmlFor="regulation_year">Regulation Year *</Label>
-                      <Input
-                        id="regulation_year"
-                        type="number"
-                        value={formData.regulation_year}
-                        onChange={(e) => handleInputChange('regulation_year', e.target.value)}
-                        placeholder="e.g., 2025"
-                        required
-                        min="2000"
-                        max="2100"
-                      />
-                    </div>
-
-                    {/* Regulation Code */}
-                    <div className="space-y-2">
-                      <Label htmlFor="regulation_code">Regulation Code *</Label>
-                      <Input
-                        id="regulation_code"
-                        type="text"
-                        value={formData.regulation_code}
-                        onChange={(e) => handleInputChange('regulation_code', e.target.value)}
-                        placeholder="e.g., R25"
-                        required
-                        maxLength={50}
-                      />
-                    </div>
-
-                    {/* Status */}
-                    <div className="space-y-2">
-                      <Label htmlFor="status">Status *</Label>
-                      <Select value={formData.status ? 'active' : 'inactive'} onValueChange={(value) => handleInputChange('status', value === 'active')}>
-                        <SelectTrigger>
-                          <SelectValue placeholder="Select status" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="active">Active</SelectItem>
-                          <SelectItem value="inactive">Inactive</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
-
-                    {/* Minimum Attendance */}
-                    <div className="space-y-2">
-                      <Label htmlFor="minimum_attendance">Minimum Attendance % *</Label>
-                      <Input
-                        id="minimum_attendance"
-                        type="number"
-                        step="0.01"
-                        min="0"
-                        max="100"
-                        value={formData.minimum_attendance}
-                        onChange={(e) => handleInputChange('minimum_attendance', e.target.value)}
-                        placeholder="e.g., 75.00"
-                        required
-                      />
-                    </div>
-                  </div>
-
-                  {/* Minimum Marks Section */}
-                  <div className="space-y-4">
-                    <h3 className="text-lg font-medium">Minimum Marks</h3>
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                      <div className="space-y-2">
-                        <Label htmlFor="minimum_internal">Minimum Internal</Label>
-                        <Input
-                          id="minimum_internal"
-                          type="number"
-                          step="0.01"
-                          min="0"
-                          value={formData.minimum_internal}
-                          onChange={(e) => handleInputChange('minimum_internal', parseFloat(e.target.value) || 0)}
-                        />
-                      </div>
-                      <div className="space-y-2">
-                        <Label htmlFor="minimum_external">Minimum External</Label>
-                        <Input
-                          id="minimum_external"
-                          type="number"
-                          step="0.01"
-                          min="0"
-                          value={formData.minimum_external}
-                          onChange={(e) => handleInputChange('minimum_external', parseFloat(e.target.value) || 0)}
-                        />
-                      </div>
-                      <div className="space-y-2">
-                        <Label htmlFor="minimum_total">Minimum Total</Label>
-                        <Input
-                          id="minimum_total"
-                          type="number"
-                          step="0.01"
-                          min="0"
-                          value={formData.minimum_total}
-                          onChange={(e) => handleInputChange('minimum_total', parseFloat(e.target.value) || 0)}
-                        />
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Maximum Marks Section */}
-                  <div className="space-y-4">
-                    <h3 className="text-lg font-medium">Maximum Marks</h3>
-                    <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-                      <div className="space-y-2">
-                        <Label htmlFor="maximum_internal">Maximum Internal</Label>
-                        <Input
-                          id="maximum_internal"
-                          type="number"
-                          step="0.01"
-                          min="0"
-                          value={formData.maximum_internal}
-                          onChange={(e) => handleInputChange("maximum_internal", parseFloat(e.target.value) || 0)}
-                        />
-                      </div>
-                      <div className="space-y-2">
-                        <Label htmlFor="maximum_external">Maximum External</Label>
-                        <Input
-                          id="maximum_external"
-                          type="number"
-                          step="0.01"
-                          min="0"
-                          value={formData.maximum_external}
-                          onChange={(e) => handleInputChange("maximum_external", parseFloat(e.target.value) || 0)}
-                        />
-                      </div>
-                      <div className="space-y-2">
-                        <Label htmlFor="maximum_total">Maximum Total</Label>
-                        <Input
-                          id="maximum_total"
-                          type="number"
-                          step="0.01"
-                          min="0"
-                          value={formData.maximum_total}
-                          onChange={(e) => handleInputChange("maximum_total", parseFloat(e.target.value) || 0)}
-                        />
-                      </div>
-                      <div className="space-y-2">
-                        <Label htmlFor="maximum_qp_marks">Maximum QP Marks</Label>
-                        <Input
-                          id="maximum_qp_marks"
-                          type="number"
-                          step="0.01"
-                          min="0"
-                          value={formData.maximum_qp_marks}
-                          onChange={(e) => handleInputChange('maximum_qp_marks', parseFloat(e.target.value) || 0)}
-                        />
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Condonation Range Section */}
-                  <div className="space-y-4">
-                    <h3 className="text-lg font-medium">Condonation Range</h3>
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                      <div className="space-y-2">
-                        <Label htmlFor="condonation_range_start">Condonation Range Start</Label>
-                        <Input
-                          id="condonation_range_start"
-                          type="number"
-                          step="0.01"
-                          min="0"
-                          value={formData.condonation_range_start}
-                          onChange={(e) => handleInputChange('condonation_range_start', parseFloat(e.target.value) || 0)}
-                        />
-                      </div>
-                      <div className="space-y-2">
-                        <Label htmlFor="condonation_range_end">Condonation Range End</Label>
-                        <Input
-                          id="condonation_range_end"
-                          type="number"
-                          step="0.01"
-                          min="0"
-                          value={formData.condonation_range_end}
-                          onChange={(e) => handleInputChange('condonation_range_end', parseFloat(e.target.value) || 0)}
-                        />
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Action Buttons */}
-                  <div className="flex items-center gap-3 pt-6 border-t">
-                    <Button type="submit" disabled={loading} className="flex items-center gap-2">
-                      <Save className="h-4 w-4" />
-                      {loading ? "Updating..." : "Update Regulation"}
-                    </Button>
-                    <Button
-                      type="button"
-                      variant="outline"
-                      onClick={() => router.push('/regulations')}
-                      className="flex items-center gap-2"
-                    >
-                      <X className="h-4 w-4" />
-                      Cancel
-                    </Button>
-                  </div>
-                </form>
-              </CardContent>
-            </Card>
+          {/* Breadcrumb */}
+          <div className="flex items-center px-6 py-3 bg-muted/50">
+            <Breadcrumb>
+              <BreadcrumbList>
+                <BreadcrumbItem>
+                  <BreadcrumbLink asChild>
+                    <Link href="/dashboard">Dashboard</Link>
+                  </BreadcrumbLink>
+                </BreadcrumbItem>
+                <BreadcrumbSeparator />
+                <BreadcrumbItem>
+                  <BreadcrumbLink asChild>
+                    <Link href="/regulations">Regulations</Link>
+                  </BreadcrumbLink>
+                </BreadcrumbItem>
+                <BreadcrumbSeparator />
+                <BreadcrumbItem>
+                  <BreadcrumbPage>Edit Regulation</BreadcrumbPage>
+                </BreadcrumbItem>
+              </BreadcrumbList>
+            </Breadcrumb>
           </div>
 
+          {/* Main Content */}
+          <main className="flex-1 p-6 bg-background overflow-y-auto">
+            <div className="max-w-6xl mx-auto">
+              <Card>
+                <CardHeader className="border-b">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <h1 className="text-2xl font-bold">Edit Regulation</h1>
+                      <p className="text-sm text-muted-foreground mt-1">
+                        Update regulation details and marking scheme
+                      </p>
+                    </div>
+                    <Button
+                      variant="ghost"
+                      onClick={handleCancel}
+                      className="flex items-center gap-2"
+                    >
+                      <ArrowLeft className="w-4 h-4" />
+                      Back to List
+                    </Button>
+                  </div>
+                </CardHeader>
+
+                <CardContent className="p-6">
+                  {error && (
+                    <div className="mb-6 p-4 bg-destructive/10 text-destructive rounded-lg border border-destructive/20">
+                      {error}
+                    </div>
+                  )}
+
+                  <form onSubmit={handleSubmit} className="space-y-8">
+                    {/* Basic Information Section */}
+                    <div>
+                      <h3 className="text-lg font-semibold mb-4 text-primary">Basic Information</h3>
+                      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                        <div className="space-y-2">
+                          <Label htmlFor="regulation_year" className="text-sm font-medium">
+                            Regulation Year <span className="text-destructive">*</span>
+                          </Label>
+                          <Input
+                            id="regulation_year"
+                            type="number"
+                            value={formData.regulation_year}
+                            onChange={(e) => setFormData({ ...formData, regulation_year: e.target.value })}
+                            placeholder="e.g., 2024"
+                            required
+                            className="h-10"
+                          />
+                        </div>
+
+                        <div className="space-y-2">
+                          <Label htmlFor="regulation_code" className="text-sm font-medium">
+                            Regulation Code <span className="text-destructive">*</span>
+                          </Label>
+                          <Input
+                            id="regulation_code"
+                            value={formData.regulation_code}
+                            onChange={(e) => setFormData({ ...formData, regulation_code: e.target.value })}
+                            placeholder="e.g., R2024"
+                            required
+                            className="h-10"
+                          />
+                        </div>
+
+                        <div className="space-y-2">
+                          <Label htmlFor="status" className="text-sm font-medium">
+                            Status
+                          </Label>
+                          <Select
+                            value={formData.status ? "active" : "inactive"}
+                            onValueChange={(value) => setFormData({ ...formData, status: value === "active" })}
+                          >
+                            <SelectTrigger className="h-10">
+                              <SelectValue placeholder="Select status" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="active">Active</SelectItem>
+                              <SelectItem value="inactive">Inactive</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Attendance Requirements */}
+                    <div>
+                      <h3 className="text-lg font-semibold mb-4 text-primary">Attendance Requirements</h3>
+                      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                        <div className="space-y-2">
+                          <Label htmlFor="minimum_attendance" className="text-sm font-medium">
+                            Minimum Attendance (%)
+                          </Label>
+                          <Input
+                            id="minimum_attendance"
+                            type="number"
+                            step="0.01"
+                            value={formData.minimum_attendance}
+                            onChange={(e) => setFormData({ ...formData, minimum_attendance: e.target.value })}
+                            placeholder="75.00"
+                            className="h-10"
+                          />
+                        </div>
+
+                        <div className="space-y-2">
+                          <Label htmlFor="condonation_range_start" className="text-sm font-medium">
+                            Condonation Start (%)
+                          </Label>
+                          <Input
+                            id="condonation_range_start"
+                            type="number"
+                            step="0.01"
+                            value={formData.condonation_range_start}
+                            onChange={(e) => setFormData({ ...formData, condonation_range_start: e.target.value })}
+                            placeholder="65.00"
+                            className="h-10"
+                          />
+                        </div>
+
+                        <div className="space-y-2">
+                          <Label htmlFor="condonation_range_end" className="text-sm font-medium">
+                            Condonation End (%)
+                          </Label>
+                          <Input
+                            id="condonation_range_end"
+                            type="number"
+                            step="0.01"
+                            value={formData.condonation_range_end}
+                            onChange={(e) => setFormData({ ...formData, condonation_range_end: e.target.value })}
+                            placeholder="74.99"
+                            className="h-10"
+                          />
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Minimum Marks Configuration */}
+                    <div>
+                      <h3 className="text-lg font-semibold mb-4 text-primary">Minimum Passing Marks</h3>
+                      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+                        <div className="space-y-2">
+                          <Label htmlFor="minimum_internal" className="text-sm font-medium">
+                            Internal Marks
+                          </Label>
+                          <Input
+                            id="minimum_internal"
+                            type="number"
+                            step="0.01"
+                            value={formData.minimum_internal}
+                            onChange={(e) => setFormData({ ...formData, minimum_internal: e.target.value })}
+                            placeholder="0"
+                            className="h-10"
+                          />
+                        </div>
+
+                        <div className="space-y-2">
+                          <Label htmlFor="minimum_external" className="text-sm font-medium">
+                            External Marks
+                          </Label>
+                          <Input
+                            id="minimum_external"
+                            type="number"
+                            step="0.01"
+                            value={formData.minimum_external}
+                            onChange={(e) => setFormData({ ...formData, minimum_external: e.target.value })}
+                            placeholder="0"
+                            className="h-10"
+                          />
+                        </div>
+
+                        <div className="space-y-2">
+                          <Label htmlFor="minimum_total" className="text-sm font-medium">
+                            Total Marks
+                          </Label>
+                          <Input
+                            id="minimum_total"
+                            type="number"
+                            step="0.01"
+                            value={formData.minimum_total}
+                            onChange={(e) => setFormData({ ...formData, minimum_total: e.target.value })}
+                            placeholder="40"
+                            className="h-10"
+                          />
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Maximum Marks Configuration */}
+                    <div>
+                      <h3 className="text-lg font-semibold mb-4 text-primary">Maximum Marks Configuration</h3>
+                      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+                        <div className="space-y-2">
+                          <Label htmlFor="maximum_internal" className="text-sm font-medium">
+                            Internal Marks
+                          </Label>
+                          <Input
+                            id="maximum_internal"
+                            type="number"
+                            step="0.01"
+                            value={formData.maximum_internal}
+                            onChange={(e) => setFormData({ ...formData, maximum_internal: e.target.value })}
+                            placeholder="40"
+                            className="h-10"
+                          />
+                        </div>
+
+                        <div className="space-y-2">
+                          <Label htmlFor="maximum_external" className="text-sm font-medium">
+                            External Marks
+                          </Label>
+                          <Input
+                            id="maximum_external"
+                            type="number"
+                            step="0.01"
+                            value={formData.maximum_external}
+                            onChange={(e) => setFormData({ ...formData, maximum_external: e.target.value })}
+                            placeholder="60"
+                            className="h-10"
+                          />
+                        </div>
+
+                        <div className="space-y-2">
+                          <Label htmlFor="maximum_total" className="text-sm font-medium">
+                            Total Marks
+                          </Label>
+                          <Input
+                            id="maximum_total"
+                            type="number"
+                            step="0.01"
+                            value={formData.maximum_total}
+                            onChange={(e) => setFormData({ ...formData, maximum_total: e.target.value })}
+                            placeholder="100"
+                            className="h-10"
+                          />
+                        </div>
+
+                        <div className="space-y-2">
+                          <Label htmlFor="maximum_qp_marks" className="text-sm font-medium">
+                            Question Paper Marks
+                          </Label>
+                          <Input
+                            id="maximum_qp_marks"
+                            type="number"
+                            step="0.01"
+                            value={formData.maximum_qp_marks}
+                            onChange={(e) => setFormData({ ...formData, maximum_qp_marks: e.target.value })}
+                            placeholder="100"
+                            className="h-10"
+                          />
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Form Actions */}
+                    <div className="flex justify-end gap-3 pt-6 border-t">
+                      <Button
+                        type="button"
+                        variant="outline"
+                        onClick={handleCancel}
+                        disabled={loading}
+                        className="min-w-[120px]"
+                      >
+                        <X className="w-4 h-4 mr-2" />
+                        Cancel
+                      </Button>
+                      <Button
+                        type="submit"
+                        disabled={loading}
+                        className="min-w-[120px]"
+                      >
+                        {loading ? (
+                          <>
+                            <div className="w-4 h-4 mr-2 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                            Updating...
+                          </>
+                        ) : (
+                          <>
+                            <Save className="w-4 h-4 mr-2" />
+                            Update
+                          </>
+                        )}
+                      </Button>
+                    </div>
+                  </form>
+                </CardContent>
+              </Card>
+            </div>
+          </main>
+
+          {/* Footer */}
+          <footer className="flex h-12 shrink-0 items-center justify-center bg-muted/50 border-t px-6">
+            <p className="text-sm text-muted-foreground">
+              Developed by JKKN Educational Institution © {new Date().getFullYear()}. All Rights Reserved.
+            </p>
+          </footer>
           <AppFooter />
         </SidebarInset>
       </SidebarProvider>
