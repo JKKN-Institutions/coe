@@ -19,6 +19,7 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
         created_at,
         updated_at,
         phone,
+        phone_number,
         username,
         bio,
         website,
@@ -62,7 +63,7 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
   try {
     const { id } = await params
     const body = await req.json()
-    const { full_name, email, role, is_active, phone, bio, website, location, date_of_birth, institution_id, avatar_url } = body as Record<string, unknown>
+    const { full_name, email, role, is_active, phone, phone_number, bio, website, location, date_of_birth, institution_id, avatar_url } = body as Record<string, unknown>
 
     // If role_id is provided, convert it to role name
     let roleToUpdate = role
@@ -86,6 +87,7 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
       ...(roleToUpdate !== undefined && { role: String(roleToUpdate) }),
       ...(is_active !== undefined && { is_active: Boolean(is_active) }),
       ...(phone !== undefined && { phone: phone ? String(phone) : null }),
+      ...(phone_number !== undefined && { phone_number: phone_number ? String(phone_number) : (phone ? String(phone) : null) }),
       ...(bio !== undefined && { bio: bio ? String(bio) : null }),
       ...(website !== undefined && { website: website ? String(website) : null }),
       ...(location !== undefined && { location: location ? String(location) : null }),
@@ -110,6 +112,7 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
         created_at,
         updated_at,
         phone,
+        phone_number,
         username,
         bio,
         website,
