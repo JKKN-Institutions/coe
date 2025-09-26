@@ -18,14 +18,23 @@ import { Save, X, ArrowLeft } from "lucide-react"
 
 interface User {
   id: string
-  full_name: string
   email: string
-  role: string
+  full_name?: string
+  username?: string
+  avatar_url?: string
+  bio?: string
+  website?: string
+  location?: string
+  date_of_birth?: string
+  phone?: string
+  is_active?: boolean
+  is_verified?: boolean
+  role?: string
   institution_id: string
-  is_active: boolean
-  phone: string
-  profile_image?: string
+  preferences?: any
+  metadata?: any
   created_at: string
+  updated_at: string
 }
 
 interface Institution {
@@ -37,20 +46,29 @@ export default function EditUserPage() {
   const router = useRouter()
   const params = useParams()
   const userId = params.id as string
-  
+
   const [currentTime, setCurrentTime] = useState<Date | null>(null)
   const [institutions, setInstitutions] = useState<Institution[]>([])
+  const [roles, setRoles] = useState<{id: string, name: string}[]>([])
   const [loading, setLoading] = useState(false)
   const [user, setUser] = useState<User | null>(null)
   
   const [formData, setFormData] = useState({
     full_name: "",
     email: "",
-    role: "",
-    institution_id: "",
-    is_active: true,
+    username: "",
+    avatar_url: "",
+    bio: "",
+    website: "",
+    location: "",
+    date_of_birth: "",
     phone: "",
-    profile_image: null as File | null
+    is_active: true,
+    is_verified: true,
+    role: "user",
+    institution_id: "",
+    preferences: {},
+    metadata: {}
   })
 
   // Update time every second
@@ -63,7 +81,7 @@ export default function EditUserPage() {
     return () => clearInterval(timer)
   }, [])
 
-  // Fetch user data and institutions
+  // Fetch user data, institutions and roles
   useEffect(() => {
     const fetchData = async () => {
       try {
@@ -75,22 +93,57 @@ export default function EditUserPage() {
           setFormData({
             full_name: userData.full_name || "",
             email: userData.email || "",
-            role: userData.role || "",
-            institution_id: userData.institution_id || "",
-            is_active: userData.is_active ?? true,
+            username: userData.email || "",
+            avatar_url: userData.avatar_url || "",
+            bio: userData.bio || "",
+            website: userData.website || "",
+            location: userData.location || "",
+            date_of_birth: userData.date_of_birth || "",
             phone: userData.phone || "",
-            profile_image: null
+            is_active: userData.is_active ?? true,
+            is_verified: userData.is_verified ?? true,
+            role: userData.role || "user",
+            institution_id: userData.institution_id || "",
+            preferences: userData.preferences || {},
+            metadata: userData.metadata || {}
           })
         }
 
-        // Mock institutions for now - replace with actual API call
-        setInstitutions([
-          { id: "1", name: "JKKN Main Campus" },
-          { id: "2", name: "JKKN Branch Campus" },
-          { id: "3", name: "JKKN Online Campus" }
-        ])
+        // Fetch institutions
+        const instResponse = await fetch('/api/institutions')
+        if (instResponse.ok) {
+          const instData = await instResponse.json()
+          setInstitutions(instData)
+        } else {
+          // Fallback to mock data if API doesn't exist yet
+          setInstitutions([
+            { id: "1", name: "JKKN Main Campus" },
+            { id: "2", name: "JKKN Branch Campus" },
+            { id: "3", name: "JKKN Online Campus" }
+          ])
+        }
+
+        // Fetch roles
+        const rolesResponse = await fetch('/api/roles')
+        if (rolesResponse.ok) {
+          const rolesData = await rolesResponse.json()
+          setRoles(rolesData)
+        } else {
+          // Fallback to default roles if API doesn't exist yet
+          setRoles([
+            { id: "1", name: "user" },
+            { id: "2", name: "admin" },
+            { id: "3", name: "moderator" }
+          ])
+        }
       } catch (error) {
         console.error("Error fetching data:", error)
+        // Fallback for roles if error
+        setRoles([
+          { id: "1", name: "user" },
+          { id: "2", name: "admin" },
+          { id: "3", name: "moderator" }
+        ])
       }
     }
 
@@ -117,23 +170,30 @@ export default function EditUserPage() {
   }
 
   const handleInputChange = (field: string, value: string | boolean) => {
-    setFormData(prev => ({
-      ...prev,
-      [field]: value
-    }))
+    setFormData(prev => {
+      const newData = {
+        ...prev,
+        [field]: value
+      }
+      // Auto-set username to email when email changes
+      if (field === 'email') {
+        newData.username = value as string
+      }
+      return newData
+    })
   }
 
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0] || null
-    setFormData(prev => ({
-      ...prev,
-      profile_image: file
-    }))
-  }
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setLoading(true)
+
+    // Ensure username is same as email and is_verified is true
+    const submitData = {
+      ...formData,
+      username: formData.email,
+      is_verified: true
+    }
 
     try {
       const response = await fetch(`/api/users/${userId}`, {
@@ -141,7 +201,7 @@ export default function EditUserPage() {
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify(formData),
+        body: JSON.stringify(submitData),
       })
 
       if (response.ok) {
@@ -269,6 +329,7 @@ export default function EditUserPage() {
                       />
                     </div>
 
+
                     {/* Role */}
                     <div className="space-y-2">
                       <Label htmlFor="role">Role *</Label>
@@ -277,11 +338,11 @@ export default function EditUserPage() {
                           <SelectValue placeholder="Select role" />
                         </SelectTrigger>
                         <SelectContent>
-                          <SelectItem value="admin">Admin</SelectItem>
-                          <SelectItem value="user">User</SelectItem>
-                          <SelectItem value="manager">Manager</SelectItem>
-                          <SelectItem value="teacher">Teacher</SelectItem>
-                          <SelectItem value="student">Student</SelectItem>
+                          {roles.map((role) => (
+                            <SelectItem key={role.id} value={role.name}>
+                              {role.name.charAt(0).toUpperCase() + role.name.slice(1)}
+                            </SelectItem>
+                          ))}
                         </SelectContent>
                       </Select>
                     </div>
@@ -317,6 +378,7 @@ export default function EditUserPage() {
                       </Select>
                     </div>
 
+
                     {/* Phone */}
                     <div className="space-y-2">
                       <Label htmlFor="phone">Contact Phone</Label>
@@ -329,21 +391,68 @@ export default function EditUserPage() {
                       />
                     </div>
 
-                    {/* Profile Image */}
+                    {/* Avatar URL */}
                     <div className="space-y-2">
-                      <Label htmlFor="profile_image">Profile Image</Label>
+                      <Label htmlFor="avatar_url">Avatar URL</Label>
                       <Input
-                        id="profile_image"
-                        type="file"
-                        accept="image/*"
-                        onChange={handleFileChange}
-                        className="file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-primary file:text-primary-foreground hover:file:bg-primary/80"
+                        id="avatar_url"
+                        type="url"
+                        value={formData.avatar_url}
+                        onChange={(e) => handleInputChange('avatar_url', e.target.value)}
+                        placeholder="Enter avatar URL"
                       />
-                      {user.profile_image && (
+                      {user.avatar_url && (
                         <p className="text-sm text-muted-foreground">
-                          Current: {user.profile_image}
+                          Current: {user.avatar_url}
                         </p>
                       )}
+                    </div>
+
+                    {/* Bio */}
+                    <div className="space-y-2">
+                      <Label htmlFor="bio">Bio</Label>
+                      <Input
+                        id="bio"
+                        type="text"
+                        value={formData.bio}
+                        onChange={(e) => handleInputChange('bio', e.target.value)}
+                        placeholder="Enter bio"
+                      />
+                    </div>
+
+                    {/* Website */}
+                    <div className="space-y-2">
+                      <Label htmlFor="website">Website</Label>
+                      <Input
+                        id="website"
+                        type="url"
+                        value={formData.website}
+                        onChange={(e) => handleInputChange('website', e.target.value)}
+                        placeholder="Enter website URL"
+                      />
+                    </div>
+
+                    {/* Location */}
+                    <div className="space-y-2">
+                      <Label htmlFor="location">Location</Label>
+                      <Input
+                        id="location"
+                        type="text"
+                        value={formData.location}
+                        onChange={(e) => handleInputChange('location', e.target.value)}
+                        placeholder="Enter location"
+                      />
+                    </div>
+
+                    {/* Date of Birth */}
+                    <div className="space-y-2">
+                      <Label htmlFor="date_of_birth">Date of Birth</Label>
+                      <Input
+                        id="date_of_birth"
+                        type="date"
+                        value={formData.date_of_birth}
+                        onChange={(e) => handleInputChange('date_of_birth', e.target.value)}
+                      />
                     </div>
                   </div>
 

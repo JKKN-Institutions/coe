@@ -20,19 +20,27 @@ export default function AddUserPage() {
   const router = useRouter()
   const [currentTime, setCurrentTime] = useState<Date | null>(null)
   const [loading, setLoading] = useState(false)
-  
+
   const [formData, setFormData] = useState({
     full_name: "",
     email: "",
-    role: "",
-    is_active: true,
-    phone: "",
     username: "",
+    avatar_url: "",
     bio: "",
     website: "",
     location: "",
-    date_of_birth: ""
+    date_of_birth: "",
+    phone: "",
+    is_active: true,
+    is_verified: true,
+    role: "user",
+    institution_id: "",
+    preferences: {},
+    metadata: {}
   })
+
+  const [institutions, setInstitutions] = useState<{id: string, name: string}[]>([])
+  const [roles, setRoles] = useState<{id: string, name: string}[]>([])
 
   // Update time every second
   useEffect(() => {
@@ -44,7 +52,59 @@ export default function AddUserPage() {
     return () => clearInterval(timer)
   }, [])
 
-  // Remove institutions fetching since institution_id doesn't exist in the table
+  // Fetch institutions and roles
+  useEffect(() => {
+    const fetchData = async () => {
+      // Fetch institutions
+      try {
+        const response = await fetch('/api/institutions')
+        if (response.ok) {
+          const data = await response.json()
+          setInstitutions(data)
+        } else {
+          // Fallback to mock data if API doesn't exist yet
+          setInstitutions([
+            { id: "1", name: "JKKN Main Campus" },
+            { id: "2", name: "JKKN Branch Campus" },
+            { id: "3", name: "JKKN Online Campus" }
+          ])
+        }
+      } catch (error) {
+        console.error('Error fetching institutions:', error)
+        // Fallback to mock data
+        setInstitutions([
+          { id: "1", name: "JKKN Main Campus" },
+          { id: "2", name: "JKKN Branch Campus" },
+          { id: "3", name: "JKKN Online Campus" }
+        ])
+      }
+
+      // Fetch roles
+      try {
+        const rolesResponse = await fetch('/api/roles')
+        if (rolesResponse.ok) {
+          const rolesData = await rolesResponse.json()
+          setRoles(rolesData)
+        } else {
+          // Fallback to default roles if API doesn't exist yet
+          setRoles([
+            { id: "1", name: "user" },
+            { id: "2", name: "admin" },
+            { id: "3", name: "moderator" }
+          ])
+        }
+      } catch (error) {
+        console.error('Error fetching roles:', error)
+        // Fallback to default roles
+        setRoles([
+          { id: "1", name: "user" },
+          { id: "2", name: "admin" },
+          { id: "3", name: "moderator" }
+        ])
+      }
+    }
+    fetchData()
+  }, [])
 
   const formatCurrentDateTime = (date: Date | null) => {
     if (!date) return "Loading..."
@@ -64,17 +124,30 @@ export default function AddUserPage() {
   }
 
   const handleInputChange = (field: string, value: string | boolean) => {
-    setFormData(prev => ({
-      ...prev,
-      [field]: value
-    }))
+    setFormData(prev => {
+      const newData = {
+        ...prev,
+        [field]: value
+      }
+      // Auto-set username to email when email changes
+      if (field === 'email') {
+        newData.username = value as string
+      }
+      return newData
+    })
   }
 
-  // Remove file change handler since profile_image doesn't exist in the table
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setLoading(true)
+
+    // Ensure username is same as email and is_verified is true
+    const submitData = {
+      ...formData,
+      username: formData.email,
+      is_verified: true
+    }
 
     try {
       const response = await fetch('/api/users', {
@@ -82,7 +155,7 @@ export default function AddUserPage() {
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify(formData),
+        body: JSON.stringify(submitData),
       })
 
       if (response.ok) {
@@ -202,17 +275,6 @@ export default function AddUserPage() {
                       />
                     </div>
 
-                    {/* Username */}
-                    <div className="space-y-2">
-                      <Label htmlFor="username">Username</Label>
-                      <Input
-                        id="username"
-                        type="text"
-                        value={formData.username}
-                        onChange={(e) => handleInputChange('username', e.target.value)}
-                        placeholder="Enter username"
-                      />
-                    </div>
 
                     {/* Role */}
                     <div className="space-y-2">
@@ -222,11 +284,28 @@ export default function AddUserPage() {
                           <SelectValue placeholder="Select role" />
                         </SelectTrigger>
                         <SelectContent>
-                          <SelectItem value="admin">Admin</SelectItem>
-                          <SelectItem value="user">User</SelectItem>
-                          <SelectItem value="manager">Manager</SelectItem>
-                          <SelectItem value="teacher">Teacher</SelectItem>
-                          <SelectItem value="student">Student</SelectItem>
+                          {roles.map((role) => (
+                            <SelectItem key={role.id} value={role.name}>
+                              {role.name.charAt(0).toUpperCase() + role.name.slice(1)}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+
+                    {/* Institution */}
+                    <div className="space-y-2">
+                      <Label htmlFor="institution">Institution *</Label>
+                      <Select value={formData.institution_id} onValueChange={(value) => handleInputChange('institution_id', value)}>
+                        <SelectTrigger>
+                          <SelectValue placeholder="Select institution" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {institutions.map((institution) => (
+                            <SelectItem key={institution.id} value={institution.id}>
+                              {institution.name}
+                            </SelectItem>
+                          ))}
                         </SelectContent>
                       </Select>
                     </div>
@@ -245,6 +324,7 @@ export default function AddUserPage() {
                       </Select>
                     </div>
 
+
                     {/* Phone */}
                     <div className="space-y-2">
                       <Label htmlFor="phone">Contact Phone</Label>
@@ -254,6 +334,18 @@ export default function AddUserPage() {
                         value={formData.phone}
                         onChange={(e) => handleInputChange('phone', e.target.value)}
                         placeholder="Enter phone number"
+                      />
+                    </div>
+
+                    {/* Avatar URL */}
+                    <div className="space-y-2">
+                      <Label htmlFor="avatar_url">Avatar URL</Label>
+                      <Input
+                        id="avatar_url"
+                        type="url"
+                        value={formData.avatar_url}
+                        onChange={(e) => handleInputChange('avatar_url', e.target.value)}
+                        placeholder="Enter avatar URL"
                       />
                     </div>
 

@@ -379,6 +379,17 @@ export default function UserRolesPage() {
           {/* Action Bar */}
           <Card className="flex-1 flex flex-col min-h-0">
             <CardHeader className="flex-shrink-0 p-3">
+              <div className="flex items-center justify-between mb-2">
+                <div className="flex items-center gap-2">
+                  <div className="h-7 w-7 rounded-lg bg-primary/10 flex items-center justify-center">
+                    <Shield className="h-3 w-3 text-primary" />
+                  </div>
+                  <div>
+                    <h2 className="text-sm font-semibold">User Roles</h2>
+                    <p className="text-[11px] text-muted-foreground">Assign and manage user roles</p>
+                  </div>
+                </div>
+              </div>
               <div className="flex flex-col lg:flex-row gap-2 items-start lg:items-center justify-between">
                 <div className="flex flex-col sm:flex-row gap-2 w-full lg:w-auto">
                   <Select value={roleFilter} onValueChange={setRoleFilter}>

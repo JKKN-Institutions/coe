@@ -613,7 +613,7 @@ export default function RegulationsPage() {
 
         <div className="flex flex-1 flex-col gap-4 p-4 pt-0 overflow-y-auto">
             {/* Breadcrumb Navigation */}
-            <div className="flex items-center gap-2 flex-shrink-0">
+            <div className="flex items-center gap-2 flex-shrink-0 px-0 py-0">
               <Breadcrumb>
                 <BreadcrumbList>
                   <BreadcrumbItem>
@@ -650,7 +650,7 @@ export default function RegulationsPage() {
                       <p className="text-xl font-bold">{regulations.length}</p>
                     </div>
                     <div className="h-7 w-7 rounded-full bg-blue-100 dark:bg-blue-900/20 flex items-center justify-center">
-                      <LibraryBig className="h-3 w-3 text-blue-600 dark:text-blue-400" />
+                      <FileText className="h-3 w-3 text-blue-600 dark:text-blue-400" />
                     </div>
                   </div>
                 </CardContent>
@@ -663,11 +663,11 @@ export default function RegulationsPage() {
                     <div>
                       <p className="text-xs font-medium text-muted-foreground">Active Regulations</p>
                       <p className="text-xl font-bold text-green-600">
-                        {regulations.filter(regulation => regulation.status).length}
+                        {regulations.filter(r => r.status).length}
                       </p>
                     </div>
                     <div className="h-7 w-7 rounded-full bg-green-100 dark:bg-green-900/20 flex items-center justify-center">
-                      <FileText className="h-3 w-3 text-green-600 dark:text-green-400" />
+                      <LibraryBig className="h-3 w-3 text-green-600 dark:text-green-400" />
                     </div>
                   </div>
                 </CardContent>
@@ -680,11 +680,11 @@ export default function RegulationsPage() {
                     <div>
                       <p className="text-xs font-medium text-muted-foreground">Inactive Regulations</p>
                       <p className="text-xl font-bold text-red-600">
-                        {regulations.filter(regulation => !regulation.status).length}
+                        {regulations.filter(r => !r.status).length}
                       </p>
                     </div>
                     <div className="h-7 w-7 rounded-full bg-red-100 dark:bg-red-900/20 flex items-center justify-center">
-                      <LibraryBig className="h-3 w-3 text-red-600 dark:text-red-400" />
+                      <Clock className="h-3 w-3 text-red-600 dark:text-red-400" />
                     </div>
                   </div>
                 </CardContent>
@@ -697,10 +697,10 @@ export default function RegulationsPage() {
                     <div>
                       <p className="text-xs font-medium text-muted-foreground">New This Month</p>
                       <p className="text-xl font-bold text-blue-600">
-                        {regulations.filter(regulation => {
-                          const regulationDate = new Date(regulation.created_at)
+                        {regulations.filter(r => {
+                          const d = new Date(r.created_at)
                           const now = new Date()
-                          return regulationDate.getMonth() === now.getMonth() && regulationDate.getFullYear() === now.getFullYear()
+                          return d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear()
                         }).length}
                       </p>
                     </div>
@@ -715,6 +715,18 @@ export default function RegulationsPage() {
             {/* Action Bar */}
             <Card className="flex-1 flex flex-col min-h-0">
               <CardHeader className="flex-shrink-0 p-3">
+                {/* Compact Header like edit page */}
+                <div className="flex items-center justify-between mb-2">
+                  <div className="flex items-center gap-2">
+                    <div className="h-7 w-7 rounded-lg bg-primary/10 flex items-center justify-center">
+                      <LibraryBig className="h-3 w-3 text-primary" />
+                    </div>
+                    <div>
+                      <h2 className="text-sm font-semibold">Regulations</h2>
+                      <p className="text-[11px] text-muted-foreground">Browse, filter and manage regulation records</p>
+                    </div>
+                  </div>
+                </div>
                 <div className="flex flex-col lg:flex-row gap-2 items-start lg:items-center justify-between">
                   <div className="flex flex-col sm:flex-row gap-2 w-full lg:w-auto">
                     {/* Filter Dropdowns */}
@@ -799,9 +811,6 @@ export default function RegulationsPage() {
                       <PlusCircle className="h-3 w-3 mr-1" />
                       Add
                     </Button>
-                    <Button variant="outline" size="sm" className="text-xs px-1 h-8">
-                      <Settings className="h-3 w-3" />
-                    </Button>
                   </div>
                 </div>
               </CardHeader>
@@ -813,7 +822,7 @@ export default function RegulationsPage() {
                     <Table>
                       <TableHeader className="sticky top-0 z-10 bg-slate-50 dark:bg-slate-900/50">
                         <TableRow>
-                          <TableHead className="w-[150px] text-xs">
+                          <TableHead className="w-[150px] text-[11px]">
                             <Button
                               variant="ghost"
                               size="sm"
@@ -826,7 +835,7 @@ export default function RegulationsPage() {
                               </span>
                             </Button>
                           </TableHead>
-                          <TableHead className="w-[100px] text-xs">
+                          <TableHead className="w-[100px] text-[11px]">
                             <Button
                               variant="ghost"
                               size="sm"
@@ -839,7 +848,7 @@ export default function RegulationsPage() {
                               </span>
                             </Button>
                           </TableHead>
-                          <TableHead className="w-[100px] text-xs">
+                          <TableHead className="w-[100px] text-[11px]">
                             <Button
                               variant="ghost"
                               size="sm"
@@ -852,7 +861,7 @@ export default function RegulationsPage() {
                               </span>
                             </Button>
                           </TableHead>
-                          <TableHead className="w-[120px] text-xs">
+                          <TableHead className="w-[120px] text-[11px]">
                             <Button
                               variant="ghost"
                               size="sm"
@@ -865,13 +874,13 @@ export default function RegulationsPage() {
                               </span>
                             </Button>
                           </TableHead>
-                          <TableHead className="w-[120px] text-xs text-center">Actions</TableHead>
+                          <TableHead className="w-[120px] text-[11px] text-center">Actions</TableHead>
                         </TableRow>
                       </TableHeader>
                       <TableBody>
                         {loading ? (
                           <TableRow>
-                            <TableCell colSpan={5} className="h-24 text-center text-xs">
+                            <TableCell colSpan={5} className="h-24 text-center text-[11px]">
                               Loading regulations...
                             </TableCell>
                           </TableRow>
@@ -879,18 +888,18 @@ export default function RegulationsPage() {
                           <>
                             {paginatedRegulations.map((regulation) => (
                               <TableRow key={regulation.id}>
-                                <TableCell className="font-medium text-xs">
+                                <TableCell className="font-medium text-[11px]">
                                   {regulation.regulation_code}
                                 </TableCell>
-                                <TableCell className="text-xs">
+                                <TableCell className="text-[11px]">
                                   {regulation.regulation_year}
                                 </TableCell>
                                 <TableCell>
-                                  <Badge variant={getStatusBadgeVariant(regulation)} className="text-xs">
+                                  <Badge variant={getStatusBadgeVariant(regulation)} className="text-[11px]">
                                     {getStatusText(regulation)}
                                   </Badge>
                                 </TableCell>
-                                <TableCell className="text-xs text-muted-foreground">
+                                <TableCell className="text-[11px] text-muted-foreground">
                                   {formatDate(regulation.created_at)}
                                 </TableCell>
                                 <TableCell>

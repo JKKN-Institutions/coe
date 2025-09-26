@@ -3,6 +3,7 @@ import { Inter } from "next/font/google";
 import "./globals.css";
 import { AuthProvider } from "@/lib/auth/auth-context";
 import { ThemeProvider } from "@/components/theme-provider";
+import { SessionTimeoutProvider } from "@/components/session-timeout-provider";
 import { RegisterServiceWorker } from "./register-sw";
 
 const inter = Inter({
@@ -30,8 +31,15 @@ export default function RootLayout({
             autoValidate={true}
             autoRefresh={true}
             refreshInterval={10 * 60 * 1000} // 10 minutes
+            sessionTimeout={15} // 15 minutes
+            sessionWarning={2} // 2 minutes warning
           >
-            {children}
+            <SessionTimeoutProvider
+              timeoutDuration={15} // 15 minutes
+              warningDuration={2} // 2 minutes warning
+            >
+              {children}
+            </SessionTimeoutProvider>
           </AuthProvider>
         </ThemeProvider>
       </body>

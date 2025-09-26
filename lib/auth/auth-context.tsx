@@ -7,28 +7,27 @@ import React, {
   useEffect,
   ReactNode
 } from 'react';
-import parentAuthService, {
-  ParentAppUser,
-  AuthSession
-} from './parent-auth-service';
+import supabaseAuthService, {
+  SupabaseUser,
+  AuthSession,
+  LoginCredentials,
+  RegisterData
+} from './supabase-auth-service';
 
 interface AuthContextType {
-  user: ParentAppUser | null;
+  user: SupabaseUser | null;
   session: AuthSession | null;
   isLoading: boolean;
   isAuthenticated: boolean;
   error: string | null;
-  login: (redirectUrl?: string) => void;
-  logout: (redirectToParent?: boolean) => void;
+  login: (credentials: LoginCredentials) => Promise<{ success: boolean; error?: string }>;
+  loginWithGoogle: () => Promise<{ success: boolean; error?: string }>;
+  logout: () => Promise<void>;
   refreshSession: () => Promise<boolean>;
   validateSession: () => Promise<boolean>;
   hasPermission: (permission: string) => boolean;
   hasRole: (role: string) => boolean;
   hasAnyRole: (roles: string[]) => boolean;
-  handleAuthCallback: (
-    token: string,
-    refreshToken?: string
-  ) => Promise<boolean>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -38,7 +37,9 @@ interface AuthProviderProps {
   autoValidate?: boolean;
   autoRefresh?: boolean;
   refreshInterval?: number;
-  onAuthChange?: (user: ParentAppUser | null) => void;
+  sessionTimeout?: number; // in minutes
+  sessionWarning?: number; // in minutes
+  onAuthChange?: (user: SupabaseUser | null) => void;
   onSessionExpired?: () => void;
 }
 
@@ -47,10 +48,12 @@ export function AuthProvider({
   autoValidate = true,
   autoRefresh = true,
   refreshInterval = 10 * 60 * 1000, // 10 minutes
+  sessionTimeout = 15, // 15 minutes
+  sessionWarning = 2, // 2 minutes warning
   onAuthChange,
   onSessionExpired
 }: AuthProviderProps) {
-  const [user, setUser] = useState<ParentAppUser | null>(null);
+  const [user, setUser] = useState<SupabaseUser | null>(null);
   const [session, setSession] = useState<AuthSession | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -62,46 +65,30 @@ export function AuthProvider({
         setIsLoading(true);
         setError(null);
 
-        // Check for dev mode bypass
-        const isDev = process.env.NODE_ENV === 'development' &&
-                     typeof window !== 'undefined' &&
-                     (window.location.hostname === 'localhost' ||
-                      window.location.hostname === '127.0.0.1');
-
-        // Get stored user and session
-        const storedUser = parentAuthService.getUser();
-        const storedSession = parentAuthService.getSession();
-
-        if (storedUser && storedSession) {
-          setUser(storedUser);
+        // Check if user is authenticated with Supabase
+        const isAuth = await supabaseAuthService.isAuthenticated();
+        
+        if (isAuth) {
+          // Get current user from Supabase
+          const currentUser = await supabaseAuthService.getCurrentUser();
+          const storedSession = supabaseAuthService.getSession();
+          
+          if (currentUser) {
+            setUser(currentUser);
+            if (storedSession) {
           setSession(storedSession);
-
-          // Validate session if auto-validate is enabled (skip in dev mode)
-          if (autoValidate && !isDev) {
-            // Add timeout to prevent infinite loading
-            const validatePromise = parentAuthService.validateSession();
-            const timeoutPromise = new Promise<boolean>((resolve) => {
-              setTimeout(() => {
-                console.warn('Session validation timed out, assuming valid');
-                resolve(true); // Assume valid on timeout to prevent blocking
-              }, 5000); // 5 second timeout
-            });
-
-            const isValid = await Promise.race([validatePromise, timeoutPromise]);
-
-            if (!isValid) {
-              setUser(null);
-              setSession(null);
-            } else {
-              // Update with fresh data if available
-              const freshUser = parentAuthService.getUser();
-              const freshSession = parentAuthService.getSession();
-              if (freshUser) setUser(freshUser);
-              if (freshSession) setSession(freshSession);
             }
-          } else if (isDev) {
-            console.log('🔧 Development mode: Skipping session validation');
+          } else {
+            // User not found, clear session
+            setUser(null);
+            setSession(null);
+            supabaseAuthService.clearSession();
           }
+        } else {
+          // Not authenticated, clear any stored data
+          setUser(null);
+          setSession(null);
+          supabaseAuthService.clearSession();
         }
       } catch (err) {
         console.error('Auth initialization error:', err);
@@ -114,7 +101,7 @@ export function AuthProvider({
     };
 
     initAuth();
-  }, [autoValidate]);
+  }, []);
 
   // Auto-refresh token
   useEffect(() => {
@@ -122,10 +109,10 @@ export function AuthProvider({
 
     const refreshTimer = setInterval(async () => {
       try {
-        const refreshed = await parentAuthService.refreshToken();
+        const refreshed = await supabaseAuthService.refreshSession();
         if (refreshed) {
-          const freshUser = parentAuthService.getUser();
-          const freshSession = parentAuthService.getSession();
+          const freshUser = supabaseAuthService.getUser();
+          const freshSession = supabaseAuthService.getSession();
           setUser(freshUser);
           setSession(freshSession);
         } else {
@@ -151,148 +138,148 @@ export function AuthProvider({
     }
   }, [user, onAuthChange]);
 
-  // Check auth callback params on mount
+  // Listen for auth state changes
   useEffect(() => {
-    const checkAuthCallback = async () => {
-      const params = new URLSearchParams(window.location.search);
-      const token = params.get('token');
-      const refreshToken = params.get('refresh_token');
-
-      // Skip if we're on the callback page (it will handle itself)
-      if (window.location.pathname === '/auth/callback') {
-        return;
-      }
-
-      if (token) {
-        try {
-          setIsLoading(true);
-
-          // Add timeout for the entire auth process
-          const authPromise = parentAuthService.handleCallback(
-            token,
-            refreshToken || undefined
-          );
-
-          const timeoutPromise = new Promise<null>((_, reject) => {
-            setTimeout(() => reject(new Error('Authentication timeout')), 15000); // 15 second timeout
-          });
-
-          const authUser = await Promise.race([authPromise, timeoutPromise]).catch(err => {
-            console.warn('Auth callback race condition:', err);
-            // If timeout or error, try to use cached session
-            const cachedUser = parentAuthService.getUser();
-            const cachedSession = parentAuthService.getSession();
-            if (cachedUser && cachedSession) {
-              console.log('Using cached user data after timeout');
-              return cachedUser;
-            }
-            throw err;
-          }) as ParentAppUser | null;
-
-          if (authUser) {
-            setUser(authUser);
-            const newSession = parentAuthService.getSession();
-            setSession(newSession);
-
-            // Clean URL
-            const url = new URL(window.location.href);
-            url.searchParams.delete('token');
-            url.searchParams.delete('refresh_token');
-            window.history.replaceState({}, '', url.toString());
-
-            // Handle post-login redirect
-            const redirectUrl = sessionStorage.getItem('post_login_redirect');
-            if (redirectUrl) {
-              sessionStorage.removeItem('post_login_redirect');
-              window.location.href = redirectUrl;
+    const { data: { subscription } } = supabaseAuthService.getSupabaseClient().auth.onAuthStateChange(
+      async (event, session) => {
+        if (event === 'SIGNED_IN' && session) {
+          try {
+            // Handle OAuth callback
+            const { user: oauthUser, error: oauthError } = await supabaseAuthService.handleOAuthCallback();
+            
+            if (oauthError) {
+              // Set error cookie instead of storing in state to avoid URL exposure
+              const val = oauthError.toLowerCase().includes('inactive') ? 'inactive' : 'not_found';
+              document.cookie = `auth_error=${val}; path=/; max-age=10; samesite=lax`;
+              setError(oauthError);
               return;
+            }
+
+            if (oauthUser) {
+              setUser(oauthUser);
+              setSession({
+                id: session.access_token,
+                expires_at: session.expires_at?.toString() || '',
+                created_at: new Date().toISOString(),
+              });
+            } else {
+              // Fallback to regular user fetch
+              const currentUser = await supabaseAuthService.getCurrentUser();
+              if (currentUser) {
+                setUser(currentUser);
+                setSession({
+                  id: session.access_token,
+                  expires_at: session.expires_at?.toString() || '',
+                  created_at: new Date().toISOString(),
+                });
+              } else {
+                // User not found after OAuth callback
+                document.cookie = 'auth_error=not_found; path=/; max-age=10; samesite=lax';
+                setError('Your account wasn\'t found in our system. Double-check your login details, or contact support if you need help.');
             }
           }
         } catch (err) {
-          console.error('Auth callback error:', err);
-          setError('Authentication failed');
-          // Even on error, check for cached session
-          const cachedUser = parentAuthService.getUser();
-          if (cachedUser) {
-            console.log('Falling back to cached user after error');
-            setUser(cachedUser);
-            setSession(parentAuthService.getSession());
+            // Authentication error occurred
+            setError('Authentication failed - please try again');
           }
-        } finally {
-          setIsLoading(false);
+        } else if (event === 'SIGNED_OUT') {
+          setUser(null);
+          setSession(null);
+          supabaseAuthService.clearSession();
         }
       }
-    };
-
-    checkAuthCallback();
-  }, []);
-
-  const login = (redirectUrl?: string) => {
-    parentAuthService.login(redirectUrl);
-  };
-
-  const logout = async (redirectToParent: boolean = false) => {
-    console.log(
-      '🔍 Child app logout initiated, redirectToParent:',
-      redirectToParent
     );
 
+    return () => subscription.unsubscribe();
+  }, []);
+
+  const login = async (credentials: LoginCredentials): Promise<{ success: boolean; error?: string }> => {
     try {
-      // Call the child app logout endpoint to preserve parent session
-      const response = await fetch(
-        `${process.env.NEXT_PUBLIC_PARENT_APP_URL}/api/auth/child-app/logout`,
-        {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json'
-          },
-          body: JSON.stringify({
-            app_id: process.env.NEXT_PUBLIC_APP_ID,
-            session_id: session?.id,
-            access_token: parentAuthService.getAccessToken(),
-            redirect_uri: redirectToParent
-              ? process.env.NEXT_PUBLIC_PARENT_APP_URL
-              : window.location.origin
-          })
-        }
-      );
+      setIsLoading(true);
+      setError(null);
 
-      console.log('🔍 Logout response status:', response.status);
-
-      if (response.ok) {
-        const data = await response.json();
-        console.log('🔍 Logout response data:', data);
+      const { user: authUser, error: authError } = await supabaseAuthService.login(credentials);
+      
+      if (authError) {
+        setError(authError);
+        return { success: false, error: authError };
       }
-    } catch (error) {
-      console.error('Logout API error:', error);
-      // Continue with local cleanup even if API call fails
-    }
 
-    // Clear local state and storage
+      if (authUser) {
+        setUser(authUser);
+        const session = supabaseAuthService.getSession();
+        if (session) {
+          setSession(session);
+        }
+        return { success: true };
+      }
+
+      return { success: false, error: 'Login failed' };
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : 'Login failed';
+      setError(errorMessage);
+      return { success: false, error: errorMessage };
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const loginWithGoogle = async (): Promise<{ success: boolean; error?: string }> => {
+    try {
+      setIsLoading(true);
+      setError(null);
+
+      const { user: authUser, error: authError } = await supabaseAuthService.loginWithGoogle();
+
+      if (authError) {
+        setError(authError);
+        return { success: false, error: authError };
+      }
+
+      // For Google OAuth, the user will be redirected, so we return success
+      // The actual authentication will be handled in the callback
+      return { success: true };
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : 'Google login failed';
+      setError(errorMessage);
+      return { success: false, error: errorMessage };
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  // Registration is disabled - users must be created by admin
+  const register = async (userData: RegisterData): Promise<{ success: boolean; error?: string }> => {
+    const errorMessage = 'User registration is not available. Please contact JKKN COE Admin for account access.';
+    setError(errorMessage);
+    return { success: false, error: errorMessage };
+  };
+
+  const logout = async (): Promise<void> => {
+    try {
+      setIsLoading(true);
+      await supabaseAuthService.logout();
+      setUser(null);
+      setSession(null);
+      setError(null);
+    } catch (err) {
+      console.error('Logout error:', err);
+      // Clear local state even if logout fails
     setUser(null);
     setSession(null);
     setError(null);
-
-    // Clear stored tokens using parentAuthService method
-    parentAuthService.clearSession();
-
-    console.log('🔍 Local session cleared');
-
-    // Redirect appropriately
-    if (redirectToParent) {
-      window.location.href =
-        process.env.NEXT_PUBLIC_PARENT_APP_URL || 'https://my.jkkn.ac.in';
-    } else {
-      window.location.href = '/login';
+      supabaseAuthService.clearSession();
+    } finally {
+      setIsLoading(false);
     }
   };
 
   const refreshSession = async (): Promise<boolean> => {
     try {
-      const success = await parentAuthService.refreshToken();
+      const success = await supabaseAuthService.refreshSession();
       if (success) {
-        const freshUser = parentAuthService.getUser();
-        const freshSession = parentAuthService.getSession();
+        const freshUser = supabaseAuthService.getUser();
+        const freshSession = supabaseAuthService.getSession();
         setUser(freshUser);
         setSession(freshSession);
       } else {
@@ -310,12 +297,19 @@ export function AuthProvider({
 
   const validateSession = async (): Promise<boolean> => {
     try {
-      const isValid = await parentAuthService.validateSession();
+      const isValid = await supabaseAuthService.isAuthenticated();
       if (isValid) {
-        const freshUser = parentAuthService.getUser();
-        const freshSession = parentAuthService.getSession();
-        setUser(freshUser);
-        setSession(freshSession);
+        const currentUser = await supabaseAuthService.getCurrentUser();
+        if (currentUser) {
+          setUser(currentUser);
+          const session = supabaseAuthService.getSession();
+          if (session) {
+            setSession(session);
+          }
+        } else {
+          setUser(null);
+          setSession(null);
+        }
       } else {
         setUser(null);
         setSession(null);
@@ -329,44 +323,16 @@ export function AuthProvider({
     }
   };
 
-  const handleAuthCallback = async (
-    token: string,
-    refreshToken?: string
-  ): Promise<boolean> => {
-    try {
-      setIsLoading(true);
-      setError(null);
-
-      const authUser = await parentAuthService.handleCallback(
-        token,
-        refreshToken
-      );
-      if (authUser) {
-        setUser(authUser);
-        const newSession = parentAuthService.getSession();
-        setSession(newSession);
-        return true;
-      }
-      return false;
-    } catch (err) {
-      console.error('Handle auth callback error:', err);
-      setError(err instanceof Error ? err.message : 'Authentication failed');
-      return false;
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
   const hasPermission = (permission: string): boolean => {
-    return parentAuthService.hasPermission(permission);
+    return supabaseAuthService.hasPermission(permission);
   };
 
   const hasRole = (role: string): boolean => {
-    return parentAuthService.hasRole(role);
+    return supabaseAuthService.hasRole(role);
   };
 
   const hasAnyRole = (roles: string[]): boolean => {
-    return parentAuthService.hasAnyRole(roles);
+    return supabaseAuthService.hasAnyRole(roles);
   };
 
   return (
@@ -378,13 +344,13 @@ export function AuthProvider({
         isAuthenticated: !!user,
         error,
         login,
+        loginWithGoogle,
         logout,
         refreshSession,
         validateSession,
         hasPermission,
         hasRole,
-        hasAnyRole,
-        handleAuthCallback
+        hasAnyRole
       }}
     >
       {children}
@@ -406,7 +372,7 @@ export function useIsAuthenticated(): boolean {
   return isAuthenticated;
 }
 
-export function useCurrentUser(): ParentAppUser | null {
+export function useCurrentUser(): SupabaseUser | null {
   const { user } = useAuth();
   return user;
 }

@@ -58,6 +58,7 @@ import {
   TrendingUp,
   Edit,
   Trash2,
+  FileSpreadsheet,
 } from "lucide-react"
 
 // Course type definition
@@ -235,28 +236,18 @@ export default function CoursesPage() {
               </Breadcrumb>
             </div>
 
-            {/* Header Section */}
-            <div className="flex items-center justify-between flex-shrink-0">
-              <div>
-                <h1 className="text-2xl font-bold tracking-tight">Courses</h1>
-                <p className="text-sm text-muted-foreground">
-                  Manage courses and their details
-                </p>
-              </div>
-            </div>
-
             {/* Scorecard Section */}
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 flex-shrink-0">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3 flex-shrink-0">
               {/* Total Courses */}
               <Card>
-                <CardContent className="p-4">
+                <CardContent className="p-3">
                   <div className="flex items-center justify-between">
                     <div>
-                      <p className="text-sm font-medium text-muted-foreground">Total Courses</p>
-                      <p className="text-2xl font-bold">{courses.length}</p>
+                      <p className="text-xs font-medium text-muted-foreground">Total Courses</p>
+                      <p className="text-xl font-bold">{courses.length}</p>
                     </div>
-                    <div className="h-8 w-8 rounded-full bg-blue-100 dark:bg-blue-900/20 flex items-center justify-center">
-                      <BookText className="h-4 w-4 text-blue-600 dark:text-blue-400" />
+                    <div className="h-7 w-7 rounded-full bg-blue-100 dark:bg-blue-900/20 flex items-center justify-center">
+                      <BookText className="h-3 w-3 text-blue-600 dark:text-blue-400" />
                     </div>
                   </div>
                 </CardContent>
@@ -264,16 +255,16 @@ export default function CoursesPage() {
 
               {/* Active Courses */}
               <Card>
-                <CardContent className="p-4">
+                <CardContent className="p-3">
                   <div className="flex items-center justify-between">
                     <div>
-                      <p className="text-sm font-medium text-muted-foreground">Active Courses</p>
-                      <p className="text-2xl font-bold text-green-600">
+                      <p className="text-xs font-medium text-muted-foreground">Active Courses</p>
+                      <p className="text-xl font-bold text-green-600">
                         {courses.filter(course => course.is_active).length}
                       </p>
                     </div>
-                    <div className="h-8 w-8 rounded-full bg-green-100 dark:bg-green-900/20 flex items-center justify-center">
-                      <GraduationCap className="h-4 w-4 text-green-600 dark:text-green-400" />
+                    <div className="h-7 w-7 rounded-full bg-green-100 dark:bg-green-900/20 flex items-center justify-center">
+                      <GraduationCap className="h-3 w-3 text-green-600 dark:text-green-400" />
                     </div>
                   </div>
                 </CardContent>
@@ -281,16 +272,16 @@ export default function CoursesPage() {
 
               {/* Inactive Courses */}
               <Card>
-                <CardContent className="p-4">
+                <CardContent className="p-3">
                   <div className="flex items-center justify-between">
                     <div>
-                      <p className="text-sm font-medium text-muted-foreground">Inactive Courses</p>
-                      <p className="text-2xl font-bold text-red-600">
+                      <p className="text-xs font-medium text-muted-foreground">Inactive Courses</p>
+                      <p className="text-xl font-bold text-red-600">
                         {courses.filter(course => !course.is_active).length}
                       </p>
                     </div>
-                    <div className="h-8 w-8 rounded-full bg-red-100 dark:bg-red-900/20 flex items-center justify-center">
-                      <BookText className="h-4 w-4 text-red-600 dark:text-red-400" />
+                    <div className="h-7 w-7 rounded-full bg-red-100 dark:bg-red-900/20 flex items-center justify-center">
+                      <BookText className="h-3 w-3 text-red-600 dark:text-red-400" />
                     </div>
                   </div>
                 </CardContent>
@@ -298,11 +289,11 @@ export default function CoursesPage() {
 
               {/* New This Month */}
               <Card>
-                <CardContent className="p-4">
+                <CardContent className="p-3">
                   <div className="flex items-center justify-between">
                     <div>
-                      <p className="text-sm font-medium text-muted-foreground">New This Month</p>
-                      <p className="text-2xl font-bold text-blue-600">
+                      <p className="text-xs font-medium text-muted-foreground">New This Month</p>
+                      <p className="text-xl font-bold text-blue-600">
                         {courses.filter(course => {
                           const courseDate = new Date(course.created_at)
                           const now = new Date()
@@ -310,8 +301,8 @@ export default function CoursesPage() {
                         }).length}
                       </p>
                     </div>
-                    <div className="h-8 w-8 rounded-full bg-purple-100 dark:bg-purple-900/20 flex items-center justify-center">
-                      <TrendingUp className="h-4 w-4 text-purple-600 dark:text-purple-400" />
+                    <div className="h-7 w-7 rounded-full bg-purple-100 dark:bg-purple-900/20 flex items-center justify-center">
+                      <TrendingUp className="h-3 w-3 text-purple-600 dark:text-purple-400" />
                     </div>
                   </div>
                 </CardContent>
@@ -320,12 +311,24 @@ export default function CoursesPage() {
 
             {/* Action Bar */}
             <Card className="flex-1 flex flex-col min-h-0">
-              <CardHeader className="flex-shrink-0 p-4">
-                <div className="flex flex-col sm:flex-row gap-3 items-start sm:items-center justify-between">
-                  <div className="flex flex-col sm:flex-row gap-3 w-full sm:w-auto">
+              <CardHeader className="flex-shrink-0 p-3">
+                {/* Compact Header like edit page */}
+                <div className="flex items-center justify-between mb-2">
+                  <div className="flex items-center gap-2">
+                    <div className="h-7 w-7 rounded-lg bg-primary/10 flex items-center justify-center">
+                      <BookText className="h-3 w-3 text-primary" />
+                    </div>
+                    <div>
+                      <h2 className="text-sm font-semibold">Courses</h2>
+                      <p className="text-[11px] text-muted-foreground">Manage courses and their details</p>
+                    </div>
+                  </div>
+                </div>
+                <div className="flex flex-col lg:flex-row gap-2 items-start lg:items-center justify-between">
+                  <div className="flex flex-col sm:flex-row gap-2 w-full lg:w-auto">
                     {/* Filter Dropdowns */}
                     <Select value={statusFilter} onValueChange={setStatusFilter}>
-                      <SelectTrigger className="w-[180px]">
+                      <SelectTrigger className="w-[140px] h-8">
                         <SelectValue placeholder="All Status" />
                       </SelectTrigger>
                       <SelectContent>
@@ -336,7 +339,7 @@ export default function CoursesPage() {
                     </Select>
 
                     <Select value={typeFilter} onValueChange={setTypeFilter}>
-                      <SelectTrigger className="w-[180px]">
+                      <SelectTrigger className="w-[140px] h-8">
                         <SelectValue placeholder="All Types" />
                       </SelectTrigger>
                       <SelectContent>
@@ -349,7 +352,7 @@ export default function CoursesPage() {
                     </Select>
 
                     <Select value={levelFilter} onValueChange={setLevelFilter}>
-                      <SelectTrigger className="w-[180px]">
+                      <SelectTrigger className="w-[140px] h-8">
                         <SelectValue placeholder="All Levels" />
                       </SelectTrigger>
                       <SelectContent>
@@ -361,182 +364,215 @@ export default function CoursesPage() {
                     </Select>
 
                     {/* Search Bar */}
-                    <div className="relative w-full sm:w-[300px]">
-                      <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                    <div className="relative w-full sm:w-[220px]">
+                      <Search className="absolute left-2 top-1/2 h-3 w-3 -translate-y-1/2 text-muted-foreground" />
                       <Input
                         placeholder="Search courses…"
                         value={searchTerm}
                         onChange={(e) => setSearchTerm(e.target.value)}
-                        className="pl-10"
+                        className="pl-8 h-8 text-xs"
                       />
                     </div>
                   </div>
 
                   {/* Action Buttons */}
-                  <div className="flex gap-1.5">
-                    <Button variant="outline" size="sm" className="text-xs px-2">
+                  <div className="flex gap-1 flex-wrap">
+                    <Button variant="outline" size="sm" className="text-xs px-2 h-8">
+                      <FileSpreadsheet className="h-3 w-3 mr-1" />
+                      Template
+                    </Button>
+                    <Button variant="outline" size="sm" className="text-xs px-2 h-8">
+                      <Download className="h-3 w-3 mr-1" />
+                      Json
+                    </Button>
+                    <Button variant="outline" size="sm" className="text-xs px-2 h-8">
                       <Download className="h-3 w-3 mr-1" />
                       Download
                     </Button>
-                    <Button variant="outline" size="sm" className="text-xs px-2">
-                      <Upload className="h-3 w-3 mr-1" />
-                      Export
-                    </Button>
-                    <Button variant="outline" size="sm" className="text-xs px-2">
+                    <Button variant="outline" size="sm" className="text-xs px-2 h-8">
                       <Upload className="h-3 w-3 mr-1" />
                       Upload
                     </Button>
                     <Button 
                       size="sm" 
-                      className="text-xs px-2"
+                      className="text-xs px-2 h-8"
                       onClick={() => window.location.href = '/courses/add'}
                     >
                       <PlusCircle className="h-3 w-3 mr-1" />
-                      Add Course
-                    </Button>
-                    <Button variant="outline" size="sm" className="text-xs px-2">
-                      <Settings className="h-3 w-3" />
+                      Add
                     </Button>
                   </div>
                 </div>
               </CardHeader>
 
-              <CardContent className="p-4 pt-0 flex-1 flex flex-col min-h-0">
+              <CardContent className="p-3 pt-0 flex-1 flex flex-col min-h-0">
                 {/* Data Table */}
-                <div className="flex-1 rounded-md border">
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead className="w-[120px]">Course Code</TableHead>
-                        <TableHead>Course Title</TableHead>
-                        <TableHead className="w-[100px]">Type</TableHead>
-                        <TableHead className="w-[80px]">Credits</TableHead>
-                        <TableHead className="w-[100px]">Level</TableHead>
-                        <TableHead className="w-[100px]">Status</TableHead>
-                        <TableHead className="w-[120px]">Created At ↓</TableHead>
-                        <TableHead className="w-[100px]">Actions</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {loading ? (
+                <div className="rounded-md border overflow-hidden" style={{ height: '440px' }}>
+                  <div className="h-full overflow-auto">
+                    <Table>
+                      <TableHeader className="sticky top-0 z-10 bg-slate-50 dark:bg-slate-900/50">
                         <TableRow>
-                          <TableCell colSpan={8} className="h-24 text-center">
-                            Loading courses...
-                          </TableCell>
+                          <TableHead className="w-[120px] text-[11px]">Course Code</TableHead>
+                          <TableHead className="text-[11px]">Course Title</TableHead>
+                          <TableHead className="w-[100px] text-[11px]">Type</TableHead>
+                          <TableHead className="w-[80px] text-[11px]">Credits</TableHead>
+                          <TableHead className="w-[100px] text-[11px]">Level</TableHead>
+                          <TableHead className="w-[100px] text-[11px]">Status</TableHead>
+                          <TableHead className="w-[120px] text-[11px]">Created At</TableHead>
+                          <TableHead className="w-[120px] text-[11px] text-center">Actions</TableHead>
                         </TableRow>
-                      ) : filteredCourses.length > 0 ? (
-                        filteredCourses.map((course) => (
-                          <TableRow key={course.id}>
-                            <TableCell className="font-medium">
-                              {course.course_code}
+                      </TableHeader>
+                      <TableBody>
+                        {loading ? (
+                          <TableRow>
+                            <TableCell colSpan={8} className="h-24 text-center text-[11px]">
+                              Loading courses...
                             </TableCell>
-                            <TableCell>
-                              <div>
-                                <div className="font-medium">{course.course_title}</div>
-                                {course.programs && (
-                                  <div className="text-sm text-muted-foreground">
-                                    {course.programs.program_name} ({course.programs.program_code})
+                          </TableRow>
+                        ) : filteredCourses.length > 0 ? (
+                          <>
+                            {filteredCourses.map((course) => (
+                              <TableRow key={course.id}>
+                                <TableCell className="font-medium text-[11px]">
+                                  {course.course_code}
+                                </TableCell>
+                                <TableCell>
+                                  <div>
+                                    <div className="font-medium text-[11px]">{course.course_title}</div>
+                                    {course.programs && (
+                                      <div className="text-[10px] text-muted-foreground">
+                                        {course.programs.program_name} ({course.programs.program_code})
+                                      </div>
+                                    )}
                                   </div>
-                                )}
-                              </div>
-                            </TableCell>
-                            <TableCell>
-                              <Badge variant={getTypeBadgeVariant(course.course_type)}>
-                                {course.course_type}
-                              </Badge>
-                            </TableCell>
-                            <TableCell>{course.credits}</TableCell>
-                            <TableCell>
-                              <Badge variant="outline">
-                                {course.course_level}
-                              </Badge>
-                            </TableCell>
-                            <TableCell>
-                              <Badge variant={getStatusBadgeVariant(course)}>
-                                {getStatusText(course)}
-                              </Badge>
-                            </TableCell>
-                            <TableCell className="text-sm text-muted-foreground">
-                              {formatDate(course.created_at)}
-                            </TableCell>
-                            <TableCell>
-                              <div className="flex items-center gap-2">
-                                <Button
-                                  variant="outline"
-                                  size="sm"
-                                  onClick={() => window.location.href = `/courses/edit/${course.id}`}
-                                  className="h-8 w-8 p-0"
-                                >
-                                  <Edit className="h-4 w-4" />
-                                </Button>
-                                <AlertDialog>
-                                  <AlertDialogTrigger asChild>
+                                </TableCell>
+                                <TableCell>
+                                  <Badge variant={getTypeBadgeVariant(course.course_type)} className="text-[11px]">
+                                    {course.course_type}
+                                  </Badge>
+                                </TableCell>
+                                <TableCell className="text-[11px]">{course.credits}</TableCell>
+                                <TableCell>
+                                  <Badge variant="outline" className="text-[11px]">
+                                    {course.course_level}
+                                  </Badge>
+                                </TableCell>
+                                <TableCell>
+                                  <Badge variant={getStatusBadgeVariant(course)} className="text-[11px]">
+                                    {getStatusText(course)}
+                                  </Badge>
+                                </TableCell>
+                                <TableCell className="text-[11px] text-muted-foreground">
+                                  {formatDate(course.created_at)}
+                                </TableCell>
+                                <TableCell>
+                                  <div className="flex items-center justify-center gap-1">
                                     <Button
                                       variant="outline"
                                       size="sm"
-                                      className="h-8 w-8 p-0 text-red-600 hover:text-red-700 hover:bg-red-50"
+                                      onClick={() => window.location.href = `/courses/edit/${course.id}`}
+                                      className="h-7 w-7 p-0"
                                     >
-                                      <Trash2 className="h-4 w-4" />
+                                      <Edit className="h-3 w-3" />
                                     </Button>
-                                  </AlertDialogTrigger>
-                                  <AlertDialogContent>
-                                    <AlertDialogHeader>
-                                      <AlertDialogTitle>Delete Course</AlertDialogTitle>
-                                      <AlertDialogDescription>
-                                        Are you sure you want to delete this course? This action cannot be undone.
-                                      </AlertDialogDescription>
-                                    </AlertDialogHeader>
-                                    <AlertDialogFooter>
-                                      <AlertDialogCancel>Cancel</AlertDialogCancel>
-                                      <AlertDialogAction
-                                        onClick={() => handleDeleteCourse(course.id)}
-                                        className="bg-red-600 hover:bg-red-700"
-                                      >
-                                        Delete
-                                      </AlertDialogAction>
-                                    </AlertDialogFooter>
-                                  </AlertDialogContent>
-                                </AlertDialog>
-                              </div>
-                            </TableCell>
-                          </TableRow>
-                        ))
-                      ) : (
-                        <TableRow>
-                          <TableCell colSpan={8} className="h-24 text-center">
-                            No courses found.
-                          </TableCell>
-                        </TableRow>
-                      )}
-                    </TableBody>
-                  </Table>
+                                    <AlertDialog>
+                                      <AlertDialogTrigger asChild>
+                                        <Button
+                                          variant="outline"
+                                          size="sm"
+                                          className="h-7 w-7 p-0 text-red-600 hover:text-red-700 hover:bg-red-50"
+                                        >
+                                          <Trash2 className="h-3 w-3" />
+                                        </Button>
+                                      </AlertDialogTrigger>
+                                      <AlertDialogContent>
+                                        <AlertDialogHeader>
+                                          <AlertDialogTitle>Delete Course</AlertDialogTitle>
+                                          <AlertDialogDescription>
+                                            Are you sure you want to delete this course? This action cannot be undone.
+                                          </AlertDialogDescription>
+                                        </AlertDialogHeader>
+                                        <AlertDialogFooter>
+                                          <AlertDialogCancel>Cancel</AlertDialogCancel>
+                                          <AlertDialogAction
+                                            onClick={() => handleDeleteCourse(course.id)}
+                                            className="bg-red-600 hover:bg-red-700"
+                                          >
+                                            Delete
+                                          </AlertDialogAction>
+                                        </AlertDialogFooter>
+                                      </AlertDialogContent>
+                                    </AlertDialog>
+                                  </div>
+                                </TableCell>
+                              </TableRow>
+                            ))}
+                            {/* Fill empty rows to maintain consistent height */}
+                            {Array.from({ length: Math.max(0, itemsPerPage - filteredCourses.length) }).map((_, index) => (
+                              <TableRow key={`empty-${index}`}>
+                                <TableCell>&nbsp;</TableCell>
+                                <TableCell>&nbsp;</TableCell>
+                                <TableCell>&nbsp;</TableCell>
+                                <TableCell>&nbsp;</TableCell>
+                                <TableCell>&nbsp;</TableCell>
+                                <TableCell>&nbsp;</TableCell>
+                                <TableCell>&nbsp;</TableCell>
+                                <TableCell>&nbsp;</TableCell>
+                              </TableRow>
+                            ))}
+                          </>
+                        ) : (
+                          <>
+                            <TableRow>
+                              <TableCell colSpan={8} className="text-center text-xs">
+                                No courses found.
+                              </TableCell>
+                            </TableRow>
+                            {/* Fill remaining rows */}
+                            {Array.from({ length: itemsPerPage - 1 }).map((_, index) => (
+                              <TableRow key={`empty-no-data-${index}`}>
+                                <TableCell>&nbsp;</TableCell>
+                                <TableCell>&nbsp;</TableCell>
+                                <TableCell>&nbsp;</TableCell>
+                                <TableCell>&nbsp;</TableCell>
+                                <TableCell>&nbsp;</TableCell>
+                                <TableCell>&nbsp;</TableCell>
+                                <TableCell>&nbsp;</TableCell>
+                                <TableCell>&nbsp;</TableCell>
+                              </TableRow>
+                            ))}
+                          </>
+                        )}
+                      </TableBody>
+                    </Table>
+                  </div>
                 </div>
 
-                {/* Footer Info + Pagination */}
-                <div className="flex items-center justify-between space-x-2 py-3 mt-3 flex-shrink-0">
-                  <div className="text-sm text-muted-foreground">
-                    Showing {filteredCourses.length} of {courses.length} courses
+                {/* Pagination Controls */}
+                <div className="flex items-center justify-between space-x-2 py-2 mt-2">
+                  <div className="text-xs text-muted-foreground">
+                    Showing {filteredCourses.length === 0 ? 0 : 1}-{Math.min(itemsPerPage, filteredCourses.length)} of {filteredCourses.length} courses
                   </div>
-                  <div className="flex items-center space-x-2">
+                  <div className="flex items-center gap-2">
                     <Button
                       variant="outline"
                       size="sm"
-                      className="text-xs px-2"
-                      onClick={() => setCurrentPage(currentPage - 1)}
+                      onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
                       disabled={currentPage === 1}
+                      className="h-7 px-2 text-xs"
                     >
                       <ChevronLeft className="h-3 w-3 mr-1" />
-                      Prev
+                      Previous
                     </Button>
-                    <div className="text-xs text-muted-foreground">
-                      Page {currentPage} of {Math.ceil(filteredCourses.length / itemsPerPage)}
+                    <div className="text-xs text-muted-foreground px-2">
+                      Page {currentPage} of {Math.ceil(filteredCourses.length / itemsPerPage) || 1}
                     </div>
                     <Button
                       variant="outline"
                       size="sm"
-                      className="text-xs px-2"
-                      onClick={() => setCurrentPage(currentPage + 1)}
+                      onClick={() => setCurrentPage(prev => Math.min(Math.ceil(filteredCourses.length / itemsPerPage), prev + 1))}
                       disabled={currentPage >= Math.ceil(filteredCourses.length / itemsPerPage)}
+                      className="h-7 px-2 text-xs"
                     >
                       Next
                       <ChevronRight className="h-3 w-3 ml-1" />

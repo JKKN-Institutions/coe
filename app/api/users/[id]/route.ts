@@ -25,7 +25,8 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
         location,
         date_of_birth,
         avatar_url,
-        is_verified
+        is_verified,
+        institution_id
       `)
       .eq('id', id)
       .single()
@@ -61,7 +62,7 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
   try {
     const { id } = await params
     const body = await req.json()
-    const { full_name, email, role, is_active, phone, username, bio, website, location, date_of_birth, is_verified } = body as Record<string, unknown>
+    const { full_name, email, role, is_active, phone, bio, website, location, date_of_birth, institution_id, avatar_url } = body as Record<string, unknown>
 
     // If role_id is provided, convert it to role name
     let roleToUpdate = role
@@ -81,15 +82,17 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
     const data: Record<string, unknown> = {
       ...(full_name !== undefined && { full_name: String(full_name) }),
       ...(email !== undefined && { email: String(email) }),
+      ...(email !== undefined && { username: String(email) }), // Username always same as email
       ...(roleToUpdate !== undefined && { role: String(roleToUpdate) }),
       ...(is_active !== undefined && { is_active: Boolean(is_active) }),
       ...(phone !== undefined && { phone: phone ? String(phone) : null }),
-      ...(username !== undefined && { username: username ? String(username) : null }),
       ...(bio !== undefined && { bio: bio ? String(bio) : null }),
       ...(website !== undefined && { website: website ? String(website) : null }),
       ...(location !== undefined && { location: location ? String(location) : null }),
       ...(date_of_birth !== undefined && { date_of_birth: date_of_birth ? String(date_of_birth) : null }),
-      ...(is_verified !== undefined && { is_verified: Boolean(is_verified) }),
+      ...(avatar_url !== undefined && { avatar_url: avatar_url ? String(avatar_url) : null }),
+      ...(institution_id !== undefined && { institution_id: institution_id ? String(institution_id) : null }),
+      is_verified: true, // Always verified
       updated_at: new Date().toISOString(),
     }
 
@@ -113,7 +116,8 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
         location,
         date_of_birth,
         avatar_url,
-        is_verified
+        is_verified,
+        institution_id
       `)
       .single()
 

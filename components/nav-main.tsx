@@ -1,6 +1,7 @@
 "use client"
 
 import React, { useEffect, useState } from "react"
+import Link from "next/link"
 import { ChevronRight, type LucideIcon } from "lucide-react"
 
 import {
@@ -77,10 +78,10 @@ export function NavMain({
             return (
               <SidebarMenuItem key={item.title}>
                 <SidebarMenuButton asChild tooltip={item.title} className="hover:bg-accent/50 transition-colors duration-200">
-                  <a href={item.url} className="flex items-center gap-3">
+                  <Link href={item.url} className="flex items-center gap-3">
                     {item.icon && <item.icon className="h-4 w-4" />}
                     <span className="font-medium">{item.title}</span>
-                  </a>
+                  </Link>
                 </SidebarMenuButton>
               </SidebarMenuItem>
             )
@@ -108,10 +109,10 @@ export function NavMain({
                     {item.items?.map((subItem) => (
                       <SidebarMenuSubItem key={subItem.title}>
                         <SidebarMenuSubButton asChild className="hover:bg-accent/30 transition-colors duration-200">
-                          <a href={subItem.url} className="flex items-center gap-3">
+                          <Link href={subItem.url} className="flex items-center gap-3">
                             {subItem.icon && <subItem.icon className="h-4 w-4" />}
                             <span className="text-sm">{subItem.title}</span>
-                          </a>
+                          </Link>
                         </SidebarMenuSubButton>
                       </SidebarMenuSubItem>
                     ))}

@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useMemo } from "react"
 import Link from "next/link"
 import { AppFooter } from "@/components/app-footer"
 import {
@@ -68,37 +68,21 @@ interface Role {
   id: string
   role_name: string
   role_description: string
-  permissions: Record<string, boolean>
   is_active: boolean
   created_at: string
+  name?: string
 }
 
-const AVAILABLE_PERMISSIONS = [
-  { key: 'dashboard_view', label: 'View Dashboard', category: 'Dashboard' },
-  { key: 'users_view', label: 'View Users', category: 'User Management' },
-  { key: 'users_create', label: 'Create Users', category: 'User Management' },
-  { key: 'users_edit', label: 'Edit Users', category: 'User Management' },
-  { key: 'users_delete', label: 'Delete Users', category: 'User Management' },
-  { key: 'roles_view', label: 'View Roles', category: 'Role Management' },
-  { key: 'roles_create', label: 'Create Roles', category: 'Role Management' },
-  { key: 'roles_edit', label: 'Edit Roles', category: 'Role Management' },
-  { key: 'roles_delete', label: 'Delete Roles', category: 'Role Management' },
-  { key: 'regulations_view', label: 'View Regulations', category: 'Regulations' },
-  { key: 'regulations_create', label: 'Create Regulations', category: 'Regulations' },
-  { key: 'regulations_edit', label: 'Edit Regulations', category: 'Regulations' },
-  { key: 'regulations_delete', label: 'Delete Regulations', category: 'Regulations' },
-  { key: 'courses_view', label: 'View Courses', category: 'Courses' },
-  { key: 'courses_create', label: 'Create Courses', category: 'Courses' },
-  { key: 'courses_edit', label: 'Edit Courses', category: 'Courses' },
-  { key: 'courses_delete', label: 'Delete Courses', category: 'Courses' },
-  { key: 'batches_view', label: 'View Batches', category: 'Batches' },
-  { key: 'batches_create', label: 'Create Batches', category: 'Batches' },
-  { key: 'batches_edit', label: 'Edit Batches', category: 'Batches' },
-  { key: 'batches_delete', label: 'Delete Batches', category: 'Batches' },
-  { key: 'reports_view', label: 'View Reports', category: 'Reports' },
-  { key: 'reports_export', label: 'Export Reports', category: 'Reports' },
-  { key: 'system_settings', label: 'System Settings', category: 'System' },
-]
+interface Permission {
+  id: string
+  name: string
+  description?: string
+  resource: string
+  action: string
+  is_active: boolean
+}
+
+// Permissions will be loaded from API
 
 export default function RolePermissionsPage() {
   const [roles, setRoles] = useState<Role[]>([])
@@ -109,8 +93,13 @@ export default function RolePermissionsPage() {
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc')
   const [currentPage, setCurrentPage] = useState(1)
   const [selectedRole, setSelectedRole] = useState<Role | null>(null)
-  const [permissionChanges, setPermissionChanges] = useState<Record<string, boolean>>({})
+  const [permissions, setPermissions] = useState<Permission[]>([])
+  const [selectedPermissionIds, setSelectedPermissionIds] = useState<Set<string>>(new Set())
+  const [modified, setModified] = useState(false)
   const itemsPerPage = 10
+
+  const getRoleName = (r: Role): string => (r.role_name || r.name || "")
+  const getRoleDescription = (r: Role): string => (r.role_description || "")
 
   useEffect(() => {
     const fetchRoles = async () => {
@@ -129,8 +118,36 @@ export default function RolePermissionsPage() {
       }
     }
 
+    const fetchPermissions = async () => {
+      try {
+        const res = await fetch('/api/permissions')
+        if (res.ok) setPermissions(await res.json())
+      } catch (e) {
+        console.error('Failed to fetch permissions', e)
+      }
+    }
+
     fetchRoles()
+    fetchPermissions()
   }, [])
+
+  // When role is selected, load its current permission ids
+  useEffect(() => {
+    const loadRolePermissions = async () => {
+      if (!selectedRole) return
+      try {
+        const res = await fetch(`/api/role-permissions?role_id=${selectedRole.id}`)
+        if (res.ok) {
+          const rows: { permission_id: string }[] = await res.json()
+          setSelectedPermissionIds(new Set(rows.map(r => r.permission_id)))
+          setModified(false)
+        }
+      } catch (e) {
+        console.error('Failed to fetch role-permissions', e)
+      }
+    }
+    loadRolePermissions()
+  }, [selectedRole])
 
   const handleSort = (column: string) => {
     if (sortColumn === column) {
@@ -143,8 +160,8 @@ export default function RolePermissionsPage() {
 
   const filteredRoles = roles
     .filter((role) => {
-      const matchesSearch = role.role_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                           role.role_description?.toLowerCase().includes(searchTerm.toLowerCase())
+      const matchesSearch = getRoleName(role).toLowerCase().includes(searchTerm.toLowerCase()) ||
+                           getRoleDescription(role).toLowerCase().includes(searchTerm.toLowerCase())
       const matchesStatus = statusFilter === "all" ||
                            (statusFilter === "active" && role.is_active) ||
                            (statusFilter === "inactive" && !role.is_active)
@@ -158,12 +175,12 @@ export default function RolePermissionsPage() {
 
       switch (sortColumn) {
         case 'role_name':
-          aValue = a.role_name.toLowerCase()
-          bValue = b.role_name.toLowerCase()
+          aValue = getRoleName(a).toLowerCase()
+          bValue = getRoleName(b).toLowerCase()
           break
         case 'role_description':
-          aValue = a.role_description?.toLowerCase() || ''
-          bValue = b.role_description?.toLowerCase() || ''
+          aValue = getRoleDescription(a).toLowerCase()
+          bValue = getRoleDescription(b).toLowerCase()
           break
         default:
           return 0
@@ -193,38 +210,27 @@ export default function RolePermissionsPage() {
     return isActive ? "Active" : "Inactive"
   }
 
-  const handlePermissionChange = (permissionKey: string, checked: boolean) => {
-    setPermissionChanges(prev => ({
-      ...prev,
-      [permissionKey]: checked
-    }))
+  const handlePermissionToggle = (permissionId: string, checked: boolean) => {
+    setSelectedPermissionIds(prev => {
+      const next = new Set(prev)
+      if (checked) next.add(permissionId)
+      else next.delete(permissionId)
+      return next
+    })
+    setModified(true)
   }
 
   const handleSavePermissions = async () => {
     if (!selectedRole) return
 
     try {
-      const updatedPermissions = {
-        ...selectedRole.permissions,
-        ...permissionChanges
-      }
-
-      const response = await fetch(`/api/roles/${selectedRole.id}`, {
-        method: 'PUT',
+      const response = await fetch('/api/role-permissions', {
+        method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          permissions: updatedPermissions
-        })
+        body: JSON.stringify({ role_id: selectedRole.id, permission_ids: Array.from(selectedPermissionIds) })
       })
 
-      if (response.ok) {
-        const updatedRole = await response.json()
-        setRoles(prev => prev.map(role =>
-          role.id === selectedRole.id ? updatedRole : role
-        ))
-        setSelectedRole(updatedRole)
-        setPermissionChanges({})
-      }
+      if (response.ok) setModified(false)
     } catch (error) {
       console.error('Error updating permissions:', error)
     }
@@ -235,13 +241,17 @@ export default function RolePermissionsPage() {
   const endIndex = startIndex + itemsPerPage
   const paginatedRoles = filteredRoles.slice(startIndex, endIndex)
 
-  const permissionsByCategory = AVAILABLE_PERMISSIONS.reduce((acc, permission) => {
-    if (!acc[permission.category]) {
-      acc[permission.category] = []
+  const permissionsByResource = useMemo(() => {
+    const grouped: Record<string, Permission[]> = {}
+    for (const p of permissions) {
+      const key = p.resource || 'General'
+      if (!grouped[key]) grouped[key] = []
+      grouped[key].push(p)
     }
-    acc[permission.category].push(permission)
-    return acc
-  }, {} as Record<string, typeof AVAILABLE_PERMISSIONS>)
+    // sort actions by name
+    Object.values(grouped).forEach(list => list.sort((a,b) => a.action.localeCompare(b.action)))
+    return grouped
+  }, [permissions])
 
   useEffect(() => {
     setCurrentPage(1)
@@ -337,7 +347,7 @@ export default function RolePermissionsPage() {
                             >
                               <TableCell className="font-medium text-xs">
                                 <div>
-                                  <div className="font-semibold">{role.role_name}</div>
+                                  <div className="font-semibold">{getRoleName(role)}</div>
                                   {role.role_description && (
                                     <div className="text-muted-foreground text-xs">
                                       {role.role_description}
@@ -351,12 +361,13 @@ export default function RolePermissionsPage() {
                                 </Badge>
                               </TableCell>
                               <TableCell>
-                                <Button
+                                  <Button
                                   variant={selectedRole?.id === role.id ? "default" : "outline"}
                                   size="sm"
                                   onClick={() => {
                                     setSelectedRole(role)
-                                    setPermissionChanges({})
+                                      setSelectedPermissionIds(new Set())
+                                      setModified(false)
                                   }}
                                   className="h-7 px-2 text-xs"
                                 >
@@ -392,7 +403,7 @@ export default function RolePermissionsPage() {
                       </p>
                     )}
                   </div>
-                  {selectedRole && Object.keys(permissionChanges).length > 0 && (
+                  {selectedRole && modified && (
                     <Button size="sm" onClick={handleSavePermissions} className="h-7 px-2 text-xs">
                       <Save className="h-3 w-3 mr-1" />
                       Save Changes
@@ -404,31 +415,22 @@ export default function RolePermissionsPage() {
               <CardContent className="p-3 pt-0 flex-1">
                 {selectedRole ? (
                   <div className="space-y-4 overflow-auto h-full">
-                    {Object.entries(permissionsByCategory).map(([category, permissions]) => (
-                      <div key={category} className="space-y-2">
-                        <h4 className="font-medium text-sm text-muted-foreground border-b pb-1">
-                          {category}
-                        </h4>
+                    {Object.entries(permissionsByResource).map(([resource, list]) => (
+                      <div key={resource} className="space-y-2">
+                        <h4 className="font-medium text-sm text-muted-foreground border-b pb-1">{resource}</h4>
                         <div className="space-y-2">
-                          {permissions.map((permission) => {
-                            const currentValue = permissionChanges.hasOwnProperty(permission.key)
-                              ? permissionChanges[permission.key]
-                              : selectedRole.permissions?.[permission.key] || false
-
+                          {list.map((perm) => {
+                            const checked = selectedPermissionIds.has(perm.id)
+                            const label = `${perm.action} ${perm.name !== perm.action ? `(${perm.name})` : ''}`.trim()
                             return (
-                              <div key={permission.key} className="flex items-center space-x-2">
+                              <div key={perm.id} className="flex items-center space-x-2">
                                 <Checkbox
-                                  id={permission.key}
-                                  checked={currentValue}
-                                  onCheckedChange={(checked) =>
-                                    handlePermissionChange(permission.key, checked as boolean)
-                                  }
+                                  id={perm.id}
+                                  checked={checked}
+                                  onCheckedChange={(c) => handlePermissionToggle(perm.id, c as boolean)}
                                 />
-                                <label
-                                  htmlFor={permission.key}
-                                  className="text-xs font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
-                                >
-                                  {permission.label}
+                                <label htmlFor={perm.id} className="text-xs font-medium leading-none">
+                                  {label}
                                 </label>
                               </div>
                             )

@@ -9,8 +9,11 @@ export function getSupabaseServer(): SupabaseClient {
   const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
 
   if (!supabaseUrl || !supabaseServiceKey) {
-    console.warn('Supabase env vars are missing: NEXT_PUBLIC_SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY')
-    throw new Error('supabaseUrl is required.')
+    console.error('Missing Supabase environment variables:')
+    console.error('NEXT_PUBLIC_SUPABASE_URL:', supabaseUrl ? 'Set' : 'Missing')
+    console.error('SUPABASE_SERVICE_ROLE_KEY:', process.env.SUPABASE_SERVICE_ROLE_KEY ? 'Set' : 'Missing')
+    console.error('NEXT_PUBLIC_SUPABASE_ANON_KEY:', process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ? 'Set' : 'Missing')
+    throw new Error('Supabase configuration is missing. Please check your environment variables.')
   }
 
   cachedClient = createClient(supabaseUrl, supabaseServiceKey)
