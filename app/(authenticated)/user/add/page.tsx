@@ -39,7 +39,7 @@ export default function AddUserPage() {
     metadata: {}
   })
 
-  const [institutions, setInstitutions] = useState<{institution_code: string, name?: string}[]>([])
+  const [institutions, setInstitutions] = useState<{id: string, name: string}[]>([])
   const [roles, setRoles] = useState<{id: string, name: string}[]>([])
 
   // Update time every second
@@ -60,18 +60,23 @@ export default function AddUserPage() {
         const response = await fetch('/api/institutions')
         if (response.ok) {
           const data = await response.json()
-          const mapped = Array.isArray(data)
-            ? data
-                .filter((i: any) => i?.institution_code)
-                .map((i: any) => ({ institution_code: i.institution_code as string, name: i.name as string | undefined }))
-            : []
-          setInstitutions(mapped)
+          setInstitutions(data)
         } else {
-          setInstitutions([])
+          // Fallback to mock data if API doesn't exist yet
+          setInstitutions([
+            { id: "1", name: "JKKN Main Campus" },
+            { id: "2", name: "JKKN Branch Campus" },
+            { id: "3", name: "JKKN Online Campus" }
+          ])
         }
       } catch (error) {
         console.error('Error fetching institutions:', error)
-        setInstitutions([])
+        // Fallback to mock data
+        setInstitutions([
+          { id: "1", name: "JKKN Main Campus" },
+          { id: "2", name: "JKKN Branch Campus" },
+          { id: "3", name: "JKKN Online Campus" }
+        ])
       }
 
       // Fetch roles
@@ -141,11 +146,7 @@ export default function AddUserPage() {
     const submitData = {
       ...formData,
       username: formData.email,
-      is_verified: true,
-      // Ensure institution_id matches institutions.institution_code FK
-      institution_id: formData.institution_id,
-      // Provide phone_number along with phone (API will persist either)
-      phone_number: formData.phone
+      is_verified: true
     }
 
     try {
@@ -294,15 +295,15 @@ export default function AddUserPage() {
 
                     {/* Institution */}
                     <div className="space-y-2">
-                    <Label htmlFor="institution">Institution Code *</Label>
-                    <Select value={formData.institution_id} onValueChange={(value) => handleInputChange('institution_id', value)}>
+                      <Label htmlFor="institution">Institution *</Label>
+                      <Select value={formData.institution_id} onValueChange={(value) => handleInputChange('institution_id', value)}>
                         <SelectTrigger>
-                          <SelectValue placeholder="Select institution code" />
+                          <SelectValue placeholder="Select institution" />
                         </SelectTrigger>
                         <SelectContent>
                           {institutions.map((institution) => (
-                            <SelectItem key={institution.institution_code} value={institution.institution_code}>
-                              {institution.institution_code}{institution.name ? ` - ${institution.name}` : ''}
+                            <SelectItem key={institution.id} value={institution.id}>
+                              {institution.name}
                             </SelectItem>
                           ))}
                         </SelectContent>

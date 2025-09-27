@@ -17,7 +17,7 @@ import { Label } from "@/components/ui/label"
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet"
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog"
 import Link from "next/link"
-import { PlusCircle, Edit, Trash2, Search, ChevronLeft, ChevronRight, ArrowUpDown, ArrowUp, ArrowDown, BookOpen, TrendingUp, FileSpreadsheet, RefreshCw } from "lucide-react"
+import { PlusCircle, Edit, Trash2, Search, ChevronLeft, ChevronRight, ArrowUpDown, ArrowUp, ArrowDown, BookOpen, TrendingUp, FileSpreadsheet } from "lucide-react"
 
 type Program = {
   id: string
@@ -33,12 +33,13 @@ type Program = {
   created_at: string
 }
 
-// No mock data; will fetch from API
-const MOCK_PROGRAMS: Program[] = []
+const MOCK_PROGRAMS: Program[] = [
+  { id: "1", institution_code: "JKKN", degree_code: "BSC", offering_department_code: "SCI", program_code: "BSC-CS", program_name: "B.Sc Computer Science", display_name: "BSc CS", program_duration_yrs: 3, pattern_type: "Semester", is_active: true, created_at: new Date().toISOString() },
+]
 
 export default function ProgramPage() {
-  const [items, setItems] = useState<Program[]>([])
-  const [loading, setLoading] = useState(true)
+  const [items, setItems] = useState<Program[]>(MOCK_PROGRAMS)
+  const [loading, setLoading] = useState(false)
   const [searchTerm, setSearchTerm] = useState("")
   const [sortColumn, setSortColumn] = useState<string | null>(null)
   const [sortDirection, setSortDirection] = useState<"asc" | "desc">("asc")
@@ -48,11 +49,7 @@ export default function ProgramPage() {
   const [sheetOpen, setSheetOpen] = useState(false)
   const [editing, setEditing] = useState<Program | null>(null)
   const [statusFilter, setStatusFilter] = useState("all")
-
-  // Dropdown data sources
-  const [institutionCodes, setInstitutionCodes] = useState<string[]>([])
-  const [degreeCodes, setDegreeCodes] = useState<string[]>([])
-  const [departmentCodes, setDepartmentCodes] = useState<string[]>([])
+  const [yearFilter, setYearFilter] = useState("all")
 
   const [formData, setFormData] = useState({
     institution_code: "",
@@ -66,71 +63,6 @@ export default function ProgramPage() {
     is_active: true,
   })
   const [errors, setErrors] = useState<Record<string, string>>({})
-
-  // Fetch data from API
-  const fetchPrograms = async () => {
-    try {
-      setLoading(true)
-      const response = await fetch('/api/program')
-      if (!response.ok) throw new Error('Failed to fetch programs')
-      const data = await response.json()
-      setItems(data)
-    } catch (e) {
-      console.error('Error fetching programs:', e)
-      setItems(MOCK_PROGRAMS)
-    } finally {
-      setLoading(false)
-    }
-  }
-
-  useEffect(() => {
-    fetchPrograms()
-    // Load dropdown data in parallel
-    ;(async () => {
-      try {
-        const [instRes, degRes, depRes] = await Promise.all([
-          fetch('/api/institutions'),
-          fetch('/api/degrees'),
-          fetch('/api/departments'),
-        ])
-        if (instRes.ok) {
-          const data = await instRes.json()
-          const codes = Array.isArray(data)
-            ? Array.from(new Set(
-                data
-                  .map((i: any) => i?.institution_code)
-                  .filter((v: any) => typeof v === 'string' && v.trim())
-              ))
-            : []
-          setInstitutionCodes(codes)
-        }
-        if (degRes.ok) {
-          const data = await degRes.json()
-          const codes = Array.isArray(data)
-            ? Array.from(new Set(
-                data
-                  .map((d: any) => d?.degree_code)
-                  .filter((v: any) => typeof v === 'string' && v.trim())
-              ))
-            : []
-          setDegreeCodes(codes)
-        }
-        if (depRes.ok) {
-          const data = await depRes.json()
-          const codes = Array.isArray(data)
-            ? Array.from(new Set(
-                data
-                  .map((d: any) => d?.department_code)
-                  .filter((v: any) => typeof v === 'string' && v.trim())
-              ))
-            : []
-          setDepartmentCodes(codes)
-        }
-      } catch (e) {
-        console.error('Failed to load dropdown data:', e)
-      }
-    })()
-  }, [])
 
   const resetForm = () => {
     setFormData({
@@ -159,7 +91,7 @@ export default function ProgramPage() {
     const data = items
       .filter((i) => [i.institution_code, i.degree_code, i.offering_department_code, i.program_code, i.program_name, i.display_name].filter(Boolean).some((v) => String(v).toLowerCase().includes(q)))
       .filter((i) => statusFilter === "all" || (statusFilter === "active" ? i.is_active : !i.is_active))
-      // year filter removed
+      .filter((i) => yearFilter === "all" || new Date(i.created_at).getFullYear().toString() === yearFilter)
     if (!sortColumn) return data
     return [...data].sort((a, b) => {
       const av = (a as any)[sortColumn]
@@ -167,13 +99,14 @@ export default function ProgramPage() {
       if (av === bv) return 0
       return sortDirection === "asc" ? (av > bv ? 1 : -1) : (av < bv ? 1 : -1)
     })
-  }, [items, searchTerm, sortColumn, sortDirection, statusFilter])
+  }, [items, searchTerm, sortColumn, sortDirection, statusFilter, yearFilter])
 
   const totalPages = Math.ceil(filtered.length / itemsPerPage) || 1
   const startIndex = (currentPage - 1) * itemsPerPage
   const endIndex = startIndex + itemsPerPage
   const pageItems = filtered.slice(startIndex, endIndex)
-  useEffect(() => setCurrentPage(1), [searchTerm, sortColumn, sortDirection, statusFilter])
+  useEffect(() => setCurrentPage(1), [searchTerm, sortColumn, sortDirection, statusFilter, yearFilter])
+  const uniqueYears = useMemo(() => Array.from(new Set(items.map(i => new Date(i.created_at).getFullYear()))).sort((a,b)=>b-a), [items])
 
   const openAdd = () => { resetForm(); setSheetOpen(true) }
   const openEdit = (row: Program) => {
@@ -203,52 +136,30 @@ export default function ProgramPage() {
     return Object.keys(e).length === 0
   }
 
-  const save = async () => {
+  const save = () => {
     if (!validate()) return
-    try {
-      setLoading(true)
-      if (editing) {
-        const response = await fetch('/api/program', {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ id: editing.id, ...formData }),
-        })
-        if (!response.ok) throw new Error('Failed to update program')
-        const updated = await response.json()
-        setItems((prev) => prev.map((x) => (x.id === editing.id ? updated : x)))
-      } else {
-        const response = await fetch('/api/program', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(formData),
-        })
-        if (!response.ok) throw new Error('Failed to create program')
-        const created = await response.json()
-        setItems((prev) => [created, ...prev])
-      }
-      setSheetOpen(false)
-      resetForm()
-    } catch (e) {
-      console.error('Save program failed:', e)
-      alert('Failed to save program. Please try again.')
-    } finally {
-      setLoading(false)
+    if (editing) {
+      setItems((p) => p.map((x) => x.id === editing.id ? { ...editing, ...formData } as Program : x))
+    } else {
+      setItems((p) => [{
+        id: String(Date.now()),
+        institution_code: formData.institution_code,
+        degree_code: formData.degree_code,
+        offering_department_code: formData.offering_department_code,
+        program_code: formData.program_code,
+        program_name: formData.program_name,
+        display_name: formData.display_name,
+        program_duration_yrs: formData.program_duration_yrs,
+        pattern_type: formData.pattern_type,
+        is_active: formData.is_active,
+        created_at: new Date().toISOString()
+      }, ...p])
     }
+    setSheetOpen(false)
+    resetForm()
   }
 
-  const remove = async (id: string) => {
-    try {
-      setLoading(true)
-      const response = await fetch(`/api/program?id=${id}`, { method: 'DELETE' })
-      if (!response.ok) throw new Error('Failed to delete program')
-      setItems((p) => p.filter((x) => x.id !== id))
-    } catch (e) {
-      console.error('Delete program failed:', e)
-      alert('Failed to delete program. Please try again.')
-    } finally {
-      setLoading(false)
-    }
-  }
+  const remove = (id: string) => setItems((p) => p.filter((x) => x.id !== id))
   const formatDate = (d: string) => new Date(d).toLocaleDateString("en-US", { year: "numeric", month: "short", day: "numeric" })
 
   const handleDownload = () => {
@@ -309,7 +220,6 @@ export default function ProgramPage() {
       const file = (e.target as HTMLInputElement).files?.[0]
       if (!file) return
       try {
-        setLoading(true)
         let rows: Partial<Program>[] = []
         if (file.name.endsWith('.json')) {
           rows = JSON.parse(await file.text())
@@ -330,54 +240,23 @@ export default function ProgramPage() {
             is_active: String(j['Status'] || '').toLowerCase() === 'active'
           }))
         }
-        const validRows = rows.filter(r => r.institution_code && r.degree_code && r.program_code && r.program_name)
-        if (validRows.length === 0) {
-          alert('No valid rows found. Ensure required fields are present.')
-          setLoading(false)
-          return
-        }
-
-        let successCount = 0
-        let errorCount = 0
-
-        for (const r of validRows) {
-          try {
-            const payload = {
-              institution_code: r.institution_code!,
-              degree_code: r.degree_code!,
-              offering_department_code: r.offering_department_code || null,
-              program_code: r.program_code!,
-              program_name: String(r.program_name || ''),
-              display_name: r.display_name || '',
-              program_duration_yrs: Number(r.program_duration_yrs || 3),
-              pattern_type: (r.pattern_type === 'Year' ? 'Year' : 'Semester') as 'Year' | 'Semester',
-              is_active: r.is_active ?? true,
-            }
-            const res = await fetch('/api/program', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify(payload),
-            })
-            if (!res.ok) throw new Error('insert failed')
-            const created = await res.json()
-            setItems(prev => [created, ...prev])
-            successCount++
-          } catch (e) {
-            console.error('Failed to import row:', r, e)
-            errorCount++
-          }
-        }
-
-        if (successCount > 0) {
-          // optional refresh to ensure latest server order
-          fetchPrograms()
-        }
-        alert(`Import completed. Success: ${successCount}, Failed: ${errorCount}`)
-      } catch (e) {
-        console.error('Import error:', e)
+        const now = new Date().toISOString()
+        const mapped = rows.filter(r => r.institution_code && r.degree_code && r.program_code && r.program_name).map(r => ({
+          id: String(Date.now() + Math.random()),
+          institution_code: r.institution_code!,
+          degree_code: r.degree_code!,
+          offering_department_code: r.offering_department_code,
+          program_code: r.program_code!,
+          program_name: r.program_name as string,
+          display_name: r.display_name,
+          program_duration_yrs: r.program_duration_yrs || 3,
+          pattern_type: r.pattern_type || "Semester",
+          is_active: r.is_active ?? true,
+          created_at: now
+        })) as Program[]
+        setItems(p => [...mapped, ...p])
+      } catch {
         alert('Import failed. Please check your file.')
-      } finally {
-        setLoading(false)
       }
     }
     input.click()
@@ -488,7 +367,17 @@ export default function ProgramPage() {
                     </SelectContent>
                   </Select>
 
-                  {/* Year dropdown removed */}
+                  <Select value={yearFilter} onValueChange={setYearFilter}>
+                    <SelectTrigger className="w-[140px] h-8">
+                      <SelectValue placeholder="All Years" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All Years</SelectItem>
+                      {uniqueYears.map(y => (
+                        <SelectItem key={y} value={y.toString()}>{y}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
 
                   <div className="relative w-full sm:w-[220px]">
                     <Search className="absolute left-2 top-1/2 h-3 w-3 -translate-y-1/2 text-muted-foreground" />
@@ -497,10 +386,6 @@ export default function ProgramPage() {
                 </div>
 
                 <div className="flex gap-1 flex-wrap">
-                  <Button variant="outline" size="sm" className="text-xs px-2 h-8" onClick={fetchPrograms} disabled={loading}>
-                    <RefreshCw className={`h-3 w-3 mr-1 ${loading ? 'animate-spin' : ''}`} />
-                    {loading ? 'Refreshing…' : 'Refresh'}
-                  </Button>
                   <Button variant="outline" size="sm" className="text-xs px-2 h-8" onClick={handleTemplateExport}>
                     <FileSpreadsheet className="h-3 w-3 mr-1" />
                     Template
@@ -593,149 +478,65 @@ export default function ProgramPage() {
       </SidebarInset>
 
       <Sheet open={sheetOpen} onOpenChange={(o) => { if (!o) resetForm(); setSheetOpen(o) }}>
-        <SheetContent className="sm:max-w-[600px] overflow-y-auto">
-          <SheetHeader className="pb-6 border-b bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-blue-950/20 dark:to-indigo-950/20">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                <div className="h-10 w-10 rounded-full bg-gradient-to-r from-blue-500 to-indigo-600 flex items-center justify-center">
-                  <BookOpen className="h-5 w-5 text-white" />
-                </div>
-                <div>
-                  <SheetTitle className="text-2xl font-bold bg-gradient-to-r from-blue-600 to-indigo-600 bg-clip-text text-transparent">
-                    {editing ? "Edit Program" : "Add Program"}
-                  </SheetTitle>
-                  <p className="text-sm text-muted-foreground mt-1">
-                    {editing ? "Update program information" : "Create a new program record"}
-                  </p>
-                </div>
-              </div>
-            </div>
+        <SheetContent className="sm:max-w-[520px]">
+          <SheetHeader>
+            <SheetTitle className="text-base">{editing ? "Edit Program" : "Add Program"}</SheetTitle>
           </SheetHeader>
-
-          <div className="mt-6 space-y-6">
-            {/* Basic Information */}
-            <div className="space-y-4">
-              <div className="flex items-center gap-3 pb-3 border-b border-blue-200 dark:border-blue-800">
-                <div className="h-8 w-8 rounded-lg bg-gradient-to-r from-green-500 to-emerald-600 flex items-center justify-center">
-                  <BookOpen className="h-4 w-4 text-white" />
-                </div>
-                <h3 className="text-lg font-bold bg-gradient-to-r from-green-600 to-emerald-600 bg-clip-text text-transparent">Basic Information</h3>
-              </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div>
-                  <Label htmlFor="institution_code" className="text-sm font-semibold">Institution Code <span className="text-red-500">*</span></Label>
-                  <Select value={formData.institution_code} onValueChange={(v) => setFormData({ ...formData, institution_code: v })}>
-                    <SelectTrigger id="institution_code" className={`h-10 ${errors.institution_code ? 'border-destructive' : ''}`}>
-                      <SelectValue placeholder="Select Institution Code" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {institutionCodes.map(code => (
-                        <SelectItem key={code} value={code}>{code}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  {errors.institution_code && <p className="text-xs text-destructive mt-1">{errors.institution_code}</p>}
-                </div>
-                <div>
-                  <Label htmlFor="degree_code" className="text-sm font-semibold">Degree Code <span className="text-red-500">*</span></Label>
-                  <Select value={formData.degree_code} onValueChange={(v) => setFormData({ ...formData, degree_code: v })}>
-                    <SelectTrigger id="degree_code" className={`h-10 ${errors.degree_code ? 'border-destructive' : ''}`}>
-                      <SelectValue placeholder="Select Degree Code" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {degreeCodes.map(code => (
-                        <SelectItem key={code} value={code}>{code}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  {errors.degree_code && <p className="text-xs text-destructive mt-1">{errors.degree_code}</p>}
-                </div>
-              </div>
-
+          <div className="mt-4 space-y-3">
+            <div className="grid grid-cols-2 gap-3">
               <div>
-                <Label htmlFor="offering_department_code" className="text-sm font-semibold">Offering Department Code</Label>
-                <Select value={formData.offering_department_code} onValueChange={(v) => setFormData({ ...formData, offering_department_code: v })}>
-                  <SelectTrigger id="offering_department_code" className="h-10">
-                    <SelectValue placeholder="Select Department Code" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {departmentCodes.map(code => (
-                      <SelectItem key={code} value={code}>{code}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                <Label htmlFor="institution_code" className="text-xs">Institution Code *</Label>
+                <Input id="institution_code" value={formData.institution_code} onChange={(e) => setFormData({ ...formData, institution_code: e.target.value })} className={`h-8 text-xs ${errors.institution_code ? 'border-destructive' : ''}`} />
+                {errors.institution_code && <p className="text-[10px] text-destructive mt-1">{errors.institution_code}</p>}
               </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div>
-                  <Label htmlFor="program_code" className="text-sm font-semibold">Program Code <span className="text-red-500">*</span></Label>
-                  <Input id="program_code" value={formData.program_code} onChange={(e) => setFormData({ ...formData, program_code: e.target.value })} className={`h-10 ${errors.program_code ? 'border-destructive' : ''}`} placeholder="e.g., BSC-CS" />
-                  {errors.program_code && <p className="text-xs text-destructive mt-1">{errors.program_code}</p>}
-                </div>
-                <div>
-                  <Label htmlFor="program_duration_yrs" className="text-sm font-semibold">Duration (Years) <span className="text-red-500">*</span></Label>
-                  <Input id="program_duration_yrs" type="number" min="1" value={formData.program_duration_yrs} onChange={(e) => setFormData({ ...formData, program_duration_yrs: parseInt(e.target.value) || 3 })} className={`h-10 ${errors.program_duration_yrs ? 'border-destructive' : ''}`} />
-                  {errors.program_duration_yrs && <p className="text-xs text-destructive mt-1">{errors.program_duration_yrs}</p>}
-                </div>
-              </div>
-
               <div>
-                <Label htmlFor="program_name" className="text-sm font-semibold">Program Name <span className="text-red-500">*</span></Label>
-                <Input id="program_name" value={formData.program_name} onChange={(e) => setFormData({ ...formData, program_name: e.target.value })} className={`h-10 ${errors.program_name ? 'border-destructive' : ''}`} placeholder="e.g., B.Sc Computer Science" />
-                {errors.program_name && <p className="text-xs text-destructive mt-1">{errors.program_name}</p>}
-              </div>
-
-              <div>
-                <Label htmlFor="display_name" className="text-sm font-medium">Display Name</Label>
-                <Input id="display_name" value={formData.display_name} onChange={(e) => setFormData({ ...formData, display_name: e.target.value })} className="h-10" placeholder="e.g., BSc CS" />
+                <Label htmlFor="degree_code" className="text-xs">Degree Code *</Label>
+                <Input id="degree_code" value={formData.degree_code} onChange={(e) => setFormData({ ...formData, degree_code: e.target.value })} className={`h-8 text-xs ${errors.degree_code ? 'border-destructive' : ''}`} />
+                {errors.degree_code && <p className="text-[10px] text-destructive mt-1">{errors.degree_code}</p>}
               </div>
             </div>
-
-            {/* Pattern & Status */}
-            <div className="space-y-4">
-              <div className="flex items-center gap-3 pb-3 border-b border-teal-200 dark:border-teal-800">
-                <div className="h-8 w-8 rounded-lg bg-gradient-to-r from-teal-500 to-green-600 flex items-center justify-center">
-                  <TrendingUp className="h-4 w-4 text-white" />
-                </div>
-                <h3 className="text-lg font-bold bg-gradient-to-r from-teal-600 to-green-600 bg-clip-text text-transparent">Pattern & Status</h3>
+            <div>
+              <Label htmlFor="offering_department_code" className="text-xs">Offering Department Code</Label>
+              <Input id="offering_department_code" value={formData.offering_department_code} onChange={(e) => setFormData({ ...formData, offering_department_code: e.target.value })} className="h-8 text-xs" />
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <Label htmlFor="program_code" className="text-xs">Program Code *</Label>
+                <Input id="program_code" value={formData.program_code} onChange={(e) => setFormData({ ...formData, program_code: e.target.value })} className={`h-8 text-xs ${errors.program_code ? 'border-destructive' : ''}`} />
+                {errors.program_code && <p className="text-[10px] text-destructive mt-1">{errors.program_code}</p>}
               </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div>
-                  <Label className="text-sm font-semibold">Pattern Type</Label>
-                  <div className="flex gap-2 mt-2">
-                    <Button type="button" variant={formData.pattern_type === "Year" ? "default" : "outline"} size="sm" className="h-8 px-3 text-xs" onClick={() => setFormData({ ...formData, pattern_type: "Year" })}>Year</Button>
-                    <Button type="button" variant={formData.pattern_type === "Semester" ? "default" : "outline"} size="sm" className="h-8 px-3 text-xs" onClick={() => setFormData({ ...formData, pattern_type: "Semester" })}>Semester</Button>
-                  </div>
-                </div>
-
-                <div className="flex items-center gap-4">
-                  <Label className="text-sm font-semibold">Status</Label>
-                  <button
-                    type="button"
-                    onClick={() => setFormData({ ...formData, is_active: !formData.is_active })}
-                    className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2 ${
-                      formData.is_active ? 'bg-green-500' : 'bg-gray-300'
-                    }`}
-                  >
-                    <span
-                      className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
-                        formData.is_active ? 'translate-x-6' : 'translate-x-1'
-                      }`}
-                    />
-                  </button>
-                  <span className={`text-sm font-medium ${formData.is_active ? 'text-green-600' : 'text-red-500'}`}>
-                    {formData.is_active ? 'Active' : 'Inactive'}
-                  </span>
-                </div>
+              <div>
+                <Label htmlFor="program_duration_yrs" className="text-xs">Duration (Years) *</Label>
+                <Input id="program_duration_yrs" type="number" min="1" value={formData.program_duration_yrs} onChange={(e) => setFormData({ ...formData, program_duration_yrs: parseInt(e.target.value) || 3 })} className={`h-8 text-xs ${errors.program_duration_yrs ? 'border-destructive' : ''}`} />
+                {errors.program_duration_yrs && <p className="text-[10px] text-destructive mt-1">{errors.program_duration_yrs}</p>}
               </div>
             </div>
-
-            {/* Actions */}
-            <div className="flex justify-end gap-3 pt-6 border-t">
-              <Button variant="outline" size="sm" className="h-10 px-6" onClick={() => { setSheetOpen(false); resetForm() }}>Cancel</Button>
-              <Button size="sm" className="h-10 px-6" onClick={save}>{editing ? "Update Program" : "Create Program"}</Button>
+            <div>
+              <Label htmlFor="program_name" className="text-xs">Program Name *</Label>
+              <Input id="program_name" value={formData.program_name} onChange={(e) => setFormData({ ...formData, program_name: e.target.value })} className={`h-8 text-xs ${errors.program_name ? 'border-destructive' : ''}`} />
+              {errors.program_name && <p className="text-[10px] text-destructive mt-1">{errors.program_name}</p>}
+            </div>
+            <div>
+              <Label htmlFor="display_name" className="text-xs">Display Name</Label>
+              <Input id="display_name" value={formData.display_name} onChange={(e) => setFormData({ ...formData, display_name: e.target.value })} className="h-8 text-xs" />
+            </div>
+            <div>
+              <Label className="text-xs">Pattern Type</Label>
+              <div className="flex gap-2">
+                <Button type="button" variant={formData.pattern_type === "Year" ? "default" : "outline"} size="sm" className="h-7 px-2 text-xs" onClick={() => setFormData({ ...formData, pattern_type: "Year" })}>Year</Button>
+                <Button type="button" variant={formData.pattern_type === "Semester" ? "default" : "outline"} size="sm" className="h-7 px-2 text-xs" onClick={() => setFormData({ ...formData, pattern_type: "Semester" })}>Semester</Button>
+              </div>
+            </div>
+            <div>
+              <Label className="text-xs">Status</Label>
+              <div className="flex gap-2">
+                <Button type="button" variant={formData.is_active ? "default" : "outline"} size="sm" className="h-7 px-2 text-xs" onClick={() => setFormData({ ...formData, is_active: true })}>Active</Button>
+                <Button type="button" variant={!formData.is_active ? "default" : "outline"} size="sm" className="h-7 px-2 text-xs" onClick={() => setFormData({ ...formData, is_active: false })}>Inactive</Button>
+              </div>
+            </div>
+            <div className="pt-2 flex justify-end gap-2">
+              <Button variant="outline" size="sm" className="h-8 text-xs" onClick={() => { setSheetOpen(false); resetForm() }}>Cancel</Button>
+              <Button size="sm" className="h-8 text-xs" onClick={save}>{editing ? "Update" : "Create"}</Button>
             </div>
           </div>
         </SheetContent>
