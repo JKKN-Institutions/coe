@@ -178,14 +178,23 @@ class SupabaseAuthService {
 
   /**
    * Logout user
+   * Optimized for faster logout experience
    */
   async logout(): Promise<void> {
     try {
-      await this.supabase.auth.signOut();
+      // Clear session immediately for better UX
+      this.clearSession();
+      
+      // Try to sign out from Supabase with timeout
+      const signOutPromise = this.supabase.auth.signOut();
+      const timeoutPromise = new Promise((_, reject) => 
+        setTimeout(() => reject(new Error('Logout timeout')), 3000)
+      );
+      
+      await Promise.race([signOutPromise, timeoutPromise]);
     } catch (error) {
       console.error('Logout error:', error);
-    } finally {
-      this.clearSession();
+      // Session already cleared, so we're good
     }
   }
 
@@ -240,22 +249,51 @@ class SupabaseAuthService {
         // User is valid - use the existing profile
         let userProfile = existingProfile;
 
-        // Update last_login in the background (non-blocking)
+        // Get Google profile photo URL from user metadata
+        const googleAvatarUrl = authUser.user_metadata?.avatar_url || authUser.user_metadata?.picture;
+        
+        console.log('OAuth Callback Debug:', {
+          googleAvatarUrl: googleAvatarUrl,
+          currentAvatarUrl: userProfile.avatar_url,
+          userMetadata: authUser.user_metadata
+        });
+        
+        // Check if we need to update avatar_url
+        const shouldUpdateAvatar = !userProfile.avatar_url || 
+          (googleAvatarUrl && googleAvatarUrl !== userProfile.avatar_url);
+
+        // Prepare update data
+        const updateData: any = {
+          last_login: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        };
+
+        // Add avatar URL if it should be updated
+        if (shouldUpdateAvatar && googleAvatarUrl) {
+          updateData.avatar_url = googleAvatarUrl;
+          console.log('Updating avatar URL from Google profile:', googleAvatarUrl);
+        }
+
+        // Update user profile in the background (non-blocking)
         this.supabase
           .from('users')
-          .update({
-            last_login: new Date().toISOString(),
-            updated_at: new Date().toISOString(),
-          })
+          .update(updateData)
           .eq('email', authUser.email)
           .then(({ error }) => {
             if (error) {
-              console.warn('Failed to update last_login (non-critical):', error);
+              console.warn('Failed to update user profile (non-critical):', error);
+            } else {
+              console.log('User profile updated successfully');
             }
           })
           .catch(err => {
             console.warn('Background update failed (non-critical):', err);
           });
+
+        // Update userProfile with Google avatar URL for immediate UI update
+        if (shouldUpdateAvatar && googleAvatarUrl) {
+          userProfile.avatar_url = googleAvatarUrl;
+        }
 
         const user: SupabaseUser = {
           id: userProfile.id,
@@ -268,11 +306,18 @@ class SupabaseAuthService {
           is_active: userProfile.is_active,
           permissions: userProfile.permissions || {},
           profile_completed: userProfile.profile_completed,
+          // Use updated avatar_url (now includes Google avatar if needed)
           avatar_url: userProfile.avatar_url,
           last_login: userProfile.last_login,
           created_at: userProfile.created_at,
           updated_at: userProfile.updated_at,
         };
+
+        console.log('Final User Object:', {
+          avatar_url: user.avatar_url,
+          shouldUpdateAvatar: shouldUpdateAvatar,
+          googleAvatarUrl: googleAvatarUrl
+        });
 
         // Store user data
         this.setUser(user);
@@ -291,6 +336,8 @@ class SupabaseAuthService {
       return { user: null, error: 'OAuth callback failed' };
     }
   }
+
+
 
   /**
    * Get current user

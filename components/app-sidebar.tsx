@@ -1,6 +1,7 @@
 "use client"
 
 import * as React from "react"
+import { useEffect, useState } from "react"
 import {
   AudioWaveform,
   BookOpen,
@@ -37,6 +38,7 @@ import {
   Pencil,
   Home,
   Key,
+  Crown,
 } from "lucide-react"
 
 import { NavMain } from "@/components/nav-main"
@@ -127,20 +129,54 @@ const data = {
  
 export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
   return (
-    <Sidebar collapsible="icon" {...props}>
+    <Sidebar 
+      collapsible="icon" 
+      {...props}
+    >
       <SidebarHeader className="h-16 flex items-center">
         <div className="flex items-center gap-3 px-3">
-        <div className="h-10 w-10 flex items-center justify-center rounded-xl bg-gradient-to-br from-emerald-500 to-teal-600 shadow-md">
-            <span className="text-white font-bold text-lg">J</span>
+          {/* Logo - Collapsed version (Icon only) */}
+          <div className="group-data-[collapsible=icon]:block hidden">
+            <div className="flex flex-col items-center space-y-1">
+              {/* Crown Icon with frame */}
+              <div className="h-8 w-8 flex items-center justify-center rounded-lg bg-gradient-to-br from-[#16a34a]/10 to-[#059669]/10 border border-[#16a34a]/20 shadow-sm">
+                <Crown className='h-5 w-5 text-[#16a34a] dark:text-[#16a34a] drop-shadow-sm' />
+              </div>
+              {/* JKKN Text */}
+              <div className='text-xs font-extrabold tracking-widest text-[#16a34a] dark:text-[#16a34a] drop-shadow-lg'>
+                JKKN
+              </div>
+            </div>
           </div>
-          <div className="group-data-[collapsible=icon]:hidden">
-            <span className="font-bold text-sm">JKKN COE</span>
-            <p className="text-xs text-muted-foreground">Controller of Examination</p>
+          
+          {/* Logo - Full version when expanded */}
+          <div className="group-data-[collapsible=icon]:hidden flex flex-col items-center space-y-3">
+            {/* Logo container with frame and transparency */}
+            <div className="relative p-2 rounded-xl bg-gradient-to-br from-[#16a34a]/5 to-[#059669]/5 border border-[#16a34a]/20 shadow-lg backdrop-blur-sm">
+              {/* Background pattern overlay */}
+              <div className="absolute inset-0 opacity-10 rounded-xl" style={{
+                backgroundImage: `url("data:image/svg+xml,%3Csvg width='16' height='16' viewBox='0 0 20 20' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='%2316a34a' fill-opacity='0.3'%3E%3Ccircle cx='10' cy='10' r='1'/%3E%3C/g%3E%3C/svg%3E")`,
+                backgroundSize: '20px 20px'
+              }}></div>
+              
+              {/* JKKN Logo Image */}
+              <img 
+                src="/jkkn_logo.png" 
+                alt="JKKN | COE" 
+                className="h-18 w-28 object-contain relative z-10 filter drop-shadow-sm"
+              />
+            </div>
+            
+           
           </div>
         </div>
       </SidebarHeader>
+      <br></br>
+
       <SidebarContent>
-        <NavMain items={data.navMain} />
+        <NavMain 
+          items={data.navMain} 
+        />
       </SidebarContent>
       <SidebarFooter>
         <NavUser />

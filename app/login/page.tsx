@@ -50,7 +50,7 @@ function LoginContent() {
     if (errorCookie) {
       const errorValue = errorCookie.split('=')[1];
       if (errorValue === 'not_found') {
-        setFormError('Your account wasn\'t found in our system. Double-check your login details, or contact support if you need help.');
+        setFormError('Your account wasn\'t found in our system. Check your login details, or contact support if you need help.');
         // Clear the cookie
         document.cookie = 'auth_error=; path=/; max-age=0';
       }
@@ -59,7 +59,7 @@ function LoginContent() {
     // Also check URL params for backward compatibility but don't show in URL
     const errorParam = searchParams.get('error');
     if (errorParam) {
-      setFormError('Your account wasn\'t found in our system. Double-check your login details, or contact support if you need help.');
+      setFormError('Your account wasn\'t found in our system. Check your login details, or contact support if you need help.');
       // Clean the URL
       router.replace('/login', { scroll: false });
     }
@@ -74,7 +74,13 @@ function LoginContent() {
     }
   };
 
-  if (isLoading) {
+  // Don't show loading screen if user is already authenticated
+  if (isAuthenticated) {
+    return null;
+  }
+
+  // Only show loading screen during actual login process, not during initial auth check
+  if (isLoading && !isAuthenticated) {
     return (
       <div className='flex items-center justify-center min-h-screen bg-gradient-to-br from-slate-50 via-green-50 to-emerald-100 dark:from-slate-900 dark:via-slate-800 dark:to-green-900/20'>
         <div className='flex flex-col items-center space-y-4'>
@@ -83,10 +89,6 @@ function LoginContent() {
         </div>
       </div>
     );
-  }
-
-  if (isAuthenticated) {
-    return null;
   }
 
   return (
@@ -145,9 +147,9 @@ function LoginContent() {
                 <Crown className='h-8 w-8 text-green-600 dark:text-green-400 drop-shadow-lg' />
               </div>
               
-              {/* JKKN Text */}
-              <div className='text-5xl lg:text-6xl font-extrabold tracking-widest text-green-600 dark:text-green-400 drop-shadow-lg relative z-10'>
-                JKKN
+              {/* JKKN | COE Text */}
+              <div className='text-4xl lg:text-5xl font-extrabold tracking-widest text-green-600 dark:text-green-400 drop-shadow-lg relative z-10'>
+                JKKN 
               </div>
               
               {/* Pink Separator Line */}
@@ -218,7 +220,7 @@ function LoginContent() {
                 Welcome Back
               </CardTitle>
               <CardDescription className='text-slate-600 dark:text-slate-400 text-base'>
-                Sign in to your JKKN COE Portal account
+                Sign in to your JKKN | COE Portal account
           </CardDescription>
         </CardHeader>
             

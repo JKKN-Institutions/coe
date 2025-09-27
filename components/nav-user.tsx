@@ -1,6 +1,7 @@
 "use client"
 
-import { Bell, ChevronsUpDown, LogOut } from "lucide-react"
+import { Bell, ChevronsUpDown, LogOut, Loader2 } from "lucide-react"
+import { useState, useEffect } from "react"
 
 import {
   Avatar,
@@ -26,17 +27,37 @@ import {
 
 export function NavUser() {
   const { isMobile } = useSidebar()
-  const { user, logout } = useAuth()
+  const { user, logout, isLoading } = useAuth()
+  const [isLoggingOut, setIsLoggingOut] = useState(false)
 
   const displayName = user?.full_name || "User"
   const email = user?.email || ""
   const avatarUrl = user?.avatar_url || ""
+  
   const initials = (displayName || "U")
     .split(" ")
     .map((n) => n[0])
     .join("")
     .slice(0, 2)
     .toUpperCase()
+  
+  // Use the actual avatar URL, fallback to placeholder if empty
+  const finalAvatarUrl = avatarUrl || `https://ui-avatars.com/api/?name=${encodeURIComponent(displayName)}&background=16a34a&color=ffffff&size=32`
+
+  
+
+
+  const handleLogout = async () => {
+    try {
+      setIsLoggingOut(true)
+      await logout()
+    } catch (error) {
+      console.error('Logout error:', error)
+    } finally {
+      setIsLoggingOut(false)
+    }
+  }
+
 
   return (
     <SidebarMenu>
@@ -48,8 +69,13 @@ export function NavUser() {
               className="data-[state=open]:bg-sidebar-accent data-[state=open]:text-sidebar-accent-foreground"
             >
               <Avatar className="h-8 w-8 rounded-lg">
-                <AvatarImage src={avatarUrl} alt={displayName} />
-                <AvatarFallback className="rounded-lg">{initials}</AvatarFallback>
+                <AvatarImage 
+                  src={finalAvatarUrl} 
+                  alt={displayName}
+                />
+                <AvatarFallback className="rounded-lg bg-[#16a34a] text-white font-semibold">
+                  {initials}
+                </AvatarFallback>
               </Avatar>
               <div className="grid flex-1 text-left text-sm leading-tight">
                 <span className="truncate font-semibold">{displayName}</span>
@@ -67,8 +93,13 @@ export function NavUser() {
             <DropdownMenuLabel className="p-0 font-normal">
               <div className="flex items-center gap-2 px-1 py-1.5 text-left text-sm">
                 <Avatar className="h-8 w-8 rounded-lg">
-                  <AvatarImage src={avatarUrl} alt={displayName} />
-                  <AvatarFallback className="rounded-lg">{initials}</AvatarFallback>
+                  <AvatarImage 
+                    src={finalAvatarUrl} 
+                    alt={displayName}
+                  />
+                  <AvatarFallback className="rounded-lg bg-[#16a34a] text-white font-semibold">
+                    {initials}
+                  </AvatarFallback>
                 </Avatar>
                 <div className="grid flex-1 text-left text-sm leading-tight">
                   <span className="truncate font-semibold">{displayName}</span>
@@ -77,22 +108,29 @@ export function NavUser() {
               </div>
             </DropdownMenuLabel>
             <DropdownMenuSeparator />
-            <DropdownMenuGroup>
-
-            </DropdownMenuGroup>
+                    <DropdownMenuGroup>
+                      <DropdownMenuItem>
+                        <Bell />
+                        Notifications
+                      </DropdownMenuItem>
+                    </DropdownMenuGroup>
             <DropdownMenuSeparator />
-            <DropdownMenuGroup>
-      
-         
-              <DropdownMenuItem>
-                <Bell />
-                Notifications
-              </DropdownMenuItem>
-            </DropdownMenuGroup>
-            <DropdownMenuSeparator />
-            <DropdownMenuItem onSelect={() => logout()}>
-              <LogOut />
-              Log out
+            <DropdownMenuItem 
+              onSelect={handleLogout}
+              disabled={isLoggingOut || isLoading}
+              className="cursor-pointer"
+            >
+              {isLoggingOut ? (
+                <>
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  Logging out...
+                </>
+              ) : (
+                <>
+                  <LogOut />
+                  Log out
+                </>
+              )}
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>

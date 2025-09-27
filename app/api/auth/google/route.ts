@@ -76,14 +76,27 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Update user's Google ID if not already set
+    // Update user's Google ID and avatar URL if needed
+    const updateData: any = {
+      updated_at: new Date().toISOString()
+    };
+
+    // Update Google ID if not already set
     if (!user.google_id) {
+      updateData.google_id = googleId;
+    }
+
+    // Update avatar URL if not available or different from Google profile
+    if (!user.avatar_url || (picture && picture !== user.avatar_url)) {
+      updateData.avatar_url = picture;
+      console.log('Updating avatar URL from Google profile:', picture);
+    }
+
+    // Only update if there's something to update
+    if (Object.keys(updateData).length > 1) { // More than just updated_at
       await supabase
         .from('users')
-        .update({
-          google_id: googleId,
-          updated_at: new Date().toISOString()
-        })
+        .update(updateData)
         .eq('email', email);
     }
 
@@ -118,7 +131,8 @@ export async function POST(req: NextRequest) {
         email: user.email,
         name: user.name || name,
         role: user.role,
-        picture: picture
+        picture: picture,
+        avatar_url: updateData.avatar_url || user.avatar_url || picture
       }
     });
 

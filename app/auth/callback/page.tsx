@@ -25,10 +25,13 @@ export default function OAuthCallbackPage() {
   const [message, setMessage] = useState<string>('Processing authentication...');
 
   useEffect(() => {
+    console.log('OAuth Callback - Auth state:', { isAuthenticated, authError });
+    
     const err = readCookie('auth_error');
 
     // 1) If we have a known error cookie, show message and redirect immediately
     if (err) {
+      console.log('OAuth Callback - Error cookie found:', err);
       setStatus('error');
       setMessage(
         err === 'inactive'
@@ -42,18 +45,21 @@ export default function OAuthCallbackPage() {
 
     // 2) If already authenticated, go straight to dashboard
     if (isAuthenticated) {
+      console.log('OAuth Callback - User authenticated, redirecting to dashboard');
       setStatus('success');
       setMessage('Signed in successfully. Redirecting...');
       router.replace('/dashboard');
       return;
     }
 
-    // 3) Otherwise, fallback to login quickly if auth state hasn't resolved
+    // 3) Otherwise, fallback to login if auth state hasn't resolved after a reasonable time
+    console.log('OAuth Callback - Waiting for authentication...');
     const timer = setTimeout(() => {
+      console.log('OAuth Callback - Timeout reached, redirecting to login');
       setStatus('error');
       setMessage('Authentication could not be completed. Please sign in again.');
       router.replace('/login');
-    }, 200);
+    }, 10000); // Increased to 10 seconds to allow more time for OAuth processing
 
     return () => clearTimeout(timer);
   }, [isAuthenticated, authError, router]);

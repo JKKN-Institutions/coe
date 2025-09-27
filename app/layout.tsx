@@ -13,8 +13,12 @@ const inter = Inter({
 });
 
 export const metadata: Metadata = {
-  title: "JKKN COE",
-  description: "Controller of Examination - A child application integrated with MyJKKN authentication",
+  title: "JKKN | COE",
+  
+  icons: {
+    icon: '/jkkn_1.svg',
+
+  },
 };
 
 export default function RootLayout({

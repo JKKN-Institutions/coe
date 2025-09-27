@@ -55,14 +55,19 @@ export function AuthProvider({
 }: AuthProviderProps) {
   const [user, setUser] = useState<SupabaseUser | null>(null);
   const [session, setSession] = useState<AuthSession | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
+  const [isLoading, setIsLoading] = useState(false);
+  const [isLoggingIn, setIsLoggingIn] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   // Initialize auth on mount
   useEffect(() => {
     const initAuth = async () => {
       try {
-        setIsLoading(true);
+        // Only show loading if we don't have any cached session data
+        const hasCachedSession = supabaseAuthService.getSession();
+        if (!hasCachedSession) {
+          setIsLoading(true);
+        }
         setError(null);
 
         // Check if user is authenticated with Supabase
@@ -76,7 +81,7 @@ export function AuthProvider({
           if (currentUser) {
             setUser(currentUser);
             if (storedSession) {
-          setSession(storedSession);
+              setSession(storedSession);
             }
           } else {
             // User not found, clear session
@@ -176,9 +181,9 @@ export function AuthProvider({
                 // User not found after OAuth callback
                 document.cookie = 'auth_error=not_found; path=/; max-age=10; samesite=lax';
                 setError('Your account wasn\'t found in our system. Double-check your login details, or contact support if you need help.');
+              }
             }
-          }
-        } catch (err) {
+          } catch (err) {
             // Authentication error occurred
             setError('Authentication failed - please try again');
           }
@@ -195,7 +200,7 @@ export function AuthProvider({
 
   const login = async (credentials: LoginCredentials): Promise<{ success: boolean; error?: string }> => {
     try {
-      setIsLoading(true);
+      setIsLoggingIn(true);
       setError(null);
 
       const { user: authUser, error: authError } = await supabaseAuthService.login(credentials);
@@ -220,13 +225,13 @@ export function AuthProvider({
       setError(errorMessage);
       return { success: false, error: errorMessage };
     } finally {
-      setIsLoading(false);
+      setIsLoggingIn(false);
     }
   };
 
   const loginWithGoogle = async (): Promise<{ success: boolean; error?: string }> => {
     try {
-      setIsLoading(true);
+      setIsLoggingIn(true);
       setError(null);
 
       const { user: authUser, error: authError } = await supabaseAuthService.loginWithGoogle();
@@ -244,7 +249,7 @@ export function AuthProvider({
       setError(errorMessage);
       return { success: false, error: errorMessage };
     } finally {
-      setIsLoading(false);
+      setIsLoggingIn(false);
     }
   };
 
@@ -257,20 +262,26 @@ export function AuthProvider({
 
   const logout = async (): Promise<void> => {
     try {
-      setIsLoading(true);
-      await supabaseAuthService.logout();
+      // Clear local state immediately for better UX
       setUser(null);
       setSession(null);
       setError(null);
+      
+      // Try to logout from Supabase in the background
+      // Don't wait for it to complete - user can continue
+      supabaseAuthService.logout().catch((err) => {
+        console.error('Background logout error:', err);
+        // Ensure session is cleared even if logout fails
+        supabaseAuthService.clearSession();
+      });
+      
     } catch (err) {
       console.error('Logout error:', err);
       // Clear local state even if logout fails
-    setUser(null);
-    setSession(null);
-    setError(null);
+      setUser(null);
+      setSession(null);
+      setError(null);
       supabaseAuthService.clearSession();
-    } finally {
-      setIsLoading(false);
     }
   };
 
@@ -322,6 +333,8 @@ export function AuthProvider({
       return false;
     }
   };
+
+
 
   const hasPermission = (permission: string): boolean => {
     return supabaseAuthService.hasPermission(permission);

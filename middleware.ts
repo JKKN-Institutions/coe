@@ -62,6 +62,45 @@ export async function middleware(request: NextRequest) {
 
   // Session exists, check if user is active
   if (session.user) {
+    // Check if we have cached user data in cookies to avoid DB queries
+    const cachedUserData = request.cookies.get('user_profile')?.value;
+    
+    if (cachedUserData) {
+      try {
+        const userProfile = JSON.parse(cachedUserData);
+        // Check if cache is still valid (less than 10 minutes old for better performance)
+        if (userProfile.cached_at && (Date.now() - userProfile.cached_at) < 10 * 60 * 1000) {
+          // Use cached data - only check if user is active, skip role check for performance
+          if (!userProfile.is_active) {
+            // Sign out the invalid user
+            await supabase.auth.signOut();
+
+            if (pathname.startsWith('/api')) {
+              return NextResponse.json(
+                { error: 'Your account is inactive. Please contact support for assistance.' },
+                { status: 403 }
+              );
+            }
+
+            const url = request.nextUrl.clone();
+            url.pathname = '/login';
+            const response = NextResponse.redirect(url);
+            response.cookies.set('auth_error', 'inactive', {
+              httpOnly: false,
+              sameSite: 'lax',
+              maxAge: 10
+            });
+            return response;
+          }
+          return res;
+        }
+      } catch (error) {
+        // Invalid cache, continue with DB query
+        console.warn('Invalid cached user data:', error);
+      }
+    }
+
+    // Cache miss or invalid cache, fetch from database
     const { data: userProfile, error: fetchError } = await supabase
       .from('users')
       .select('is_active, role')
@@ -89,15 +128,22 @@ export async function middleware(request: NextRequest) {
       // If creation failed (table doesn't exist or other error)
       if (createError) {
         console.error('Failed to create user:', createError);
-
-        // Allow access but log the issue
         console.warn('Users table may not exist. Please create it using the SQL in CREATE_USERS_TABLE.md');
         return res;
       }
 
-      // User created successfully, allow access
+      // User created successfully, cache the data and allow access
       if (newUser) {
-        return res;
+        const response = NextResponse.next();
+        response.cookies.set('user_profile', JSON.stringify({
+          ...newUser,
+          cached_at: Date.now()
+        }), {
+          httpOnly: false,
+          sameSite: 'lax',
+          maxAge: 10 * 60 // 10 minutes
+        });
+        return response;
       }
     }
 
@@ -113,17 +159,28 @@ export async function middleware(request: NextRequest) {
         );
       }
 
-      // Store error in cookie instead of URL parameter
       const url = request.nextUrl.clone();
       url.pathname = '/login';
-
       const response = NextResponse.redirect(url);
       response.cookies.set('auth_error', 'inactive', {
         httpOnly: false,
         sameSite: 'lax',
-        maxAge: 10 // expires in 10 seconds
+        maxAge: 10
       });
+      return response;
+    }
 
+    // Cache the user profile data for future requests
+    if (userProfile) {
+      const response = NextResponse.next();
+      response.cookies.set('user_profile', JSON.stringify({
+        ...userProfile,
+        cached_at: Date.now()
+      }), {
+        httpOnly: false,
+        sameSite: 'lax',
+        maxAge: 10 * 60 // 10 minutes
+      });
       return response;
     }
   }
