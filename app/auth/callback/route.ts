@@ -48,9 +48,36 @@ export async function GET(request: NextRequest) {
           userId: data.session.user?.id,
           email: data.session.user?.email
         });
-        // Redirect to our callback page to handle the session
-        const callbackUrl = new URL('/auth/callback', request.url);
-        return NextResponse.redirect(callbackUrl);
+        
+        // Check if user is active in our database
+        try {
+          const { data: userData, error: userError } = await supabase
+            .from('users')
+            .select('is_active')
+            .eq('email', data.session.user?.email)
+            .single();
+
+          if (userError || !userData) {
+            console.log('User not found in database, redirecting to contact admin');
+            const contactUrl = new URL('/contact-admin', request.url);
+            return NextResponse.redirect(contactUrl);
+          }
+
+          if (!userData.is_active) {
+            console.log('User account is inactive, redirecting to contact admin');
+            const contactUrl = new URL('/contact-admin', request.url);
+            return NextResponse.redirect(contactUrl);
+          }
+
+          // User is active, redirect to dashboard
+          console.log('User is active, redirecting to dashboard');
+          const dashboardUrl = new URL('/dashboard', request.url);
+          return NextResponse.redirect(dashboardUrl);
+        } catch (dbError) {
+          console.error('Database check error:', dbError);
+          const contactUrl = new URL('/contact-admin', request.url);
+          return NextResponse.redirect(contactUrl);
+        }
       } else {
         console.error('No session returned from code exchange');
         const loginUrl = new URL('/login', request.url);
