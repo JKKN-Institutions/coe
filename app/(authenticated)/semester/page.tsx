@@ -16,8 +16,11 @@ import { Badge } from "@/components/ui/badge"
 import { Label } from "@/components/ui/label"
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet"
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog"
+import { useToast } from "@/hooks/use-toast"
+import { Toaster } from "@/components/ui/toaster"
 import Link from "next/link"
-import { PlusCircle, Edit, Trash2, Search, ChevronLeft, ChevronRight, ArrowUpDown, ArrowUp, ArrowDown, BookOpen, TrendingUp, FileSpreadsheet } from "lucide-react"
+import { PlusCircle, Edit, Trash2, Search, ChevronLeft, ChevronRight, ArrowUpDown, ArrowUp, ArrowDown, BookOpen, TrendingUp, FileSpreadsheet, RefreshCw } from "lucide-react"
+
 
 type Semester = {
   id: string
@@ -37,8 +40,9 @@ const MOCK_SEMESTERS: Semester[] = [
 ]
 
 export default function SemesterPage() {
-  const [items, setItems] = useState<Semester[]>(MOCK_SEMESTERS)
-  const [loading, setLoading] = useState(false)
+  const { toast } = useToast()
+  const [items, setItems] = useState<Semester[]>([])
+  const [loading, setLoading] = useState(true)
   const [searchTerm, setSearchTerm] = useState("")
   const [sortColumn, setSortColumn] = useState<string | null>(null)
   const [sortDirection, setSortDirection] = useState<"asc" | "desc">("asc")
@@ -48,6 +52,11 @@ export default function SemesterPage() {
   const [sheetOpen, setSheetOpen] = useState(false)
   const [editing, setEditing] = useState<Semester | null>(null)
   const [yearFilter, setYearFilter] = useState("all")
+  
+  // Add state for institutions and degrees
+  const [institutions, setInstitutions] = useState<Array<{id: string, institution_code: string, name: string}>>([])
+  const [degrees, setDegrees] = useState<Array<{id: string, degree_code: string, degree_name: string}>>([])
+  const [loadingDropdowns, setLoadingDropdowns] = useState(false)
 
   const [formData, setFormData] = useState({
     institution_code: "",
@@ -60,6 +69,112 @@ export default function SemesterPage() {
     terminal_semester: false,
   })
   const [errors, setErrors] = useState<Record<string, string>>({})
+
+  // Fetch data from API
+  const fetchSemesters = async () => {
+    try {
+      setLoading(true)
+      const response = await fetch('/api/semesters')
+      if (!response.ok) {
+        throw new Error('Failed to fetch semesters')
+      }
+      const data = await response.json()
+      setItems(data)
+    } catch (error) {
+      console.error('Error fetching semesters:', error)
+      toast({
+        title: "❌ Fetch Failed",
+        description: "Failed to load semesters. Please try again.",
+        variant: "destructive",
+        className: "bg-red-50 border-red-200 text-red-800 dark:bg-red-900/20 dark:border-red-800 dark:text-red-200",
+      })
+      // Fallback to mock data on error
+      setItems(MOCK_SEMESTERS)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  // Fetch institutions for dropdown
+  const fetchInstitutions = async () => {
+    try {
+      setLoadingDropdowns(true)
+      const response = await fetch('/api/institutions')
+      if (!response.ok) {
+        throw new Error('Failed to fetch institutions')
+      }
+      const data = await response.json()
+      
+      // Remove duplicates and create unique entries
+      const uniqueInstitutions = data.reduce((acc: any[], institution: any) => {
+        const existingIndex = acc.findIndex(i => i.institution_code === institution.institution_code)
+        if (existingIndex === -1) {
+          acc.push({
+            id: institution.id,
+            institution_code: institution.institution_code,
+            name: institution.name
+          })
+        }
+        return acc
+      }, [])
+      
+      setInstitutions(uniqueInstitutions)
+    } catch (error) {
+      console.error('Error fetching institutions:', error)
+      toast({
+        title: "❌ Fetch Failed",
+        description: "Failed to load institutions. Please try again.",
+        variant: "destructive",
+        className: "bg-red-50 border-red-200 text-red-800 dark:bg-red-900/20 dark:border-red-800 dark:text-red-200",
+      })
+    } finally {
+      setLoadingDropdowns(false)
+    }
+  }
+
+  // Fetch degrees for dropdown
+  const fetchDegrees = async () => {
+    try {
+      setLoadingDropdowns(true)
+      const response = await fetch('/api/degrees')
+      if (!response.ok) {
+        throw new Error('Failed to fetch degrees')
+      }
+      const data = await response.json()
+      
+      // Remove duplicates and create unique entries
+      const uniqueDegrees = data.reduce((acc: any[], degree: any) => {
+        const existingIndex = acc.findIndex(d => d.degree_code === degree.degree_code)
+        if (existingIndex === -1) {
+          acc.push({
+            degree_code: degree.degree_code,
+            degree_name: degree.degree_name,
+            id: degree.id // Add id for unique key
+          })
+        }
+        return acc
+      }, [])
+      
+      setDegrees(uniqueDegrees)
+    } catch (error) {
+      console.error('Error fetching degrees:', error)
+      toast({
+        title: "❌ Fetch Failed",
+        description: "Failed to load degrees. Please try again.",
+        variant: "destructive",
+        className: "bg-red-50 border-red-200 text-red-800 dark:bg-red-900/20 dark:border-red-800 dark:text-red-200",
+      })
+    } finally {
+      setLoadingDropdowns(false)
+    }
+  }
+
+  // Load data on component mount
+  useEffect(() => {
+    fetchSemesters()
+    fetchInstitutions()
+    fetchDegrees()
+  }, [])
 
   const resetForm = () => { setFormData({ institution_code: "", degree_code: "", semester_name: "", display_name: "", student_group: "", display_order: 1, initial_semester: false, terminal_semester: false }); setErrors({}); setEditing(null) }
 
@@ -92,9 +207,102 @@ export default function SemesterPage() {
 
   const validate = () => { const e: Record<string, string> = {}; if (!formData.institution_code.trim()) e.institution_code = "Required"; if (!formData.degree_code.trim()) e.degree_code = "Required"; if (!formData.semester_name.trim()) e.semester_name = "Required"; setErrors(e); return Object.keys(e).length === 0 }
 
-  const save = () => { if (!validate()) return; if (editing) setItems((p) => p.map((x) => x.id === editing.id ? { ...editing, ...formData } as Semester : x)); else setItems((p) => [{ id: String(Date.now()), created_at: new Date().toISOString(), ...formData }, ...p]); setSheetOpen(false); resetForm() }
+  const save = async () => {
+    if (!validate()) return
 
-  const remove = (id: string) => setItems((p) => p.filter((x) => x.id !== id))
+    console.log('Form data before save:', formData)
+    console.log('Validation passed, proceeding with save...')
+
+    try {
+      setLoading(true)
+
+      if (editing) {
+        // Update existing semester
+        const response = await fetch(`/api/semesters/${editing.id}`, {
+          method: 'PUT',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify(formData),
+        })
+
+        if (!response.ok) {
+          const errorData = await response.json().catch(() => ({ error: 'Unknown error' }))
+          console.error('API Error Response:', {
+            status: response.status,
+            statusText: response.statusText,
+            errorData
+          })
+          throw new Error(`Failed to update semester: ${errorData.error || response.statusText}`)
+        }
+
+        const updatedSemester = await response.json()
+        setItems((prev) => prev.map((p) => (p.id === editing.id ? updatedSemester : p)))
+      } else {
+        // Create new semester
+        console.log('Creating semester with data:', formData)
+        const response = await fetch('/api/semesters', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify(formData),
+        })
+
+        if (!response.ok) {
+          const errorData = await response.json().catch(() => ({ error: 'Unknown error' }))
+          console.error('API Error Response:', {
+            status: response.status,
+            statusText: response.statusText,
+            errorData
+          })
+          throw new Error(`Failed to create semester: ${errorData.error || response.statusText}`)
+        }
+
+        const newSemester = await response.json()
+        setItems((prev) => [newSemester, ...prev])
+      }
+
+      setSheetOpen(false)
+      resetForm()
+    } catch (error) {
+      console.error('Error saving semester:', error)
+      toast({
+        title: "❌ Save Failed",
+        description: "Failed to save semester. Please try again.",
+        variant: "destructive",
+        className: "bg-red-50 border-red-200 text-red-800 dark:bg-red-900/20 dark:border-red-800 dark:text-red-200",
+      })
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const remove = async (id: string) => {
+    try {
+      setLoading(true)
+
+      const response = await fetch(`/api/semesters/${id}`, {
+        method: 'DELETE',
+      })
+
+      if (!response.ok) {
+        throw new Error('Failed to delete semester')
+      }
+
+      setItems((prev) => prev.filter((p) => p.id !== id))
+    } catch (error) {
+      console.error('Error deleting semester:', error)
+      toast({
+        title: "❌ Delete Failed",
+        description: "Failed to delete semester. Please try again.",
+        variant: "destructive",
+        className: "bg-red-50 border-red-200 text-red-800 dark:bg-red-900/20 dark:border-red-800 dark:text-red-200",
+      })
+    } finally {
+      setLoading(false)
+    }
+  }
   const formatDate = (d: string) => new Date(d).toLocaleDateString("en-US", { year: "numeric", month: "short", day: "numeric" })
 
   const handleDownload = () => { const json = JSON.stringify(filtered, null, 2); const blob = new Blob([json], { type: 'application/json' }); const url = URL.createObjectURL(blob); const a = document.createElement('a'); a.href = url; a.download = `semester_${new Date().toISOString().split('T')[0]}.json`; document.body.appendChild(a); a.click(); document.body.removeChild(a); URL.revokeObjectURL(url) }
@@ -103,6 +311,7 @@ export default function SemesterPage() {
   const handleImport = () => { const input=document.createElement('input'); input.type='file'; input.accept='.json,.csv,.xlsx,.xls'; input.onchange=async(e)=>{ const file=(e.target as HTMLInputElement).files?.[0]; if(!file) return; try{ let rows: Partial<Semester>[]=[]; if(file.name.endsWith('.json')) rows=JSON.parse(await file.text()); else { const data=new Uint8Array(await file.arrayBuffer()); const wb=XLSX.read(data,{type:'array'}); const ws=wb.Sheets[wb.SheetNames[0]]; const json=XLSX.utils.sheet_to_json(ws) as Record<string,unknown>[]; rows=json.map(j=>({institution_code:String(j['Institution Code']||''),degree_code:String(j['Degree Code']||''),semester_name:String(j['Semester Name']||''),display_name:String(j['Display Name']||''),student_group:String(j['Student Group']||''),display_order:Number(j['Order']||0),initial_semester:String(j['Initial']||'').toLowerCase()==='yes',terminal_semester:String(j['Terminal']||'').toLowerCase()==='yes'})) } const now=new Date().toISOString(); const mapped=rows.filter(r=>r.institution_code&&r.degree_code&&r.semester_name).map(r=>({ id:String(Date.now()+Math.random()), created_at:now, institution_code:r.institution_code!, degree_code:r.degree_code!, semester_name:r.semester_name as string, display_name:(r as any).display_name||'', student_group:(r as any).student_group||'', display_order:(r as any).display_order||1, initial_semester:(r as any).initial_semester??false, terminal_semester:(r as any).terminal_semester??false })) as Semester[]; setItems(p=>[...mapped,...p]) } catch { alert('Import failed. Please check your file.') } }; input.click() }
 
   return (
+
     <SidebarProvider>
       <AppSidebar />
       <SidebarInset className="flex flex-col min-h-screen">
@@ -215,13 +424,19 @@ export default function SemesterPage() {
                 </div>
 
                 <div className="flex gap-1 flex-wrap">
+                  <Button variant="outline" size="sm" className="text-xs px-2 h-8" onClick={fetchSemesters} disabled={loading}>
+                    <RefreshCw className={`h-3 w-3 mr-1 ${loading ? 'animate-spin' : ''}`} />
+                    Refresh
+                  </Button>
+        
+       
                   <Button variant="outline" size="sm" className="text-xs px-2 h-8" onClick={handleTemplateExport}>
                     <FileSpreadsheet className="h-3 w-3 mr-1" />
                     Template
                   </Button>
                   <Button variant="outline" size="sm" className="text-xs px-2 h-8" onClick={handleDownload}>Json</Button>
                   <Button variant="outline" size="sm" className="text-xs px-2 h-8" onClick={handleExport}>Download</Button>
-                  <Button size="sm" className="text-xs px-2 h-8" onClick={openAdd}><PlusCircle className="h-3 w-3 mr-1" /> Add</Button>
+                  <Button size="sm" className="text-xs px-2 h-8" onClick={openAdd} disabled={loading}><PlusCircle className="h-3 w-3 mr-1" /> Add</Button>
                 </div>
               </div>
             </CardHeader>
@@ -306,56 +521,161 @@ export default function SemesterPage() {
       </SidebarInset>
 
       <Sheet open={sheetOpen} onOpenChange={(o) => { if (!o) resetForm(); setSheetOpen(o) }}>
-        <SheetContent className="sm:max-w-[520px]">
-          <SheetHeader>
-            <SheetTitle className="text-base">{editing ? "Edit Semester" : "Add Semester"}</SheetTitle>
+        <SheetContent className="sm:max-w-[520px] overflow-y-auto">
+          <SheetHeader className="pb-6 border-b bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-blue-950/20 dark:to-indigo-950/20">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="h-10 w-10 rounded-full bg-gradient-to-r from-blue-500 to-indigo-600 flex items-center justify-center">
+                  <BookOpen className="h-5 w-5 text-white" />
+                </div>
+                <div>
+                  <SheetTitle className="text-2xl font-bold bg-gradient-to-r from-blue-600 to-indigo-600 bg-clip-text text-transparent">
+                    {editing ? "Edit Semester" : "Add Semester"}
+                  </SheetTitle>
+                  <p className="text-sm text-muted-foreground mt-1">
+                    {editing ? "Update semester information" : "Create a new semester record"}
+                  </p>
+                </div>
+              </div>
+            </div>
           </SheetHeader>
-          <div className="mt-4 space-y-3">
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <Label className="text-xs">Institution Code *</Label>
-                <Input value={formData.institution_code} onChange={(e) => setFormData({ ...formData, institution_code: e.target.value })} className={`h-8 text-xs ${errors.institution_code ? 'border-destructive' : ''}`} />
-                {errors.institution_code && <p className="text-[10px] text-destructive mt-1">{errors.institution_code}</p>}
+          <div className="mt-6 space-y-6">
+            {/* Basic Information Section */}
+            <div className="space-y-4">
+              <div className="flex items-center gap-3 pb-3 border-b border-blue-200 dark:border-blue-800">
+                <div className="h-8 w-8 rounded-lg bg-gradient-to-r from-green-500 to-emerald-600 flex items-center justify-center">
+                  <BookOpen className="h-4 w-4 text-white" />
+                </div>
+                <h3 className="text-lg font-bold bg-gradient-to-r from-green-600 to-emerald-600 bg-clip-text text-transparent">Basic Information</h3>
               </div>
-              <div>
-                <Label className="text-xs">Degree Code *</Label>
-                <Input value={formData.degree_code} onChange={(e) => setFormData({ ...formData, degree_code: e.target.value })} className={`h-8 text-xs ${errors.degree_code ? 'border-destructive' : ''}`} />
-                {errors.degree_code && <p className="text-[10px] text-destructive mt-1">{errors.degree_code}</p>}
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-2">
+                  <Label className="text-sm font-semibold">Institution <span className="text-red-500">*</span></Label>
+                  <Select 
+                    value={formData.institution_code} 
+                    onValueChange={(value) => setFormData({ ...formData, institution_code: value })}
+                    disabled={loadingDropdowns}
+                  >
+                    <SelectTrigger className={`h-9 ${errors.institution_code ? 'border-destructive' : ''}`}>
+                      <SelectValue placeholder={loadingDropdowns ? "Loading..." : "Select Institution"} />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {institutions.map((institution) => (
+                        <SelectItem key={institution.id} value={institution.institution_code}>
+                          {institution.institution_code} - {institution.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  {errors.institution_code && <p className="text-xs text-destructive">{errors.institution_code}</p>}
+                </div>
+                <div className="space-y-2">
+                  <Label className="text-sm font-semibold">Degree <span className="text-red-500">*</span></Label>
+                  <Select 
+                    value={formData.degree_code} 
+                    onValueChange={(value) => setFormData({ ...formData, degree_code: value })}
+                    disabled={loadingDropdowns}
+                  >
+                    <SelectTrigger className={`h-9 ${errors.degree_code ? 'border-destructive' : ''}`}>
+                      <SelectValue placeholder={loadingDropdowns ? "Loading..." : "Select Degree"} />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {degrees.map((degree) => (
+                        <SelectItem key={degree.id} value={degree.degree_code}>
+                          {degree.degree_code} - {degree.degree_name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  {errors.degree_code && <p className="text-xs text-destructive">{errors.degree_code}</p>}
+                </div>
+              </div>
+              <div className="space-y-2">
+                <Label className="text-sm font-semibold">Semester Name <span className="text-red-500">*</span></Label>
+                <Input value={formData.semester_name} onChange={(e) => setFormData({ ...formData, semester_name: e.target.value })} className={`h-9 ${errors.semester_name ? 'border-destructive' : ''}`} placeholder="e.g., Semester 1" />
+                {errors.semester_name && <p className="text-xs text-destructive">{errors.semester_name}</p>}
               </div>
             </div>
-            <div>
-              <Label className="text-xs">Semester Name *</Label>
-              <Input value={formData.semester_name} onChange={(e) => setFormData({ ...formData, semester_name: e.target.value })} className={`h-8 text-xs ${errors.semester_name ? 'border-destructive' : ''}`} />
-              {errors.semester_name && <p className="text-[10px] text-destructive mt-1">{errors.semester_name}</p>}
+
+            {/* Display Information Section */}
+            <div className="space-y-4">
+              <div className="flex items-center gap-3 pb-3 border-b border-purple-200 dark:border-purple-800">
+                <div className="h-8 w-8 rounded-lg bg-gradient-to-r from-purple-500 to-pink-600 flex items-center justify-center">
+                  <BookOpen className="h-4 w-4 text-white" />
+                </div>
+                <h3 className="text-lg font-bold bg-gradient-to-r from-purple-600 to-pink-600 bg-clip-text text-transparent">Display Information</h3>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-2">
+                  <Label className="text-sm font-medium">Display Name</Label>
+                  <Input value={formData.display_name} onChange={(e) => setFormData({ ...formData, display_name: e.target.value })} className="h-9" placeholder="e.g., Sem I" />
+                </div>
+                <div className="space-y-2">
+                  <Label className="text-sm font-medium">Student Group</Label>
+                  <Input value={formData.student_group} onChange={(e) => setFormData({ ...formData, student_group: e.target.value })} className="h-9" placeholder="e.g., UG" />
+                </div>
+              </div>
+              <div className="space-y-2">
+                <Label className="text-sm font-medium">Display Order</Label>
+                <Input type="number" inputMode="numeric" value={formData.display_order} onChange={(e) => setFormData({ ...formData, display_order: Number(e.target.value || 0) })} className="h-9" placeholder="1" />
+              </div>
             </div>
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <Label className="text-xs">Display Name</Label>
-                <Input value={formData.display_name} onChange={(e) => setFormData({ ...formData, display_name: e.target.value })} className="h-8 text-xs" />
+
+            {/* Semester Properties Section */}
+            <div className="space-y-4">
+              <div className="flex items-center gap-3 pb-3 border-b border-orange-200 dark:border-orange-800">
+                <div className="h-8 w-8 rounded-lg bg-gradient-to-r from-orange-500 to-red-600 flex items-center justify-center">
+                  <BookOpen className="h-4 w-4 text-white" />
+                </div>
+                <h3 className="text-lg font-bold bg-gradient-to-r from-orange-600 to-red-600 bg-clip-text text-transparent">Semester Properties</h3>
               </div>
-              <div>
-                <Label className="text-xs">Student Group</Label>
-                <Input value={formData.student_group} onChange={(e) => setFormData({ ...formData, student_group: e.target.value })} className="h-8 text-xs" />
+              <div className="flex items-center gap-4">
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setFormData({ ...formData, initial_semester: !formData.initial_semester })}
+                    className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2 ${
+                      formData.initial_semester ? 'bg-green-500' : 'bg-gray-300'
+                    }`}
+                  >
+                    <span
+                      className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                        formData.initial_semester ? 'translate-x-6' : 'translate-x-1'
+                      }`}
+                    />
+                  </button>
+                  <Label className="text-sm font-medium">Initial Semester</Label>
+                </div>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setFormData({ ...formData, terminal_semester: !formData.terminal_semester })}
+                    className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2 ${
+                      formData.terminal_semester ? 'bg-green-500' : 'bg-gray-300'
+                    }`}
+                  >
+                    <span
+                      className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                        formData.terminal_semester ? 'translate-x-6' : 'translate-x-1'
+                      }`}
+                    />
+                  </button>
+                  <Label className="text-sm font-medium">Terminal Semester</Label>
+                </div>
               </div>
             </div>
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <Label className="text-xs">Display Order</Label>
-                <Input type="number" inputMode="numeric" value={formData.display_order} onChange={(e) => setFormData({ ...formData, display_order: Number(e.target.value || 0) })} className="h-8 text-xs" />
-              </div>
-              <div className="flex items-end gap-2">
-                <Button type="button" variant={formData.initial_semester ? "default" : "outline"} size="sm" className="h-8 text-xs" onClick={() => setFormData({ ...formData, initial_semester: !formData.initial_semester })}>Initial</Button>
-                <Button type="button" variant={formData.terminal_semester ? "default" : "outline"} size="sm" className="h-8 text-xs" onClick={() => setFormData({ ...formData, terminal_semester: !formData.terminal_semester })}>Terminal</Button>
-              </div>
-            </div>
-            <div className="pt-2 flex justify-end gap-2">
-              <Button variant="outline" size="sm" className="h-8 text-xs" onClick={() => { setSheetOpen(false); resetForm() }}>Cancel</Button>
-              <Button size="sm" className="h-8 text-xs" onClick={save}>{editing ? "Update" : "Create"}</Button>
+
+            {/* Action Buttons */}
+            <div className="flex justify-end gap-3 pt-6 border-t">
+              <Button variant="outline" size="sm" className="h-10 px-6" onClick={() => { setSheetOpen(false); resetForm() }}>Cancel</Button>
+              <Button size="sm" className="h-10 px-6" onClick={save}>{editing ? "Update Semester" : "Create Semester"}</Button>
             </div>
           </div>
         </SheetContent>
       </Sheet>
+      <Toaster />
     </SidebarProvider>
+
   )
 }
 

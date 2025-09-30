@@ -7,7 +7,7 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
     const { id } = await params
     const supabase = getSupabaseServer()
 
-    // Get user first
+    // Get user with institution
     const { data: user, error } = await supabase
       .from('users')
       .select(`
@@ -26,7 +26,8 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
         date_of_birth,
         avatar_url,
         is_verified,
-        institution_id
+        institution_id,
+        institutions!inner(institution_code)
       `)
       .eq('id', id)
       .single()
@@ -50,6 +51,7 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
 
     return NextResponse.json({
       ...user,
+      institution_code: (user as any).institutions?.institution_code || null,
       role_id: role?.id || null, // Map to role_id for frontend compatibility
       roles: role
     })
@@ -117,7 +119,8 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
         date_of_birth,
         avatar_url,
         is_verified,
-        institution_id
+        institution_id,
+        institutions!inner(institution_code)
       `)
       .single()
 
@@ -139,6 +142,7 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
 
     return NextResponse.json({
       ...updated,
+      institution_code: (updated as any).institutions?.institution_code || null,
       role_id: userRole?.id || null, // Map to role_id for frontend compatibility
       roles: userRole
     })

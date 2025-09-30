@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { randomUUID } from 'crypto'
 import { getSupabaseServer } from '@/lib/supabase-server'
+import { sendWelcomeEmail } from '@/lib/email-service'
 
 export async function GET(req: NextRequest) {
   try {
@@ -34,6 +35,7 @@ export async function GET(req: NextRequest) {
         preferences,
         metadata,
         institution_id,
+        institutions!inner(institution_code),
         created_at,
         updated_at
       `)
@@ -50,7 +52,13 @@ export async function GET(req: NextRequest) {
       return NextResponse.json([], { status: 200 })
     }
 
-    return NextResponse.json(users ?? [])
+    // Flatten institution_code from nested institutions object
+    const formattedUsers = (users ?? []).map(user => ({
+      ...user,
+      institution_code: (user as any).institutions?.institution_code || null
+    }))
+
+    return NextResponse.json(formattedUsers)
   } catch (err) {
     console.error('API Error:', err)
     return NextResponse.json({
@@ -118,7 +126,21 @@ export async function POST(req: NextRequest) {
       console.error('Supabase error:', error)
       throw error
     }
-    
+
+    // Send welcome email to the new user
+    const loginUrl = `${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/login`
+    const emailResult = await sendWelcomeEmail({
+      to: String(email),
+      name: String(full_name),
+      loginUrl,
+      temporaryPassword: body.password ? String(body.password) : undefined
+    })
+
+    if (!emailResult.success) {
+      console.warn('Failed to send welcome email:', emailResult.error)
+      // Don't fail the request if email fails
+    }
+
     return NextResponse.json(data, { status: 201 })
   } catch (err) {
     console.error('API Error:', err)

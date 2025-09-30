@@ -14,7 +14,12 @@
       "Bash(npm run typecheck:*)",
       "Bash(npx tsc:*)",
       "Bash(NEXT_DISABLE_ESLINT=true npx next build)",
-      "Bash(mkdir:*)"
+      "Bash(mkdir:*)",
+      "Bash(npm uninstall:*)",
+      "Bash(npx supabase:*)",
+      "Bash(set NEXT_PUBLIC_SUPABASE_URL=https://qtsuqhduiuagjjtlalbh.supabase.co)",
+      "Bash(set:*)",
+      "Bash(cmd /c:*)"
     ],
     "deny": [],
     "ask": []

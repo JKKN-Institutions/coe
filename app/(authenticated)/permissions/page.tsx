@@ -269,7 +269,7 @@ export default function PermissionsPage() {
   const formatDate = (d: string) => new Date(d).toLocaleDateString("en-US", { year: "numeric", month: "short", day: "numeric" })
 
   // Field validation function
-  const validatePermissionData = (data: any, rowIndex: number) => {
+  const validatePermissionData = (data: any, rowIndex: number, existingPermissions: Permission[] = []) => {
     const errors: string[] = []
     
     // Required field validations
@@ -306,58 +306,122 @@ export default function PermissionsPage() {
       }
     }
     
+    // Check for duplicate name in existing permissions
+    if (data.name) {
+      const existingNamePermission = existingPermissions.find(p => p.name === data.name)
+      if (existingNamePermission) {
+        errors.push(`Permission name conflict: A permission with name "${data.name}" already exists (resource: "${existingNamePermission.resource}", action: "${existingNamePermission.action}")`)
+      }
+    }
+    
+    // Check for duplicate resource-action combination in existing permissions
+    if (data.resource && data.action) {
+      const existingPermission = existingPermissions.find(p => 
+        p.resource === data.resource && p.action === data.action
+      )
+      if (existingPermission) {
+        errors.push(`Permission conflict: A permission with resource "${data.resource}" and action "${data.action}" already exists (name: "${existingPermission.name}")`)
+      }
+    }
+    
     return errors
   }
 
   // Export/Import/Template handlers
-  const handleDownload = () => {
-    const exportData = filtered.map(item => ({
-      name: item.name,
-      description: item.description || '',
-      resource: item.resource,
-      action: item.action,
-      is_active: item.is_active,
-      created_at: item.created_at
-    }))
-    
-    const json = JSON.stringify(exportData, null, 2)
-    const blob = new Blob([json], { type: 'application/json' })
-    const url = URL.createObjectURL(blob)
-    const a = document.createElement('a')
-    a.href = url
-    a.download = `permissions_${new Date().toISOString().split('T')[0]}.json`
-    document.body.appendChild(a)
-    a.click()
-    document.body.removeChild(a)
-    URL.revokeObjectURL(url)
+  const handleDownload = async () => {
+    try {
+      // Fetch fresh data from API for export
+      const response = await fetch('/api/permissions')
+      if (!response.ok) {
+        throw new Error('Failed to fetch permissions for export')
+      }
+      const allPermissions = await response.json()
+      
+      const exportData = allPermissions.map(item => ({
+        name: item.name,
+        description: item.description || '',
+        resource: item.resource,
+        action: item.action,
+        is_active: item.is_active,
+        created_at: item.created_at
+      }))
+      
+      const json = JSON.stringify(exportData, null, 2)
+      const blob = new Blob([json], { type: 'application/json' })
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `permissions_${new Date().toISOString().split('T')[0]}.json`
+      document.body.appendChild(a)
+      a.click()
+      document.body.removeChild(a)
+      URL.revokeObjectURL(url)
+      
+      toast({
+        title: "✅ Export Successful",
+        description: `Successfully exported ${allPermissions.length} permission(s) to JSON file.`,
+        className: "bg-green-50 border-green-200 text-green-800 dark:bg-green-900/20 dark:border-green-800 dark:text-green-200",
+      })
+    } catch (error) {
+      console.error('Export error:', error)
+      toast({
+        title: "❌ Export Failed",
+        description: "Failed to export permissions. Please try again.",
+        variant: "destructive",
+        className: "bg-red-50 border-red-200 text-red-800 dark:bg-red-900/20 dark:border-red-800 dark:text-red-200",
+      })
+    }
   }
 
-  const handleExport = () => {
-    const excelData = filtered.map((p) => ({
-      'Permission Name': p.name,
-      'Description': p.description || '',
-      'Resource': p.resource,
-      'Action': p.action,
-      'Status': p.is_active ? 'Active' : 'Inactive',
-      'Created': new Date(p.created_at).toISOString().split('T')[0],
-    }))
-    
-    const ws = XLSX.utils.json_to_sheet(excelData)
-    
-    // Set column widths
-    const colWidths = [
-      { wch: 25 }, // Permission Name
-      { wch: 30 }, // Description
-      { wch: 15 }, // Resource
-      { wch: 12 }, // Action
-      { wch: 10 }, // Status
-      { wch: 12 }  // Created
-    ]
-    ws['!cols'] = colWidths
-    
-    const wb = XLSX.utils.book_new()
-    XLSX.utils.book_append_sheet(wb, ws, 'Permissions')
-    XLSX.writeFile(wb, `permissions_export_${new Date().toISOString().split('T')[0]}.xlsx`)
+  const handleExport = async () => {
+    try {
+      // Fetch fresh data from API for export
+      const response = await fetch('/api/permissions')
+      if (!response.ok) {
+        throw new Error('Failed to fetch permissions for export')
+      }
+      const allPermissions = await response.json()
+      
+      const excelData = allPermissions.map((p) => ({
+        'Permission Name': p.name,
+        'Description': p.description || '',
+        'Resource': p.resource,
+        'Action': p.action,
+        'Status': p.is_active ? 'Active' : 'Inactive',
+        'Created': new Date(p.created_at).toISOString().split('T')[0],
+      }))
+      
+      const ws = XLSX.utils.json_to_sheet(excelData)
+      
+      // Set column widths
+      const colWidths = [
+        { wch: 25 }, // Permission Name
+        { wch: 30 }, // Description
+        { wch: 15 }, // Resource
+        { wch: 12 }, // Action
+        { wch: 10 }, // Status
+        { wch: 12 }  // Created
+      ]
+      ws['!cols'] = colWidths
+      
+      const wb = XLSX.utils.book_new()
+      XLSX.utils.book_append_sheet(wb, ws, 'Permissions')
+      XLSX.writeFile(wb, `permissions_export_${new Date().toISOString().split('T')[0]}.xlsx`)
+      
+      toast({
+        title: "✅ Export Successful",
+        description: `Successfully exported ${allPermissions.length} permission(s) to Excel file.`,
+        className: "bg-green-50 border-green-200 text-green-800 dark:bg-green-900/20 dark:border-green-800 dark:text-green-200",
+      })
+    } catch (error) {
+      console.error('Export error:', error)
+      toast({
+        title: "❌ Export Failed",
+        description: "Failed to export permissions. Please try again.",
+        variant: "destructive",
+        className: "bg-red-50 border-red-200 text-red-800 dark:bg-red-900/20 dark:border-red-800 dark:text-red-200",
+      })
+    }
   }
 
   const handleTemplateExport = () => {
@@ -412,6 +476,7 @@ export default function PermissionsPage() {
     XLSX.utils.book_append_sheet(wb, ws, 'Template')
     XLSX.writeFile(wb, `permissions_template_${new Date().toISOString().split('T')[0]}.xlsx`)
   }
+
 
   const handleImport = () => {
     const input = document.createElement('input')
@@ -469,7 +534,6 @@ export default function PermissionsPage() {
           }))
         }
         
-        const now = new Date().toISOString()
         const validationErrors: Array<{
           row: number
           name: string
@@ -479,17 +543,17 @@ export default function PermissionsPage() {
         
         const mapped = rows.map((r, index) => {
           const permissionData = {
-            id: String(Date.now() + Math.random()),
+            // Remove manual ID generation - let database handle UUID generation
             name: r.name!,
             description: r.description || '',
             resource: r.resource as string,
             action: r.action as string,
             is_active: (r as any).is_active ?? true,
-            created_at: now,
+            // Remove manual created_at - let database handle timestamp
           }
           
           // Validate the data
-          const errors = validatePermissionData(permissionData, index + 2) // +2 because index is 0-based and we have header row
+          const errors = validatePermissionData(permissionData, index + 2, items) // +2 because index is 0-based and we have header row
           if (errors.length > 0) {
             validationErrors.push({
               row: index + 2,
@@ -523,6 +587,13 @@ export default function PermissionsPage() {
         setLoading(true)
         let successCount = 0
         let errorCount = 0
+        let skippedCount = 0
+        const importErrors: Array<{
+          row: number
+          name: string
+          resource: string
+          errors: string[]
+        }> = []
         
         for (const permission of mapped) {
           try {
@@ -539,11 +610,55 @@ export default function PermissionsPage() {
               setItems(prev => [savedPermission, ...prev])
               successCount++
             } else {
-              console.error('Failed to save permission:', permission.name)
-              errorCount++
+              const errorData = await response.json().catch(() => ({ error: 'Unknown error' }))
+              console.error('Failed to save permission:', permission.name, {
+                status: response.status,
+                statusText: response.statusText,
+                errorData: errorData,
+                responseHeaders: Object.fromEntries(response.headers.entries())
+              })
+              
+              // Check if it's a conflict (409) - treat as skip instead of error
+              if (response.status === 409) {
+                console.log(`Skipping existing permission: ${permission.name}`)
+                skippedCount++
+              } else {
+                // Add to import errors for detailed feedback (only for real errors)
+                const rowIndex = mapped.findIndex(p => p.name === permission.name) + 2 // +2 for header row
+                let errorMessage = errorData.error || 'Unknown error'
+                
+                // If we have detailed error information, use it
+                if (errorData.details && errorData.details.message) {
+                  errorMessage = `${errorMessage}: ${errorData.details.message}`
+                }
+                
+                // Fallback to status-based messages if no specific error
+                if (errorMessage === 'Unknown error') {
+                  errorMessage = response.status === 500 ? 'Server error occurred' :
+                                response.status === 400 ? 'Invalid data provided' :
+                                `HTTP ${response.status}: ${response.statusText}`
+                }
+                
+                importErrors.push({
+                  row: rowIndex,
+                  name: permission.name,
+                  resource: permission.resource,
+                  errors: [errorMessage]
+                })
+                errorCount++
+              }
             }
           } catch (error) {
             console.error('Error saving permission:', permission.name, error)
+            
+            // Add to import errors for detailed feedback
+            const rowIndex = mapped.findIndex(p => p.name === permission.name) + 2 // +2 for header row
+            importErrors.push({
+              row: rowIndex,
+              name: permission.name,
+              resource: permission.resource,
+              errors: [error instanceof Error ? error.message : 'Network error occurred']
+            })
             errorCount++
           }
         }
@@ -551,22 +666,45 @@ export default function PermissionsPage() {
         setLoading(false)
         
         // Show detailed results
+        const totalProcessed = successCount + skippedCount + errorCount
+        let description = ""
+        
+        if (successCount > 0) {
+          description += `✅ ${successCount} imported`
+        }
+        if (skippedCount > 0) {
+          description += `${description ? ", " : ""}⏭️ ${skippedCount} skipped (already exist)`
+        }
+        if (errorCount > 0) {
+          description += `${description ? ", " : ""}❌ ${errorCount} failed`
+        }
+        
         if (successCount > 0 && errorCount === 0) {
           toast({
-            title: "✅ Import Successful",
-            description: `Successfully imported ${successCount} permission(s) to the database.`,
+            title: "✅ Import Completed",
+            description: description,
             className: "bg-green-50 border-green-200 text-green-800 dark:bg-green-900/20 dark:border-green-800 dark:text-green-200",
           })
-        } else if (successCount > 0 && errorCount > 0) {
+        } else if (successCount > 0 || skippedCount > 0) {
+          // Show errors popup only if there are real errors (not just skipped)
+          if (importErrors.length > 0) {
+            setImportErrors(importErrors)
+            setErrorPopupOpen(true)
+          }
           toast({
-            title: "⚠️ Partial Import Success",
-            description: `Imported ${successCount} permission(s) successfully, ${errorCount} failed. Check console for details.`,
+            title: "⚠️ Import Completed",
+            description: description,
             className: "bg-yellow-50 border-yellow-200 text-yellow-800 dark:bg-yellow-900/20 dark:border-yellow-800 dark:text-yellow-200",
           })
         } else {
+          // Show errors popup for complete failure
+          if (importErrors.length > 0) {
+            setImportErrors(importErrors)
+            setErrorPopupOpen(true)
+          }
           toast({
             title: "❌ Import Failed",
-            description: "Failed to import any permissions. Please check your data and try again.",
+            description: "Failed to import any permissions. See details below.",
             variant: "destructive",
             className: "bg-red-50 border-red-200 text-red-800 dark:bg-red-900/20 dark:border-red-800 dark:text-red-200",
           })
@@ -1045,6 +1183,9 @@ export default function PermissionsPage() {
                     <li>• Action must be 50 characters or less</li>
                     <li>• Description must be 500 characters or less</li>
                     <li>• Status: true/false or Active/Inactive</li>
+                    <li>• <strong>Permission names must be unique</strong> - check if the name already exists</li>
+                    <li>• <strong>Resource-Action combinations must be unique</strong> - check if the same resource+action already exists</li>
+                    <li>• For conflicts: either change the name/action or delete the existing permission first</li>
                   </ul>
                 </div>
               </div>

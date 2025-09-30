@@ -339,12 +339,6 @@ export default function UsersPage() {
         
         const updatedUser = await response.json()
         setUsers((prev) => prev.map((u) => (u.id === editing.id ? updatedUser : u)))
-        
-        toast({
-          title: "✅ User Updated",
-          description: `${updatedUser.full_name} has been successfully updated.`,
-          className: "bg-green-50 border-green-200 text-green-800 dark:bg-green-900/20 dark:border-green-800 dark:text-green-200",
-        })
       } else {
         // Create new user
         const response = await fetch('/api/users', {
@@ -361,12 +355,6 @@ export default function UsersPage() {
         
         const newUser = await response.json()
         setUsers((prev) => [newUser, ...prev])
-        
-        toast({
-          title: "✅ User Created",
-          description: `${newUser.full_name} has been successfully created.`,
-          className: "bg-green-50 border-green-200 text-green-800 dark:bg-green-900/20 dark:border-green-800 dark:text-green-200",
-        })
       }
       
       setSheetOpen(false)
@@ -398,9 +386,7 @@ export default function UsersPage() {
 
         const matchesRole =
           roleFilter === "all" ||
-          (roleFilter === "admin" && user.role?.includes("admin")) ||
-          (roleFilter === "user" && (user.role === "user" || !user.role)) ||
-          (roleFilter === "moderator" && user.role?.includes("moderator"))
+          user.role?.toLowerCase() === roleFilter.toLowerCase()
 
         return matchesStatus && matchesRole
       })
@@ -477,14 +463,7 @@ export default function UsersPage() {
         throw new Error('Failed to delete user')
       }
       
-      const userName = users.find(u => u.id === id)?.full_name || 'User'
       setUsers((prev) => prev.filter((u) => u.id !== id))
-      
-      toast({
-        title: "✅ User Deleted",
-        description: `${userName} has been successfully deleted.`,
-        className: "bg-orange-50 border-orange-200 text-orange-800 dark:bg-orange-900/20 dark:border-orange-800 dark:text-orange-200",
-      })
     } catch (error) {
       console.error('Error deleting user:', error)
       toast({
@@ -826,10 +805,7 @@ export default function UsersPage() {
                 Manage user accounts, roles, and permissions
               </p>
             </div>
-            <Button onClick={handleRefresh} variant="outline" size="sm" disabled={refreshing}>
-              <RefreshCcw className={`h-4 w-4 mr-2 ${refreshing ? 'animate-spin' : ''}`} />
-              Refresh
-            </Button>
+           
           </div>
 
           {/* Scorecard Section */}
@@ -935,14 +911,20 @@ export default function UsersPage() {
                     </SelectTrigger>
                     <SelectContent>
                       <SelectItem value="all">All Roles</SelectItem>
-                      <SelectItem value="admin">Admin</SelectItem>
-                      <SelectItem value="moderator">Moderator</SelectItem>
-                      <SelectItem value="user">User</SelectItem>
+                      {roles.map((role) => (
+                        <SelectItem key={role.id} value={role.name}>
+                          {role.name.charAt(0).toUpperCase() + role.name.slice(1)}
+                        </SelectItem>
+                      ))}
                     </SelectContent>
                   </Select>
                 </div>
 
                 <div className="flex gap-2 flex-wrap">
+                <Button onClick={handleRefresh} variant="outline" size="sm" disabled={refreshing}>
+              <RefreshCcw className={`h-4 w-4 mr-2 ${refreshing ? 'animate-spin' : ''}`} />
+              Refresh
+            </Button>
                   <Button
                     variant="outline"
                     size="sm"

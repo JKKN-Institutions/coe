@@ -3,6 +3,7 @@
 import { useMemo, useState, useEffect } from "react"
 import * as XLSX from "xlsx"
 import { AppSidebar } from "@/components/app-sidebar"
+import { ProtectedRoute } from "@/components/protected-route"
 import { AppHeader } from "@/components/app-header"
 import { AppFooter } from "@/components/app-footer"
 import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar"
@@ -292,7 +293,7 @@ export default function ProgramPage() {
   useEffect(() => { fetchPrograms() }, [])
 
   return (
-
+    <ProtectedRoute requiredPermissions={["programs.view"]}>
     <SidebarProvider>
       <AppSidebar />
       <SidebarInset className="flex flex-col min-h-screen">
@@ -623,6 +624,6 @@ export default function ProgramPage() {
         </SheetContent>
       </Sheet>
     </SidebarProvider>
-
+    </ProtectedRoute>
   )
 }

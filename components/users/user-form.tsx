@@ -137,7 +137,7 @@ export default function UserForm({
 
   const onSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    
+
     if (!validateForm()) {
       toast.error("Please fix the validation errors before submitting")
       return
@@ -147,9 +147,16 @@ export default function UserForm({
     try {
       const url = mode === "add" ? "/api/users" : `/api/users/${initialData?.id}`
       const method = mode === "add" ? "POST" : "PUT"
-      const payload: Record<string, unknown> = { ...form }
-      if (mode === "edit" && !form.password) {
-        delete payload.password
+      const payload: Record<string, unknown> = {
+        full_name: form.name,
+        email: form.email,
+        role: form.role,
+        institution_id: form.institutionId,
+        is_active: form.isActive,
+        avatar_url: form.image,
+      }
+      if (form.password) {
+        payload.password = form.password
       }
 
       const res = await fetch(url, {
