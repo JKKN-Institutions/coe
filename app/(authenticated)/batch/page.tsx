@@ -4,6 +4,7 @@ import { useState, useEffect } from "react"
 import Link from "next/link"
 import * as XLSX from "xlsx"
 import { AppFooter } from "@/components/app-footer"
+import { ProtectedRoute } from "@/components/protected-route"
 import {
   Breadcrumb,
   BreadcrumbItem,
@@ -34,6 +35,8 @@ import { Badge } from "@/components/ui/badge"
 import { AppSidebar } from "@/components/app-sidebar"
 import { AppHeader } from "@/components/app-header"
 import { SidebarProvider, SidebarInset } from "@/components/ui/sidebar"
+import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet"
+import { Label } from "@/components/ui/label"
 import {
   AlertDialog,
   AlertDialogAction,
@@ -63,16 +66,27 @@ import {
   ArrowDown,
   FileSpreadsheet,
   GraduationCap,
+  RefreshCw,
 } from "lucide-react"
 
 // Batch type definition - matching actual database schema
 interface Batch {
-  id: number
+  id: string
+  institutions_id: string | null
+  institution_code: string
   batch_year: number
+  batch_name: string
   batch_code: string
+  start_date: string | null
+  end_date: string | null
   status: boolean
   created_at: string
   updated_at: string
+}
+
+type InstitutionOption = {
+  id: string
+  institution_code: string
 }
 
 export default function BatchPage() {
@@ -81,38 +95,99 @@ export default function BatchPage() {
   const [searchTerm, setSearchTerm] = useState("")
   const [statusFilter, setStatusFilter] = useState("all")
   const [yearFilter, setYearFilter] = useState("all")
-  const [deleteBatchId, setDeleteBatchId] = useState<number | null>(null)
+  const [deleteBatchId, setDeleteBatchId] = useState<string | null>(null)
   const [sortColumn, setSortColumn] = useState<string | null>(null)
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc')
   const [currentPage, setCurrentPage] = useState(1)
   const itemsPerPage = 10
 
-  // Fetch batches from API
-  useEffect(() => {
-    const fetchBatches = async () => {
-      try {
-        const response = await fetch('/api/batch')
-        if (response.ok) {
-          const data = await response.json()
-          setBatches(data)
-        } else {
-          const errorData = await response.json()
-          console.error('Failed to fetch batch:', errorData)
+  const [sheetOpen, setSheetOpen] = useState(false)
+  const [editing, setEditing] = useState<Batch | null>(null)
+  const [saving, setSaving] = useState(false)
+  const [institutionOptions, setInstitutionOptions] = useState<InstitutionOption[]>([])
+  const [formData, setFormData] = useState({
+    institutions_id: '' as string | null,
+    institution_code: '',
+    batch_year: new Date().getFullYear(),
+    batch_name: '',
+    batch_code: '',
+    start_date: '' as string | null,
+    end_date: '' as string | null,
+    status: true,
+  })
 
-          // Check if batch table doesn't exist
-          if (errorData.error === 'Batch table not found') {
-            alert(`Database Setup Required:\n\n${errorData.message}\n\nPlease follow the instructions in the console to create the batch table.`)
-            console.log('Setup Instructions:', errorData.instructions)
-          }
+  const resetForm = () => {
+    setFormData({
+      institutions_id: '',
+      institution_code: '',
+      batch_year: new Date().getFullYear(),
+      batch_name: '',
+      batch_code: '',
+      start_date: '',
+      end_date: '',
+      status: true,
+    })
+  }
+
+  // When editing changes, populate the form from the selected row
+  useEffect(() => {
+    if (editing) {
+      setFormData({
+        institutions_id: editing.institutions_id,
+        institution_code: editing.institution_code,
+        batch_year: editing.batch_year,
+        batch_name: editing.batch_name,
+        batch_code: editing.batch_code,
+        start_date: editing.start_date || '',
+        end_date: editing.end_date || '',
+        status: editing.status,
+      })
+    }
+  }, [editing])
+
+  // Fetch batches from API
+  const fetchBatches = async () => {
+    try {
+      setLoading(true)
+      const response = await fetch('/api/batch')
+      if (response.ok) {
+        const data = await response.json()
+        setBatches(data)
+      } else {
+        const errorData = await response.json()
+        console.error('Failed to fetch batch:', errorData)
+
+        // Check if batch table doesn't exist
+        if (errorData.error === 'Batch table not found') {
+          alert(`Database Setup Required:\n\n${errorData.message}\n\nPlease follow the instructions in the console to create the batch table.`)
+          console.log('Setup Instructions:', errorData.instructions)
         }
-      } catch (error) {
-        console.error('Error fetching batch:', error)
-      } finally {
-        setLoading(false)
+      }
+    } catch (error) {
+      console.error('Error fetching batch:', error)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  useEffect(() => {
+    fetchBatches()
+  }, [])
+
+  useEffect(() => {
+    const fetchInstitutions = async () => {
+      try {
+        const res = await fetch('/api/institutions')
+        if (res.ok) {
+          const data = await res.json()
+          const opts = (data || []).map((i: any) => ({ id: i.id, institution_code: i.institution_code })) as InstitutionOption[]
+          setInstitutionOptions(opts)
+        }
+      } catch (e) {
+        console.error('Failed to fetch institutions', e)
       }
     }
-
-    fetchBatches()
+    fetchInstitutions()
   }, [])
 
   // Handle sorting
@@ -129,6 +204,8 @@ export default function BatchPage() {
   const filteredBatches = batches
     .filter((batch) => {
       const matchesSearch = batch.batch_code.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                           (batch.batch_name || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+                           (batch.institution_code || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
                            batch.batch_year.toString().includes(searchTerm)
       const matchesStatus = statusFilter === "all" ||
                            (statusFilter === "active" && batch.status) ||
@@ -143,9 +220,17 @@ export default function BatchPage() {
       let bValue: string | number
 
       switch (sortColumn) {
+        case 'institution_code':
+          aValue = (a.institution_code || '').toLowerCase()
+          bValue = (b.institution_code || '').toLowerCase()
+          break
         case 'batch_code':
           aValue = a.batch_code.toLowerCase()
           bValue = b.batch_code.toLowerCase()
+          break
+        case 'batch_name':
+          aValue = (a.batch_name || '').toLowerCase()
+          bValue = (b.batch_name || '').toLowerCase()
           break
         case 'batch_year':
           aValue = a.batch_year
@@ -202,7 +287,7 @@ export default function BatchPage() {
       })
 
       if (response.ok) {
-        setBatches(batches.filter(batch => batch.id.toString() !== batchId))
+        setBatches(batches.filter(batch => batch.id !== batchId))
         setDeleteBatchId(null)
       } else {
         console.error('Failed to delete batch')
@@ -232,8 +317,12 @@ export default function BatchPage() {
   const handleTemplateExport = () => {
     // Sample data - one row with example values
     const sampleData = [{
-      'Batch Code': 'B2024CS01',
+      'Institution Code': 'JKKN',
       'Batch Year': 2024,
+      'Batch Name': '2024-2028 B.E. CSE',
+      'Batch Code': 'B2024CS01',
+      'Start Date': '2024-08-01',
+      'End Date': '2028-05-31',
       'Status': 'Active'
     }]
 
@@ -243,8 +332,12 @@ export default function BatchPage() {
 
     // Define column widths
     const colWidths = [
-      { wch: 15 },  // Batch Code
+      { wch: 18 },  // Institution Code
       { wch: 12 },  // Batch Year
+      { wch: 28 },  // Batch Name
+      { wch: 15 },  // Batch Code
+      { wch: 12 },  // Start Date
+      { wch: 12 },  // End Date
       { wch: 10 }   // Status
     ]
     ws['!cols'] = colWidths
@@ -312,7 +405,7 @@ export default function BatchPage() {
     if (!ws.A1.c) ws.A1.c = []
     ws.A1.c.push({
       a: 'Template Instructions',
-      t: 'This is a template for importing batch data.\n\nInstructions:\n1. Replace the sample data with your actual data\n2. Keep the header row as is\n3. Status should be either "Active" or "Inactive"\n4. Batch Year should be a 4-digit year (e.g., 2024)\n5. Save the file and use the Import button to upload'
+      t: 'This is a template for importing batch data.\n\nInstructions:\n1. Replace the sample data with your actual data\n2. Keep the header row as is\n3. Status should be either "Active" or "Inactive"\n4. Batch Year should be a 4-digit year (e.g., 2024)\n5. Institution Code must exist in Institutions\n6. Dates should be YYYY-MM-DD\n7. Save the file and use the Upload button to import'
     })
 
     // Add worksheet to workbook
@@ -327,8 +420,12 @@ export default function BatchPage() {
     // Prepare data with S.No starting from 1
     const excelData = filteredBatches.map((batch, index) => ({
       'S.No': index + 1,
-      'Batch Code': batch.batch_code,
+      'Institution Code': batch.institution_code,
       'Batch Year': batch.batch_year,
+      'Batch Name': batch.batch_name,
+      'Batch Code': batch.batch_code,
+      'Start Date': batch.start_date || '',
+      'End Date': batch.end_date || '',
       'Status': batch.status ? 'Active' : 'Inactive',
       'Created Date': formatDate(batch.created_at)
     }))
@@ -340,14 +437,13 @@ export default function BatchPage() {
     // Define column widths
     const colWidths = [
       { wch: 5 },   // S.No
-      { wch: 15 },  // Batch Code
-      { wch: 25 },  // Batch Name
-      { wch: 25 },  // Program
-      { wch: 15 },  // Academic Year
+      { wch: 18 },  // Institution Code
+      { wch: 12 },  // Batch Year
+      { wch: 28 },  // Batch Name
+      { wch: 18 },  // Batch Code
+      { wch: 12 },  // Start Date
+      { wch: 12 },  // End Date
       { wch: 10 },  // Status
-      { wch: 15 },  // Max Students
-      { wch: 18 },  // Current Students
-      { wch: 15 },  // Utilization %
       { wch: 15 }   // Created Date
     ]
     ws['!cols'] = colWidths
@@ -447,9 +543,13 @@ export default function BatchPage() {
               const values = lines[i].match(/(".*?"|[^,]+)/g)?.map(v => v.replace(/"/g, '').trim()) || []
 
               const batch: Partial<Batch> = {
-                batch_code: values[startIndex] || '',
+                institution_code: values[startIndex] || '',
                 batch_year: parseInt(values[startIndex + 1]) || new Date().getFullYear(),
-                status: values[startIndex + 2] === 'Active'
+                batch_name: values[startIndex + 2] || '',
+                batch_code: values[startIndex + 3] || '',
+                start_date: values[startIndex + 4] || '',
+                end_date: values[startIndex + 5] || '',
+                status: (values[startIndex + 6] || '').toLowerCase() === 'active'
               }
               dataToImport.push(batch)
             }
@@ -465,9 +565,13 @@ export default function BatchPage() {
             const jsonData = XLSX.utils.sheet_to_json(worksheet)
 
             dataToImport = (jsonData as Record<string, unknown>[]).map((row) => ({
-              batch_code: String(row['Batch Code'] || ''),
+              institution_code: String(row['Institution Code'] || ''),
               batch_year: Number(row['Batch Year']) || new Date().getFullYear(),
-              status: row['Status'] === 'Active'
+              batch_name: String(row['Batch Name'] || ''),
+              batch_code: String(row['Batch Code'] || ''),
+              start_date: String(row['Start Date'] || ''),
+              end_date: String(row['End Date'] || ''),
+              status: String(row['Status'] || '').toLowerCase() === 'active'
             }))
             await processImport(dataToImport)
           }
@@ -537,6 +641,7 @@ export default function BatchPage() {
   }, [searchTerm, statusFilter, yearFilter, sortColumn, sortDirection])
 
   return (
+    <ProtectedRoute>
     <SidebarProvider>
       <AppSidebar />
       <SidebarInset className="flex flex-col min-h-screen">
@@ -549,7 +654,7 @@ export default function BatchPage() {
                 <BreadcrumbList>
                   <BreadcrumbItem>
                     <BreadcrumbLink asChild>
-                      <Link href="/" className="hover:text-primary">Dashboard</Link>
+                      <Link href="/dashboard" className="hover:text-primary">Dashboard</Link>
                     </BreadcrumbLink>
                   </BreadcrumbItem>
                   <BreadcrumbSeparator />
@@ -560,15 +665,7 @@ export default function BatchPage() {
               </Breadcrumb>
             </div>
 
-            {/* Header Section */}
-            <div className="flex items-center justify-between flex-shrink-0">
-              <div>
-                <h1 className="text-xl font-bold tracking-tight">Batch Management</h1>
-                <p className="text-xs text-muted-foreground">
-                  Manage student batches and their enrollment details
-                </p>
-              </div>
-            </div>
+           
 
             {/* Scorecard Section */}
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3 flex-shrink-0">
@@ -646,6 +743,19 @@ export default function BatchPage() {
             {/* Action Bar */}
             <Card className="flex-1 flex flex-col min-h-0">
               <CardHeader className="flex-shrink-0 p-3">
+                <div className="flex items-center justify-between mb-2">
+                  <div className="flex items-center gap-2">
+                    <div className="h-7 w-7 rounded-lg bg-primary/10 flex items-center justify-center">
+                      <GraduationCap className="h-3 w-3 text-primary" />
+                    </div>
+                    <div>
+                      <h2 className="text-sm font-semibold">Batches</h2>
+                      <p className="text-[11px] text-muted-foreground">Manage batches</p>
+                    </div>
+                  </div>
+                  <div className="hidden" />
+                </div>
+
                 <div className="flex flex-col lg:flex-row gap-2 items-start lg:items-center justify-between">
                   <div className="flex flex-col sm:flex-row gap-2 w-full lg:w-auto">
                     {/* Filter Dropdowns */}
@@ -690,6 +800,16 @@ export default function BatchPage() {
                       variant="outline"
                       size="sm"
                       className="text-xs px-2 h-8"
+                      onClick={fetchBatches}
+                      disabled={loading}
+                    >
+                      <RefreshCw className={`h-3 w-3 mr-1 ${loading ? 'animate-spin' : ''}`} />
+                      Refresh
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="text-xs px-2 h-8"
                       onClick={handleTemplateExport}
                     >
                       <FileSpreadsheet className="h-3 w-3 mr-1" />
@@ -701,7 +821,7 @@ export default function BatchPage() {
                       className="text-xs px-2 h-8"
                       onClick={handleDownload}
                     >
-                      <Download className="h-3 w-3 mr-1" />
+                     
                       Json
                     </Button>
                     <Button
@@ -710,7 +830,7 @@ export default function BatchPage() {
                       className="text-xs px-2 h-8"
                       onClick={handleExport}
                     >
-                      <Download className="h-3 w-3 mr-1" />
+                     
                       Download
                     </Button>
                     <Button
@@ -719,20 +839,14 @@ export default function BatchPage() {
                       className="text-xs px-2 h-8"
                       onClick={handleImport}
                     >
-                      <Upload className="h-3 w-3 mr-1" />
+                    
                       Upload
                     </Button>
-                    <Button
-                      size="sm"
-                      className="text-xs px-2 h-8"
-                      onClick={() => window.location.href = '/batch/add'}
-                    >
+                    <Button size="sm" className="text-xs px-2 h-8" onClick={() => { setSheetOpen(true); setEditing(null); }}>
                       <PlusCircle className="h-3 w-3 mr-1" />
                       Add
                     </Button>
-                    <Button variant="outline" size="sm" className="text-xs px-1 h-8">
-                      <Settings className="h-3 w-3" />
-                    </Button>
+                   
                   </div>
                 </div>
               </CardHeader>
@@ -745,7 +859,33 @@ export default function BatchPage() {
                       <TableHeader className="sticky top-0 z-10 bg-slate-50 dark:bg-slate-900/50">
                         <TableRow>
                           <TableHead className="w-[50px] text-xs">S.No</TableHead>
+                          <TableHead className="w-[160px] text-xs">
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => handleSort('institution_code')}
+                              className="h-auto p-0 font-medium hover:bg-transparent"
+                            >
+                              Institution Code
+                              <span className="ml-1">
+                                {getSortIcon('institution_code')}
+                              </span>
+                            </Button>
+                          </TableHead>
                           <TableHead className="w-[150px] text-xs">
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => handleSort('batch_name')}
+                              className="h-auto p-0 font-medium hover:bg-transparent"
+                            >
+                              Batch Name
+                              <span className="ml-1">
+                                {getSortIcon('batch_name')}
+                              </span>
+                            </Button>
+                          </TableHead>
+                          <TableHead className="w-[120px] text-xs">
                             <Button
                               variant="ghost"
                               size="sm"
@@ -758,7 +898,7 @@ export default function BatchPage() {
                               </span>
                             </Button>
                           </TableHead>
-                          <TableHead className="w-[120px] text-xs">
+                          <TableHead className="w-[100px] text-xs">
                             <Button
                               variant="ghost"
                               size="sm"
@@ -815,6 +955,12 @@ export default function BatchPage() {
                                   {startIndex + index + 1}
                                 </TableCell>
                                 <TableCell className="font-medium text-xs">
+                                  {batch.institution_code}
+                                </TableCell>
+                                <TableCell className="text-xs">
+                                  {batch.batch_name}
+                                </TableCell>
+                                <TableCell>
                                   {batch.batch_code}
                                 </TableCell>
                                 <TableCell className="text-xs">
@@ -833,7 +979,7 @@ export default function BatchPage() {
                                     <Button
                                       variant="outline"
                                       size="sm"
-                                      onClick={() => window.location.href = `/batch/edit/${batch.id}`}
+                                      onClick={() => { setEditing(batch); setSheetOpen(true) }}
                                       className="h-7 w-7 p-0"
                                     >
                                       <Edit className="h-3 w-3" />
@@ -912,7 +1058,17 @@ export default function BatchPage() {
                   <div className="text-xs text-muted-foreground">
                     Showing {filteredBatches.length === 0 ? 0 : startIndex + 1}-{Math.min(endIndex, filteredBatches.length)} of {filteredBatches.length} batches
                   </div>
-                  <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-2">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={fetchBatches}
+                        disabled={loading}
+                        className="h-7 px-2 text-xs"
+                      >
+                        <RefreshCw className={`h-3 w-3 mr-1 ${loading ? 'animate-spin' : ''}`} />
+                        Refresh
+                      </Button>
                     <Button
                       variant="outline"
                       size="sm"
@@ -943,6 +1099,171 @@ export default function BatchPage() {
         </div>
         <AppFooter />
       </SidebarInset>
+      <Sheet open={sheetOpen} onOpenChange={(o) => { if (!o) { setSheetOpen(o); setEditing(null); resetForm(); } else setSheetOpen(o) }}>
+        <SheetContent className="sm:max-w-[800px] overflow-y-auto">
+          <SheetHeader className="pb-6 border-b bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-blue-950/20 dark:to-indigo-950/20">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="h-10 w-10 rounded-full bg-gradient-to-r from-blue-500 to-indigo-600 flex items-center justify-center">
+                  <GraduationCap className="h-5 w-5 text-white" />
+                </div>
+                <div>
+                  <SheetTitle className="text-2xl font-bold bg-gradient-to-r from-blue-600 to-indigo-600 bg-clip-text text-transparent">
+                    {editing ? 'Edit Batch' : 'Add Batch'}
+                  </SheetTitle>
+                  <p className="text-sm text-muted-foreground mt-1">
+                    {editing ? 'Update batch information' : 'Create a new batch record'}
+                  </p>
+                </div>
+              </div>
+            </div>
+          </SheetHeader>
+
+          <div className="mt-6 space-y-8">
+            {/* Basic Information Section */}
+            <div className="space-y-4">
+              <div className="flex items-center gap-3 pb-3 border-b border-blue-200 dark:border-blue-800">
+                <div className="h-8 w-8 rounded-lg bg-gradient-to-r from-green-500 to-emerald-600 flex items-center justify-center">
+                  <GraduationCap className="h-4 w-4 text-white" />
+                </div>
+                <h3 className="text-lg font-bold bg-gradient-to-r from-green-600 to-emerald-600 bg-clip-text text-transparent">Basic Information</h3>
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label className="text-sm font-semibold">Institution Code</Label>
+                  <Select value={formData.institution_code} onValueChange={(v) => setFormData({ ...formData, institution_code: v })}>
+                    <SelectTrigger className="h-10">
+                      <SelectValue placeholder="Select institution code" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {institutionOptions.map(opt => (
+                        <SelectItem key={opt.id} value={opt.institution_code}>{opt.institution_code}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-2">
+                  <Label className="text-sm font-semibold">Batch Year</Label>
+                  <Input
+                    type="number"
+                    value={formData.batch_year}
+                    onChange={(e) => setFormData({ ...formData, batch_year: parseInt(e.target.value) || new Date().getFullYear() })}
+                    className="h-10"
+                    placeholder="e.g., 2024"
+                  />
+                </div>
+                <div className="space-y-2 md:col-span-2">
+                  <Label className="text-sm font-semibold">Batch Name</Label>
+                  <Input
+                    value={formData.batch_name}
+                    onChange={(e) => setFormData({ ...formData, batch_name: e.target.value })}
+                    className="h-10"
+                    placeholder="e.g., 2024-2028 B.E. CSE"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label className="text-sm font-semibold">Batch Code</Label>
+                  <Input
+                    value={formData.batch_code}
+                    onChange={(e) => setFormData({ ...formData, batch_code: e.target.value })}
+                    className="h-10"
+                    placeholder="e.g., B2024CS01"
+                  />
+                </div>
+              </div>
+            </div>
+
+            {/* Dates Section */}
+            <div className="space-y-4">
+              <div className="flex items-center gap-3 pb-3 border-b border-purple-200 dark:border-purple-800">
+                <div className="h-8 w-8 rounded-lg bg-gradient-to-r from-purple-500 to-pink-600 flex items-center justify-center">
+                  <GraduationCap className="h-4 w-4 text-white" />
+                </div>
+                <h3 className="text-lg font-bold bg-gradient-to-r from-purple-600 to-pink-600 bg-clip-text text-transparent">Dates</h3>
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label className="text-sm font-medium">Start Date</Label>
+                  <Input type="date" value={formData.start_date || ''} onChange={(e) => setFormData({ ...formData, start_date: e.target.value })} className="h-10" />
+                </div>
+                <div className="space-y-2">
+                  <Label className="text-sm font-medium">End Date</Label>
+                  <Input type="date" value={formData.end_date || ''} onChange={(e) => setFormData({ ...formData, end_date: e.target.value })} className="h-10" />
+                </div>
+              </div>
+            </div>
+
+            {/* Status Section */}
+            <div className="space-y-4">
+              <div className="flex items-center gap-3 pb-3 border-b border-teal-200 dark:border-teal-800">
+                <div className="h-8 w-8 rounded-lg bg-gradient-to-r from-teal-500 to-green-600 flex items-center justify-center">
+                  <GraduationCap className="h-4 w-4 text-white" />
+                </div>
+                <h3 className="text-lg font-bold bg-gradient-to-r from-teal-600 to-green-600 bg-clip-text text-transparent">Status</h3>
+              </div>
+              <div className="flex items-center gap-4">
+                <Label className="text-sm font-semibold">Batch Status</Label>
+                <button
+                  type="button"
+                  onClick={() => setFormData({ ...formData, status: !formData.status })}
+                  className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none ${
+                    formData.status ? 'bg-green-500' : 'bg-gray-300'
+                  }`}
+                >
+                  <span
+                    className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                      formData.status ? 'translate-x-6' : 'translate-x-1'
+                    }`}
+                  />
+                </button>
+                <span className={`text-sm font-medium ${formData.status ? 'text-green-600' : 'text-red-500'}`}>
+                  {formData.status ? 'Active' : 'Inactive'}
+                </span>
+              </div>
+            </div>
+
+            {/* Action Buttons */}
+            <div className="flex justify-end gap-3 pt-6 border-t">
+              <Button 
+                variant="outline" 
+                size="sm" 
+                className="h-10 px-6" 
+                onClick={() => { setSheetOpen(false); setEditing(null); resetForm() }}
+                disabled={saving}
+              >
+                Cancel
+              </Button>
+              <Button 
+                size="sm" 
+                className="h-10 px-6" 
+                onClick={async () => {
+                  try {
+                    setSaving(true)
+                    const method = editing ? 'PUT' : 'POST'
+                    const url = editing ? `/api/batch/${editing.id}` : '/api/batch'
+                    const res = await fetch(url, { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(formData) })
+                    if (!res.ok) throw new Error('Save failed')
+                    const saved = await res.json()
+                    setBatches(prev => editing ? prev.map(b => (b.id === saved.id ? saved : b)) : [saved, ...prev])
+                    setSheetOpen(false)
+                    setEditing(null)
+                    resetForm()
+                  } catch (e) {
+                    console.error(e)
+                    alert('Failed to save batch')
+                  } finally {
+                    setSaving(false)
+                  }
+                }}
+                disabled={saving}
+              >
+                {saving ? (editing ? 'Updating…' : 'Creating…') : (editing ? 'Update Batch' : 'Create Batch')}
+              </Button>
+            </div>
+          </div>
+        </SheetContent>
+      </Sheet>
     </SidebarProvider>
+    </ProtectedRoute>
   )
 }

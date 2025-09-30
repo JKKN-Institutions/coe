@@ -43,6 +43,7 @@ import {
 
 import { NavMain } from "@/components/nav-main"
 import { NavUser } from "@/components/nav-user"
+import { ProtectedRoute } from "@/components/protected-route"
 import {
   Sidebar,
   SidebarContent,
@@ -51,6 +52,18 @@ import {
   SidebarRail,
 } from "@/components/ui/sidebar"
 
+const adminSection = {
+  title: "Admin",
+  url: "#",
+  icon: Shield,
+  isActive: false,
+  items: [
+    { title: "Users", url: "/user", icon: Users },
+    { title: "Roles", url: "/roles", icon: Shield },
+    { title: "Permissions", url: "/permissions", icon: Key },
+    { title: "Role Permission", url: "/role-permissions", icon: LibraryBig },
+  ],
+}
 const data = {
   navMain: [
     {
@@ -59,18 +72,7 @@ const data = {
       icon: Home,
       isActive: true,
     },
-    {
-      title: "Admin",
-      url: "#",
-      icon: Shield,
-      isActive: false,
-      items: [
-        { title: "Users", url: "/user", icon: Users },
-        { title: "Roles", url: "/roles", icon: Shield },
-        { title: "Permissions", url: "/permissions", icon: Key },
-        { title: "Role Permission", url: "/role-permissions", icon: LibraryBig },
-      ],
-    },
+    // Admin group is rendered separately under a guard
     {
       title: "Master",
       url: "#",
@@ -126,6 +128,8 @@ const data = {
       },
   ],
 }
+
+
  
 export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
   return (
@@ -177,6 +181,13 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
         <NavMain 
           items={data.navMain} 
         />
+        <ProtectedRoute
+          requiredRoles={["admin", "super_admin"]}
+          requireAnyRole={true}
+          fallback={<></>}
+        >
+          <NavMain items={[adminSection]} />
+        </ProtectedRoute>
       </SidebarContent>
       <SidebarFooter>
         <NavUser />

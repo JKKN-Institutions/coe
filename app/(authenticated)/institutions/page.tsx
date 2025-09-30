@@ -99,6 +99,8 @@ const MOCK_INSTITUTIONS: Institution[] = [
   },
 ]
 
+import { ProtectedRoute } from "@/components/protected-route"
+
 export default function InstitutionsPage() {
   const { toast } = useToast()
   const [items, setItems] = useState<Institution[]>([])
@@ -942,6 +944,7 @@ export default function InstitutionsPage() {
   }
 
   return (
+    <ProtectedRoute requiredPermissions={["institutions.view"]}>
     <SidebarProvider>
       <AppSidebar />
       <SidebarInset className="flex flex-col min-h-screen">
@@ -1918,6 +1921,7 @@ export default function InstitutionsPage() {
         </AlertDialogContent>
       </AlertDialog>
     </SidebarProvider>
+    </ProtectedRoute>
   )
 }
 

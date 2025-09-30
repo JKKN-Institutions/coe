@@ -63,37 +63,76 @@ export function AuthProvider({
   useEffect(() => {
     const initAuth = async () => {
       try {
-        // Only show loading if we don't have any cached session data
-        const hasCachedSession = supabaseAuthService.getSession();
-        if (!hasCachedSession) {
-          setIsLoading(true);
-        }
-        setError(null);
+        // Check for cached session first to avoid unnecessary loading
+        const cachedUser = supabaseAuthService.getUser();
+        const cachedSession = supabaseAuthService.getSession();
 
-        // Check if user is authenticated with Supabase
-        const isAuth = await supabaseAuthService.isAuthenticated();
-        
-        if (isAuth) {
-          // Get current user from Supabase
-          const currentUser = await supabaseAuthService.getCurrentUser();
-          const storedSession = supabaseAuthService.getSession();
-          
-          if (currentUser) {
-            setUser(currentUser);
-            if (storedSession) {
-              setSession(storedSession);
+        if (cachedUser && cachedSession) {
+          // We have cached data, set it immediately to prevent redirect
+          setUser(cachedUser);
+          setSession(cachedSession);
+
+          // Then validate in the background
+          const isAuth = await supabaseAuthService.isAuthenticated();
+          if (isAuth) {
+            // Session is still valid, get fresh user data
+            const currentUser = await supabaseAuthService.getCurrentUser();
+            if (currentUser) {
+              setUser(currentUser);
+              const freshSession = supabaseAuthService.getSession();
+              if (freshSession) {
+                setSession(freshSession);
+              }
+              // Compute and cache permissions (if needed)
+              await supabaseAuthService.refreshPermissionsIfNeeded();
+              // Update user with effective permissions
+              const updatedUser = supabaseAuthService.getUser();
+              if (updatedUser) {
+                setUser(updatedUser);
+              }
             }
           } else {
-            // User not found, clear session
+            // Session expired, clear data
             setUser(null);
             setSession(null);
             supabaseAuthService.clearSession();
           }
         } else {
-          // Not authenticated, clear any stored data
-          setUser(null);
-          setSession(null);
-          supabaseAuthService.clearSession();
+          // No cached data, show loading and check authentication
+          setIsLoading(true);
+          setError(null);
+
+          const isAuth = await supabaseAuthService.isAuthenticated();
+          
+          if (isAuth) {
+            // Get current user from Supabase
+            const currentUser = await supabaseAuthService.getCurrentUser();
+            const storedSession = supabaseAuthService.getSession();
+
+            if (currentUser) {
+              setUser(currentUser);
+              if (storedSession) {
+                setSession(storedSession);
+              }
+              // Compute and cache permissions (if needed)
+              await supabaseAuthService.refreshPermissionsIfNeeded();
+              // Update user with effective permissions
+              const updatedUser = supabaseAuthService.getUser();
+              if (updatedUser) {
+                setUser(updatedUser);
+              }
+            } else {
+              // User not found, clear session
+              setUser(null);
+              setSession(null);
+              supabaseAuthService.clearSession();
+            }
+          } else {
+            // Not authenticated, clear any stored data
+            setUser(null);
+            setSession(null);
+            supabaseAuthService.clearSession();
+          }
         }
       } catch (err) {
         console.error('Auth initialization error:', err);
@@ -167,6 +206,12 @@ export function AuthProvider({
                 expires_at: session.expires_at?.toString() || '',
                 created_at: new Date().toISOString(),
               });
+              // Compute permissions for OAuth login
+              await supabaseAuthService.computeAndCachePermissions();
+              const updatedUser = supabaseAuthService.getUser();
+              if (updatedUser) {
+                setUser(updatedUser);
+              }
             } else {
               // Fallback to regular user fetch
               const currentUser = await supabaseAuthService.getCurrentUser();
@@ -177,6 +222,12 @@ export function AuthProvider({
                   expires_at: session.expires_at?.toString() || '',
                   created_at: new Date().toISOString(),
                 });
+                // Compute permissions
+                await supabaseAuthService.computeAndCachePermissions();
+                const updatedUser = supabaseAuthService.getUser();
+                if (updatedUser) {
+                  setUser(updatedUser);
+                }
               } else {
                 // User not found after OAuth callback
                 document.cookie = 'auth_error=not_found; path=/; max-age=10; samesite=lax';
@@ -215,6 +266,12 @@ export function AuthProvider({
         const session = supabaseAuthService.getSession();
         if (session) {
           setSession(session);
+        }
+        // Permissions are computed during login in auth service
+        // Just get the updated user with effective permissions
+        const updatedUser = supabaseAuthService.getUser();
+        if (updatedUser) {
+          setUser(updatedUser);
         }
         return { success: true };
       }

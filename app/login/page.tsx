@@ -27,9 +27,22 @@ function LoginContent() {
 
   useEffect(() => {
     if (isAuthenticated) {
-      router.push('/dashboard');
+      // Add a small delay to ensure auth context is fully initialized
+      const redirectTimer = setTimeout(() => {
+        // Check if there's a redirect parameter from middleware
+        const redirectParam = searchParams.get('redirect');
+        if (redirectParam) {
+          // Redirect to the original page the user was trying to access
+          router.push(redirectParam);
+        } else {
+          // Default redirect to dashboard
+          router.push('/dashboard');
+        }
+      }, 100); // Small delay to prevent race conditions
+
+      return () => clearTimeout(redirectTimer);
     }
-  }, [isAuthenticated, router]);
+  }, [isAuthenticated, router, searchParams]);
 
   useEffect(() => {
     // Show features after a short delay

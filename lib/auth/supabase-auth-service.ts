@@ -6,16 +6,24 @@ export interface SupabaseUser {
   email: string;
   full_name: string;
   phone_number?: string;
-  role: string;
+  role?: string; // Deprecated - for backward compatibility
+  roles?: string[]; // New: array of role names from user_roles table
   institution_id?: string;
   is_super_admin?: boolean;
   is_active: boolean;
-  permissions: Record<string, boolean>;
+  permissions: Record<string, boolean>; // Effective permissions (cached)
   profile_completed?: boolean;
   avatar_url?: string;
   last_login?: string;
   created_at: string;
   updated_at: string;
+}
+
+export interface PermissionCache {
+  effectivePermissions: Record<string, boolean>;
+  source: 'super_admin_jsonb' | 'cached_jsonb' | 'computed_rbac';
+  timestamp: number;
+  ttl: number; // Time to live in milliseconds
 }
 
 export interface AuthSession {
@@ -42,6 +50,8 @@ export interface RegisterData {
 class SupabaseAuthService {
   private supabase: SupabaseClient;
   private refreshPromise: Promise<boolean> | null = null;
+  private permissionCache: PermissionCache | null = null;
+  private readonly PERMISSION_CACHE_TTL = 5 * 60 * 1000; // 5 minutes
 
   constructor() {
     const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -132,11 +142,12 @@ class SupabaseAuthService {
           email: profile.email,
           full_name: profile.full_name,
           phone_number: profile.phone_number,
-          role: profile.role,
+          role: profile.role, // Keep for backward compatibility
+          roles: [], // Will be populated from user_roles table
           institution_id: profile.institution_id,
           is_super_admin: profile.is_super_admin,
           is_active: profile.is_active,
-          permissions: profile.permissions || {},
+          permissions: profile.permissions || {}, // Use cached effective permissions
           profile_completed: profile.profile_completed,
           avatar_url: profile.avatar_url,
           last_login: profile.last_login,
@@ -146,6 +157,12 @@ class SupabaseAuthService {
 
         // Update last login
         await this.updateLastLogin(data.user.id);
+
+        // Compute and cache permissions for regular users
+        // Super admins already have their permissions in JSONB
+        if (!user.is_super_admin) {
+          await this.computeAndCachePermissions();
+        }
 
         // Store user data
         this.setUser(user);
@@ -300,11 +317,12 @@ class SupabaseAuthService {
           email: userProfile.email,
           full_name: userProfile.full_name,
           phone_number: userProfile.phone_number,
-          role: userProfile.role,
+          role: userProfile.role, // Keep for backward compatibility
+          roles: [], // Will be populated from user_roles table
           institution_id: userProfile.institution_id,
           is_super_admin: userProfile.is_super_admin,
           is_active: userProfile.is_active,
-          permissions: userProfile.permissions || {},
+          permissions: userProfile.permissions || {}, // Use cached effective permissions
           profile_completed: userProfile.profile_completed,
           // Use updated avatar_url (now includes Google avatar if needed)
           avatar_url: userProfile.avatar_url,
@@ -326,6 +344,12 @@ class SupabaseAuthService {
           expires_at: data.session.expires_at || '',
           created_at: new Date().toISOString(),
         });
+
+        // Compute and cache permissions for regular users
+        // Super admins already have their permissions in JSONB
+        if (!user.is_super_admin) {
+          await this.computeAndCachePermissions();
+        }
 
         return { user, error: null };
       }
@@ -508,26 +532,150 @@ class SupabaseAuthService {
 
   /**
    * Check if user has specific permission
+   * Uses cached effective permissions for performance
    */
   hasPermission(permission: string): boolean {
     const user = this.getUser();
-    return user?.permissions?.[permission] === true;
+    if (!user) return false;
+
+    // For super admins, check their special JSONB permissions
+    // For regular users, check cached effective permissions
+    // Both are stored in the same permissions field for performance
+    return user.permissions?.[permission] === true;
   }
 
   /**
    * Check if user has specific role
+   * Checks both the new roles array and legacy role field
    */
   hasRole(role: string): boolean {
     const user = this.getUser();
-    return user?.role === role;
+    if (!user) return false;
+
+    // Super admin is considered to have 'super_admin' role
+    if (user.is_super_admin && role === 'super_admin') return true;
+
+    // Check new roles array (normalized RBAC)
+    if (user.roles && user.roles.includes(role)) return true;
+
+    // Fallback to legacy role field for backward compatibility
+    return user.role === role;
   }
 
   /**
    * Check if user has any of the specified roles
+   * Checks both the new roles array and legacy role field
    */
   hasAnyRole(roles: string[]): boolean {
     const user = this.getUser();
-    return user ? roles.includes(user.role) : false;
+    if (!user) return false;
+
+    // Super admin matches 'super_admin' role
+    if (user.is_super_admin && roles.includes('super_admin')) return true;
+
+    // Check new roles array (normalized RBAC)
+    if (user.roles) {
+      return roles.some(role => user.roles?.includes(role));
+    }
+
+    // Fallback to legacy role field
+    return user.role ? roles.includes(user.role) : false;
+  }
+
+  /**
+   * Get all roles for the current user
+   */
+  getUserRoles(): string[] {
+    const user = this.getUser();
+    if (!user) return [];
+
+    const roles = new Set<string>();
+
+    // Add super_admin role if applicable
+    if (user.is_super_admin) {
+      roles.add('super_admin');
+    }
+
+    // Add roles from array
+    if (user.roles) {
+      user.roles.forEach(role => roles.add(role));
+    }
+
+    // Add legacy role if exists
+    if (user.role) {
+      roles.add(user.role);
+    }
+
+    return Array.from(roles);
+  }
+
+  /**
+   * Compute and cache effective permissions
+   * For super admins: Uses JSONB field directly
+   * For regular users: Computes from RBAC and caches in JSONB
+   */
+  async computeAndCachePermissions(): Promise<void> {
+    try {
+      const response = await fetch('/api/auth/permissions/current');
+      if (response.ok) {
+        const data = await response.json();
+        const user = this.getUser();
+        if (user) {
+          // Update user's effective permissions and roles
+          user.permissions = data.effectivePermissions || {};
+          user.roles = data.roles || [];
+          this.setUser(user);
+
+          // Update local cache
+          this.permissionCache = {
+            effectivePermissions: data.effectivePermissions || {},
+            source: data.source,
+            timestamp: Date.now(),
+            ttl: this.PERMISSION_CACHE_TTL
+          };
+        }
+      }
+    } catch (error) {
+      console.error('Error computing permissions:', error);
+    }
+  }
+
+  /**
+   * Check if permission cache is valid
+   */
+  private isCacheValid(): boolean {
+    if (!this.permissionCache) return false;
+    const age = Date.now() - this.permissionCache.timestamp;
+    return age < this.permissionCache.ttl;
+  }
+
+  /**
+   * Refresh permissions if cache is stale
+   */
+  async refreshPermissionsIfNeeded(): Promise<void> {
+    if (!this.isCacheValid()) {
+      await this.computeAndCachePermissions();
+    }
+  }
+
+  /**
+   * Get all effective permissions for the current user
+   */
+  getAllPermissions(): string[] {
+    const user = this.getUser();
+    if (!user) return [];
+
+    // Return all permissions where value is true
+    return Object.entries(user.permissions || {})
+      .filter(([_, value]) => value === true)
+      .map(([key, _]) => key);
+  }
+
+  /**
+   * Get permission cache info (for debugging)
+   */
+  getPermissionCacheInfo(): PermissionCache | null {
+    return this.permissionCache;
   }
 
   // Local storage methods

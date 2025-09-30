@@ -55,9 +55,17 @@ export default function EditPermissionPage() {
       const res = await fetch(`/api/permissions/${id}`, {
         method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(form)
       })
-      if (res.ok) router.push('/permissions')
-      else setError('Failed to update permission')
-    } catch (err) { setError('Failed to update permission') } finally { setLoading(false) }
+      if (res.ok) {
+        router.push('/permissions')
+      } else {
+        const errorData = await res.json()
+        setError(errorData.error || 'Failed to update permission')
+      }
+    } catch (err) { 
+      setError('Failed to update permission') 
+    } finally { 
+      setLoading(false) 
+    }
   }
 
   return (

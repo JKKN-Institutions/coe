@@ -54,6 +54,26 @@ export async function middleware(request: NextRequest) {
       );
     }
 
+    // Check if this is a page refresh by looking for referer header
+    const referer = request.headers.get('referer');
+    const isPageRefresh = referer && referer.includes(pathname);
+    
+    // If it's a page refresh, add a small delay to allow auth context to load
+    if (isPageRefresh) {
+      // Add a small delay to prevent race conditions during page refresh
+      await new Promise(resolve => setTimeout(resolve, 100));
+      
+      // Re-check session after delay
+      const {
+        data: { session: retrySession },
+      } = await supabase.auth.getSession();
+      
+      if (retrySession) {
+        // Session found after delay, continue with the request
+        return res;
+      }
+    }
+
     const url = request.nextUrl.clone();
     url.pathname = '/login';
     url.searchParams.set('redirect', pathname);

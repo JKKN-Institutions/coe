@@ -1,11 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getSupabaseServer } from '@/lib/supabase-server'
+import { createRouteHandlerClient } from '@supabase/auth-helpers-nextjs'
+import { cookies } from 'next/headers'
 
 export async function GET(req: NextRequest) {
   try {
     const { searchParams } = new URL(req.url)
     const search = searchParams.get('search')
     const status = searchParams.get('status')
+    const institutionCode = searchParams.get('institution_code')
 
     const supabase = getSupabaseServer()
     let query = supabase
@@ -15,10 +18,13 @@ export async function GET(req: NextRequest) {
 
     // Apply filters
     if (search) {
-      query = query.or(`batch_code.ilike.%${search}%,batch_year::text.ilike.%${search}%`)
+      query = query.or(`batch_code.ilike.%${search}%,batch_name.ilike.%${search}%,batch_year::text.ilike.%${search}%`)
     }
     if (status !== null) {
       query = query.eq('status', status === 'true')
+    }
+    if (institutionCode) {
+      query = query.eq('institution_code', institutionCode)
     }
 
     const { data, error } = await query
@@ -36,20 +42,31 @@ export async function GET(req: NextRequest) {
             step2: 'Navigate to SQL Editor',
             step3: 'Run the provided SQL script to create the batch table',
             sql: `
--- Create batch table
-CREATE TABLE IF NOT EXISTS batch (
-  id BIGSERIAL PRIMARY KEY,
-  batch_year INTEGER NOT NULL,
-  batch_code VARCHAR(50) NOT NULL UNIQUE,
-  status BOOLEAN DEFAULT true,
-  created_at TIMESTAMPTZ DEFAULT NOW(),
-  updated_at TIMESTAMPTZ DEFAULT NOW()
-);
+-- Create batch table (updated schema)
+create table public.batch (
+  id uuid not null default gen_random_uuid (),
+  institutions_id uuid null,
+  institution_code character varying(50) not null,
+  batch_year integer not null,
+  batch_name character varying(100) not null,
+  batch_code character varying(50) not null,
+  start_date date null,
+  end_date date null,
+  status boolean null default true,
+  created_at timestamp with time zone null default now(),
+  updated_at timestamp with time zone null default now(),
+  constraint batch_table_pkey primary key (id),
+  constraint batch_table_institutions_id_batch_code_key unique (institutions_id, batch_code),
+  constraint batch_table_institutions_id_fkey foreign KEY (institutions_id) references institutions (id) on delete CASCADE
+) TABLESPACE pg_default;
 
--- Create indexes for better performance
-CREATE INDEX IF NOT EXISTS idx_batch_batch_year ON batch(batch_year);
-CREATE INDEX IF NOT EXISTS idx_batch_status ON batch(status);
-CREATE INDEX IF NOT EXISTS idx_batch_created_at ON batch(created_at);
+create index IF not exists idx_batch_code on public.batch using btree (institution_code, batch_code) TABLESPACE pg_default;
+
+create index IF not exists idx_batch_fk on public.batch using btree (institutions_id) TABLESPACE pg_default;
+
+create trigger update_batch_updated_at BEFORE
+update on batch for EACH row
+execute FUNCTION update_updated_at_column ();
             `
           }
         }, { status: 404 })
@@ -70,23 +87,41 @@ CREATE INDEX IF NOT EXISTS idx_batch_created_at ON batch(created_at);
 
 export async function POST(req: NextRequest) {
   try {
+    // RBAC: require batches.create
+    const supa = createRouteHandlerClient({ cookies })
+    const { data: userData } = await supa.auth.getUser()
+    if (!userData?.user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    const permsRes = await fetch(`${process.env.NEXT_PUBLIC_BASE_URL || ''}/api/auth/permissions/current`, { headers: { cookie: req.headers.get('cookie') || '' } })
+    const perms = permsRes.ok ? await permsRes.json() : { permissions: [] }
+    if (!perms.permissions?.includes('batches.create')) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
     const body = await req.json()
     const {
-      batch_code,
+      institutions_id,
+      institution_code,
       batch_year,
+      batch_name,
+      batch_code,
+      start_date,
+      end_date,
       status = true
     } = body as Record<string, unknown>
 
-    if (!batch_code || !batch_year) {
+    if (!institution_code || !batch_name || !batch_code || !batch_year) {
       return NextResponse.json({
-        error: 'Missing required fields: batch_code and batch_year are required'
+        error: 'Missing required fields',
+        details: 'institution_code, batch_name, batch_code and batch_year are required'
       }, { status: 400 })
     }
 
     const supabase2 = getSupabaseServer()
     const { data, error } = await supabase2.from('batch').insert({
-      batch_code: String(batch_code),
+      institutions_id: institutions_id ? String(institutions_id) : null,
+      institution_code: String(institution_code),
       batch_year: Number(batch_year),
+      batch_name: String(batch_name),
+      batch_code: String(batch_code),
+      start_date: start_date ? String(start_date) : null,
+      end_date: end_date ? String(end_date) : null,
       status: Boolean(status),
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),

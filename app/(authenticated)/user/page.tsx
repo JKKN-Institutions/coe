@@ -34,6 +34,7 @@ import { Card, CardContent, CardHeader } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet"
 import { AppSidebar } from "@/components/app-sidebar"
+import { ProtectedRoute } from "@/components/protected-route"
 import { AppHeader } from "@/components/app-header"
 import { SidebarProvider, SidebarInset } from "@/components/ui/sidebar"
 import { AppFooter } from "@/components/app-footer"
@@ -108,12 +109,18 @@ interface Institution {
   name: string
 }
 
+interface Role {
+  id: string
+  name: string
+}
+
 export default function UsersPage() {
   const router = useRouter()
   const { toast } = useToast()
 
   const [users, setUsers] = useState<User[]>([])
   const [institutions, setInstitutions] = useState<Institution[]>([])
+  const [roles, setRoles] = useState<Role[]>([])
   const [loading, setLoading] = useState(true)
   const [refreshing, setRefreshing] = useState(false)
   const [searchTerm, setSearchTerm] = useState("")
@@ -207,9 +214,31 @@ export default function UsersPage() {
     }
   }
 
+  const fetchRoles = async () => {
+    try {
+      const response = await fetch('/api/roles')
+      if (!response.ok) {
+        throw new Error('Failed to fetch roles')
+      }
+      const data = await response.json()
+      if (Array.isArray(data)) {
+        setRoles(data)
+      }
+    } catch (error) {
+      console.error('Error fetching roles:', error)
+      // Fallback basic roles
+      setRoles([
+        { id: 'role-user', name: 'user' },
+        { id: 'role-admin', name: 'admin' },
+        { id: 'role-moderator', name: 'moderator' },
+      ])
+    }
+  }
+
   useEffect(() => {
     fetchUsers()
     fetchInstitutions()
+    fetchRoles()
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
@@ -767,6 +796,7 @@ export default function UsersPage() {
   }
 
   return (
+    <ProtectedRoute requiredRoles={["admin","super_admin"]} requireAnyRole={true}>
     <SidebarProvider>
       <AppSidebar />
       <SidebarInset className="flex flex-col min-h-screen">
@@ -1286,9 +1316,9 @@ export default function UsersPage() {
                       <SelectValue placeholder="Select role" />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="user">User</SelectItem>
-                      <SelectItem value="admin">Admin</SelectItem>
-                      <SelectItem value="moderator">Moderator</SelectItem>
+                      {roles.map((r) => (
+                        <SelectItem key={r.id} value={r.name}>{r.name}</SelectItem>
+                      ))}
                     </SelectContent>
                   </Select>
                 </div>
@@ -1334,5 +1364,6 @@ export default function UsersPage() {
 
       <Toaster />
     </SidebarProvider>
+    </ProtectedRoute>
   )
 }

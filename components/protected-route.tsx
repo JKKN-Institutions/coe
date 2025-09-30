@@ -35,28 +35,34 @@ export function ProtectedRoute({
   const router = useRouter();
 
   useEffect(() => {
+    // Don't redirect while loading - this prevents race conditions
     if (isLoading) return;
 
-    if (!isAuthenticated) {
-      if (redirectTo) {
-        router.push(redirectTo);
-      } else if (onUnauthorized) {
-        onUnauthorized();
+    // Add a small delay to prevent immediate redirects during page refresh
+    const redirectTimer = setTimeout(() => {
+      if (!isAuthenticated) {
+        if (redirectTo) {
+          router.push(redirectTo);
+        } else if (onUnauthorized) {
+          onUnauthorized();
+        }
+        return;
       }
-      return;
-    }
 
-    // Check authorization
-    const isAuthorized = checkAuthorization();
-    if (!isAuthorized) {
-      if (onUnauthorized) {
-        onUnauthorized();
-      } else if (fallback) {
-        // Will be rendered below
-      } else {
-        router.push('/unauthorized');
+      // Check authorization
+      const isAuthorized = checkAuthorization();
+      if (!isAuthorized) {
+        if (onUnauthorized) {
+          onUnauthorized();
+        } else if (fallback) {
+          // Will be rendered below
+        } else {
+          router.push('/unauthorized');
+        }
       }
-    }
+    }, 50); // Small delay to prevent race conditions
+
+    return () => clearTimeout(redirectTimer);
   }, [isLoading, isAuthenticated, user, router, redirectTo, onUnauthorized]);
 
   const checkAuthorization = (): boolean => {

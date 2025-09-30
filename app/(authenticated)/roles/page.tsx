@@ -16,6 +16,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Badge } from "@/components/ui/badge"
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog"
 import { ArrowDown, ArrowUp, ArrowUpDown, ChevronLeft, ChevronRight, Download, Edit, FileSpreadsheet, PlusCircle, Search, Upload } from "lucide-react"
+import { ProtectedRoute } from "@/components/protected-route"
 
 interface Role {
   id: string
@@ -239,6 +240,7 @@ export default function RolesPage() {
   const formatDate = (date: string) => new Date(date).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' })
 
   return (
+    <ProtectedRoute requiredRoles={["admin","super_admin"]} requireAnyRole={true}>
     <SidebarProvider>
       <AppSidebar />
       <SidebarInset className="flex flex-col min-h-screen">
@@ -439,6 +441,7 @@ export default function RolesPage() {
         <AppFooter />
       </SidebarInset>
     </SidebarProvider>
+    </ProtectedRoute>
   )
 }
 

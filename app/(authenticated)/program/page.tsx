@@ -3,6 +3,7 @@
 import { useMemo, useState, useEffect } from "react"
 import * as XLSX from "xlsx"
 import { AppSidebar } from "@/components/app-sidebar"
+import { ProtectedRoute } from "@/components/protected-route"
 import { AppHeader } from "@/components/app-header"
 import { AppFooter } from "@/components/app-footer"
 import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar"
@@ -17,7 +18,7 @@ import { Label } from "@/components/ui/label"
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet"
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog"
 import Link from "next/link"
-import { PlusCircle, Edit, Trash2, Search, ChevronLeft, ChevronRight, ArrowUpDown, ArrowUp, ArrowDown, BookOpen, TrendingUp, FileSpreadsheet } from "lucide-react"
+import { PlusCircle, Edit, Trash2, Search, ChevronLeft, ChevronRight, ArrowUpDown, ArrowUp, ArrowDown, BookOpen, TrendingUp, FileSpreadsheet, RefreshCw, Download, Upload } from "lucide-react"
 
 type Program = {
   id: string
@@ -38,7 +39,7 @@ const MOCK_PROGRAMS: Program[] = [
 ]
 
 export default function ProgramPage() {
-  const [items, setItems] = useState<Program[]>(MOCK_PROGRAMS)
+  const [items, setItems] = useState<Program[]>([])
   const [loading, setLoading] = useState(false)
   const [searchTerm, setSearchTerm] = useState("")
   const [sortColumn, setSortColumn] = useState<string | null>(null)
@@ -49,7 +50,7 @@ export default function ProgramPage() {
   const [sheetOpen, setSheetOpen] = useState(false)
   const [editing, setEditing] = useState<Program | null>(null)
   const [statusFilter, setStatusFilter] = useState("all")
-  const [yearFilter, setYearFilter] = useState("all")
+  // removed year filter per request
 
   const [formData, setFormData] = useState({
     institution_code: "",
@@ -91,7 +92,7 @@ export default function ProgramPage() {
     const data = items
       .filter((i) => [i.institution_code, i.degree_code, i.offering_department_code, i.program_code, i.program_name, i.display_name].filter(Boolean).some((v) => String(v).toLowerCase().includes(q)))
       .filter((i) => statusFilter === "all" || (statusFilter === "active" ? i.is_active : !i.is_active))
-      .filter((i) => yearFilter === "all" || new Date(i.created_at).getFullYear().toString() === yearFilter)
+      
     if (!sortColumn) return data
     return [...data].sort((a, b) => {
       const av = (a as any)[sortColumn]
@@ -99,14 +100,14 @@ export default function ProgramPage() {
       if (av === bv) return 0
       return sortDirection === "asc" ? (av > bv ? 1 : -1) : (av < bv ? 1 : -1)
     })
-  }, [items, searchTerm, sortColumn, sortDirection, statusFilter, yearFilter])
+  }, [items, searchTerm, sortColumn, sortDirection, statusFilter])
 
   const totalPages = Math.ceil(filtered.length / itemsPerPage) || 1
   const startIndex = (currentPage - 1) * itemsPerPage
   const endIndex = startIndex + itemsPerPage
   const pageItems = filtered.slice(startIndex, endIndex)
-  useEffect(() => setCurrentPage(1), [searchTerm, sortColumn, sortDirection, statusFilter, yearFilter])
-  const uniqueYears = useMemo(() => Array.from(new Set(items.map(i => new Date(i.created_at).getFullYear()))).sort((a,b)=>b-a), [items])
+  useEffect(() => setCurrentPage(1), [searchTerm, sortColumn, sortDirection, statusFilter])
+  
 
   const openAdd = () => { resetForm(); setSheetOpen(true) }
   const openEdit = (row: Program) => {
@@ -136,30 +137,42 @@ export default function ProgramPage() {
     return Object.keys(e).length === 0
   }
 
-  const save = () => {
+  const [saving, setSaving] = useState(false)
+  const save = async () => {
     if (!validate()) return
-    if (editing) {
-      setItems((p) => p.map((x) => x.id === editing.id ? { ...editing, ...formData } as Program : x))
-    } else {
-      setItems((p) => [{
-        id: String(Date.now()),
-        institution_code: formData.institution_code,
-        degree_code: formData.degree_code,
-        offering_department_code: formData.offering_department_code,
-        program_code: formData.program_code,
-        program_name: formData.program_name,
-        display_name: formData.display_name,
-        program_duration_yrs: formData.program_duration_yrs,
-        pattern_type: formData.pattern_type,
-        is_active: formData.is_active,
-        created_at: new Date().toISOString()
-      }, ...p])
+    try {
+      setSaving(true)
+      if (editing) {
+        const res = await fetch(`/api/program/${editing.id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(formData) })
+        if (!res.ok) throw new Error('Update failed')
+        const updated = await res.json()
+        setItems((p) => p.map((x) => x.id === editing.id ? updated : x))
+      } else {
+        const res = await fetch('/api/program', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(formData) })
+        if (!res.ok) throw new Error('Create failed')
+        const created = await res.json()
+        setItems((p) => [created, ...p])
+      }
+      setSheetOpen(false)
+      resetForm()
+    } catch (e) {
+      console.error(e)
+      alert('Failed to save program')
+    } finally {
+      setSaving(false)
     }
-    setSheetOpen(false)
-    resetForm()
   }
 
-  const remove = (id: string) => setItems((p) => p.filter((x) => x.id !== id))
+  const remove = async (id: string) => {
+    try {
+      const res = await fetch(`/api/program/${id}`, { method: 'DELETE' })
+      if (!res.ok) throw new Error('Delete failed')
+      setItems((p) => p.filter((x) => x.id !== id))
+    } catch (e) {
+      console.error(e)
+      alert('Failed to delete program')
+    }
+  }
   const formatDate = (d: string) => new Date(d).toLocaleDateString("en-US", { year: "numeric", month: "short", day: "numeric" })
 
   const handleDownload = () => {
@@ -262,7 +275,25 @@ export default function ProgramPage() {
     input.click()
   }
 
+  const fetchPrograms = async () => {
+    try {
+      setLoading(true)
+      const res = await fetch('/api/program')
+      if (!res.ok) throw new Error('Fetch failed')
+      const data = await res.json()
+      setItems(data)
+    } catch (e) {
+      console.error(e)
+      alert('Failed to fetch programs')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  useEffect(() => { fetchPrograms() }, [])
+
   return (
+    <ProtectedRoute requiredPermissions={["programs.view"]}>
     <SidebarProvider>
       <AppSidebar />
       <SidebarInset className="flex flex-col min-h-screen">
@@ -367,32 +398,22 @@ export default function ProgramPage() {
                     </SelectContent>
                   </Select>
 
-                  <Select value={yearFilter} onValueChange={setYearFilter}>
-                    <SelectTrigger className="w-[140px] h-8">
-                      <SelectValue placeholder="All Years" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="all">All Years</SelectItem>
-                      {uniqueYears.map(y => (
-                        <SelectItem key={y} value={y.toString()}>{y}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-
                   <div className="relative w-full sm:w-[220px]">
                     <Search className="absolute left-2 top-1/2 h-3 w-3 -translate-y-1/2 text-muted-foreground" />
                     <Input value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} placeholder="Search…" className="pl-8 h-8 text-xs" />
                   </div>
                 </div>
-
+                
                 <div className="flex gap-1 flex-wrap">
+                <Button variant="outline" size="sm" className="text-xs px-2 h-8" onClick={fetchPrograms} disabled={loading}><RefreshCw className={`h-3 w-3 mr-1 ${loading ? 'animate-spin' : ''}`} /> Refresh</Button>
                   <Button variant="outline" size="sm" className="text-xs px-2 h-8" onClick={handleTemplateExport}>
                     <FileSpreadsheet className="h-3 w-3 mr-1" />
                     Template
                   </Button>
-                  <Button variant="outline" size="sm" className="text-xs px-2 h-8" onClick={handleDownload}>Json</Button>
-                  <Button variant="outline" size="sm" className="text-xs px-2 h-8" onClick={handleExport}>Download</Button>
-                  <Button variant="outline" size="sm" className="text-xs px-2 h-8" onClick={handleImport}>Upload</Button>
+                  <Button variant="outline" size="sm" className="text-xs px-2 h-8" onClick={handleDownload}><Download className="h-3 w-3 mr-1" /> Json</Button>
+                  <Button variant="outline" size="sm" className="text-xs px-2 h-8" onClick={handleExport}><Download className="h-3 w-3 mr-1" /> Download</Button>
+                  <Button variant="outline" size="sm" className="text-xs px-2 h-8" onClick={handleImport}><Upload className="h-3 w-3 mr-1" /> Upload</Button>
+                  
                   <Button size="sm" className="text-xs px-2 h-8" onClick={openAdd}><PlusCircle className="h-3 w-3 mr-1" /> Add</Button>
                 </div>
               </div>
@@ -466,6 +487,7 @@ export default function ProgramPage() {
               <div className="flex items-center justify-between space-x-2 py-2 mt-2">
                 <div className="text-xs text-muted-foreground">Showing {filtered.length === 0 ? 0 : startIndex + 1}-{Math.min(endIndex, filtered.length)} of {filtered.length}</div>
                 <div className="flex items-center gap-2">
+                  
                   <Button variant="outline" size="sm" onClick={() => setCurrentPage((p) => Math.max(1, p - 1))} disabled={currentPage === 1} className="h-7 px-2 text-xs"><ChevronLeft className="h-3 w-3 mr-1" /> Previous</Button>
                   <div className="text-xs text-muted-foreground px-2">Page {currentPage} of {totalPages}</div>
                   <Button variant="outline" size="sm" onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))} disabled={currentPage >= totalPages} className="h-7 px-2 text-xs">Next <ChevronRight className="h-3 w-3 ml-1" /></Button>
@@ -478,69 +500,130 @@ export default function ProgramPage() {
       </SidebarInset>
 
       <Sheet open={sheetOpen} onOpenChange={(o) => { if (!o) resetForm(); setSheetOpen(o) }}>
-        <SheetContent className="sm:max-w-[520px]">
-          <SheetHeader>
-            <SheetTitle className="text-base">{editing ? "Edit Program" : "Add Program"}</SheetTitle>
+        <SheetContent className="sm:max-w-[800px] overflow-y-auto">
+          <SheetHeader className="pb-6 border-b bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-blue-950/20 dark:to-indigo-950/20">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="h-10 w-10 rounded-full bg-gradient-to-r from-blue-500 to-indigo-600 flex items-center justify-center">
+                  <BookOpen className="h-5 w-5 text-white" />
+                </div>
+                <div>
+                  <SheetTitle className="text-2xl font-bold bg-gradient-to-r from-blue-600 to-indigo-600 bg-clip-text text-transparent">
+                    {editing ? "Edit Program" : "Add Program"}
+                  </SheetTitle>
+                  <p className="text-sm text-muted-foreground mt-1">
+                    {editing ? "Update program information" : "Create a new program record"}
+                  </p>
+                </div>
+              </div>
+            </div>
           </SheetHeader>
-          <div className="mt-4 space-y-3">
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <Label htmlFor="institution_code" className="text-xs">Institution Code *</Label>
-                <Input id="institution_code" value={formData.institution_code} onChange={(e) => setFormData({ ...formData, institution_code: e.target.value })} className={`h-8 text-xs ${errors.institution_code ? 'border-destructive' : ''}`} />
-                {errors.institution_code && <p className="text-[10px] text-destructive mt-1">{errors.institution_code}</p>}
+
+          <div className="mt-6 space-y-8">
+            {/* Basic Information */}
+            <div className="space-y-4">
+              <div className="flex items-center gap-3 pb-3 border-b border-blue-200 dark:border-blue-800">
+                <div className="h-8 w-8 rounded-lg bg-gradient-to-r from-green-500 to-emerald-600 flex items-center justify-center">
+                  <BookOpen className="h-4 w-4 text-white" />
+                </div>
+                <h3 className="text-lg font-bold bg-gradient-to-r from-green-600 to-emerald-600 bg-clip-text text-transparent">Basic Information</h3>
               </div>
-              <div>
-                <Label htmlFor="degree_code" className="text-xs">Degree Code *</Label>
-                <Input id="degree_code" value={formData.degree_code} onChange={(e) => setFormData({ ...formData, degree_code: e.target.value })} className={`h-8 text-xs ${errors.degree_code ? 'border-destructive' : ''}`} />
-                {errors.degree_code && <p className="text-[10px] text-destructive mt-1">{errors.degree_code}</p>}
-              </div>
-            </div>
-            <div>
-              <Label htmlFor="offering_department_code" className="text-xs">Offering Department Code</Label>
-              <Input id="offering_department_code" value={formData.offering_department_code} onChange={(e) => setFormData({ ...formData, offering_department_code: e.target.value })} className="h-8 text-xs" />
-            </div>
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <Label htmlFor="program_code" className="text-xs">Program Code *</Label>
-                <Input id="program_code" value={formData.program_code} onChange={(e) => setFormData({ ...formData, program_code: e.target.value })} className={`h-8 text-xs ${errors.program_code ? 'border-destructive' : ''}`} />
-                {errors.program_code && <p className="text-[10px] text-destructive mt-1">{errors.program_code}</p>}
-              </div>
-              <div>
-                <Label htmlFor="program_duration_yrs" className="text-xs">Duration (Years) *</Label>
-                <Input id="program_duration_yrs" type="number" min="1" value={formData.program_duration_yrs} onChange={(e) => setFormData({ ...formData, program_duration_yrs: parseInt(e.target.value) || 3 })} className={`h-8 text-xs ${errors.program_duration_yrs ? 'border-destructive' : ''}`} />
-                {errors.program_duration_yrs && <p className="text-[10px] text-destructive mt-1">{errors.program_duration_yrs}</p>}
-              </div>
-            </div>
-            <div>
-              <Label htmlFor="program_name" className="text-xs">Program Name *</Label>
-              <Input id="program_name" value={formData.program_name} onChange={(e) => setFormData({ ...formData, program_name: e.target.value })} className={`h-8 text-xs ${errors.program_name ? 'border-destructive' : ''}`} />
-              {errors.program_name && <p className="text-[10px] text-destructive mt-1">{errors.program_name}</p>}
-            </div>
-            <div>
-              <Label htmlFor="display_name" className="text-xs">Display Name</Label>
-              <Input id="display_name" value={formData.display_name} onChange={(e) => setFormData({ ...formData, display_name: e.target.value })} className="h-8 text-xs" />
-            </div>
-            <div>
-              <Label className="text-xs">Pattern Type</Label>
-              <div className="flex gap-2">
-                <Button type="button" variant={formData.pattern_type === "Year" ? "default" : "outline"} size="sm" className="h-7 px-2 text-xs" onClick={() => setFormData({ ...formData, pattern_type: "Year" })}>Year</Button>
-                <Button type="button" variant={formData.pattern_type === "Semester" ? "default" : "outline"} size="sm" className="h-7 px-2 text-xs" onClick={() => setFormData({ ...formData, pattern_type: "Semester" })}>Semester</Button>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label className="text-sm font-semibold">Institution Code *</Label>
+                  <Input value={formData.institution_code} onChange={(e) => setFormData({ ...formData, institution_code: e.target.value })} className={`h-10 ${errors.institution_code ? 'border-destructive' : ''}`} placeholder="e.g., JKKN" />
+                  {errors.institution_code && <p className="text-xs text-destructive">{errors.institution_code}</p>}
+                </div>
+                <div className="space-y-2">
+                  <Label className="text-sm font-semibold">Degree Code *</Label>
+                  <Input value={formData.degree_code} onChange={(e) => setFormData({ ...formData, degree_code: e.target.value })} className={`h-10 ${errors.degree_code ? 'border-destructive' : ''}`} placeholder="e.g., BSC" />
+                  {errors.degree_code && <p className="text-xs text-destructive">{errors.degree_code}</p>}
+                </div>
+                <div className="space-y-2 md:col-span-2">
+                  <Label className="text-sm font-semibold">Program Name *</Label>
+                  <Input value={formData.program_name} onChange={(e) => setFormData({ ...formData, program_name: e.target.value })} className={`h-10 ${errors.program_name ? 'border-destructive' : ''}`} placeholder="e.g., B.Sc Computer Science" />
+                  {errors.program_name && <p className="text-xs text-destructive">{errors.program_name}</p>}
+                </div>
+                <div className="space-y-2">
+                  <Label className="text-sm font-semibold">Program Code *</Label>
+                  <Input value={formData.program_code} onChange={(e) => setFormData({ ...formData, program_code: e.target.value })} className={`h-10 ${errors.program_code ? 'border-destructive' : ''}`} placeholder="e.g., BSC-CS" />
+                  {errors.program_code && <p className="text-xs text-destructive">{errors.program_code}</p>}
+                </div>
+                <div className="space-y-2">
+                  <Label className="text-sm font-medium">Offering Department Code</Label>
+                  <Input value={formData.offering_department_code} onChange={(e) => setFormData({ ...formData, offering_department_code: e.target.value })} className="h-10" placeholder="e.g., SCI" />
+                </div>
+                <div className="space-y-2 md:col-span-2">
+                  <Label className="text-sm font-medium">Display Name</Label>
+                  <Input value={formData.display_name} onChange={(e) => setFormData({ ...formData, display_name: e.target.value })} className="h-10" placeholder="Optional display name" />
+                </div>
               </div>
             </div>
-            <div>
-              <Label className="text-xs">Status</Label>
-              <div className="flex gap-2">
-                <Button type="button" variant={formData.is_active ? "default" : "outline"} size="sm" className="h-7 px-2 text-xs" onClick={() => setFormData({ ...formData, is_active: true })}>Active</Button>
-                <Button type="button" variant={!formData.is_active ? "default" : "outline"} size="sm" className="h-7 px-2 text-xs" onClick={() => setFormData({ ...formData, is_active: false })}>Inactive</Button>
+
+            {/* Details */}
+            <div className="space-y-4">
+              <div className="flex items-center gap-3 pb-3 border-b border-purple-200 dark:border-purple-800">
+                <div className="h-8 w-8 rounded-lg bg-gradient-to-r from-purple-500 to-pink-600 flex items-center justify-center">
+                  <BookOpen className="h-4 w-4 text-white" />
+                </div>
+                <h3 className="text-lg font-bold bg-gradient-to-r from-purple-600 to-pink-600 bg-clip-text text-transparent">Details</h3>
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label className="text-sm font-semibold">Duration (Years) *</Label>
+                  <Input type="number" min="1" value={formData.program_duration_yrs} onChange={(e) => setFormData({ ...formData, program_duration_yrs: parseInt(e.target.value) || 3 })} className={`h-10 ${errors.program_duration_yrs ? 'border-destructive' : ''}`} placeholder="e.g., 3" />
+                  {errors.program_duration_yrs && <p className="text-xs text-destructive">{errors.program_duration_yrs}</p>}
+                </div>
+                <div className="space-y-2">
+                  <Label className="text-sm font-semibold">Pattern Type</Label>
+                  <div className="flex gap-2">
+                    <Button type="button" variant={formData.pattern_type === "Year" ? "default" : "outline"} size="sm" className="h-8 px-3 text-xs" onClick={() => setFormData({ ...formData, pattern_type: "Year" })}>Year</Button>
+                    <Button type="button" variant={formData.pattern_type === "Semester" ? "default" : "outline"} size="sm" className="h-8 px-3 text-xs" onClick={() => setFormData({ ...formData, pattern_type: "Semester" })}>Semester</Button>
+                  </div>
+                </div>
               </div>
             </div>
-            <div className="pt-2 flex justify-end gap-2">
-              <Button variant="outline" size="sm" className="h-8 text-xs" onClick={() => { setSheetOpen(false); resetForm() }}>Cancel</Button>
-              <Button size="sm" className="h-8 text-xs" onClick={save}>{editing ? "Update" : "Create"}</Button>
+
+            {/* Status */}
+            <div className="space-y-4">
+              <div className="flex items-center gap-3 pb-3 border-b border-teal-200 dark:border-teal-800">
+                <div className="h-8 w-8 rounded-lg bg-gradient-to-r from-teal-500 to-green-600 flex items-center justify-center">
+                  <BookOpen className="h-4 w-4 text-white" />
+                </div>
+                <h3 className="text-lg font-bold bg-gradient-to-r from-teal-600 to-green-600 bg-clip-text text-transparent">Status</h3>
+              </div>
+              <div className="flex items-center gap-4">
+                <Label className="text-sm font-semibold">Program Status</Label>
+                <button
+                  type="button"
+                  onClick={() => setFormData({ ...formData, is_active: !formData.is_active })}
+                  className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none ${
+                    formData.is_active ? 'bg-green-500' : 'bg-gray-300'
+                  }`}
+                >
+                  <span
+                    className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                      formData.is_active ? 'translate-x-6' : 'translate-x-1'
+                    }`}
+                  />
+                </button>
+                <span className={`text-sm font-medium ${formData.is_active ? 'text-green-600' : 'text-red-500'}`}>
+                  {formData.is_active ? 'Active' : 'Inactive'}
+                </span>
+              </div>
+            </div>
+
+            {/* Actions */}
+            <div className="flex justify-end gap-3 pt-6 border-t">
+              <Button variant="outline" size="sm" className="h-10 px-6" onClick={() => { setSheetOpen(false); resetForm() }} disabled={saving}>Cancel</Button>
+              <Button size="sm" className="h-10 px-6" onClick={save} disabled={saving}>
+                {saving ? (editing ? 'Updating…' : 'Creating…') : (editing ? 'Update Program' : 'Create Program')}
+              </Button>
             </div>
           </div>
         </SheetContent>
       </Sheet>
     </SidebarProvider>
+    </ProtectedRoute>
   )
 }

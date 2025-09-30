@@ -16,27 +16,38 @@ import { Badge } from "@/components/ui/badge"
 import { Label } from "@/components/ui/label"
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet"
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog"
+import { useToast } from "@/hooks/use-toast"
 import Link from "next/link"
-import { PlusCircle, Edit, Trash2, Search, ChevronLeft, ChevronRight, ArrowUpDown, ArrowUp, ArrowDown, Users, TrendingUp, FileSpreadsheet } from "lucide-react"
+import { PlusCircle, Edit, Trash2, Search, ChevronLeft, ChevronRight, ArrowUpDown, ArrowUp, ArrowDown, Users, TrendingUp, FileSpreadsheet, RefreshCw, CheckCircle, XCircle, AlertTriangle } from "lucide-react"
+
+type Institution = {
+  id: string
+  institution_code: string
+  name: string
+}
 
 type Section = {
   id: string
+  institutions_id?: string
   institution_code: string
   section_name: string
   section_id: string
   section_description?: string
-  arrear_section?: boolean
-  is_active: boolean
+  arrear_section: boolean
+  status: boolean
   created_at: string
+  updated_at?: string
 }
 
 const MOCK_SECTIONS: Section[] = [
-  { id: "1", institution_code: "JKKN", section_name: "A", section_id: "A1", section_description: "Regular", arrear_section: false, is_active: true, created_at: new Date().toISOString() },
+  { id: "1", institution_code: "JKKN", section_name: "A", section_id: "A1", section_description: "Regular", arrear_section: false, status: true, created_at: new Date().toISOString() },
 ]
 
 export default function SectionPage() {
-  const [items, setItems] = useState<Section[]>(MOCK_SECTIONS)
-  const [loading, setLoading] = useState(false)
+  const { toast } = useToast()
+  const [items, setItems] = useState<Section[]>([])
+  const [institutions, setInstitutions] = useState<Institution[]>([])
+  const [loading, setLoading] = useState(true)
   const [searchTerm, setSearchTerm] = useState("")
   const [sortColumn, setSortColumn] = useState<string | null>(null)
   const [sortDirection, setSortDirection] = useState<"asc" | "desc">("asc")
@@ -46,46 +57,505 @@ export default function SectionPage() {
   const [sheetOpen, setSheetOpen] = useState(false)
   const [editing, setEditing] = useState<Section | null>(null)
   const [statusFilter, setStatusFilter] = useState("all")
-  const [yearFilter, setYearFilter] = useState("all")
-  const [formData, setFormData] = useState({ institution_code: "", section_name: "", section_id: "", section_description: "", arrear_section: false, is_active: true })
+  const [errorPopupOpen, setErrorPopupOpen] = useState(false)
+  const [importErrors, setImportErrors] = useState<Array<{
+    row: number
+    institution_code: string
+    section_name: string
+    errors: string[]
+  }>>([])
+
+  const [formData, setFormData] = useState({
+    institutions_id: "",
+    institution_code: "",
+    section_name: "",
+    section_id: "",
+    section_description: "",
+    arrear_section: false,
+    status: true,
+  })
   const [errors, setErrors] = useState<Record<string, string>>({})
 
-  const resetForm = () => { setFormData({ institution_code: "", section_name: "", section_id: "", section_description: "", arrear_section: false, is_active: true }); setErrors({}); setEditing(null) }
-  const handleSort = (c: string) => { if (sortColumn === c) setSortDirection(sortDirection === "asc" ? "desc" : "asc"); else { setSortColumn(c); setSortDirection("asc") } }
-  const getSortIcon = (c: string) => sortColumn !== c ? <ArrowUpDown className="h-3 w-3 text-muted-foreground" /> : (sortDirection === "asc" ? <ArrowUp className="h-3 w-3" /> : <ArrowDown className="h-3 w-3" />)
+  // Fetch data from API
+  const fetchSections = async () => {
+    try {
+      setLoading(true)
+      const response = await fetch('/api/section')
+      if (!response.ok) {
+        throw new Error('Failed to fetch sections')
+      }
+      const data = await response.json()
+      setItems(data)
+    } catch (error) {
+      console.error('Error fetching sections:', error)
+      // Fallback to mock data on error
+      setItems(MOCK_SECTIONS)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const fetchInstitutions = async () => {
+    try {
+      const response = await fetch('/api/institutions')
+      if (!response.ok) {
+        throw new Error('Failed to fetch institutions')
+      }
+      const data = await response.json()
+      setInstitutions(data)
+    } catch (error) {
+      console.error('Error fetching institutions:', error)
+    }
+  }
+
+  // Load data on component mount
+  useEffect(() => {
+    fetchSections()
+    fetchInstitutions()
+  }, [])
+
+  const resetForm = () => {
+    setFormData({
+      institutions_id: "",
+      institution_code: "",
+      section_name: "",
+      section_id: "",
+      section_description: "",
+      arrear_section: false,
+      status: true,
+    })
+    setErrors({})
+    setEditing(null)
+  }
+
+  const handleSort = (column: string) => {
+    if (sortColumn === column) {
+      setSortDirection(sortDirection === "asc" ? "desc" : "asc")
+    } else {
+      setSortColumn(column)
+      setSortDirection("asc")
+    }
+  }
+
+  const getSortIcon = (column: string) => {
+    if (sortColumn !== column) return <ArrowUpDown className="h-3 w-3 text-muted-foreground" />
+    return sortDirection === "asc" ? <ArrowUp className="h-3 w-3" /> : <ArrowDown className="h-3 w-3" />
+  }
 
   const filtered = useMemo(() => {
     const q = searchTerm.toLowerCase()
     const data = items
       .filter((i) => [i.institution_code, i.section_name, i.section_id, i.section_description].filter(Boolean).some((v) => String(v).toLowerCase().includes(q)))
-      .filter((i) => statusFilter === "all" || (statusFilter === "active" ? i.is_active : !i.is_active))
-      .filter((i) => yearFilter === "all" || new Date(i.created_at).getFullYear().toString() === yearFilter)
+      .filter((i) => statusFilter === "all" || (statusFilter === "active" ? i.status : !i.status))
+
     if (!sortColumn) return data
-    return [...data].sort((a, b) => {
+    const sorted = [...data].sort((a, b) => {
       const av = (a as any)[sortColumn]
       const bv = (b as any)[sortColumn]
       if (av === bv) return 0
-      return sortDirection === "asc" ? (av > bv ? 1 : -1) : (av < bv ? 1 : -1)
+      if (sortDirection === "asc") return av > bv ? 1 : -1
+      return av < bv ? 1 : -1
     })
-  }, [items, searchTerm, sortColumn, sortDirection])
+    return sorted
+  }, [items, searchTerm, sortColumn, sortDirection, statusFilter])
 
   const totalPages = Math.ceil(filtered.length / itemsPerPage) || 1
   const startIndex = (currentPage - 1) * itemsPerPage
   const endIndex = startIndex + itemsPerPage
   const pageItems = filtered.slice(startIndex, endIndex)
-  useEffect(() => setCurrentPage(1), [searchTerm, sortColumn, sortDirection, statusFilter, yearFilter])
-  const uniqueYears = useMemo(() => Array.from(new Set(items.map(i => new Date(i.created_at).getFullYear()))).sort((a,b)=>b-a), [items])
 
-  const openAdd = () => { resetForm(); setSheetOpen(true) }
-  const openEdit = (row: Section) => { setEditing(row); setFormData({ institution_code: row.institution_code, section_name: row.section_name, section_id: row.section_id, section_description: row.section_description || "", arrear_section: !!row.arrear_section, is_active: row.is_active }); setSheetOpen(true) }
-  const validate = () => { const e: Record<string, string> = {}; if (!formData.institution_code.trim()) e.institution_code = "Required"; if (!formData.section_name.trim()) e.section_name = "Required"; if (!formData.section_id.trim()) e.section_id = "Required"; setErrors(e); return Object.keys(e).length === 0 }
-  const save = () => { if (!validate()) return; if (editing) setItems((p) => p.map((x) => x.id === editing.id ? { ...editing, ...formData } as Section : x)); else setItems((p) => [{ id: String(Date.now()), created_at: new Date().toISOString(), ...formData }, ...p]); setSheetOpen(false); resetForm() }
-  const remove = (id: string) => setItems((p) => p.filter((x) => x.id !== id))
+  useEffect(() => setCurrentPage(1), [searchTerm, sortColumn, sortDirection, statusFilter])
+
+  const openAdd = () => {
+    resetForm()
+    setSheetOpen(true)
+  }
+
+  const openEdit = (row: Section) => {
+    setEditing(row)
+    setFormData({
+      institutions_id: row.institutions_id || "",
+      institution_code: row.institution_code,
+      section_name: row.section_name,
+      section_id: row.section_id,
+      section_description: row.section_description || "",
+      arrear_section: row.arrear_section,
+      status: row.status,
+    })
+    setSheetOpen(true)
+  }
+
+  const validate = () => {
+    const e: Record<string, string> = {}
+    if (!formData.institution_code.trim()) e.institution_code = "Required"
+    if (!formData.section_name.trim()) e.section_name = "Required"
+    if (!formData.section_id.trim()) e.section_id = "Required"
+    setErrors(e)
+    return Object.keys(e).length === 0
+  }
+
+  const save = async () => {
+    if (!validate()) return
+    
+    try {
+      setLoading(true)
+      
+      if (editing) {
+        // Update existing section
+        const response = await fetch('/api/section', {
+          method: 'PUT',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            id: editing.id,
+            ...formData
+          }),
+        })
+        
+        if (!response.ok) {
+          throw new Error('Failed to update section')
+        }
+        
+        const updatedSection = await response.json()
+        setItems((prev) => prev.map((p) => (p.id === editing.id ? updatedSection : p)))
+        
+        toast({
+          title: "✅ Section Updated",
+          description: `${updatedSection.section_name} has been successfully updated.`,
+          className: "bg-green-50 border-green-200 text-green-800 dark:bg-green-900/20 dark:border-green-800 dark:text-green-200",
+        })
+      } else {
+        // Create new section
+        const response = await fetch('/api/section', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify(formData),
+        })
+        
+        if (!response.ok) {
+          throw new Error('Failed to create section')
+        }
+        
+        const newSection = await response.json()
+        setItems((prev) => [newSection, ...prev])
+        
+        toast({
+          title: "✅ Section Created",
+          description: `${newSection.section_name} has been successfully created.`,
+          className: "bg-green-50 border-green-200 text-green-800 dark:bg-green-900/20 dark:border-green-800 dark:text-green-200",
+        })
+      }
+      
+      setSheetOpen(false)
+      resetForm()
+    } catch (error) {
+      console.error('Error saving section:', error)
+      toast({
+        title: "❌ Save Failed",
+        description: "Failed to save section. Please try again.",
+        variant: "destructive",
+        className: "bg-red-50 border-red-200 text-red-800 dark:bg-red-900/20 dark:border-red-800 dark:text-red-200",
+      })
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const remove = async (id: string) => {
+    try {
+      setLoading(true)
+      
+      const response = await fetch(`/api/section?id=${id}`, {
+        method: 'DELETE',
+      })
+      
+      if (!response.ok) {
+        throw new Error('Failed to delete section')
+      }
+      
+      const sectionName = items.find(i => i.id === id)?.section_name || 'Section'
+      setItems((prev) => prev.filter((p) => p.id !== id))
+      
+      toast({
+        title: "✅ Section Deleted",
+        description: `${sectionName} has been successfully deleted.`,
+        className: "bg-orange-50 border-orange-200 text-orange-800 dark:bg-orange-900/20 dark:border-orange-800 dark:text-orange-200",
+      })
+    } catch (error) {
+      console.error('Error deleting section:', error)
+      toast({
+        title: "❌ Delete Failed",
+        description: "Failed to delete section. Please try again.",
+        variant: "destructive",
+        className: "bg-red-50 border-red-200 text-red-800 dark:bg-red-900/20 dark:border-red-800 dark:text-red-200",
+      })
+    } finally {
+      setLoading(false)
+    }
+  }
+
   const formatDate = (d: string) => new Date(d).toLocaleDateString("en-US", { year: "numeric", month: "short", day: "numeric" })
-  const handleDownload = () => { const json = JSON.stringify(filtered, null, 2); const blob = new Blob([json], { type: 'application/json' }); const url = URL.createObjectURL(blob); const a = document.createElement('a'); a.href = url; a.download = `section_${new Date().toISOString().split('T')[0]}.json`; document.body.appendChild(a); a.click(); document.body.removeChild(a); URL.revokeObjectURL(url) }
-  const handleExport = () => { const excelData = filtered.map(r=>({'Institution Code':r.institution_code,'Section ID':r.section_id,'Section Name':r.section_name,'Description':r.section_description||'','Arrear':r.arrear_section?'Yes':'No','Status':r.is_active?'Active':'Inactive','Created':new Date(r.created_at).toISOString().split('T')[0]})); const ws=XLSX.utils.json_to_sheet(excelData); const wb=XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb,ws,'Section'); XLSX.writeFile(wb,`section_export_${new Date().toISOString().split('T')[0]}.xlsx`) }
-  const handleTemplateExport = () => { const sample=[{'Institution Code':'JKKN','Section ID':'A1','Section Name':'A','Description':'Regular','Arrear':'No','Status':'Active'}]; const ws=XLSX.utils.json_to_sheet(sample); const wb=XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb,ws,'Template'); XLSX.writeFile(wb,`section_template_${new Date().toISOString().split('T')[0]}.xlsx`) }
-  const handleImport = () => { const input=document.createElement('input'); input.type='file'; input.accept='.json,.csv,.xlsx,.xls'; input.onchange=async(e)=>{ const file=(e.target as HTMLInputElement).files?.[0]; if(!file) return; try{ let rows: Partial<Section>[]=[]; if(file.name.endsWith('.json')) rows=JSON.parse(await file.text()); else { const data=new Uint8Array(await file.arrayBuffer()); const wb=XLSX.read(data,{type:'array'}); const ws=wb.Sheets[wb.SheetNames[0]]; const json=XLSX.utils.sheet_to_json(ws) as Record<string,unknown>[]; rows=json.map(j=>({ institution_code:String(j['Institution Code']||''), section_id:String(j['Section ID']||''), section_name:String(j['Section Name']||''), section_description:String(j['Description']||''), arrear_section:String(j['Arrear']||'').toLowerCase()==='yes', is_active:String(j['Status']||'').toLowerCase()==='active' })) } const now=new Date().toISOString(); const mapped=rows.filter(r=>r.institution_code&&r.section_id&&r.section_name).map(r=>({ id:String(Date.now()+Math.random()), created_at:now, ...r })) as Section[]; setItems(p=>[...mapped,...p]) } catch { alert('Import failed. Please check your file.') } }; input.click() }
+
+  // Export/Import/Template handlers
+  const handleDownload = () => {
+    const exportData = filtered.map(item => ({
+      institution_code: item.institution_code,
+      section_name: item.section_name,
+      section_id: item.section_id,
+      section_description: item.section_description || '',
+      arrear_section: item.arrear_section,
+      status: item.status,
+      created_at: item.created_at
+    }))
+    
+    const json = JSON.stringify(exportData, null, 2)
+    const blob = new Blob([json], { type: 'application/json' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `sections_${new Date().toISOString().split('T')[0]}.json`
+    document.body.appendChild(a)
+    a.click()
+    document.body.removeChild(a)
+    URL.revokeObjectURL(url)
+  }
+
+  const handleExport = () => {
+    const excelData = filtered.map((r) => ({
+      'Institution Code': r.institution_code,
+      'Section ID': r.section_id,
+      'Section Name': r.section_name,
+      'Description': r.section_description || '',
+      'Arrear Section': r.arrear_section ? 'Yes' : 'No',
+      'Status': r.status ? 'Active' : 'Inactive',
+      'Created': new Date(r.created_at).toISOString().split('T')[0],
+    }))
+    
+    const ws = XLSX.utils.json_to_sheet(excelData)
+    
+    // Set column widths
+    const colWidths = [
+      { wch: 20 }, // Institution Code
+      { wch: 15 }, // Section ID
+      { wch: 20 }, // Section Name
+      { wch: 30 }, // Description
+      { wch: 10 }, // Arrear
+      { wch: 10 }, // Status
+      { wch: 12 }  // Created
+    ]
+    ws['!cols'] = colWidths
+    
+    const wb = XLSX.utils.book_new()
+    XLSX.utils.book_append_sheet(wb, ws, 'Sections')
+    XLSX.writeFile(wb, `sections_export_${new Date().toISOString().split('T')[0]}.xlsx`)
+  }
+
+  const handleTemplateExport = () => {
+    const sample = [{
+      'Institution Code': 'JKKN',
+      'Section ID': 'A1',
+      'Section Name': 'A',
+      'Description': 'Regular',
+      'Arrear Section': 'No',
+      'Status': 'Active'
+    }]
+    
+    const ws = XLSX.utils.json_to_sheet(sample)
+    
+    // Set column widths
+    const colWidths = [
+      { wch: 20 }, // Institution Code
+      { wch: 15 }, // Section ID
+      { wch: 20 }, // Section Name
+      { wch: 30 }, // Description
+      { wch: 10 }, // Arrear
+      { wch: 10 }  // Status
+    ]
+    ws['!cols'] = colWidths
+    
+    // Style the header row to make mandatory fields red
+    const range = XLSX.utils.decode_range(ws['!ref'] || 'A1')
+    const mandatoryFields = ['Institution Code', 'Section ID', 'Section Name']
+    
+    for (let col = range.s.c; col <= range.e.c; col++) {
+      const cellAddress = XLSX.utils.encode_cell({ r: 0, c: col })
+      if (!ws[cellAddress]) continue
+      
+      const cell = ws[cellAddress]
+      const isMandatory = mandatoryFields.includes(cell.v as string)
+      
+      if (isMandatory) {
+        // Make mandatory field headers red with asterisk
+        cell.v = cell.v + ' *'
+        cell.s = {
+          font: { color: { rgb: 'FF0000' }, bold: true },
+          fill: { fgColor: { rgb: 'FFE6E6' } }
+        }
+      } else {
+        // Regular field headers
+        cell.s = {
+          font: { bold: true },
+          fill: { fgColor: { rgb: 'F0F0F0' } }
+        }
+      }
+    }
+    
+    const wb = XLSX.utils.book_new()
+    XLSX.utils.book_append_sheet(wb, ws, 'Template')
+    XLSX.writeFile(wb, `sections_template_${new Date().toISOString().split('T')[0]}.xlsx`)
+  }
+  const handleImport = () => {
+    const input = document.createElement('input')
+    input.type = 'file'
+    input.accept = '.json,.csv,.xlsx,.xls'
+    input.onchange = async (e) => {
+      const file = (e.target as HTMLInputElement).files?.[0]
+      if (!file) return
+      try {
+        let rows: Partial<Section>[] = []
+        if (file.name.endsWith('.json')) {
+          const text = await file.text()
+          rows = JSON.parse(text)
+        } else if (file.name.endsWith('.csv')) {
+          const text = await file.text()
+          const lines = text.split('\n').filter(line => line.trim())
+          if (lines.length < 2) {
+            toast({
+              title: "❌ Invalid CSV File",
+              description: "CSV file must have at least a header row and one data row",
+              variant: "destructive",
+              className: "bg-red-50 border-red-200 text-red-800 dark:bg-red-900/20 dark:border-red-800 dark:text-red-200",
+            })
+            return
+          }
+          
+          const headers = lines[0].split(',').map(h => h.trim().replace(/"/g, ''))
+          const dataRows = lines.slice(1).map(line => {
+            const values = line.split(',').map(v => v.trim().replace(/"/g, ''))
+            const row: Record<string, string> = {}
+            headers.forEach((header, index) => {
+              row[header] = values[index] || ''
+            })
+            return row
+          })
+          
+          rows = dataRows.map(j => ({
+            institution_code: String(j['Institution Code *'] || j['Institution Code'] || ''),
+            section_id: String(j['Section ID *'] || j['Section ID'] || ''),
+            section_name: String(j['Section Name *'] || j['Section Name'] || ''),
+            section_description: String(j['Description'] || ''),
+            arrear_section: String(j['Arrear Section'] || '').toLowerCase() === 'yes',
+            status: String(j['Status'] || '').toLowerCase() === 'active'
+          }))
+        } else if (file.name.endsWith('.xlsx') || file.name.endsWith('.xls')) {
+          const data = new Uint8Array(await file.arrayBuffer())
+          const wb = XLSX.read(data, { type: 'array' })
+          const ws = wb.Sheets[wb.SheetNames[0]]
+          const json = XLSX.utils.sheet_to_json(ws) as Record<string, unknown>[]
+          rows = json.map(j => ({
+            institution_code: String(j['Institution Code *'] || j['Institution Code'] || ''),
+            section_id: String(j['Section ID *'] || j['Section ID'] || ''),
+            section_name: String(j['Section Name *'] || j['Section Name'] || ''),
+            section_description: String(j['Description'] || ''),
+            arrear_section: String(j['Arrear Section'] || '').toLowerCase() === 'yes',
+            status: String(j['Status'] || '').toLowerCase() === 'active'
+          }))
+        }
+        
+        const now = new Date().toISOString()
+        const mapped = rows.map((r, index) => {
+          const sectionData = {
+            id: String(Date.now() + Math.random()),
+            institutions_id: institutions.find(inst => inst.institution_code === r.institution_code)?.id || '',
+            institution_code: r.institution_code!,
+            section_name: r.section_name as string,
+            section_id: r.section_id as string,
+            section_description: (r as any).section_description || '',
+            arrear_section: (r as any).arrear_section ?? false,
+            status: (r as any).status ?? true,
+            created_at: now,
+          }
+          return sectionData
+        }).filter(r => r.institution_code && r.section_id && r.section_name) as Section[]
+        
+        if (mapped.length === 0) {
+          toast({
+            title: "❌ No Valid Data",
+            description: "No valid data found in the file. Please check that Institution Code, Section ID and Section Name are provided.",
+            variant: "destructive",
+            className: "bg-red-50 border-red-200 text-red-800 dark:bg-red-900/20 dark:border-red-800 dark:text-red-200",
+          })
+          return
+        }
+        
+        // Save each section to the database
+        setLoading(true)
+        let successCount = 0
+        let errorCount = 0
+        
+        for (const section of mapped) {
+          try {
+            const response = await fetch('/api/section', {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify(section),
+            })
+            
+            if (response.ok) {
+              const savedSection = await response.json()
+              setItems(prev => [savedSection, ...prev])
+              successCount++
+            } else {
+              console.error('Failed to save section:', section.section_id)
+              errorCount++
+            }
+          } catch (error) {
+            console.error('Error saving section:', section.section_id, error)
+            errorCount++
+          }
+        }
+        
+        setLoading(false)
+        
+        // Show detailed results
+        if (successCount > 0 && errorCount === 0) {
+          toast({
+            title: "✅ Import Successful",
+            description: `Successfully imported ${successCount} section(s) to the database.`,
+            className: "bg-green-50 border-green-200 text-green-800 dark:bg-green-900/20 dark:border-green-800 dark:text-green-200",
+          })
+        } else if (successCount > 0 && errorCount > 0) {
+          toast({
+            title: "⚠️ Partial Import Success",
+            description: `Imported ${successCount} section(s) successfully, ${errorCount} failed. Check console for details.`,
+            className: "bg-yellow-50 border-yellow-200 text-yellow-800 dark:bg-yellow-900/20 dark:border-yellow-800 dark:text-yellow-200",
+          })
+        } else {
+          toast({
+            title: "❌ Import Failed",
+            description: "Failed to import any sections. Please check your data and try again.",
+            variant: "destructive",
+            className: "bg-red-50 border-red-200 text-red-800 dark:bg-red-900/20 dark:border-red-800 dark:text-red-200",
+          })
+        }
+      } catch (err) {
+        console.error('Import error:', err)
+        setLoading(false)
+        toast({
+          title: "❌ Import Error",
+          description: "Import failed. Please check your file format and try again.",
+          variant: "destructive",
+          className: "bg-red-50 border-red-200 text-red-800 dark:bg-red-900/20 dark:border-red-800 dark:text-red-200",
+        })
+      }
+    }
+    input.click()
+  }
 
   return (
     <SidebarProvider>
@@ -130,7 +600,7 @@ export default function SectionPage() {
                 <div className="flex items-center justify-between">
                   <div>
                     <p className="text-xs font-medium text-muted-foreground">Active Sections</p>
-                    <p className="text-xl font-bold text-green-600">{items.filter(i=>i.is_active).length}</p>
+                    <p className="text-xl font-bold text-green-600">{items.filter(i=>i.status).length}</p>
                   </div>
                   <div className="h-7 w-7 rounded-full bg-green-100 dark:bg-green-900/20 flex items-center justify-center">
                     <Users className="h-3 w-3 text-green-600 dark:text-green-400" />
@@ -144,7 +614,7 @@ export default function SectionPage() {
                 <div className="flex items-center justify-between">
                   <div>
                     <p className="text-xs font-medium text-muted-foreground">Inactive Sections</p>
-                    <p className="text-xl font-bold text-red-600">{items.filter(i=>!i.is_active).length}</p>
+                    <p className="text-xl font-bold text-red-600">{items.filter(i=>!i.status).length}</p>
                   </div>
                   <div className="h-7 w-7 rounded-full bg-red-100 dark:bg-red-900/20 flex items-center justify-center">
                     <Users className="h-3 w-3 text-red-600 dark:text-red-400" />
@@ -196,18 +666,6 @@ export default function SectionPage() {
                     </SelectContent>
                   </Select>
 
-                  <Select value={yearFilter} onValueChange={setYearFilter}>
-                    <SelectTrigger className="w-[140px] h-8">
-                      <SelectValue placeholder="All Years" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="all">All Years</SelectItem>
-                      {uniqueYears.map(y => (
-                        <SelectItem key={y} value={y.toString()}>{y}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-
                   <div className="relative w-full sm:w-[220px]">
                     <Search className="absolute left-2 top-1/2 h-3 w-3 -translate-y-1/2 text-muted-foreground" />
                     <Input value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} placeholder="Search…" className="pl-8 h-8 text-xs" />
@@ -215,6 +673,10 @@ export default function SectionPage() {
                 </div>
 
                 <div className="flex gap-1 flex-wrap">
+                  <Button variant="outline" size="sm" className="text-xs px-2 h-8" onClick={fetchSections} disabled={loading}>
+                    <RefreshCw className={`h-3 w-3 mr-1 ${loading ? 'animate-spin' : ''}`} />
+                    Refresh
+                  </Button>
                   <Button variant="outline" size="sm" className="text-xs px-2 h-8" onClick={handleTemplateExport}>
                     <FileSpreadsheet className="h-3 w-3 mr-1" />
                     Template
@@ -222,7 +684,7 @@ export default function SectionPage() {
                   <Button variant="outline" size="sm" className="text-xs px-2 h-8" onClick={handleDownload}>Json</Button>
                   <Button variant="outline" size="sm" className="text-xs px-2 h-8" onClick={handleExport}>Download</Button>
                   <Button variant="outline" size="sm" className="text-xs px-2 h-8" onClick={handleImport}>Upload</Button>
-                  <Button size="sm" className="text-xs px-2 h-8" onClick={openAdd}>
+                  <Button size="sm" className="text-xs px-2 h-8" onClick={openAdd} disabled={loading}>
                     <PlusCircle className="h-3 w-3 mr-1" />
                     Add
                   </Button>
@@ -235,19 +697,40 @@ export default function SectionPage() {
                   <Table>
                     <TableHeader className="sticky top-0 z-10 bg-slate-50 dark:bg-slate-900/50">
                       <TableRow>
-                        <TableHead className="w-[110px] text-[11px]"><Button variant="ghost" size="sm" onClick={() => handleSort("institution_code")} className="h-auto p-0 font-medium hover:bg-transparent">Inst. Code <span className="ml-1">{getSortIcon("institution_code")}</span></Button></TableHead>
-                        <TableHead className="w-[120px] text-[11px]"><Button variant="ghost" size="sm" onClick={() => handleSort("section_id")} className="h-auto p-0 font-medium hover:bg-transparent">Section ID <span className="ml-1">{getSortIcon("section_id")}</span></Button></TableHead>
-                        <TableHead className="text-[11px]"><Button variant="ghost" size="sm" onClick={() => handleSort("section_name")} className="h-auto p-0 font-medium hover:bg-transparent">Section Name <span className="ml-1">{getSortIcon("section_name")}</span></Button></TableHead>
+                        <TableHead className="w-[140px] text-[11px]">
+                          <Button variant="ghost" size="sm" onClick={() => handleSort("institution_code")} className="h-auto p-0 font-medium hover:bg-transparent">
+                            Institution Code
+                            <span className="ml-1">{getSortIcon("institution_code")}</span>
+                          </Button>
+                        </TableHead>
+                        <TableHead className="w-[120px] text-[11px]">
+                          <Button variant="ghost" size="sm" onClick={() => handleSort("section_id")} className="h-auto p-0 font-medium hover:bg-transparent">
+                            Section ID
+                            <span className="ml-1">{getSortIcon("section_id")}</span>
+                          </Button>
+                        </TableHead>
+                        <TableHead className="text-[11px]">
+                          <Button variant="ghost" size="sm" onClick={() => handleSort("section_name")} className="h-auto p-0 font-medium hover:bg-transparent">
+                            Section Name
+                            <span className="ml-1">{getSortIcon("section_name")}</span>
+                          </Button>
+                        </TableHead>
                         <TableHead className="w-[200px] text-[11px]">Description</TableHead>
-                        <TableHead className="w-[100px] text-[11px]">Arrear</TableHead>
-                        <TableHead className="w-[100px] text-[11px]"><Button variant="ghost" size="sm" onClick={() => handleSort("is_active")} className="h-auto p-0 font-medium hover:bg-transparent">Status <span className="ml-1">{getSortIcon("is_active")}</span></Button></TableHead>
-                        <TableHead className="w-[120px] text-[11px]"><Button variant="ghost" size="sm" onClick={() => handleSort("created_at")} className="h-auto p-0 font-medium hover:bg-transparent">Created <span className="ml-1">{getSortIcon("created_at")}</span></Button></TableHead>
+                        <TableHead className="w-[100px] text-[11px]">Arrear Section</TableHead>
+                        <TableHead className="w-[100px] text-[11px]">
+                          <Button variant="ghost" size="sm" onClick={() => handleSort("status")} className="h-auto p-0 font-medium hover:bg-transparent">
+                            Status
+                            <span className="ml-1">{getSortIcon("status")}</span>
+                          </Button>
+                        </TableHead>
                         <TableHead className="w-[120px] text-[11px] text-center">Actions</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
                       {loading ? (
-                        <TableRow><TableCell colSpan={9} className="h-24 text-center text-[11px]">Loading…</TableCell></TableRow>
+                        <TableRow>
+                          <TableCell colSpan={7} className="h-24 text-center text-[11px]">Loading…</TableCell>
+                        </TableRow>
                       ) : pageItems.length ? (
                         <>
                           {pageItems.map((row) => (
@@ -255,21 +738,37 @@ export default function SectionPage() {
                               <TableCell className="text-[11px] font-medium">{row.institution_code}</TableCell>
                               <TableCell className="text-[11px]">{row.section_id}</TableCell>
                               <TableCell className="text-[11px]">{row.section_name}</TableCell>
-                              <TableCell className="text-[11px] text-muted-foreground">{row.section_description}</TableCell>
+                              <TableCell className="text-[11px] text-muted-foreground">{row.section_description || '-'}</TableCell>
                               <TableCell className="text-[11px]">{row.arrear_section ? "Yes" : "No"}</TableCell>
-                              <TableCell><Badge variant={row.is_active ? "default" : "secondary"} className="text-[11px]">{row.is_active ? "Active" : "Inactive"}</Badge></TableCell>
-                              <TableCell className="text-[11px] text-muted-foreground">{formatDate(row.created_at)}</TableCell>
+                              <TableCell>
+                                <Badge 
+                                  variant={row.status ? "default" : "secondary"} 
+                                  className={`text-[11px] ${
+                                    row.status 
+                                      ? 'bg-green-100 text-green-800 hover:bg-green-200 dark:bg-green-900 dark:text-green-200' 
+                                      : 'bg-red-100 text-red-800 hover:bg-red-200 dark:bg-red-900 dark:text-red-200'
+                                  }`}
+                                >
+                                  {row.status ? "Active" : "Inactive"}
+                                </Badge>
+                              </TableCell>
                               <TableCell>
                                 <div className="flex items-center justify-center gap-1">
-                                  <Button variant="outline" size="sm" className="h-7 w-7 p-0" onClick={() => openEdit(row)}><Edit className="h-3 w-3" /></Button>
+                                  <Button variant="outline" size="sm" className="h-7 w-7 p-0" onClick={() => openEdit(row)}>
+                                    <Edit className="h-3 w-3" />
+                                  </Button>
                                   <AlertDialog>
                                     <AlertDialogTrigger asChild>
-                                      <Button variant="outline" size="sm" className="h-7 w-7 p-0 text-red-600 hover:text-red-700 hover:bg-red-50"><Trash2 className="h-3 w-3" /></Button>
+                                      <Button variant="outline" size="sm" className="h-7 w-7 p-0 text-red-600 hover:text-red-700 hover:bg-red-50">
+                                        <Trash2 className="h-3 w-3" />
+                                      </Button>
                                     </AlertDialogTrigger>
                                     <AlertDialogContent>
                                       <AlertDialogHeader>
                                         <AlertDialogTitle>Delete Section</AlertDialogTitle>
-                                        <AlertDialogDescription>Are you sure you want to delete {row.section_name}?</AlertDialogDescription>
+                                        <AlertDialogDescription>
+                                          Are you sure you want to delete {row.section_name}? This action cannot be undone.
+                                        </AlertDialogDescription>
                                       </AlertDialogHeader>
                                       <AlertDialogFooter>
                                         <AlertDialogCancel>Cancel</AlertDialogCancel>
@@ -283,7 +782,9 @@ export default function SectionPage() {
                           ))}
                         </>
                       ) : (
-                        <TableRow><TableCell colSpan={9} className="h-24 text-center text-[11px]">No data</TableCell></TableRow>
+                        <TableRow>
+                          <TableCell colSpan={7} className="h-24 text-center text-[11px]">No data</TableCell>
+                        </TableRow>
                       )}
                     </TableBody>
                   </Table>
@@ -305,53 +806,174 @@ export default function SectionPage() {
       </SidebarInset>
 
       <Sheet open={sheetOpen} onOpenChange={(o) => { if (!o) resetForm(); setSheetOpen(o) }}>
-        <SheetContent className="sm:max-w-[520px]">
-          <SheetHeader>
-            <SheetTitle className="text-base">{editing ? "Edit Section" : "Add Section"}</SheetTitle>
+        <SheetContent className="sm:max-w-[600px] overflow-y-auto">
+          <SheetHeader className="pb-6 border-b bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-blue-950/20 dark:to-indigo-950/20">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="h-10 w-10 rounded-full bg-gradient-to-r from-blue-500 to-indigo-600 flex items-center justify-center">
+                  <Users className="h-5 w-5 text-white" />
+                </div>
+                <div>
+                  <SheetTitle className="text-2xl font-bold bg-gradient-to-r from-blue-600 to-indigo-600 bg-clip-text text-transparent">
+                    {editing ? "Edit Section" : "Add Section"}
+                  </SheetTitle>
+                  <p className="text-sm text-muted-foreground mt-1">
+                    {editing ? "Update section information" : "Create a new section record"}
+                  </p>
+                </div>
+              </div>
+            </div>
           </SheetHeader>
-          <div className="mt-4 space-y-3">
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <Label className="text-xs">Institution Code *</Label>
-                <Input value={formData.institution_code} onChange={(e) => setFormData({ ...formData, institution_code: e.target.value })} className={`h-8 text-xs ${errors.institution_code ? 'border-destructive' : ''}`} />
-                {errors.institution_code && <p className="text-[10px] text-destructive mt-1">{errors.institution_code}</p>}
+          
+          <div className="mt-6 space-y-6">
+            {/* Basic Information Section */}
+            <div className="space-y-4">
+              <div className="flex items-center gap-3 pb-3 border-b border-blue-200 dark:border-blue-800">
+                <div className="h-8 w-8 rounded-lg bg-gradient-to-r from-green-500 to-emerald-600 flex items-center justify-center">
+                  <Users className="h-4 w-4 text-white" />
+                </div>
+                <h3 className="text-lg font-bold bg-gradient-to-r from-green-600 to-emerald-600 bg-clip-text text-transparent">Section Information</h3>
               </div>
-              <div>
-                <Label className="text-xs">Section ID *</Label>
-                <Input value={formData.section_id} onChange={(e) => setFormData({ ...formData, section_id: e.target.value })} className={`h-8 text-xs ${errors.section_id ? 'border-destructive' : ''}`} />
-                {errors.section_id && <p className="text-[10px] text-destructive mt-1">{errors.section_id}</p>}
-              </div>
-            </div>
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <Label className="text-xs">Section Name *</Label>
-                <Input value={formData.section_name} onChange={(e) => setFormData({ ...formData, section_name: e.target.value })} className={`h-8 text-xs ${errors.section_name ? 'border-destructive' : ''}`} />
-                {errors.section_name && <p className="text-[10px] text-destructive mt-1">{errors.section_name}</p>}
-              </div>
-              <div>
-                <Label className="text-xs">Description</Label>
-                <Input value={formData.section_description} onChange={(e) => setFormData({ ...formData, section_description: e.target.value })} className="h-8 text-xs" />
-              </div>
-            </div>
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <Label className="text-xs">Arrear Section</Label>
-                <div className="flex gap-2">
-                  <Button type="button" variant={formData.arrear_section ? "default" : "outline"} size="sm" className="h-7 px-2 text-xs" onClick={() => setFormData({ ...formData, arrear_section: true })}>Yes</Button>
-                  <Button type="button" variant={!formData.arrear_section ? "default" : "outline"} size="sm" className="h-7 px-2 text-xs" onClick={() => setFormData({ ...formData, arrear_section: false })}>No</Button>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="institution_code" className="text-sm font-semibold">
+                    Institution Code <span className="text-red-500">*</span>
+                  </Label>
+                  <Select 
+                    value={formData.institution_code} 
+                    onValueChange={(value) => {
+                      const selectedInstitution = institutions.find(inst => inst.institution_code === value)
+                      setFormData({ 
+                        ...formData, 
+                        institution_code: value,
+                        institutions_id: selectedInstitution?.id || ""
+                      })
+                    }}
+                  >
+                    <SelectTrigger className={`h-10 ${errors.institution_code ? 'border-destructive' : ''}`}>
+                      <SelectValue placeholder="Select Institution" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {institutions.map((institution) => (
+                        <SelectItem key={institution.id} value={institution.institution_code}>
+                          {institution.institution_code} - {institution.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  {errors.institution_code && <p className="text-xs text-destructive">{errors.institution_code}</p>}
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="section_id" className="text-sm font-semibold">
+                    Section ID <span className="text-red-500">*</span>
+                  </Label>
+                  <Input 
+                    id="section_id" 
+                    value={formData.section_id} 
+                    onChange={(e) => setFormData({ ...formData, section_id: e.target.value })} 
+                    className={`h-10 ${errors.section_id ? 'border-destructive' : ''}`} 
+                    placeholder="e.g., A1, B1"
+                  />
+                  {errors.section_id && <p className="text-xs text-destructive">{errors.section_id}</p>}
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="section_name" className="text-sm font-semibold">
+                    Section Name <span className="text-red-500">*</span>
+                  </Label>
+                  <Input 
+                    id="section_name" 
+                    value={formData.section_name} 
+                    onChange={(e) => setFormData({ ...formData, section_name: e.target.value })} 
+                    className={`h-10 ${errors.section_name ? 'border-destructive' : ''}`} 
+                    placeholder="e.g., Section A, Section B"
+                  />
+                  {errors.section_name && <p className="text-xs text-destructive">{errors.section_name}</p>}
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="section_description" className="text-sm font-medium">Description</Label>
+                  <Input 
+                    id="section_description" 
+                    value={formData.section_description} 
+                    onChange={(e) => setFormData({ ...formData, section_description: e.target.value })} 
+                    className="h-10" 
+                    placeholder="Section description"
+                  />
                 </div>
               </div>
-              <div>
-                <Label className="text-xs">Status</Label>
-                <div className="flex gap-2">
-                  <Button type="button" variant={formData.is_active ? "default" : "outline"} size="sm" className="h-7 px-2 text-xs" onClick={() => setFormData({ ...formData, is_active: true })}>Active</Button>
-                  <Button type="button" variant={!formData.is_active ? "default" : "outline"} size="sm" className="h-7 px-2 text-xs" onClick={() => setFormData({ ...formData, is_active: false })}>Inactive</Button>
+            </div>
+
+            {/* Status Section */}
+            <div className="space-y-4">
+              <div className="flex items-center gap-3 pb-3 border-b border-purple-200 dark:border-purple-800">
+                <div className="h-8 w-8 rounded-lg bg-gradient-to-r from-purple-500 to-pink-600 flex items-center justify-center">
+                  <Users className="h-4 w-4 text-white" />
+                </div>
+                <h3 className="text-lg font-bold bg-gradient-to-r from-purple-600 to-pink-600 bg-clip-text text-transparent">Status & Settings</h3>
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div className="space-y-3">
+                  <Label className="text-sm font-semibold">Arrear Section</Label>
+                  <div className="flex items-center gap-4">
+                    <button
+                      type="button"
+                      onClick={() => setFormData({ ...formData, arrear_section: !formData.arrear_section })}
+                      className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2 ${
+                        formData.arrear_section ? 'bg-green-500' : 'bg-gray-300'
+                      }`}
+                    >
+                      <span
+                        className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                          formData.arrear_section ? 'translate-x-6' : 'translate-x-1'
+                        }`}
+                      />
+                    </button>
+                    <span className={`text-sm font-medium ${formData.arrear_section ? 'text-green-600' : 'text-gray-500'}`}>
+                      {formData.arrear_section ? 'Yes' : 'No'}
+                    </span>
+                  </div>
+                </div>
+                <div className="space-y-3">
+                  <Label className="text-sm font-semibold">Status</Label>
+                  <div className="flex items-center gap-4">
+                    <button
+                      type="button"
+                      onClick={() => setFormData({ ...formData, status: !formData.status })}
+                      className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2 ${
+                        formData.status ? 'bg-green-500' : 'bg-gray-300'
+                      }`}
+                    >
+                      <span
+                        className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                          formData.status ? 'translate-x-6' : 'translate-x-1'
+                        }`}
+                      />
+                    </button>
+                    <span className={`text-sm font-medium ${formData.status ? 'text-green-600' : 'text-red-500'}`}>
+                      {formData.status ? 'Active' : 'Inactive'}
+                    </span>
+                  </div>
                 </div>
               </div>
             </div>
-            <div className="pt-2 flex justify-end gap-2">
-              <Button variant="outline" size="sm" className="h-8 text-xs" onClick={() => { setSheetOpen(false); resetForm() }}>Cancel</Button>
-              <Button size="sm" className="h-8 text-xs" onClick={save}>{editing ? "Update" : "Create"}</Button>
+
+            {/* Action Buttons */}
+            <div className="flex justify-end gap-3 pt-6 border-t">
+              <Button 
+                variant="outline" 
+                size="sm" 
+                className="h-10 px-6" 
+                onClick={() => { setSheetOpen(false); resetForm() }}
+              >
+                Cancel
+              </Button>
+              <Button 
+                size="sm" 
+                className="h-10 px-6" 
+                onClick={save}
+                disabled={loading}
+              >
+                {editing ? "Update Section" : "Create Section"}
+              </Button>
             </div>
           </div>
         </SheetContent>
