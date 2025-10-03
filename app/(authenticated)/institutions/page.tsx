@@ -1921,7 +1921,6 @@ export default function InstitutionsPage() {
         </AlertDialogContent>
       </AlertDialog>
     </SidebarProvider>
-   
   )
 }
 

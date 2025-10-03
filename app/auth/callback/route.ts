@@ -9,11 +9,13 @@ const supabase = createClient(
 export async function GET(request: NextRequest) {
   const requestUrl = new URL(request.url);
   const code = requestUrl.searchParams.get('code');
+  const state = requestUrl.searchParams.get('state');
   const error = requestUrl.searchParams.get('error');
   const errorDescription = requestUrl.searchParams.get('error_description');
 
   console.log('Supabase OAuth Callback Route:', { 
     code: !!code, 
+    state: !!state,
     error, 
     errorDescription,
     url: requestUrl.toString()
@@ -21,6 +23,17 @@ export async function GET(request: NextRequest) {
 
   if (error) {
     console.error('OAuth error:', error, errorDescription);
+    
+    // Handle specific OAuth errors
+    if (error === 'invalid_request' && errorDescription?.includes('bad_oauth_state')) {
+      console.error('OAuth state validation failed - this usually indicates a CSRF attack or expired state');
+      // Redirect to login with a more specific error
+      const loginUrl = new URL('/login', request.url);
+      loginUrl.searchParams.set('error', 'oauth_state_invalid');
+      loginUrl.searchParams.set('error_description', 'Authentication session expired. Please try logging in again.');
+      return NextResponse.redirect(loginUrl);
+    }
+    
     // Redirect to login with error
     const loginUrl = new URL('/login', request.url);
     loginUrl.searchParams.set('error', error);
@@ -33,11 +46,28 @@ export async function GET(request: NextRequest) {
   if (code) {
     try {
       console.log('Exchanging code for session...');
+      
       // Exchange code for session
       const { data, error: exchangeError } = await supabase.auth.exchangeCodeForSession(code);
       
       if (exchangeError) {
         console.error('Code exchange error:', exchangeError);
+        
+        // Handle specific OAuth errors
+        if (exchangeError.message?.includes('invalid_grant') || exchangeError.message?.includes('code_expired')) {
+          const loginUrl = new URL('/login', request.url);
+          loginUrl.searchParams.set('error', 'oauth_code_expired');
+          loginUrl.searchParams.set('error_description', 'Authentication code expired. Please try logging in again.');
+          return NextResponse.redirect(loginUrl);
+        }
+        
+        if (exchangeError.message?.includes('invalid_request')) {
+          const loginUrl = new URL('/login', request.url);
+          loginUrl.searchParams.set('error', 'oauth_invalid_request');
+          loginUrl.searchParams.set('error_description', 'Invalid authentication request. Please try logging in again.');
+          return NextResponse.redirect(loginUrl);
+        }
+        
         const loginUrl = new URL('/login', request.url);
         loginUrl.searchParams.set('error', 'authentication_failed');
         return NextResponse.redirect(loginUrl);

@@ -53,6 +53,7 @@ export default function DepartmentPage() {
 
   // Institutions for dropdown
   const [institutions, setInstitutions] = useState<Array<{ id: string; institution_code: string; name?: string }>>([])
+  const [institutionsLoading, setInstitutionsLoading] = useState(true)
 
   // Fetch departments from API
   const fetchDepartments = async () => {
@@ -71,20 +72,30 @@ export default function DepartmentPage() {
   }
 
   // Fetch institutions for dropdown
+  const fetchInstitutions = async () => {
+    try {
+      setInstitutionsLoading(true)
+      const res = await fetch('/api/institutions')
+      if (res.ok) {
+        const data = await res.json()
+        const mapped = Array.isArray(data)
+          ? data.filter((i: any) => i?.institution_code).map((i: any) => ({ id: i.id, institution_code: i.institution_code, name: i.name }))
+          : []
+        setInstitutions(mapped)
+        console.log('Institutions loaded:', mapped)
+      } else {
+        console.error('Failed to fetch institutions:', res.status, res.statusText)
+      }
+    } catch (error) {
+      console.error('Error fetching institutions:', error)
+    } finally {
+      setInstitutionsLoading(false)
+    }
+  }
+
   useEffect(() => {
     fetchDepartments()
-    ;(async () => {
-      try {
-        const res = await fetch('/api/institutions')
-        if (res.ok) {
-          const data = await res.json()
-          const mapped = Array.isArray(data)
-            ? data.filter((i: any) => i?.institution_code).map((i: any) => ({ id: i.id, institution_code: i.institution_code, name: i.name }))
-            : []
-          setInstitutions(mapped)
-        }
-      } catch {}
-    })()
+    fetchInstitutions()
   }, [])
 
   const resetForm = () => { setFormData({ institution_code: "", department_code: "", department_name: "", display_name: "", description: "", stream: "", is_active: true }); setErrors({}); setEditing(null) }
@@ -118,43 +129,86 @@ export default function DepartmentPage() {
 
   const validate = () => {
     const e: Record<string, string> = {}
-    if (!formData.institution_code.trim()) e.institution_code = "Required"
-    if (!formData.department_code.trim()) e.department_code = "Required"
-    if (!formData.department_name.trim()) e.department_name = "Required"
-    // Stream, if provided, must be one of allowed values
+    
+    // Required fields
+    if (!formData.institution_code || !formData.institution_code.trim()) {
+      e.institution_code = "Institution code is required"
+    } else if (institutions.length > 0 && !institutions.some(inst => inst.institution_code === formData.institution_code)) {
+      e.institution_code = "Please select a valid institution"
+    }
+    
+    if (!formData.department_code || !formData.department_code.trim()) {
+      e.department_code = "Department code is required"
+    } else if (formData.department_code.length > 50) {
+      e.department_code = "Department code must be 50 characters or less"
+    }
+    
+    if (!formData.department_name || !formData.department_name.trim()) {
+      e.department_name = "Department name is required"
+    } else if (formData.department_name.length > 255) {
+      e.department_name = "Department name must be 255 characters or less"
+    }
+    
+    // Stream validation - if provided, must be one of allowed values
     const allowed = ['Arts','Science','Management','Commerce','Engineering','Medical','Law']
-    if (formData.stream && !allowed.includes(formData.stream)) e.stream = "Invalid stream"
-    setErrors(e); return Object.keys(e).length === 0
+    if (formData.stream && !allowed.includes(formData.stream)) {
+      e.stream = "Invalid stream. Must be one of: " + allowed.join(', ')
+    }
+    
+    setErrors(e)
+    return Object.keys(e).length === 0
   }
 
   const save = async () => {
     if (!validate()) return
+    
     try {
       setLoading(true)
+      
       if (editing) {
+        // Update existing department
         const response = await fetch('/api/departments', {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ id: (editing as any).id, ...formData })
         })
-        if (!response.ok) throw new Error('Failed to update department')
+        
+        if (!response.ok) {
+          const errorData = await response.json().catch(() => ({}))
+          const errorMessage = errorData.error || errorData.details || 'Failed to update department'
+          throw new Error(errorMessage)
+        }
+        
         const updated = await response.json()
         setItems(p => p.map(x => x.id === (editing as any).id ? updated : x))
+        
+        alert(`Department "${updated.department_name}" has been successfully updated.`)
       } else {
+        // Create new department
         const response = await fetch('/api/departments', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(formData)
         })
-        if (!response.ok) throw new Error('Failed to create department')
+        
+        if (!response.ok) {
+          const errorData = await response.json().catch(() => ({}))
+          const errorMessage = errorData.error || errorData.details || 'Failed to create department'
+          throw new Error(errorMessage)
+        }
+        
         const created = await response.json()
         setItems(p => [created, ...p])
+        
+        alert(`Department "${created.department_name}" has been successfully created.`)
       }
+      
       setSheetOpen(false)
       resetForm()
     } catch (e) {
       console.error('Save department error:', e)
-      alert('Failed to save department')
+      const errorMessage = e instanceof Error ? e.message : 'Failed to save department'
+      alert(`Error: ${errorMessage}`)
     } finally {
       setLoading(false)
     }
@@ -164,11 +218,19 @@ export default function DepartmentPage() {
     try {
       setLoading(true)
       const res = await fetch(`/api/departments?id=${id}`, { method: 'DELETE' })
-      if (!res.ok) throw new Error('Delete failed')
+      
+      if (!res.ok) {
+        const errorData = await res.json().catch(() => ({}))
+        const errorMessage = errorData.error || errorData.details || 'Delete failed'
+        throw new Error(errorMessage)
+      }
+      
       setItems(p => p.filter(x => x.id !== id))
+      alert('Department has been successfully deleted.')
     } catch (e) {
       console.error('Delete department error:', e)
-      alert('Failed to delete department')
+      const errorMessage = e instanceof Error ? e.message : 'Failed to delete department'
+      alert(`Error: ${errorMessage}`)
     } finally {
       setLoading(false)
     }
@@ -455,7 +517,7 @@ export default function DepartmentPage() {
       </SidebarInset>
 
       <Sheet open={sheetOpen} onOpenChange={(o) => { if (!o) resetForm(); setSheetOpen(o) }}>
-        <SheetContent className="sm:max-w-[600px] overflow-y-auto">
+        <SheetContent className="sm:max-w-[800px] overflow-y-auto">
           <SheetHeader className="pb-6 border-b bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-blue-950/20 dark:to-indigo-950/20">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-3">
@@ -473,77 +535,214 @@ export default function DepartmentPage() {
               </div>
             </div>
           </SheetHeader>
-          <div className="mt-4 space-y-3">
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <Label htmlFor="institution_code" className="text-xs">Institution Code *</Label>
-                <Select value={formData.institution_code} onValueChange={(code)=> setFormData({ ...formData, institution_code: code })}>
-                  <SelectTrigger className={`h-8 text-xs ${errors.institution_code ? 'border-destructive' : ''}`}>
-                    <SelectValue placeholder="Select Institution Code" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {institutions.map(inst => (
-                      <SelectItem key={inst.id} value={inst.institution_code}>{inst.institution_code}{inst.name?` - ${inst.name}`:''}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                {errors.institution_code && <p className="text-[10px] text-destructive mt-1">{errors.institution_code}</p>}
+          <div className="mt-6 space-y-6">
+            {/* Validation Summary */}
+            {Object.keys(errors).length > 0 && (
+              <div className="bg-red-50 border border-red-200 rounded-lg p-4 dark:bg-red-900/20 dark:border-red-800">
+                <div className="flex items-center gap-2 mb-2">
+                  <span className="text-red-600 dark:text-red-400">⚠️</span>
+                  <h4 className="text-sm font-semibold text-red-800 dark:text-red-200">
+                    Please fix the following errors:
+                  </h4>
+                </div>
+                <ul className="text-xs text-red-700 dark:text-red-300 space-y-1">
+                  {Object.entries(errors).map(([field, message]) => (
+                    <li key={field} className="flex items-center gap-2">
+                      <span className="w-1 h-1 bg-red-500 rounded-full"></span>
+                      <span className="capitalize">{field.replace('_', ' ')}: {message}</span>
+                    </li>
+                  ))}
+                </ul>
               </div>
-              <div>
-                <Label htmlFor="department_code" className="text-xs">Department Code *</Label>
-                <Input id="department_code" value={formData.department_code} onChange={(e) => setFormData({ ...formData, department_code: e.target.value })} className={`h-8 text-xs ${errors.department_code ? 'border-destructive' : ''}`} />
-                {errors.department_code && <p className="text-[10px] text-destructive mt-1">{errors.department_code}</p>}
+            )}
+            
+            {/* Basic Information Section */}
+            <div className="space-y-4">
+              <div className="flex items-center gap-3 pb-3 border-b border-blue-200 dark:border-blue-800">
+                <div className="h-8 w-8 rounded-lg bg-gradient-to-r from-blue-500 to-indigo-600 flex items-center justify-center">
+                  <Building2 className="h-4 w-4 text-white" />
+                </div>
+                <h3 className="text-lg font-bold bg-gradient-to-r from-blue-600 to-indigo-600 bg-clip-text text-transparent">
+                  Basic Information
+                </h3>
+              </div>
+              
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <Label htmlFor="institution_code" className="text-sm font-semibold">
+                      Institution Code <span className="text-red-500">*</span>
+                    </Label>
+                    {institutions.length === 0 && !institutionsLoading && (
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        className="h-6 px-2 text-xs"
+                        onClick={fetchInstitutions}
+                      >
+                        <RefreshCw className="h-3 w-3 mr-1" />
+                        Refresh
+                      </Button>
+                    )}
+                  </div>
+                  <Select 
+                    value={formData.institution_code} 
+                    onValueChange={(code)=> setFormData({ ...formData, institution_code: code })}
+                    disabled={institutionsLoading}
+                  >
+                    <SelectTrigger className={`h-10 ${errors.institution_code ? 'border-destructive' : ''}`}>
+                      <SelectValue placeholder={institutionsLoading ? "Loading institutions..." : "Select Institution Code"} />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {institutionsLoading ? (
+                        <SelectItem value="" disabled>Loading institutions...</SelectItem>
+                      ) : institutions.length === 0 ? (
+                        <SelectItem value="" disabled>No institutions available</SelectItem>
+                      ) : (
+                        institutions.map(inst => (
+                          <SelectItem key={inst.id} value={inst.institution_code}>
+                            {inst.institution_code}{inst.name ? ` - ${inst.name}` : ''}
+                          </SelectItem>
+                        ))
+                      )}
+                    </SelectContent>
+                  </Select>
+                  {errors.institution_code && (
+                    <div className="flex items-center gap-1 mt-1">
+                      <span className="text-xs text-destructive font-medium">⚠️ {errors.institution_code}</span>
+                    </div>
+                  )}
+                </div>
+                
+                <div className="space-y-2">
+                  <Label htmlFor="department_code" className="text-sm font-semibold">
+                    Department Code <span className="text-red-500">*</span>
+                  </Label>
+                  <Input 
+                    id="department_code" 
+                    value={formData.department_code} 
+                    onChange={(e) => setFormData({ ...formData, department_code: e.target.value })} 
+                    className={`h-10 ${errors.department_code ? 'border-destructive' : ''}`}
+                    placeholder="e.g., CSE, ECE, MECH"
+                  />
+                  {errors.department_code && (
+                    <div className="flex items-center gap-1 mt-1">
+                      <span className="text-xs text-destructive font-medium">⚠️ {errors.department_code}</span>
+                    </div>
+                  )}
+                </div>
+              </div>
+              
+              <div className="space-y-2">
+                <Label htmlFor="department_name" className="text-sm font-semibold">
+                  Department Name <span className="text-red-500">*</span>
+                </Label>
+                <Input 
+                  id="department_name" 
+                  value={formData.department_name} 
+                  onChange={(e) => setFormData({ ...formData, department_name: e.target.value })} 
+                  className={`h-10 ${errors.department_name ? 'border-destructive' : ''}`}
+                  placeholder="e.g., Computer Science and Engineering"
+                />
+                {errors.department_name && (
+                  <div className="flex items-center gap-1 mt-1">
+                    <span className="text-xs text-destructive font-medium">⚠️ {errors.department_name}</span>
+                  </div>
+                )}
               </div>
             </div>
-            <div>
-              <Label htmlFor="department_name" className="text-xs">Department Name *</Label>
-              <Input id="department_name" value={formData.department_name} onChange={(e) => setFormData({ ...formData, department_name: e.target.value })} className={`h-8 text-xs ${errors.department_name ? 'border-destructive' : ''}`} />
-              {errors.department_name && <p className="text-[10px] text-destructive mt-1">{errors.department_name}</p>}
-            </div>
-            <div>
-              <Label htmlFor="display_name" className="text-xs">Display Name</Label>
-              <Input id="display_name" value={formData.display_name} onChange={(e) => setFormData({ ...formData, display_name: e.target.value })} className="h-8 text-xs" />
-            </div>
-            <div>
-              <Label htmlFor="description" className="text-xs">Description</Label>
-              <Input id="description" value={(formData as any).description} onChange={(e) => setFormData({ ...formData, description: e.target.value })} className="h-8 text-xs" />
-            </div>
-            <div>
-              <Label htmlFor="stream" className="text-xs">Stream</Label>
-              <Select value={formData.stream} onValueChange={(v)=> setFormData({ ...formData, stream: v })}>
-                <SelectTrigger className={`h-8 text-xs ${errors.stream ? 'border-destructive' : ''}`}>
-                  <SelectValue placeholder="Select Stream" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="Arts">Arts</SelectItem>
-                  <SelectItem value="Science">Science</SelectItem>
-                  <SelectItem value="Management">Management</SelectItem>
-                  <SelectItem value="Commerce">Commerce</SelectItem>
-                  <SelectItem value="Engineering">Engineering</SelectItem>
-                  <SelectItem value="Medical">Medical</SelectItem>
-                  <SelectItem value="Law">Law</SelectItem>
-                </SelectContent>
-              </Select>
-              {errors.stream && <p className="text-[10px] text-destructive mt-1">{errors.stream}</p>}
-            </div>
-            <div>
-              <Label className="text-xs">Status</Label>
-              <div className="flex items-center gap-3 mt-1">
-                <button
-                  type="button"
-                  onClick={() => setFormData({ ...formData, is_active: !formData.is_active })}
-                  className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2 ${formData.is_active ? 'bg-green-500' : 'bg-gray-300'}`}
-                >
-                  <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${formData.is_active ? 'translate-x-6' : 'translate-x-1'}`} />
-                </button>
-                <span className={`text-xs font-medium ${formData.is_active ? 'text-green-600' : 'text-red-500'}`}>
-                  {formData.is_active ? 'Active' : 'Inactive'}
-                </span>
+            {/* Additional Information Section */}
+            <div className="space-y-4">
+              <div className="flex items-center gap-3 pb-3 border-b border-green-200 dark:border-green-800">
+                <div className="h-8 w-8 rounded-lg bg-gradient-to-r from-green-500 to-emerald-600 flex items-center justify-center">
+                  <Building2 className="h-4 w-4 text-white" />
+                </div>
+                <h3 className="text-lg font-bold bg-gradient-to-r from-green-600 to-emerald-600 bg-clip-text text-transparent">
+                  Additional Information
+                </h3>
+              </div>
+              
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="display_name" className="text-sm font-semibold">Display Name</Label>
+                  <Input 
+                    id="display_name" 
+                    value={formData.display_name} 
+                    onChange={(e) => setFormData({ ...formData, display_name: e.target.value })} 
+                    className="h-10"
+                    placeholder="e.g., CSE, Computer Science"
+                  />
+                </div>
+                
+                <div className="space-y-2">
+                  <Label htmlFor="stream" className="text-sm font-semibold">Stream</Label>
+                  <Select value={formData.stream} onValueChange={(v)=> setFormData({ ...formData, stream: v })}>
+                    <SelectTrigger className={`h-10 ${errors.stream ? 'border-destructive' : ''}`}>
+                      <SelectValue placeholder="Select Stream" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="Arts">Arts</SelectItem>
+                      <SelectItem value="Science">Science</SelectItem>
+                      <SelectItem value="Management">Management</SelectItem>
+                      <SelectItem value="Commerce">Commerce</SelectItem>
+                      <SelectItem value="Engineering">Engineering</SelectItem>
+                      <SelectItem value="Medical">Medical</SelectItem>
+                      <SelectItem value="Law">Law</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  {errors.stream && (
+                    <div className="flex items-center gap-1 mt-1">
+                      <span className="text-xs text-destructive font-medium">⚠️ {errors.stream}</span>
+                    </div>
+                  )}
+                </div>
+              </div>
+              
+              <div className="space-y-2">
+                <Label htmlFor="description" className="text-sm font-semibold">Description</Label>
+                <Input 
+                  id="description" 
+                  value={(formData as any).description} 
+                  onChange={(e) => setFormData({ ...formData, description: e.target.value })} 
+                  className="h-10"
+                  placeholder="Optional description about the department"
+                />
+              </div>
+              
+              <div className="space-y-2">
+                <Label className="text-sm font-semibold">Status</Label>
+                <div className="flex items-center gap-3">
+                  <button
+                    type="button"
+                    onClick={() => setFormData({ ...formData, is_active: !formData.is_active })}
+                    className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2 ${formData.is_active ? 'bg-green-500' : 'bg-gray-300'}`}
+                  >
+                    <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${formData.is_active ? 'translate-x-6' : 'translate-x-1'}`} />
+                  </button>
+                  <span className={`text-sm font-medium ${formData.is_active ? 'text-green-600' : 'text-red-500'}`}>
+                    {formData.is_active ? 'Active' : 'Inactive'}
+                  </span>
+                </div>
               </div>
             </div>
-            <div className="pt-2 flex justify-end gap-2">
-              <Button variant="outline" size="sm" className="h-8 text-xs" onClick={() => { setSheetOpen(false); resetForm() }}>Cancel</Button>
-              <Button size="sm" className="h-8 text-xs" onClick={save}>{editing ? "Update" : "Create"}</Button>
+            <div className="pt-6 flex justify-end gap-3">
+              <Button 
+                variant="outline" 
+                size="sm" 
+                className="h-10 px-6" 
+                onClick={() => { setSheetOpen(false); resetForm() }}
+              >
+                Cancel
+              </Button>
+              <Button 
+                size="sm" 
+                className="h-10 px-6" 
+                onClick={save}
+                disabled={loading}
+              >
+                {loading ? "Saving..." : editing ? "Update Department" : "Create Department"}
+              </Button>
             </div>
           </div>
         </SheetContent>

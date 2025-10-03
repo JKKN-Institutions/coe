@@ -5,7 +5,9 @@ import Image from 'next/image';
 import { useAuth } from '@/lib/auth/auth-context';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { Button } from '@/components/ui/button';
-import { Info, Users as UsersIcon, Shield, Lock, ArrowRight, CheckCircle, Crown } from 'lucide-react';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Info, Users as UsersIcon, Shield, Lock, ArrowRight, CheckCircle, Crown, Mail, ArrowLeft, RefreshCw } from 'lucide-react';
 import {
   Card,
   CardContent,
@@ -23,37 +25,29 @@ function LoginContent() {
   const [logoOk, setLogoOk] = useState(true);
   const [isHovered, setIsHovered] = useState(false);
   const [showFeatures, setShowFeatures] = useState(false);
-  const [currentYear, setCurrentYear] = useState<number | null>(null);
+  const [currentYear, setCurrentYear] = useState<number>(new Date().getFullYear());
+  const [showEmailForm, setShowEmailForm] = useState(false);
+  const [email, setEmail] = useState('');
+  const [emailError, setEmailError] = useState<string | null>(null);
+  const [isEmailLoading, setIsEmailLoading] = useState(false);
 
   useEffect(() => {
-    if (isAuthenticated) {
-      // Add a small delay to ensure auth context is fully initialized
-      const redirectTimer = setTimeout(() => {
-        // Check if there's a redirect parameter from middleware
-        const redirectParam = searchParams.get('redirect');
-        if (redirectParam) {
-          // Redirect to the original page the user was trying to access
-          router.push(redirectParam);
-        } else {
-          // Default redirect to dashboard
-          router.push('/dashboard');
-        }
-      }, 100); // Small delay to prevent race conditions
-
-      return () => clearTimeout(redirectTimer);
-    }
+		if (isAuthenticated) {
+			const redirectParam = searchParams.get('redirect');
+			if (typeof window !== 'undefined') {
+				window.location.replace(redirectParam || '/dashboard');
+			} else {
+				router.replace(redirectParam || '/dashboard');
+			}
+		}
   }, [isAuthenticated, router, searchParams]);
 
-  useEffect(() => {
-    // Show features after a short delay
-    const timer = setTimeout(() => setShowFeatures(true), 500);
-    return () => clearTimeout(timer);
-  }, []);
+	useEffect(() => {
+		// Prefetch dashboard to speed up post-login navigation
+		router.prefetch('/dashboard');
+		setShowFeatures(true);
+	}, [router]);
 
-  useEffect(() => {
-    // Set current year on client side only
-    setCurrentYear(new Date().getFullYear());
-  }, []);
 
   useEffect(() => {
     // Check for error cookie instead of URL parameter
@@ -71,8 +65,20 @@ function LoginContent() {
 
     // Also check URL params for backward compatibility but don't show in URL
     const errorParam = searchParams.get('error');
+    const errorDescription = searchParams.get('error_description');
+    
     if (errorParam) {
-      setFormError('Your account wasn\'t found in our system. Check your login details, or contact support if you need help.');
+      if (errorParam === 'oauth_state_invalid') {
+        setFormError('Authentication session expired. Please try logging in again.');
+      } else if (errorParam === 'oauth_code_expired') {
+        setFormError('Authentication code expired. Please try logging in again.');
+      } else if (errorParam === 'oauth_invalid_request') {
+        setFormError('Invalid authentication request. Please try logging in again.');
+      } else if (errorParam === 'invalid_request' && errorDescription?.includes('bad_oauth_state')) {
+        setFormError('Authentication session expired. Please try logging in again.');
+      } else {
+        setFormError('Your account wasn\'t found in our system. Check your login details, or contact support if you need help.');
+      }
       // Clean the URL
       router.replace('/login', { scroll: false });
     }
@@ -85,6 +91,40 @@ function LoginContent() {
     if (!result.success) {
       setFormError(result.error || 'Google login failed');
     }
+  };
+
+  const handleEmailSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setEmailError(null);
+    setIsEmailLoading(true);
+
+    try {
+      const response = await fetch('/api/auth/send-verification', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ email: email.toLowerCase() }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || 'Failed to send verification code');
+      }
+
+      // Redirect to verification page
+      router.push(`/verify-email?email=${encodeURIComponent(email.toLowerCase())}`);
+    } catch (err) {
+      setEmailError(err instanceof Error ? err.message : 'Failed to send verification code');
+    } finally {
+      setIsEmailLoading(false);
+    }
+  };
+
+  const handleEmailChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setEmail(e.target.value);
+    setEmailError(null);
   };
 
   // Don't show loading screen if user is already authenticated
@@ -288,13 +328,98 @@ function LoginContent() {
                 </div>
           </Button>
 
-              {/* Security Note */}
-              <div className='text-center space-y-2'>
-              <div className='flex items-center justify-center space-x-2 text-xs text-slate-500 dark:text-slate-400'>
-                <Shield className='h-3 w-3 text-green-500' />
-                <span>Your data is protected with enterprise security</span>
+          {/* Divider */}
+          <div className='relative my-6'>
+            <div className='absolute inset-0 flex items-center'>
+              <div className='w-full border-t border-slate-200 dark:border-slate-700'></div>
+            </div>
+            <div className='relative flex justify-center text-sm'>
+              <span className='px-4 bg-white dark:bg-slate-800 text-slate-500 dark:text-slate-400'>or</span>
+            </div>
+          </div>
+
+          {/* Email Login Section */}
+          {!showEmailForm ? (
+            <Button
+              type='button'
+              onClick={() => setShowEmailForm(true)}
+              variant='outline'
+              className='w-full h-12 border-2 border-slate-200 dark:border-slate-700 hover:border-green-500 hover:bg-green-50 dark:hover:bg-green-900/20 rounded-xl font-semibold text-base transition-all duration-300'
+              size='lg'
+            >
+              <Mail className='mr-3 h-5 w-5' />
+              Continue with Email
+            </Button>
+          ) : (
+            <div className='space-y-4'>
+              <div className='flex items-center justify-between mb-4'>
+                <h3 className='text-lg font-semibold text-slate-800 dark:text-white'>Sign in with Email</h3>
+                <Button
+                  type='button'
+                  variant='ghost'
+                  size='sm'
+                  onClick={() => {
+                    setShowEmailForm(false);
+                    setEmail('');
+                    setEmailError(null);
+                  }}
+                  className='text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200'
+                >
+                  <ArrowLeft className='h-4 w-4 mr-1' />
+                  Back
+                </Button>
               </div>
-               
+
+              <form onSubmit={handleEmailSubmit} className='space-y-4'>
+                <div className='space-y-2'>
+                  <Label htmlFor='email' className='text-sm font-semibold text-slate-700 dark:text-slate-300'>
+                    Email Address
+                  </Label>
+                  <Input
+                    id='email'
+                    type='email'
+                    value={email}
+                    onChange={handleEmailChange}
+                    placeholder='Enter your email address'
+                    className='h-12 text-base'
+                    required
+                    disabled={isEmailLoading}
+                  />
+                  {emailError && (
+                    <div className='flex items-center gap-2 text-sm text-red-600 dark:text-red-400'>
+                      <Info className='h-4 w-4' />
+                      {emailError}
+                    </div>
+                  )}
+                </div>
+
+                <Button
+                  type='submit'
+                  disabled={isEmailLoading || !email.trim()}
+                  className='w-full h-12 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white border-0 rounded-xl font-semibold text-base shadow-lg hover:shadow-xl transition-all duration-300'
+                >
+                  {isEmailLoading ? (
+                    <>
+                      <RefreshCw className='mr-2 h-4 w-4 animate-spin' />
+                      Sending Code...
+                    </>
+                  ) : (
+                    <>
+                      <Mail className='mr-2 h-4 w-4' />
+                      Send Verification Code
+                    </>
+                  )}
+                </Button>
+              </form>
+            </div>
+          )}
+
+          {/* Security Note */}
+          <div className='text-center space-y-2'>
+            <div className='flex items-center justify-center space-x-2 text-xs text-slate-500 dark:text-slate-400'>
+              <Shield className='h-3 w-3 text-green-500' />
+              <span>Your data is protected with enterprise security</span>
+            </div>
           </div>
         </CardContent>
       </Card>
@@ -304,7 +429,7 @@ function LoginContent() {
       {/* Footer */}
       <div className='absolute bottom-4 left-0 right-0 flex justify-center'>
         <div className='text-slate-600 font-bold dark:text-slate-400 text-xs px-4 text-center' >
-        Developed by JKKN Educational Institution © {currentYear || '2024'}. All Rights Reserved.
+        Developed by JKKN Educational Institution © {currentYear}. All Rights Reserved.
         </div>
       </div>
     </div>

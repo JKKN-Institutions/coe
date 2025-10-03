@@ -1,12 +1,8 @@
 // Service Worker for COE Portal - Fixed Version
-const CACHE_NAME = 'coe-portal-v2';
+const CACHE_NAME = 'coe-portal-v3';
 const urlsToCache = [
-  '/',
-  '/regulations',
-  '/courses',
-  '/batches',
-  '/user',
-  '/dashboard'
+  '/'
+  // Avoid precaching app HTML routes to reduce stale navigations
 ];
 
 // Install event - cache initial resources
@@ -52,7 +48,19 @@ self.addEventListener('fetch', event => {
     return;
   }
 
-  // Handle cacheable requests
+  // Bypass caching for auth-related navigations to avoid stale pages
+  const authPaths = ['/login', '/verify-email', '/auth/callback', '/contact-admin'];
+  if (authPaths.some(p => url.pathname.startsWith(p))) {
+    return; // Always let the browser fetch fresh for these routes
+  }
+
+  // Skip HTML navigations to always fetch fresh app pages
+  const acceptHeader = request.headers.get('accept') || '';
+  if (request.mode === 'navigate' || acceptHeader.includes('text/html')) {
+    return; // Let the browser/network handle navigations
+  }
+
+  // Handle cacheable requests (non-HTML)
   event.respondWith(
     caches.match(request)
       .then(cachedResponse => {

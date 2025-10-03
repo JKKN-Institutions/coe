@@ -28,6 +28,15 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en" suppressHydrationWarning className={inter.variable}>
+      <head>
+        {/* Performance: preconnect/dns-prefetch for auth providers */}
+        <link rel="preconnect" href={process.env.NEXT_PUBLIC_SUPABASE_URL} crossOrigin="anonymous" />
+        <link rel="dns-prefetch" href={process.env.NEXT_PUBLIC_SUPABASE_URL} />
+        <link rel="preconnect" href="https://accounts.google.com" crossOrigin="anonymous" />
+        <link rel="dns-prefetch" href="https://accounts.google.com" />
+        <link rel="preconnect" href="https://oauth2.googleapis.com" crossOrigin="anonymous" />
+        <link rel="dns-prefetch" href="https://oauth2.googleapis.com" />
+      </head>
       <body className={`${inter.className} font-inter antialiased`}>
         <RegisterServiceWorker />
         <ThemeProvider attribute="class" defaultTheme="system" enableSystem disableTransitionOnChange>

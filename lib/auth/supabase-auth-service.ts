@@ -69,14 +69,25 @@ class SupabaseAuthService {
    */
   async loginWithGoogle(): Promise<{ user: SupabaseUser | null; error: string | null }> {
     try {
+      // Clear any existing OAuth state to prevent conflicts
+      if (typeof window !== 'undefined') {
+        sessionStorage.removeItem('oauth_state');
+        localStorage.removeItem('oauth_state');
+      }
+
       const { data, error } = await this.supabase.auth.signInWithOAuth({
         provider: 'google',
         options: {
-          redirectTo: `${window.location.origin}/auth/callback`
+          redirectTo: `${window.location.origin}/auth/callback`,
+          queryParams: {
+            access_type: 'offline',
+            prompt: 'consent'
+          }
         }
       });
 
       if (error) {
+        console.error('Supabase OAuth error:', error);
         return { user: null, error: error.message };
       }
 
@@ -168,7 +179,7 @@ class SupabaseAuthService {
         this.setUser(user);
         this.setSession({
           id: data.session?.access_token || '',
-          expires_at: data.session?.expires_at || '',
+          expires_at: data.session?.expires_at?.toString() || '',
           created_at: new Date().toISOString(),
         });
 
@@ -195,23 +206,44 @@ class SupabaseAuthService {
 
   /**
    * Logout user
-   * Optimized for faster logout experience
+   * Optimized for faster logout experience with fallback
    */
   async logout(): Promise<void> {
+    // Always clear local session first for immediate UX
+    this.clearSession();
+    
+    // Try to logout from Supabase in the background
+    // This is non-blocking and won't affect user experience
+    this.performBackgroundLogout();
+  }
+
+  /**
+   * Perform logout from Supabase in the background
+   * This method is non-blocking and handles all errors gracefully
+   */
+  private async performBackgroundLogout(): Promise<void> {
     try {
-      // Clear session immediately for better UX
-      this.clearSession();
-      
+      // Check if we have network connectivity before attempting logout
+      if (!navigator.onLine) {
+        console.warn('No network connectivity - skipping Supabase logout');
+        return;
+      }
+
       // Try to sign out from Supabase with timeout
       const signOutPromise = this.supabase.auth.signOut();
-      const timeoutPromise = new Promise((_, reject) => 
-        setTimeout(() => reject(new Error('Logout timeout')), 3000)
+      const timeoutPromise = new Promise<never>((_, reject) => 
+        setTimeout(() => reject(new Error('Logout timeout')), 8000) // 8 seconds timeout
       );
       
       await Promise.race([signOutPromise, timeoutPromise]);
+      console.log('Successfully logged out from Supabase');
     } catch (error) {
-      console.error('Logout error:', error);
-      // Session already cleared, so we're good
+      // If timeout or any other error occurs, it's not critical since local session is already cleared
+      if (error instanceof Error && error.message === 'Logout timeout') {
+        console.warn('Supabase logout timed out, but local session was cleared. This is not critical.');
+      } else {
+        console.warn('Background logout error (non-critical):', error);
+      }
     }
   }
 
@@ -292,20 +324,22 @@ class SupabaseAuthService {
         }
 
         // Update user profile in the background (non-blocking)
-        this.supabase
-          .from('users')
-          .update(updateData)
-          .eq('email', authUser.email)
-          .then(({ error }) => {
+        (async () => {
+          try {
+            const { error } = await this.supabase
+              .from('users')
+              .update(updateData)
+              .eq('email', authUser.email);
+            
             if (error) {
               console.warn('Failed to update user profile (non-critical):', error);
             } else {
               console.log('User profile updated successfully');
             }
-          })
-          .catch(err => {
+          } catch (err: any) {
             console.warn('Background update failed (non-critical):', err);
-          });
+          }
+        })();
 
         // Update userProfile with Google avatar URL for immediate UI update
         if (shouldUpdateAvatar && googleAvatarUrl) {
@@ -341,7 +375,7 @@ class SupabaseAuthService {
         this.setUser(user);
         this.setSession({
           id: data.session.access_token,
-          expires_at: data.session.expires_at || '',
+          expires_at: data.session.expires_at?.toString() || '',
           created_at: new Date().toISOString(),
         });
 
@@ -393,7 +427,7 @@ class SupabaseAuthService {
             full_name: authUser.user_metadata?.full_name || authUser.email?.split('@')[0] || 'User',
             phone_number: '',
             role: 'user',
-            institution_id: null,
+            institution_id: undefined,
             is_super_admin: false,
             is_active: true,
             permissions: {},
@@ -489,7 +523,7 @@ class SupabaseAuthService {
         // Update stored session
         this.setSession({
           id: data.session.access_token,
-          expires_at: data.session.expires_at || '',
+          expires_at: data.session.expires_at?.toString() || '',
           created_at: new Date().toISOString(),
         });
 

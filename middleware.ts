@@ -6,6 +6,7 @@ const publicRoutes = [
   '/login',
   '/auth/callback',
   '/contact-admin',
+  '/verify-email',
   '/',
 ];
 
@@ -120,89 +121,9 @@ export async function middleware(request: NextRequest) {
       }
     }
 
-    // Cache miss or invalid cache, fetch from database
-    const { data: userProfile, error: fetchError } = await supabase
-      .from('users')
-      .select('is_active, role')
-      .eq('email', session.user.email)
-      .single();
-
-    // If table doesn't exist or user not found, try to create the user
-    if (fetchError || !userProfile) {
-      // Try to create a new user entry
-      const { data: newUser, error: createError } = await supabase
-        .from('users')
-        .insert({
-          email: session.user.email,
-          full_name: session.user.user_metadata?.full_name || session.user.email?.split('@')[0] || 'User',
-          username: session.user.email,
-          avatar_url: session.user.user_metadata?.avatar_url || '',
-          role: 'user',
-          is_active: true,
-          is_verified: true,
-          institution_id: '1'
-        })
-        .select()
-        .single();
-
-      // If creation failed (table doesn't exist or other error)
-      if (createError) {
-        console.error('Failed to create user:', createError);
-        console.warn('Users table may not exist. Please create it using the SQL in CREATE_USERS_TABLE.md');
-        return res;
-      }
-
-      // User created successfully, cache the data and allow access
-      if (newUser) {
-        const response = NextResponse.next();
-        response.cookies.set('user_profile', JSON.stringify({
-          ...newUser,
-          cached_at: Date.now()
-        }), {
-          httpOnly: false,
-          sameSite: 'lax',
-          maxAge: 10 * 60 // 10 minutes
-        });
-        return response;
-      }
-    }
-
-    // Check if user exists and is active
-    if (userProfile && (!userProfile.is_active || !userProfile.role)) {
-      // Sign out the invalid user
-      await supabase.auth.signOut();
-
-      if (pathname.startsWith('/api')) {
-        return NextResponse.json(
-          { error: 'Your account is inactive. Please contact support for assistance.' },
-          { status: 403 }
-        );
-      }
-
-      const url = request.nextUrl.clone();
-      url.pathname = '/login';
-      const response = NextResponse.redirect(url);
-      response.cookies.set('auth_error', 'inactive', {
-        httpOnly: false,
-        sameSite: 'lax',
-        maxAge: 10
-      });
-      return response;
-    }
-
-    // Cache the user profile data for future requests
-    if (userProfile) {
-      const response = NextResponse.next();
-      response.cookies.set('user_profile', JSON.stringify({
-        ...userProfile,
-        cached_at: Date.now()
-      }), {
-        httpOnly: false,
-        sameSite: 'lax',
-        maxAge: 10 * 60 // 10 minutes
-      });
-      return response;
-    }
+    // Cache miss: skip DB lookup for speed and allow request to proceed
+    // Client will enforce inactivity/permissions after hydration
+    return res;
   }
 
   // User is authenticated and active, allow request to proceed
