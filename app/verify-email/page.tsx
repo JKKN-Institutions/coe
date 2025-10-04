@@ -15,13 +15,11 @@ import {
 import { ArrowLeft, CheckCircle, AlertCircle, RefreshCw } from 'lucide-react';
 import Link from 'next/link';
 import supabaseAuthService from '@/lib/auth/supabase-auth-service';
-import { useToast } from '@/hooks/use-toast';
 
 function VerifyEmailContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const email = searchParams.get('email');
-  const { toast } = useToast();
   
   const [code, setCode] = useState(['', '', '', '', '', '']);
   const [isLoading, setIsLoading] = useState(false);
@@ -116,30 +114,14 @@ function VerifyEmailContent() {
       });
 
       if (!response.ok) {
-        let data: any = null;
-        try {
-          data = await response.json();
-        } catch {
-          try {
-            const text = await response.text();
-            data = { error: text };
-          } catch {}
-        }
-        const message = data?.error || 'Verification failed';
-        setError(message);
-        toast({
-          title: '❌ Operation Failed',
-          description: 'Failed to save record. Please try again.',
-          variant: 'destructive',
-          className: 'bg-red-50 border-red-200 text-red-800 dark:bg-red-900/20 dark:border-red-800 dark:text-red-200'
-        });
-        return;
+        const data = await response.json();
+        throw new Error(data.error || 'Verification failed');
       }
 
       // Parse JSON and set session in the background without blocking navigation
       ;(async () => {
         try {
-          const data = await response.clone().json();
+          const data = await response.json();
           if (data.accessToken && data.refreshToken) {
             const supabase = supabaseAuthService.getSupabaseClient();
             await supabase.auth.setSession({
@@ -149,12 +131,6 @@ function VerifyEmailContent() {
           }
         } catch {}
       })();
-
-      toast({
-        title: '✅ Email Verified',
-        description: 'Your email has been successfully verified.',
-        className: 'bg-green-50 border-green-200 text-green-800 dark:bg-green-900/20 dark:border-green-800 dark:text-green-200'
-      });
 
       // Redirect to dashboard immediately after success (cookies already set by server)
       if (typeof window !== 'undefined') {
@@ -167,12 +143,6 @@ function VerifyEmailContent() {
 
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Verification failed');
-      toast({
-        title: '❌ Operation Failed',
-        description: 'Failed to save record. Please try again.',
-        variant: 'destructive',
-        className: 'bg-red-50 border-red-200 text-red-800 dark:bg-red-900/20 dark:border-red-800 dark:text-red-200'
-      });
     } finally {
       setIsLoading(false);
     }
@@ -191,19 +161,10 @@ function VerifyEmailContent() {
         body: JSON.stringify({ email }),
       });
 
-      let data: any = null;
-      try {
-        data = await response.json();
-      } catch {
-        try {
-          const text = await response.text();
-          data = { error: text };
-        } catch {}
-      }
+      const data = await response.json();
 
       if (!response.ok) {
-        const message = data?.error || 'Failed to resend code';
-        throw new Error(message);
+        throw new Error(data.error || 'Failed to resend code');
       }
 
       setTimeLeft(300);
@@ -215,12 +176,6 @@ function VerifyEmailContent() {
 
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to resend code');
-      toast({
-        title: '❌ Operation Failed',
-        description: 'Failed to save record. Please try again.',
-        variant: 'destructive',
-        className: 'bg-red-50 border-red-200 text-red-800 dark:bg-red-900/20 dark:border-red-800 dark:text-red-200'
-      });
     } finally {
       setIsLoading(false);
     }

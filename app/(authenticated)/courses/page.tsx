@@ -12,8 +12,6 @@ import {
 } from "@/components/ui/breadcrumb"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { Textarea } from "@/components/ui/textarea"
-import { Label } from "@/components/ui/label"
 import {
   Select,
   SelectContent,
@@ -35,8 +33,6 @@ import { AppSidebar } from "@/components/app-sidebar"
 import { AppHeader } from "@/components/app-header"
 import { SidebarProvider, SidebarInset } from "@/components/ui/sidebar"
 import { AppFooter } from "@/components/app-footer"
-import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet"
-import { useToast } from "@/hooks/use-toast"
 import {
   AlertDialog,
   AlertDialogAction,
@@ -104,52 +100,6 @@ export default function CoursesPage() {
   const [deleteCourseId, setDeleteCourseId] = useState<string | null>(null)
   const itemsPerPage = 10
 
-  // Single-page add/edit state
-  const [sheetOpen, setSheetOpen] = useState(false)
-  const [editing, setEditing] = useState<Course | null>(null)
-  const { toast } = useToast()
-  const [errors, setErrors] = useState<Record<string, string>>({})
-
-  // Dropdown sources
-  const [institutions, setInstitutions] = useState<Array<{ id: string, institution_code: string }>>([])
-  const [departmentsSrc, setDepartmentsSrc] = useState<Array<{ id: string, department_code: string, department_name?: string }>>([])
-  const [regulations, setRegulations] = useState<Array<{ id: string, regulation_code: string }>>([])
-  const [codesLoading, setCodesLoading] = useState(false)
-
-  const [formData, setFormData] = useState({
-    institution_code: "",
-    regulation_code: "",
-    offering_department_code: "",
-    course_code: "",
-    course_title: "",
-    display_code: "",
-    course_category: "Theory",
-    course_type: "",
-    course_part_master: "",
-    credits: "0",
-    split_credit: false,
-    theory_credit: "0",
-    practical_credit: "0",
-    qp_code: "",
-    e_code_name: "",
-    duration_hours: "",
-    evaluation_type: "CA",
-    result_type: "Mark",
-    self_study_course: false,
-    outside_class_course: false,
-    open_book: false,
-    online_course: false,
-    dummy_number_not_required: true,
-    annual_course: false,
-    multiple_qp_set: false,
-    no_of_qp_setter: "",
-    no_of_scrutinizer: "",
-    fee_exception: false,
-    syllabus_pdf_url: "",
-    description: "",
-    is_active: true,
-  })
-
   // Fetch courses from API
   useEffect(() => {
     const fetchCourses = async () => {
@@ -159,14 +109,8 @@ export default function CoursesPage() {
           const data = await response.json()
           setCourses(data)
         } else {
-          let errorData: any = {}
-          try {
-            errorData = await response.json()
-          } catch {
-            const text = await response.text().catch(() => '')
-            errorData = text ? { error: text } : { error: 'Unknown error' }
-          }
-          console.error(`Failed to fetch courses (status ${response.status}):`, errorData)
+          const errorData = await response.json()
+          console.error('Failed to fetch courses:', errorData)
           
           // Check if courses table doesn't exist
           if (errorData.error === 'Courses table not found') {
@@ -182,36 +126,6 @@ export default function CoursesPage() {
     }
 
     fetchCourses()
-    // also fetch dropdown codes
-    ;(async () => {
-      try {
-        setCodesLoading(true)
-        const [instRes, deptRes, regRes] = await Promise.all([
-          fetch('/api/institutions').catch(() => null),
-          fetch('/api/departments').catch(() => null),
-          fetch('/api/regulations').catch(() => null),
-        ])
-        if (instRes && instRes.ok) {
-          const data = await instRes.json()
-          const mapped = Array.isArray(data) ? data.filter((i: any) => i?.institution_code).map((i: any) => ({ id: i.id, institution_code: i.institution_code })) : []
-          setInstitutions(mapped)
-        }
-        if (deptRes && deptRes.ok) {
-          const data = await deptRes.json()
-          const mapped = Array.isArray(data) ? data.filter((d: any) => d?.department_code).map((d: any) => ({ id: d.id, department_code: d.department_code, department_name: d.department_name })) : []
-          setDepartmentsSrc(mapped)
-        }
-        if (regRes && regRes.ok) {
-          const data = await regRes.json()
-          const mapped = Array.isArray(data) ? data.filter((r: any) => r?.regulation_code).map((r: any) => ({ id: r.id, regulation_code: r.regulation_code })) : []
-          setRegulations(mapped)
-        }
-      } catch (e) {
-        console.error('Error loading codes:', e)
-      } finally {
-        setCodesLoading(false)
-      }
-    })()
   }, [])
 
   // Update time every second (client-side only)
@@ -252,160 +166,6 @@ export default function CoursesPage() {
       case 'practical': return "outline"
       case 'project': return "destructive"
       default: return "default"
-    }
-  }
-
-  const resetForm = () => {
-    setFormData({
-      institution_code: "",
-      regulation_code: "",
-      offering_department_code: "",
-      course_code: "",
-      course_title: "",
-      display_code: "",
-      course_category: "",
-      course_type: "",
-      course_part_master: "",
-      credits: "",
-      split_credit: false,
-      theory_credit: "",
-      practical_credit: "",
-      qp_code: "",
-      e_code_name: "",
-      duration_hours: "",
-      evaluation_type: "",
-      result_type: "Mark",
-      self_study_course: false,
-      outside_class_course: false,
-      open_book: false,
-      online_course: false,
-      dummy_number_not_required: true,
-      annual_course: false,
-      multiple_qp_set: false,
-      no_of_qp_setter: "",
-      no_of_scrutinizer: "",
-      fee_exception: false,
-      syllabus_pdf_url: "",
-      description: "",
-      is_active: true,
-    })
-    setErrors({})
-    setEditing(null)
-  }
-
-  const openAdd = () => { resetForm(); setSheetOpen(true) }
-  const openEdit = (row: Course) => {
-    setEditing(row)
-    setFormData({
-      institution_code: (row as any).institution_code || "",
-      regulation_code: (row as any).regulation_code || "",
-      offering_department_code: (row as any).offering_department_code || "",
-      course_code: row.course_code || "",
-      course_title: row.course_title || "",
-      display_code: (row as any).display_code || (row.course_code || ''),
-      course_category: (row as any).course_category || "",
-      course_type: row.course_type || "",
-      course_part_master: (row as any).course_part_master || "",
-      credits: String(row.credits ?? '0'),
-      split_credit: Boolean((row as any).split_credit) || false,
-      theory_credit: String((row as any).theory_credit ?? '0'),
-      practical_credit: String((row as any).practical_credit ?? '0'),
-      qp_code: (row as any).qp_code || "",
-      e_code_name: (row as any).e_code_name || "",
-      duration_hours: String((row as any).duration_hours ?? ''),
-      evaluation_type: (row as any).evaluation_type || "",
-      result_type: (row as any).result_type || "Mark",
-      self_study_course: Boolean((row as any).self_study_course) || false,
-      outside_class_course: Boolean((row as any).outside_class_course) || false,
-      open_book: Boolean((row as any).open_book) || false,
-      online_course: Boolean((row as any).online_course) || false,
-      dummy_number_not_required: Boolean((row as any).dummy_number_not_required) !== false,
-      annual_course: Boolean((row as any).annual_course) || false,
-      multiple_qp_set: Boolean((row as any).multiple_qp_set) || false,
-      no_of_qp_setter: String((row as any).no_of_qp_setter ?? ''),
-      no_of_scrutinizer: String((row as any).no_of_scrutinizer ?? ''),
-      fee_exception: Boolean((row as any).fee_exception) || false,
-      syllabus_pdf_url: (row as any).syllabus_pdf_url || "",
-      description: (row as any).description || "",
-      is_active: row.is_active,
-    })
-    setSheetOpen(true)
-  }
-
-  const validate = () => {
-    const e: Record<string, string> = {}
-    if (!formData.institution_code) e.institution_code = 'Required'
-    if (!formData.regulation_code) e.regulation_code = 'Required'
-    if (!formData.course_code) e.course_code = 'Required'
-    if (!formData.course_title) e.course_title = 'Required'
-    if (!formData.display_code) e.display_code = 'Required'
-    if (!formData.qp_code) e.qp_code = 'Required'
-    if (!formData.course_category) e.course_category = 'Required'
-    if (!formData.evaluation_type) e.evaluation_type = 'Required'
-    if (!formData.result_type) e.result_type = 'Required'
-    setErrors(e)
-    return Object.keys(e).length === 0
-  }
-
-  const save = async () => {
-    if (!validate()) return
-    try {
-      const payload: any = {
-        institution_code: formData.institution_code,
-        regulation_code: formData.regulation_code,
-        offering_department_code: formData.offering_department_code || null,
-        course_code: formData.course_code,
-        course_title: formData.course_title,
-        display_code: formData.display_code || null,
-        course_category: formData.course_category || null,
-        course_type: formData.course_type || null,
-        course_part_master: formData.course_part_master || null,
-        credits: formData.credits ? Math.trunc(Number(formData.credits)) : 0,
-        split_credit: Boolean(formData.split_credit),
-        theory_credit: formData.theory_credit ? Math.trunc(Number(formData.theory_credit)) : 0,
-        practical_credit: formData.practical_credit ? Math.trunc(Number(formData.practical_credit)) : 0,
-        qp_code: formData.qp_code || null,
-        e_code_name: formData.e_code_name || null,
-        duration_hours: formData.duration_hours ? Math.trunc(Number(formData.duration_hours)) : 0,
-        evaluation_type: formData.evaluation_type,
-        result_type: formData.result_type,
-        self_study_course: Boolean(formData.self_study_course),
-        outside_class_course: Boolean(formData.outside_class_course),
-        open_book: Boolean(formData.open_book),
-        online_course: Boolean(formData.online_course),
-        dummy_number_not_required: Boolean(formData.dummy_number_not_required),
-        annual_course: Boolean(formData.annual_course),
-        multiple_qp_set: Boolean(formData.multiple_qp_set),
-        no_of_qp_setter: formData.no_of_qp_setter ? Number(formData.no_of_qp_setter) : null,
-        no_of_scrutinizer: formData.no_of_scrutinizer ? Number(formData.no_of_scrutinizer) : null,
-        fee_exception: Boolean(formData.fee_exception),
-        syllabus_pdf_url: formData.syllabus_pdf_url || null,
-        description: formData.description || null,
-        is_active: Boolean(formData.is_active),
-      }
-      let res: Response
-      if (editing) {
-        res = await fetch(`/api/courses/${editing.id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) })
-      } else {
-        res = await fetch('/api/courses', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) })
-      }
-      if (!res.ok) {
-        const ed = await res.json().catch(() => ({}))
-        throw new Error(ed.error || ed.details || 'Failed to save course')
-      }
-      const saved = await res.json()
-      if (editing) {
-        setCourses(p => p.map(c => c.id === editing.id ? { ...c, ...payload, id: editing.id } as any : c))
-        toast({ title: '✅ Record Updated', description: `${formData.course_title} has been successfully updated.`, className: 'bg-green-50 border-green-200 text-green-800 dark:bg-green-900/20 dark:border-green-800 dark:text-green-200' })
-      } else {
-        setCourses(p => [saved, ...p])
-        toast({ title: '✅ Record Created', description: `${formData.course_title} has been successfully created.`, className: 'bg-green-50 border-green-200 text-green-800 dark:bg-green-900/20 dark:border-green-800 dark:text-green-200' })
-      }
-      setSheetOpen(false)
-      resetForm()
-    } catch (e) {
-      console.error('Save course error:', e)
-      toast({ title: '❌ Operation Failed', description: 'Failed to save record. Please try again.', variant: 'destructive', className: 'bg-red-50 border-red-200 text-red-800 dark:bg-red-900/20 dark:border-red-800 dark:text-red-200' })
     }
   }
 
@@ -636,7 +396,7 @@ export default function CoursesPage() {
                     <Button 
                       size="sm" 
                       className="text-xs px-2 h-8"
-                      onClick={openAdd}
+                      onClick={() => window.location.href = '/courses/add'}
                     >
                       <PlusCircle className="h-3 w-3 mr-1" />
                       Add
@@ -710,7 +470,7 @@ export default function CoursesPage() {
                                     <Button
                                       variant="outline"
                                       size="sm"
-                                      onClick={() => openEdit(course)}
+                                      onClick={() => window.location.href = `/courses/edit/${course.id}`}
                                       className="h-7 w-7 p-0"
                                     >
                                       <Edit className="h-3 w-3" />
@@ -826,229 +586,6 @@ export default function CoursesPage() {
           <AppFooter />
         </SidebarInset>
       </SidebarProvider>
-
-      <Sheet open={sheetOpen} onOpenChange={(o) => { if (!o) resetForm(); setSheetOpen(o) }}>
-        <SheetContent className="sm:max-w-[1000px] overflow-y-auto">
-          <SheetHeader className="pb-6 border-b bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-blue-950/20 dark:to-indigo-950/20">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                <div className="h-10 w-10 rounded-full bg-gradient-to-r from-blue-500 to-indigo-600 flex items-center justify-center">
-                  <BookText className="h-5 w-5 text-white" />
-                </div>
-                <div>
-                  <SheetTitle className="text-2xl font-bold bg-gradient-to-r from-blue-600 to-indigo-600 bg-clip-text text-transparent">
-                    {editing ? 'Edit Course' : 'Add Course'}
-                  </SheetTitle>
-                  <p className="text-sm text-muted-foreground mt-1">
-                    {editing ? 'Update course information' : 'Create a new course'}
-                  </p>
-                </div>
-              </div>
-            </div>
-          </SheetHeader>
-
-          <div className="mt-6 space-y-8">
-            <div className="space-y-4">
-              <div className="flex items-center gap-3 pb-3 border-b border-blue-200 dark:border-blue-800">
-                <div className="h-8 w-8 rounded-lg bg-gradient-to-r from-green-500 to-emerald-600 flex items-center justify-center">
-                  <BookText className="h-4 w-4 text-white" />
-                </div>
-                <h3 className="text-lg font-bold bg-gradient-to-r from-green-600 to-emerald-600 bg-clip-text text-transparent">Basic Information</h3>
-              </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                <div className="space-y-2">
-                  <Label className="text-sm font-semibold">Institution Code <span className="text-red-500">*</span></Label>
-                  <Select value={formData.institution_code} onValueChange={(v) => setFormData({ ...formData, institution_code: v })}>
-                    <SelectTrigger className={`h-10 ${errors.institution_code ? 'border-destructive' : ''}`}>
-                      <SelectValue placeholder={codesLoading ? 'Loading...' : 'Select institution'} />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {institutions.map(i => (
-                        <SelectItem key={i.id} value={i.institution_code}>{i.institution_code}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="space-y-2">
-                  <Label className="text-sm font-semibold">Regulation Code <span className="text-red-500">*</span></Label>
-                  <Select value={formData.regulation_code} onValueChange={(v) => setFormData({ ...formData, regulation_code: v })}>
-                    <SelectTrigger className={`h-10 ${errors.regulation_code ? 'border-destructive' : ''}`}>
-                      <SelectValue placeholder={codesLoading ? 'Loading...' : 'Select regulation'} />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {regulations.map(r => (
-                        <SelectItem key={r.id} value={r.regulation_code}>{r.regulation_code}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="space-y-2">
-                  <Label className="text-sm font-semibold">Offering Department Code</Label>
-                  <Select value={formData.offering_department_code} onValueChange={(v) => setFormData({ ...formData, offering_department_code: v })}>
-                    <SelectTrigger className="h-10">
-                      <SelectValue placeholder={codesLoading ? 'Loading...' : 'Select department'} />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {departmentsSrc.map(d => (
-                        <SelectItem key={d.id} value={d.department_code}>{d.department_code}{d.department_name ? ` - ${d.department_name}` : ''}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="space-y-2 md:col-span-1">
-                  <Label className="text-sm font-semibold">Course Code <span className="text-red-500">*</span></Label>
-                  <Input value={formData.course_code} onChange={(e) => {
-                    const v = e.target.value
-                    setFormData({
-                      ...formData,
-                      course_code: v,
-                      display_code: formData.display_code || v,
-                      qp_code: formData.qp_code || v,
-                    })
-                  }} className={`h-10 ${errors.course_code ? 'border-destructive' : ''}`} placeholder="e.g., CS101" />
-                </div>
-                <div className="space-y-2 md:col-span-2">
-                  <Label className="text-sm font-semibold">Course Name <span className="text-red-500">*</span></Label>
-                  <Input value={formData.course_title} onChange={(e) => setFormData({ ...formData, course_title: e.target.value })} className={`h-10 ${errors.course_title ? 'border-destructive' : ''}`} placeholder="Enter course name" />
-                </div>
-                <div className="space-y-2">
-                  <Label className="text-sm font-semibold">Display Code <span className="text-red-500">*</span></Label>
-                  <Input value={formData.display_code} onChange={(e) => setFormData({ ...formData, display_code: e.target.value })} className={`h-10 ${errors.display_code ? 'border-destructive' : ''}`} placeholder="Will default from course code" />
-                </div>
-                <div className="space-y-2">
-                  <Label className="text-sm font-semibold">Course Category <span className="text-red-500">*</span></Label>
-                  <Select value={formData.course_category} onValueChange={(v) => setFormData({ ...formData, course_category: v })}>
-                    <SelectTrigger className={`h-10 ${errors.course_category ? 'border-destructive' : ''}`}>
-                      <SelectValue placeholder="Select category" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="Theory">Theory</SelectItem>
-                      <SelectItem value="Practical">Practical</SelectItem>
-                      <SelectItem value="Project">Project</SelectItem>
-                      <SelectItem value="Non Academic">Non Academic</SelectItem>
-                      <SelectItem value="Theory + Practical">Theory + Practical</SelectItem>
-                      <SelectItem value="Theory + Project">Theory + Project</SelectItem>
-                      <SelectItem value="Field Work">Field Work</SelectItem>
-                      <SelectItem value="Community Service">Community Service</SelectItem>
-                      <SelectItem value="Group Project">Group Project</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="space-y-2">
-                  <Label className="text-sm font-semibold">Course Type</Label>
-                  <Select value={formData.course_type} onValueChange={(v) => setFormData({ ...formData, course_type: v })}>
-                    <SelectTrigger className="h-10">
-                      <SelectValue placeholder="Select type" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="Core">Core</SelectItem>
-                      <SelectItem value="Generic Elective">Generic Elective</SelectItem>
-                      <SelectItem value="Skill Enhancement">Skill Enhancement</SelectItem>
-                      <SelectItem value="Ability Enhancement">Ability Enhancement</SelectItem>
-                      <SelectItem value="Language">Language</SelectItem>
-                      <SelectItem value="English">English</SelectItem>
-                      <SelectItem value="Advance learner course">Advance learner course</SelectItem>
-                      <SelectItem value="Additional Credit course">Additional Credit course</SelectItem>
-                      <SelectItem value="Discipline Specific elective">Discipline Specific elective</SelectItem>
-                      <SelectItem value="Audit Course">Audit Course</SelectItem>
-                      <SelectItem value="Bridge course">Bridge course</SelectItem>
-                      <SelectItem value="Non Academic">Non Academic</SelectItem>
-                      <SelectItem value="Naanmuthalvan">Naanmuthalvan</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="space-y-2">
-                  <Label className="text-sm font-semibold">Part</Label>
-                  <Select value={formData.course_part_master} onValueChange={(v) => setFormData({ ...formData, course_part_master: v })}>
-                    <SelectTrigger className="h-10">
-                      <SelectValue placeholder="Select part" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="Part I">Part I</SelectItem>
-                      <SelectItem value="Part II">Part II</SelectItem>
-                      <SelectItem value="Part III">Part III</SelectItem>
-                      <SelectItem value="Part IV">Part IV</SelectItem>
-                      <SelectItem value="Part V">Part V</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="space-y-2">
-                  <Label className="text-sm font-semibold">Credit</Label>
-                  <Input type="number" step="1" value={formData.credits} onChange={(e) => setFormData({ ...formData, credits: e.target.value })} className="h-10" placeholder="e.g., 3" />
-                </div>
-                <div className="space-y-2">
-                  <Label className="text-sm font-semibold">Theory Credit</Label>
-                  <Input type="number" step="1" value={formData.theory_credit} onChange={(e) => setFormData({ ...formData, theory_credit: e.target.value })} className="h-10" />
-                </div>
-                <div className="space-y-2">
-                  <Label className="text-sm font-semibold">Practical Credit</Label>
-                  <Input type="number" step="1" value={formData.practical_credit} onChange={(e) => setFormData({ ...formData, practical_credit: e.target.value })} className="h-10" />
-                </div>
-                <div className="space-y-2">
-                  <Label className="text-sm font-semibold">QP Code</Label>
-                  <Input value={formData.qp_code} onChange={(e) => setFormData({ ...formData, qp_code: e.target.value })} className="h-10" />
-                </div>
-                <div className="space-y-2">
-                  <Label className="text-sm font-semibold">E-Code Name</Label>
-                  <Input value={formData.e_code_name} onChange={(e) => setFormData({ ...formData, e_code_name: e.target.value })} className="h-10" />
-                </div>
-                <div className="space-y-2">
-                  <Label className="text-sm font-semibold">Duration (hours)</Label>
-                  <Input type="number" step="1" value={formData.duration_hours} onChange={(e) => setFormData({ ...formData, duration_hours: e.target.value })} className="h-10" />
-                </div>
-                <div className="space-y-2">
-                  <Label className="text-sm font-semibold">Evaluation Type <span className="text-red-500">*</span></Label>
-                  <Select value={formData.evaluation_type} onValueChange={(v) => setFormData({ ...formData, evaluation_type: v })}>
-                    <SelectTrigger className={`h-10 ${errors.evaluation_type ? 'border-destructive' : ''}`}>
-                      <SelectValue placeholder="Select evaluation type" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="CA">CA</SelectItem>
-                      <SelectItem value="ESE">ESE</SelectItem>
-                      <SelectItem value="CA + ESE">CA + ESE</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="space-y-2">
-                  <Label className="text-sm font-semibold">Result Type <span className="text-red-500">*</span></Label>
-                  <Select value={formData.result_type} onValueChange={(v) => setFormData({ ...formData, result_type: v })}>
-                    <SelectTrigger className={`h-10 ${errors.result_type ? 'border-destructive' : ''}`}>
-                      <SelectValue placeholder="Select result type" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="Mark">Mark</SelectItem>
-                      <SelectItem value="Status">Status</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="space-y-2 md:col-span-3">
-                  <Label className="text-sm font-semibold">Syllabus PDF URL</Label>
-                  <Input value={formData.syllabus_pdf_url} onChange={(e) => setFormData({ ...formData, syllabus_pdf_url: e.target.value })} className="h-10" />
-                </div>
-                <div className="space-y-2 md:col-span-3">
-                  <Label className="text-sm font-semibold">Description</Label>
-                  <Textarea value={formData.description} onChange={(e) => setFormData({ ...formData, description: e.target.value })} className="min-h-[100px]" placeholder="Add details about the course" />
-                </div>
-                <div className="space-y-2 md:col-span-3">
-                  <Label className="text-sm font-semibold">Status</Label>
-                  <div className="flex items-center gap-3">
-                    <button type="button" onClick={() => setFormData({ ...formData, is_active: !formData.is_active })} className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2 ${formData.is_active ? 'bg-green-500' : 'bg-gray-300'}`}>
-                      <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${formData.is_active ? 'translate-x-6' : 'translate-x-1'}`} />
-                    </button>
-                    <span className={`text-sm font-medium ${formData.is_active ? 'text-green-600' : 'text-red-500'}`}>{formData.is_active ? 'Active' : 'Inactive'}</span>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            <div className="pt-2 flex justify-end gap-3">
-              <Button variant="outline" size="sm" className="h-10 px-6" onClick={() => { setSheetOpen(false); resetForm() }}>Cancel</Button>
-              <Button size="sm" className="h-10 px-6" onClick={save}>{editing ? 'Update Course' : 'Create Course'}</Button>
-            </div>
-          </div>
-        </SheetContent>
-      </Sheet>
     </div>
   )
 }

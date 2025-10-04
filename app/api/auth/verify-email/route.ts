@@ -36,20 +36,11 @@ export async function POST(req: NextRequest) {
       }, { status: 400 })
     }
 
-    // Mark code as used - atomic update to prevent race conditions
-    const { data: updateResult, error: updateError } = await supabase
+    // Mark code as used
+    await supabase
       .from('verification_codes')
       .update({ used_at: new Date().toISOString() })
       .eq('id', verificationCode.id)
-      .is('used_at', null) // Only update if not already used
-      .select()
-
-    // Verify the update succeeded (code wasn't already used by concurrent request)
-    if (updateError || !updateResult || updateResult.length === 0) {
-      return NextResponse.json({
-        error: 'Verification code has already been used'
-      }, { status: 400 })
-    }
 
     // Get user details
     const { data: user, error: userError } = await supabase

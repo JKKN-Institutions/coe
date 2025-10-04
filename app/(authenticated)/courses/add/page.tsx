@@ -15,8 +15,6 @@ import { Separator } from "@/components/ui/separator"
 import { ModeToggle } from "@/components/mode-toggle"
 import { AppFooter } from "@/components/app-footer"
 import { Save, X, ArrowLeft } from "lucide-react"
-import { useToast } from "@/hooks/use-toast"
-import { useCurrentUser } from "@/lib/auth/auth-context"
 
 interface Program {
   id: string
@@ -42,8 +40,6 @@ export default function AddCoursePage() {
   const [programs, setPrograms] = useState<Program[]>([])
   const [departments, setDepartments] = useState<Department[]>([])
   const [users, setUsers] = useState<User[]>([])
-  const { toast } = useToast()
-  const user = useCurrentUser()
   
   const [formData, setFormData] = useState({
     program_id: "",
@@ -142,15 +138,6 @@ export default function AddCoursePage() {
     setLoading(true)
 
     try {
-      if (!user?.id) {
-        toast({
-          title: "❌ Operation Failed",
-          description: "Failed to save record. Please try again.",
-          variant: "destructive",
-          className: "bg-red-50 border-red-200 text-red-800 dark:bg-red-900/20 dark:border-red-800 dark:text-red-200"
-        })
-        return
-      }
       const response = await fetch('/api/courses', {
         method: 'POST',
         headers: {
@@ -158,36 +145,21 @@ export default function AddCoursePage() {
         },
         body: JSON.stringify({
           ...formData,
-          created_by: user.id,
+          created_by: "1", // Mock user ID - replace with actual logged-in user
           credits: parseFloat(formData.credits)
         }),
       })
 
       if (response.ok) {
-        toast({
-          title: "✅ Record Created",
-          description: `${formData.course_title} has been successfully created.`,
-          className: "bg-green-50 border-green-200 text-green-800 dark:bg-green-900/20 dark:border-green-800 dark:text-green-200"
-        })
         router.push('/courses')
       } else {
         const errorData = await response.json()
         console.error('Failed to create course:', errorData)
-        toast({
-          title: "❌ Operation Failed",
-          description: "Failed to save record. Please try again.",
-          variant: "destructive",
-          className: "bg-red-50 border-red-200 text-red-800 dark:bg-red-900/20 dark:border-red-800 dark:text-red-200"
-        })
+        alert(`Failed to create course: ${errorData.error || 'Unknown error'}`)
       }
     } catch (error) {
       console.error('Error creating course:', error)
-      toast({
-        title: "❌ Operation Failed",
-        description: "Failed to save record. Please try again.",
-        variant: "destructive",
-        className: "bg-red-50 border-red-200 text-red-800 dark:bg-red-900/20 dark:border-red-800 dark:text-red-200"
-      })
+      alert(`Error creating course: ${error instanceof Error ? error.message : 'Unknown error'}`)
     } finally {
       setLoading(false)
     }
