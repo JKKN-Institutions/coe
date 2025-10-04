@@ -10,53 +10,60 @@ export async function GET(req: NextRequest) {
     const course_level = searchParams.get('course_level')
     const is_active = searchParams.get('is_active')
 
+    // NOTE: The actual table is public.course (singular). Select all fields
     const supabase = getSupabaseServer()
     let query = supabase
-      .from('courses')
+      .from('course')
       .select(`
-        *,
-        programs:program_id (
-          id,
-          program_name,
-          program_code
-        ),
-        departments:offering_department_id (
-          id,
-          department_name
-        ),
-        course_coordinator:course_coordinator_id (
-          id,
-          full_name,
-          email
-        ),
-        created_by_user:created_by (
-          id,
-          full_name,
-          email
-        ),
-        approved_by_user:approved_by (
-          id,
-          full_name,
-          email
-        )
+        id,
+        institutions_id,
+        regulation_id,
+        offering_department_id,
+        institution_code,
+        regulation_code,
+        offering_department_code,
+        course_code,
+        course_name,
+        display_code,
+        course_category,
+        course_type,
+        course_part_master,
+        credit,
+        split_credit,
+        theory_credit,
+        practical_credit,
+        qp_code,
+        e_code_name,
+        duration_hours,
+        evaluation_type,
+        result_type,
+        self_study_course,
+        outside_class_course,
+        open_book,
+        online_course,
+        dummy_number_not_required,
+        annual_course,
+        multiple_qp_set,
+        no_of_qp_setter,
+        no_of_scrutinizer,
+        fee_exception,
+        syllabus_pdf_url,
+        description,
+        status,
+        created_at,
+        updated_at
       `)
       .order('created_at', { ascending: false })
 
-    // Apply filters
+    // Apply filters against the real column names
     if (search) {
-      query = query.or(`course_code.ilike.%${search}%,course_title.ilike.%${search}%`)
-    }
-    if (program_id) {
-      query = query.eq('program_id', program_id)
+      query = query.or(`course_code.ilike.%${search}%,course_name.ilike.%${search}%`)
     }
     if (course_type) {
       query = query.eq('course_type', course_type)
     }
-    if (course_level) {
-      query = query.eq('course_level', course_level)
-    }
     if (is_active !== null) {
-      query = query.eq('is_active', is_active === 'true')
+      query = query.eq('status', is_active === 'true')
     }
 
     const { data, error } = await query
@@ -64,8 +71,8 @@ export async function GET(req: NextRequest) {
     if (error) {
       console.error('Supabase error:', error)
       
-      // Check if courses table doesn't exist
-      if (error.message.includes('relation "courses" does not exist')) {
+      // Check if course table doesn't exist
+      if (error.message.includes('relation "course" does not exist')) {
         return NextResponse.json({ 
           error: 'Courses table not found',
           message: 'The courses table needs to be created in your Supabase database',
@@ -120,11 +127,73 @@ CREATE INDEX IF NOT EXISTS idx_courses_created_at ON courses(created_at);
           }
         }, { status: 404 })
       }
-      
-      throw error
+
+      // If joined select failed due to missing related tables/columns, try a simple select('*') fallback
+      try {
+        const simpleQuery = getSupabaseServer()
+          .from('course')
+          .select('*')
+          .order('created_at', { ascending: false })
+
+        const { data: simpleData, error: simpleErr } = await simpleQuery
+        if (!simpleErr) {
+          return NextResponse.json(simpleData || [])
+        }
+        console.error('Supabase simple select error:', simpleErr)
+      } catch (fallbackErr) {
+        console.error('Supabase fallback failed:', fallbackErr)
+      }
+
+      // Propagate original error with details
+      return NextResponse.json({
+        error: 'Failed to fetch courses',
+        details: error.message || 'Unknown error'
+      }, { status: 500 })
     }
 
-    return NextResponse.json(data || [])
+    // Map real table fields to the shape expected by the frontend
+    const mapped = (data || []).map((row: any) => ({
+      id: row.id,
+      institutions_id: row.institutions_id,
+      regulation_id: row.regulation_id,
+      offering_department_id: row.offering_department_id,
+      institution_code: row.institution_code,
+      regulation_code: row.regulation_code,
+      offering_department_code: row.offering_department_code,
+      course_code: row.course_code,
+      course_title: row.course_name,
+      display_code: row.display_code,
+      course_category: row.course_category,
+      course_type: row.course_type,
+      course_part_master: row.course_part_master,
+      credits: row.credit ?? 0,
+      split_credit: row.split_credit,
+      theory_credit: row.theory_credit,
+      practical_credit: row.practical_credit,
+      qp_code: row.qp_code,
+      e_code_name: row.e_code_name,
+      duration_hours: row.duration_hours,
+      evaluation_type: row.evaluation_type,
+      result_type: row.result_type,
+      self_study_course: row.self_study_course,
+      outside_class_course: row.outside_class_course,
+      open_book: row.open_book,
+      online_course: row.online_course,
+      dummy_number_required: row.dummy_number_not_required,
+      annual_course: row.annual_course,
+      multiple_qp_set: row.multiple_qp_set,
+      no_of_qp_setter: row.no_of_qp_setter,
+      no_of_scrutinizer: row.no_of_scrutinizer,
+      fee_exception: row.fee_exception,
+      syllabus_pdf_url: row.syllabus_pdf_url,
+      description: row.description,
+      course_level: 'Beginner', // not available; provide a default
+      is_active: row.status ?? true,
+      created_at: row.created_at,
+      updated_at: row.updated_at,
+    }))
+
+    return NextResponse.json(mapped)
   } catch (err) {
     console.error('API Error:', err)
     return NextResponse.json({ 
@@ -137,62 +206,52 @@ CREATE INDEX IF NOT EXISTS idx_courses_created_at ON courses(created_at);
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json()
-    const { 
-      program_id, 
-      course_code, 
-      course_title, 
-      course_type, 
-      credits, 
-      contact_hours, 
-      prerequisites, 
-      corequisites, 
-      course_level, 
-      offering_department_id, 
-      course_coordinator_id, 
-      created_by,
-      is_active = true 
-    } = body as Record<string, unknown>
+    const input = body as Record<string, unknown>
 
-    if (!program_id || !course_code || !course_title || !course_type || !credits) {
+    if (!input.institution_code || !input.regulation_code || !input.course_code || !input.course_title) {
       return NextResponse.json({ 
-        error: 'Missing required fields: program_id, course_code, course_title, course_type, and credits are required' 
+        error: 'Missing required fields: institution_code, regulation_code, course_code, course_title' 
       }, { status: 400 })
     }
 
     const supabase2 = getSupabaseServer()
-    const { data, error } = await supabase2.from('courses').insert({
-      program_id: String(program_id),
-      course_code: String(course_code),
-      course_title: String(course_title),
-      course_type: String(course_type),
-      credits: Number(credits),
-      contact_hours: contact_hours || { lecture: 0, tutorial: 0, practical: 0 },
-      prerequisites: prerequisites || [],
-      corequisites: corequisites || [],
-      course_level: course_level ? String(course_level) : 'Beginner',
-      offering_department_id: offering_department_id ? String(offering_department_id) : null,
-      course_coordinator_id: course_coordinator_id ? String(course_coordinator_id) : null,
-      created_by: String(created_by),
-      is_active: Boolean(is_active),
+    const { data, error } = await supabase2.from('course').insert({
+      institutions_id: input.institutions_id || null,
+      regulation_id: input.regulation_id || null,
+      offering_department_id: input.offering_department_id || null,
+      institution_code: String(input.institution_code),
+      regulation_code: String(input.regulation_code),
+      offering_department_code: input.offering_department_code ? String(input.offering_department_code) : null,
+      course_code: String(input.course_code),
+      course_name: String(input.course_title),
+      course_category: input.course_category ? String(input.course_category) : null,
+      course_type: input.course_type ? String(input.course_type) : null,
+      course_part_master: input.course_part_master ? String(input.course_part_master) : null,
+      credit: input.credits !== undefined ? Number(input.credits) : null,
+      split_credit: input.split_credit !== undefined ? Boolean(input.split_credit) : false,
+      theory_credit: input.theory_credit !== undefined ? Number(input.theory_credit) : null,
+      practical_credit: input.practical_credit !== undefined ? Number(input.practical_credit) : null,
+      qp_code: input.qp_code ? String(input.qp_code) : null,
+      ...(input.e_code_name && { e_code_name: String(input.e_code_name) }),
+      duration_hours: input.duration_hours !== undefined ? Number(input.duration_hours) : null,
+      evaluation_type: input.evaluation_type ? String(input.evaluation_type) : null,
+      result_type: input.result_type ? String(input.result_type) : 'Mark',
+      self_study_course: input.self_study_course !== undefined ? Boolean(input.self_study_course) : false,
+      outside_class_course: input.outside_class_course !== undefined ? Boolean(input.outside_class_course) : false,
+      open_book: input.open_book !== undefined ? Boolean(input.open_book) : false,
+      online_course: input.online_course !== undefined ? Boolean(input.online_course) : false,
+      dummy_number_not_required: input.dummy_number_required !== undefined ? Boolean(input.dummy_number_required) : false,
+      annual_course: input.annual_course !== undefined ? Boolean(input.annual_course) : false,
+      multiple_qp_set: input.multiple_qp_set !== undefined ? Boolean(input.multiple_qp_set) : false,
+      no_of_qp_setter: input.no_of_qp_setter !== undefined ? Number(input.no_of_qp_setter) : null,
+      no_of_scrutinizer: input.no_of_scrutinizer !== undefined ? Number(input.no_of_scrutinizer) : null,
+      fee_exception: input.fee_exception !== undefined ? Boolean(input.fee_exception) : false,
+      syllabus_pdf_url: input.syllabus_pdf_url ? String(input.syllabus_pdf_url) : null,
+      description: input.description ? String(input.description) : null,
+      status: input.is_active !== undefined ? Boolean(input.is_active) : true,
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
-    }).select(`
-      *,
-      programs:program_id (
-        id,
-        program_name,
-        program_code
-      ),
-      departments:offering_department_id (
-        id,
-        department_name
-      ),
-      course_coordinator:course_coordinator_id (
-        id,
-        full_name,
-        email
-      )
-    `).single()
+    }).select('*').single()
 
     if (error) {
       console.error('Supabase error:', error)

@@ -12,6 +12,8 @@ import {
 } from "@/components/ui/breadcrumb"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+import { Textarea } from "@/components/ui/textarea"
+import { Label } from "@/components/ui/label"
 import {
   Select,
   SelectContent,
@@ -33,6 +35,8 @@ import { AppSidebar } from "@/components/app-sidebar"
 import { AppHeader } from "@/components/app-header"
 import { SidebarProvider, SidebarInset } from "@/components/ui/sidebar"
 import { AppFooter } from "@/components/app-footer"
+import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet"
+import { useToast } from "@/hooks/use-toast"
 import {
   AlertDialog,
   AlertDialogAction,
@@ -60,14 +64,44 @@ import {
   Trash2,
   FileSpreadsheet,
 } from "lucide-react"
+import * as XLSX from 'xlsx'
 
 // Course type definition
 interface Course {
   id: string
+  institutions_id?: string
+  regulation_id?: string
+  offering_department_id?: string
+  institution_code?: string
+  regulation_code?: string
+  offering_department_code?: string
   course_code: string
   course_title: string
+  display_code?: string
+  course_category?: string
   course_type: string
+  course_part_master?: string
   credits: number
+  split_credit?: boolean
+  theory_credit?: number
+  practical_credit?: number
+  qp_code?: string
+  e_code_name?: string
+  duration_hours?: number
+  evaluation_type?: string
+  result_type?: string
+  self_study_course?: boolean
+  outside_class_course?: boolean
+  open_book?: boolean
+  online_course?: boolean
+  dummy_number_required?: boolean
+  annual_course?: boolean
+  multiple_qp_set?: boolean
+  no_of_qp_setter?: number
+  no_of_scrutinizer?: number
+  fee_exception?: boolean
+  syllabus_pdf_url?: string
+  description?: string
   course_level: string
   is_active: boolean
   created_at: string
@@ -100,6 +134,52 @@ export default function CoursesPage() {
   const [deleteCourseId, setDeleteCourseId] = useState<string | null>(null)
   const itemsPerPage = 10
 
+  // Single-page add/edit state
+  const [sheetOpen, setSheetOpen] = useState(false)
+  const [editing, setEditing] = useState<Course | null>(null)
+  const { toast } = useToast()
+  const [errors, setErrors] = useState<Record<string, string>>({})
+
+  // Dropdown sources
+  const [institutions, setInstitutions] = useState<Array<{ id: string, institution_code: string }>>([])
+  const [departmentsSrc, setDepartmentsSrc] = useState<Array<{ id: string, department_code: string, department_name?: string }>>([])
+  const [regulations, setRegulations] = useState<Array<{ id: string, regulation_code: string }>>([])
+  const [codesLoading, setCodesLoading] = useState(false)
+
+  const [formData, setFormData] = useState({
+    institution_code: "",
+    regulation_code: "",
+    offering_department_code: "",
+    course_code: "",
+    course_title: "",
+    display_code: "",
+    course_category: "",
+    course_type: "",
+    course_part_master: "",
+    credits: "",
+    split_credit: false,
+    theory_credit: "",
+    practical_credit: "",
+    qp_code: "",
+    e_code_name: "",
+    duration_hours: "",
+    evaluation_type: "",
+    result_type: "Mark",
+    self_study_course: false,
+    outside_class_course: false,
+    open_book: false,
+    online_course: false,
+    dummy_number_required: false,
+    annual_course: false,
+    multiple_qp_set: false,
+    no_of_qp_setter: "",
+    no_of_scrutinizer: "",
+    fee_exception: false,
+    syllabus_pdf_url: "",
+    description: "",
+    is_active: true,
+  })
+
   // Fetch courses from API
   useEffect(() => {
     const fetchCourses = async () => {
@@ -109,8 +189,14 @@ export default function CoursesPage() {
           const data = await response.json()
           setCourses(data)
         } else {
-          const errorData = await response.json()
-          console.error('Failed to fetch courses:', errorData)
+          let errorData: any = {}
+          try {
+            errorData = await response.json()
+          } catch {
+            const text = await response.text().catch(() => '')
+            errorData = text ? { error: text } : { error: 'Unknown error' }
+          }
+          console.error(`Failed to fetch courses (status ${response.status}):`, errorData)
           
           // Check if courses table doesn't exist
           if (errorData.error === 'Courses table not found') {
@@ -126,6 +212,36 @@ export default function CoursesPage() {
     }
 
     fetchCourses()
+    // also fetch dropdown codes
+    ;(async () => {
+      try {
+        setCodesLoading(true)
+        const [instRes, deptRes, regRes] = await Promise.all([
+          fetch('/api/institutions').catch(() => null),
+          fetch('/api/departments').catch(() => null),
+          fetch('/api/regulations').catch(() => null),
+        ])
+        if (instRes && instRes.ok) {
+          const data = await instRes.json()
+          const mapped = Array.isArray(data) ? data.filter((i: any) => i?.institution_code).map((i: any) => ({ id: i.id, institution_code: i.institution_code })) : []
+          setInstitutions(mapped)
+        }
+        if (deptRes && deptRes.ok) {
+          const data = await deptRes.json()
+          const mapped = Array.isArray(data) ? data.filter((d: any) => d?.department_code).map((d: any) => ({ id: d.id, department_code: d.department_code, department_name: d.department_name })) : []
+          setDepartmentsSrc(mapped)
+        }
+        if (regRes && regRes.ok) {
+          const data = await regRes.json()
+          const mapped = Array.isArray(data) ? data.filter((r: any) => r?.regulation_code).map((r: any) => ({ id: r.id, regulation_code: r.regulation_code })) : []
+          setRegulations(mapped)
+        }
+      } catch (e) {
+        console.error('Error loading codes:', e)
+      } finally {
+        setCodesLoading(false)
+      }
+    })()
   }, [])
 
   // Update time every second (client-side only)
@@ -169,6 +285,160 @@ export default function CoursesPage() {
     }
   }
 
+  const resetForm = () => {
+    setFormData({
+      institution_code: "",
+      regulation_code: "",
+      offering_department_code: "",
+      course_code: "",
+      course_title: "",
+      display_code: "",
+      course_category: "",
+      course_type: "",
+      course_part_master: "",
+      credits: "",
+      split_credit: false,
+      theory_credit: "",
+      practical_credit: "",
+      qp_code: "",
+      e_code_name: "",
+      duration_hours: "",
+      evaluation_type: "",
+      result_type: "Mark",
+      self_study_course: false,
+      outside_class_course: false,
+      open_book: false,
+      online_course: false,
+      dummy_number_required: false,
+      annual_course: false,
+      multiple_qp_set: false,
+      no_of_qp_setter: "",
+      no_of_scrutinizer: "",
+      fee_exception: false,
+      syllabus_pdf_url: "",
+      description: "",
+      is_active: true,
+    })
+    setErrors({})
+    setEditing(null)
+  }
+
+  const openAdd = () => { resetForm(); setSheetOpen(true) }
+  const openEdit = (row: Course) => {
+    setEditing(row)
+    setFormData({
+      institution_code: row.institution_code || "",
+      regulation_code: row.regulation_code || "",
+      offering_department_code: row.offering_department_code || "",
+      course_code: row.course_code || "",
+      course_title: row.course_title || "",
+      display_code: row.display_code || (row.course_code || ''),
+      course_category: row.course_category || "",
+      course_type: row.course_type || "",
+      course_part_master: row.course_part_master || "",
+      credits: String(row.credits ?? '0'),
+      split_credit: Boolean(row.split_credit) || false,
+      theory_credit: String(row.theory_credit ?? '0'),
+      practical_credit: String(row.practical_credit ?? '0'),
+      qp_code: row.qp_code || "",
+      e_code_name: row.e_code_name || "",
+      duration_hours: String(row.duration_hours ?? ''),
+      evaluation_type: row.evaluation_type || "",
+      result_type: row.result_type || "Mark",
+      self_study_course: Boolean(row.self_study_course) || false,
+      outside_class_course: Boolean(row.outside_class_course) || false,
+      open_book: Boolean(row.open_book) || false,
+      online_course: Boolean(row.online_course) || false,
+      dummy_number_required: Boolean(row.dummy_number_required) || false,
+      annual_course: Boolean(row.annual_course) || false,
+      multiple_qp_set: Boolean(row.multiple_qp_set) || false,
+      no_of_qp_setter: String(row.no_of_qp_setter ?? ''),
+      no_of_scrutinizer: String(row.no_of_scrutinizer ?? ''),
+      fee_exception: Boolean(row.fee_exception) || false,
+      syllabus_pdf_url: row.syllabus_pdf_url || "",
+      description: row.description || "",
+      is_active: row.is_active,
+    })
+    setSheetOpen(true)
+  }
+
+  const validate = () => {
+    const e: Record<string, string> = {}
+    if (!formData.institution_code) e.institution_code = 'Required'
+    if (!formData.regulation_code) e.regulation_code = 'Required'
+    if (!formData.course_code) e.course_code = 'Required'
+    if (!formData.course_title) e.course_title = 'Required'
+    if (!formData.display_code) e.display_code = 'Required'
+    if (!formData.qp_code) e.qp_code = 'Required'
+    if (!formData.course_category) e.course_category = 'Required'
+    if (!formData.evaluation_type) e.evaluation_type = 'Required'
+    if (!formData.result_type) e.result_type = 'Required'
+    setErrors(e)
+    return Object.keys(e).length === 0
+  }
+
+  const save = async () => {
+    if (!validate()) return
+    try {
+      const payload: any = {
+        institution_code: formData.institution_code,
+        regulation_code: formData.regulation_code,
+        offering_department_code: formData.offering_department_code || null,
+        course_code: formData.course_code,
+        course_title: formData.course_title,
+        display_code: formData.display_code || null,
+        course_category: formData.course_category || null,
+        course_type: formData.course_type || null,
+        course_part_master: formData.course_part_master || null,
+        credits: formData.credits ? Math.trunc(Number(formData.credits)) : 0,
+        split_credit: Boolean(formData.split_credit),
+        theory_credit: formData.theory_credit ? Math.trunc(Number(formData.theory_credit)) : 0,
+        practical_credit: formData.practical_credit ? Math.trunc(Number(formData.practical_credit)) : 0,
+        qp_code: formData.qp_code || null,
+        e_code_name: formData.e_code_name || null,
+        duration_hours: formData.duration_hours ? Math.trunc(Number(formData.duration_hours)) : 0,
+        evaluation_type: formData.evaluation_type,
+        result_type: formData.result_type,
+        self_study_course: Boolean(formData.self_study_course),
+        outside_class_course: Boolean(formData.outside_class_course),
+        open_book: Boolean(formData.open_book),
+        online_course: Boolean(formData.online_course),
+        dummy_number_required: Boolean(formData.dummy_number_required),
+        annual_course: Boolean(formData.annual_course),
+        multiple_qp_set: Boolean(formData.multiple_qp_set),
+        no_of_qp_setter: formData.no_of_qp_setter ? Number(formData.no_of_qp_setter) : null,
+        no_of_scrutinizer: formData.no_of_scrutinizer ? Number(formData.no_of_scrutinizer) : null,
+        fee_exception: Boolean(formData.fee_exception),
+        syllabus_pdf_url: formData.syllabus_pdf_url || null,
+        description: formData.description || null,
+        is_active: Boolean(formData.is_active),
+      }
+      let res: Response
+      if (editing) {
+        res = await fetch(`/api/courses/${editing.id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) })
+      } else {
+        res = await fetch('/api/courses', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) })
+      }
+      if (!res.ok) {
+        const ed = await res.json().catch(() => ({}))
+        throw new Error(ed.error || ed.details || 'Failed to save course')
+      }
+      const saved = await res.json()
+      if (editing) {
+        setCourses(p => p.map(c => c.id === editing.id ? { ...c, ...payload, id: editing.id } as any : c))
+        toast({ title: '✅ Record Updated', description: `${formData.course_title} has been successfully updated.`, className: 'bg-green-50 border-green-200 text-green-800 dark:bg-green-900/20 dark:border-green-800 dark:text-green-200' })
+      } else {
+        setCourses(p => [saved, ...p])
+        toast({ title: '✅ Record Created', description: `${formData.course_title} has been successfully created.`, className: 'bg-green-50 border-green-200 text-green-800 dark:bg-green-900/20 dark:border-green-800 dark:text-green-200' })
+      }
+      setSheetOpen(false)
+      resetForm()
+    } catch (e) {
+      console.error('Save course error:', e)
+      toast({ title: '❌ Operation Failed', description: 'Failed to save record. Please try again.', variant: 'destructive', className: 'bg-red-50 border-red-200 text-red-800 dark:bg-red-900/20 dark:border-red-800 dark:text-red-200' })
+    }
+  }
+
   const formatDate = (dateString: string) => {
     return new Date(dateString).toLocaleDateString('en-US', {
       year: 'numeric',
@@ -182,7 +452,7 @@ export default function CoursesPage() {
       const response = await fetch(`/api/courses/${courseId}`, {
         method: 'DELETE',
       })
-      
+
       if (response.ok) {
         setCourses(courses.filter(course => course.id !== courseId))
         setDeleteCourseId(null)
@@ -191,6 +461,171 @@ export default function CoursesPage() {
       }
     } catch (error) {
       console.error('Error deleting course:', error)
+    }
+  }
+
+  const downloadTemplate = () => {
+    const headers = [
+      'Institution Code*', 'Regulation Code*', 'Offering Department Code',
+      'Course Code*', 'Course Name*', 'Display Code*',
+      'Course Category*', 'Course Type', 'Part',
+      'Credit', 'Split Credit (TRUE/FALSE)', 'Theory Credit', 'Practical Credit',
+      'QP Code*', 'E-Code Name (Tamil/English/French/Malayalam/Hindi)', 'Duration (hours)',
+      'Evaluation Type* (CA/ESE/CA + ESE)', 'Result Type* (Mark/Status)',
+      'Self Study Course (TRUE/FALSE)', 'Outside Class Course (TRUE/FALSE)',
+      'Open Book (TRUE/FALSE)', 'Online Course (TRUE/FALSE)',
+      'Dummy Number Required (TRUE/FALSE)', 'Annual Course (TRUE/FALSE)',
+      'Multiple QP Set (TRUE/FALSE)', 'No of QP Setter', 'No of Scrutinizer',
+      'Fee Exception (TRUE/FALSE)', 'Syllabus PDF URL', 'Description', 'Status (TRUE/FALSE)'
+    ]
+
+    const ws = XLSX.utils.aoa_to_sheet([headers])
+    ws['!cols'] = headers.map(() => ({ wch: 20 }))
+    const wb = XLSX.utils.book_new()
+    XLSX.utils.book_append_sheet(wb, ws, 'Courses Template')
+    XLSX.writeFile(wb, 'courses_template.xlsx')
+
+    toast({
+      title: '✅ Template Downloaded',
+      description: 'Course upload template has been downloaded successfully.',
+      className: 'bg-green-50 border-green-200 text-green-800 dark:bg-green-900/20 dark:border-green-800 dark:text-green-200'
+    })
+  }
+
+  const downloadCoursesExcel = () => {
+    const data = courses.map(c => ({
+      'Institution Code': c.institution_code || '',
+      'Regulation Code': c.regulation_code || '',
+      'Offering Department Code': c.offering_department_code || '',
+      'Course Code': c.course_code,
+      'Course Name': c.course_title,
+      'Display Code': c.display_code || '',
+      'Course Category': c.course_category || '',
+      'Course Type': c.course_type || '',
+      'Part': c.course_part_master || '',
+      'Credit': c.credits || 0,
+      'Split Credit': c.split_credit ? 'TRUE' : 'FALSE',
+      'Theory Credit': c.theory_credit || 0,
+      'Practical Credit': c.practical_credit || 0,
+      'QP Code': c.qp_code || '',
+      'E-Code Name': c.e_code_name || '',
+      'Duration (hours)': c.duration_hours || 0,
+      'Evaluation Type': c.evaluation_type || '',
+      'Result Type': c.result_type || 'Mark',
+      'Self Study Course': c.self_study_course ? 'TRUE' : 'FALSE',
+      'Outside Class Course': c.outside_class_course ? 'TRUE' : 'FALSE',
+      'Open Book': c.open_book ? 'TRUE' : 'FALSE',
+      'Online Course': c.online_course ? 'TRUE' : 'FALSE',
+      'Dummy Number Required': c.dummy_number_required ? 'TRUE' : 'FALSE',
+      'Annual Course': c.annual_course ? 'TRUE' : 'FALSE',
+      'Multiple QP Set': c.multiple_qp_set ? 'TRUE' : 'FALSE',
+      'No of QP Setter': c.no_of_qp_setter || '',
+      'No of Scrutinizer': c.no_of_scrutinizer || '',
+      'Fee Exception': c.fee_exception ? 'TRUE' : 'FALSE',
+      'Syllabus PDF URL': c.syllabus_pdf_url || '',
+      'Description': c.description || '',
+      'Status': c.is_active ? 'TRUE' : 'FALSE'
+    }))
+
+    const ws = XLSX.utils.json_to_sheet(data)
+    const wb = XLSX.utils.book_new()
+    XLSX.utils.book_append_sheet(wb, ws, 'Courses')
+    XLSX.writeFile(wb, `courses_${new Date().toISOString().split('T')[0]}.xlsx`)
+
+    toast({
+      title: '✅ Export Successful',
+      description: `${courses.length} courses exported to Excel.`,
+      className: 'bg-green-50 border-green-200 text-green-800 dark:bg-green-900/20 dark:border-green-800 dark:text-green-200'
+    })
+  }
+
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+
+    try {
+      const data = await file.arrayBuffer()
+      const workbook = XLSX.read(data)
+      const worksheet = workbook.Sheets[workbook.SheetNames[0]]
+      const jsonData = XLSX.utils.sheet_to_json(worksheet) as any[]
+
+      let successCount = 0
+      let errorCount = 0
+
+      for (const row of jsonData) {
+        try {
+          const payload = {
+            institution_code: row['Institution Code*'] || row['Institution Code'],
+            regulation_code: row['Regulation Code*'] || row['Regulation Code'],
+            offering_department_code: row['Offering Department Code'] || null,
+            course_code: row['Course Code*'] || row['Course Code'],
+            course_title: row['Course Name*'] || row['Course Name'],
+            display_code: row['Display Code*'] || row['Display Code'],
+            course_category: row['Course Category*'] || row['Course Category'],
+            course_type: row['Course Type'] || null,
+            course_part_master: row['Part'] || null,
+            credits: Number(row['Credit']) || 0,
+            split_credit: String(row['Split Credit (TRUE/FALSE)'] || row['Split Credit']).toUpperCase() === 'TRUE',
+            theory_credit: Number(row['Theory Credit']) || 0,
+            practical_credit: Number(row['Practical Credit']) || 0,
+            qp_code: row['QP Code*'] || row['QP Code'],
+            e_code_name: row['E-Code Name (Tamil/English/French/Malayalam/Hindi)'] || row['E-Code Name'] || null,
+            duration_hours: Number(row['Duration (hours)'] || row['Duration']) || 0,
+            evaluation_type: row['Evaluation Type* (CA/ESE/CA + ESE)'] || row['Evaluation Type'],
+            result_type: row['Result Type* (Mark/Status)'] || row['Result Type'] || 'Mark',
+            self_study_course: String(row['Self Study Course (TRUE/FALSE)'] || row['Self Study Course']).toUpperCase() === 'TRUE',
+            outside_class_course: String(row['Outside Class Course (TRUE/FALSE)'] || row['Outside Class Course']).toUpperCase() === 'TRUE',
+            open_book: String(row['Open Book (TRUE/FALSE)'] || row['Open Book']).toUpperCase() === 'TRUE',
+            online_course: String(row['Online Course (TRUE/FALSE)'] || row['Online Course']).toUpperCase() === 'TRUE',
+            dummy_number_required: String(row['Dummy Number Required (TRUE/FALSE)'] || row['Dummy Number Required']).toUpperCase() === 'TRUE',
+            annual_course: String(row['Annual Course (TRUE/FALSE)'] || row['Annual Course']).toUpperCase() === 'TRUE',
+            multiple_qp_set: String(row['Multiple QP Set (TRUE/FALSE)'] || row['Multiple QP Set']).toUpperCase() === 'TRUE',
+            no_of_qp_setter: Number(row['No of QP Setter']) || null,
+            no_of_scrutinizer: Number(row['No of Scrutinizer']) || null,
+            fee_exception: String(row['Fee Exception (TRUE/FALSE)'] || row['Fee Exception']).toUpperCase() === 'TRUE',
+            syllabus_pdf_url: row['Syllabus PDF URL'] || null,
+            description: row['Description'] || null,
+            is_active: String(row['Status (TRUE/FALSE)'] || row['Status']).toUpperCase() !== 'FALSE'
+          }
+
+          const res = await fetch('/api/courses', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+          })
+
+          if (res.ok) {
+            successCount++
+          } else {
+            errorCount++
+          }
+        } catch (err) {
+          errorCount++
+        }
+      }
+
+      // Refresh courses list
+      const response = await fetch('/api/courses')
+      if (response.ok) {
+        const data = await response.json()
+        setCourses(data)
+      }
+
+      toast({
+        title: successCount > 0 ? '✅ Upload Complete' : '❌ Upload Failed',
+        description: `${successCount} courses uploaded successfully. ${errorCount} failed.`,
+        className: successCount > 0 ? 'bg-green-50 border-green-200 text-green-800 dark:bg-green-900/20 dark:border-green-800 dark:text-green-200' : 'bg-red-50 border-red-200 text-red-800 dark:bg-red-900/20 dark:border-red-800 dark:text-red-200'
+      })
+
+      // Reset file input
+      e.target.value = ''
+    } catch (error) {
+      console.error('Upload error:', error)
+      toast({
+        title: '❌ Upload Failed',
+        description: 'Failed to process Excel file.',
+        variant: 'destructive'
+      })
     }
   }
 
@@ -377,26 +812,29 @@ export default function CoursesPage() {
 
                   {/* Action Buttons */}
                   <div className="flex gap-1 flex-wrap">
-                    <Button variant="outline" size="sm" className="text-xs px-2 h-8">
+                    <Button variant="outline" size="sm" className="text-xs px-2 h-8" onClick={downloadTemplate}>
                       <FileSpreadsheet className="h-3 w-3 mr-1" />
                       Template
                     </Button>
-                    <Button variant="outline" size="sm" className="text-xs px-2 h-8">
+                    <Button variant="outline" size="sm" className="text-xs px-2 h-8" onClick={downloadCoursesExcel}>
                       <Download className="h-3 w-3 mr-1" />
-                      Json
+                      Export
                     </Button>
-                    <Button variant="outline" size="sm" className="text-xs px-2 h-8">
-                      <Download className="h-3 w-3 mr-1" />
-                      Download
-                    </Button>
-                    <Button variant="outline" size="sm" className="text-xs px-2 h-8">
+                    <Button variant="outline" size="sm" className="text-xs px-2 h-8" onClick={() => document.getElementById('file-upload')?.click()}>
                       <Upload className="h-3 w-3 mr-1" />
-                      Upload
+                      Import
                     </Button>
+                    <input
+                      id="file-upload"
+                      type="file"
+                      accept=".xlsx,.xls"
+                      onChange={handleFileUpload}
+                      className="hidden"
+                    />
                     <Button 
                       size="sm" 
                       className="text-xs px-2 h-8"
-                      onClick={() => window.location.href = '/courses/add'}
+                      onClick={openAdd}
                     >
                       <PlusCircle className="h-3 w-3 mr-1" />
                       Add
@@ -470,7 +908,7 @@ export default function CoursesPage() {
                                     <Button
                                       variant="outline"
                                       size="sm"
-                                      onClick={() => window.location.href = `/courses/edit/${course.id}`}
+                                      onClick={() => openEdit(course)}
                                       className="h-7 w-7 p-0"
                                     >
                                       <Edit className="h-3 w-3" />
@@ -586,6 +1024,341 @@ export default function CoursesPage() {
           <AppFooter />
         </SidebarInset>
       </SidebarProvider>
+
+      <Sheet open={sheetOpen} onOpenChange={(o) => { if (!o) resetForm(); setSheetOpen(o) }}>
+        <SheetContent className="sm:max-w-[1000px] overflow-y-auto">
+          <SheetHeader className="pb-6 border-b bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-blue-950/20 dark:to-indigo-950/20">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="h-10 w-10 rounded-full bg-gradient-to-r from-blue-500 to-indigo-600 flex items-center justify-center">
+                  <BookText className="h-5 w-5 text-white" />
+                </div>
+                <div>
+                  <SheetTitle className="text-2xl font-bold bg-gradient-to-r from-blue-600 to-indigo-600 bg-clip-text text-transparent">
+                    {editing ? 'Edit Course' : 'Add Course'}
+                  </SheetTitle>
+                  <p className="text-sm text-muted-foreground mt-1">
+                    {editing ? 'Update course information' : 'Create a new course'}
+                  </p>
+                </div>
+              </div>
+            </div>
+          </SheetHeader>
+
+          <div className="mt-6 space-y-8">
+            <div className="space-y-4">
+              <div className="flex items-center gap-3 pb-3 border-b border-blue-200 dark:border-blue-800">
+                <div className="h-8 w-8 rounded-lg bg-gradient-to-r from-green-500 to-emerald-600 flex items-center justify-center">
+                  <BookText className="h-4 w-4 text-white" />
+                </div>
+                <h3 className="text-lg font-bold bg-gradient-to-r from-green-600 to-emerald-600 bg-clip-text text-transparent">Basic Information</h3>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div className="space-y-2">
+                  <Label className="text-sm font-semibold">Institution Code <span className="text-red-500">*</span></Label>
+                  <Select value={formData.institution_code} onValueChange={(v) => setFormData({ ...formData, institution_code: v })}>
+                    <SelectTrigger className={`h-10 ${errors.institution_code ? 'border-destructive' : ''}`}>
+                      <SelectValue placeholder={codesLoading ? 'Loading...' : 'Select institution'} />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {institutions.map(i => (
+                        <SelectItem key={i.id} value={i.institution_code}>{i.institution_code}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-2">
+                  <Label className="text-sm font-semibold">Regulation Code <span className="text-red-500">*</span></Label>
+                  <Select value={formData.regulation_code} onValueChange={(v) => setFormData({ ...formData, regulation_code: v })}>
+                    <SelectTrigger className={`h-10 ${errors.regulation_code ? 'border-destructive' : ''}`}>
+                      <SelectValue placeholder={codesLoading ? 'Loading...' : 'Select regulation'} />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {regulations.map(r => (
+                        <SelectItem key={r.id} value={r.regulation_code}>{r.regulation_code}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-2">
+                  <Label className="text-sm font-semibold">Offering Department Code</Label>
+                  <Select value={formData.offering_department_code} onValueChange={(v) => setFormData({ ...formData, offering_department_code: v })}>
+                    <SelectTrigger className="h-10">
+                      <SelectValue placeholder={codesLoading ? 'Loading...' : 'Select department'} />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {departmentsSrc.map(d => (
+                        <SelectItem key={d.id} value={d.department_code}>{d.department_code}{d.department_name ? ` - ${d.department_name}` : ''}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-2 md:col-span-1">
+                  <Label className="text-sm font-semibold">Course Code <span className="text-red-500">*</span></Label>
+                  <Input value={formData.course_code} onChange={(e) => {
+                    const v = e.target.value
+                    setFormData({
+                      ...formData,
+                      course_code: v,
+                      display_code: formData.display_code || v,
+                      qp_code: formData.qp_code || v,
+                    })
+                  }} className={`h-10 ${errors.course_code ? 'border-destructive' : ''}`} placeholder="e.g., CS101" />
+                </div>
+                <div className="space-y-2 md:col-span-2">
+                  <Label className="text-sm font-semibold">Course Name <span className="text-red-500">*</span></Label>
+                  <Input value={formData.course_title} onChange={(e) => setFormData({ ...formData, course_title: e.target.value })} className={`h-10 ${errors.course_title ? 'border-destructive' : ''}`} placeholder="Enter course name" />
+                </div>
+                <div className="space-y-2">
+                  <Label className="text-sm font-semibold">Display Code <span className="text-red-500">*</span></Label>
+                  <Input value={formData.display_code} onChange={(e) => setFormData({ ...formData, display_code: e.target.value })} className={`h-10 ${errors.display_code ? 'border-destructive' : ''}`} placeholder="Will default from course code" />
+                </div>
+                <div className="space-y-2">
+                  <Label className="text-sm font-semibold">Course Category <span className="text-red-500">*</span></Label>
+                  <Select value={formData.course_category} onValueChange={(v) => setFormData({ ...formData, course_category: v })}>
+                    <SelectTrigger className={`h-10 ${errors.course_category ? 'border-destructive' : ''}`}>
+                      <SelectValue placeholder="Select category" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="Theory">Theory</SelectItem>
+                      <SelectItem value="Practical">Practical</SelectItem>
+                      <SelectItem value="Project">Project</SelectItem>
+                      <SelectItem value="Non Academic">Non Academic</SelectItem>
+                      <SelectItem value="Theory + Practical">Theory + Practical</SelectItem>
+                      <SelectItem value="Theory + Project">Theory + Project</SelectItem>
+                      <SelectItem value="Field Work">Field Work</SelectItem>
+                      <SelectItem value="Community Service">Community Service</SelectItem>
+                      <SelectItem value="Group Project">Group Project</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-2">
+                  <Label className="text-sm font-semibold">Course Type</Label>
+                  <Select value={formData.course_type} onValueChange={(v) => setFormData({ ...formData, course_type: v })}>
+                    <SelectTrigger className="h-10">
+                      <SelectValue placeholder="Select type" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="Core">Core</SelectItem>
+                      <SelectItem value="Generic Elective">Generic Elective</SelectItem>
+                      <SelectItem value="Skill Enhancement">Skill Enhancement</SelectItem>
+                      <SelectItem value="Ability Enhancement">Ability Enhancement</SelectItem>
+                      <SelectItem value="Language">Language</SelectItem>
+                      <SelectItem value="English">English</SelectItem>
+                      <SelectItem value="Advance learner course">Advance learner course</SelectItem>
+                      <SelectItem value="Additional Credit course">Additional Credit course</SelectItem>
+                      <SelectItem value="Discipline Specific elective">Discipline Specific elective</SelectItem>
+                      <SelectItem value="Audit Course">Audit Course</SelectItem>
+                      <SelectItem value="Bridge course">Bridge course</SelectItem>
+                      <SelectItem value="Non Academic">Non Academic</SelectItem>
+                      <SelectItem value="Naanmuthalvan">Naanmuthalvan</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-2">
+                  <Label className="text-sm font-semibold">Part</Label>
+                  <Select value={formData.course_part_master} onValueChange={(v) => setFormData({ ...formData, course_part_master: v })}>
+                    <SelectTrigger className="h-10">
+                      <SelectValue placeholder="Select part" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="Part I">Part I</SelectItem>
+                      <SelectItem value="Part II">Part II</SelectItem>
+                      <SelectItem value="Part III">Part III</SelectItem>
+                      <SelectItem value="Part IV">Part IV</SelectItem>
+                      <SelectItem value="Part V">Part V</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-2">
+                  <Label className="text-sm font-semibold">Credit</Label>
+                  <Input type="number" step="1" value={formData.credits} onChange={(e) => setFormData({ ...formData, credits: e.target.value })} className="h-10" placeholder="e.g., 3" />
+                </div>
+                <div className="space-y-2">
+                  <Label className="text-sm font-semibold">Split Credit</Label>
+                  <div className="flex items-center gap-3">
+                    <button type="button" onClick={() => setFormData({ ...formData, split_credit: !formData.split_credit })} className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2 ${formData.split_credit ? 'bg-green-500' : 'bg-gray-300'}`}>
+                      <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${formData.split_credit ? 'translate-x-6' : 'translate-x-1'}`} />
+                    </button>
+                    <span className={`text-sm font-medium ${formData.split_credit ? 'text-green-600' : 'text-gray-500'}`}>{formData.split_credit ? 'Yes' : 'No'}</span>
+                  </div>
+                </div>
+                <div className="space-y-2">
+                  <Label className="text-sm font-semibold">Theory Credit</Label>
+                  <Input type="number" step="1" value={formData.theory_credit} onChange={(e) => setFormData({ ...formData, theory_credit: e.target.value })} className="h-10" />
+                </div>
+                <div className="space-y-2">
+                  <Label className="text-sm font-semibold">Practical Credit</Label>
+                  <Input type="number" step="1" value={formData.practical_credit} onChange={(e) => setFormData({ ...formData, practical_credit: e.target.value })} className="h-10" />
+                </div>
+                <div className="space-y-2">
+                  <Label className="text-sm font-semibold">QP Code</Label>
+                  <Input value={formData.qp_code} onChange={(e) => setFormData({ ...formData, qp_code: e.target.value })} className="h-10" />
+                </div>
+                <div className="space-y-2">
+                  <Label className="text-sm font-semibold">E-Code Name</Label>
+                  <Select value={formData.e_code_name || undefined} onValueChange={(v) => setFormData({ ...formData, e_code_name: v })}>
+                    <SelectTrigger className="h-10">
+                      <SelectValue placeholder="Select language (optional)" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="Tamil">Tamil</SelectItem>
+                      <SelectItem value="English">English</SelectItem>
+                      <SelectItem value="French">French</SelectItem>
+                      <SelectItem value="Malayalam">Malayalam</SelectItem>
+                      <SelectItem value="Hindi">Hindi</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-2">
+                  <Label className="text-sm font-semibold">Duration (hours)</Label>
+                  <Input type="number" step="1" value={formData.duration_hours} onChange={(e) => setFormData({ ...formData, duration_hours: e.target.value })} className="h-10" />
+                </div>
+                <div className="space-y-2">
+                  <Label className="text-sm font-semibold">Evaluation Type <span className="text-red-500">*</span></Label>
+                  <Select value={formData.evaluation_type} onValueChange={(v) => setFormData({ ...formData, evaluation_type: v })}>
+                    <SelectTrigger className={`h-10 ${errors.evaluation_type ? 'border-destructive' : ''}`}>
+                      <SelectValue placeholder="Select evaluation type" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="CA">CA</SelectItem>
+                      <SelectItem value="ESE">ESE</SelectItem>
+                      <SelectItem value="CA + ESE">CA + ESE</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-2">
+                  <Label className="text-sm font-semibold">Result Type <span className="text-red-500">*</span></Label>
+                  <Select value={formData.result_type} onValueChange={(v) => setFormData({ ...formData, result_type: v })}>
+                    <SelectTrigger className={`h-10 ${errors.result_type ? 'border-destructive' : ''}`}>
+                      <SelectValue placeholder="Select result type" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="Mark">Mark</SelectItem>
+                      <SelectItem value="Status">Status</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-2 md:col-span-3">
+                  <Label className="text-sm font-semibold">Syllabus PDF URL</Label>
+                  <Input value={formData.syllabus_pdf_url} onChange={(e) => setFormData({ ...formData, syllabus_pdf_url: e.target.value })} className="h-10" />
+                </div>
+                <div className="space-y-2 md:col-span-3">
+                  <Label className="text-sm font-semibold">Description</Label>
+                  <Textarea value={formData.description} onChange={(e) => setFormData({ ...formData, description: e.target.value })} className="min-h-[100px]" placeholder="Add details about the course" />
+                </div>
+              </div>
+            </div>
+
+            <div className="space-y-4">
+              <div className="flex items-center gap-3 pb-3 border-b border-purple-200 dark:border-purple-800">
+                <div className="h-8 w-8 rounded-lg bg-gradient-to-r from-purple-500 to-pink-600 flex items-center justify-center">
+                  <BookText className="h-4 w-4 text-white" />
+                </div>
+                <h3 className="text-lg font-bold bg-gradient-to-r from-purple-600 to-pink-600 bg-clip-text text-transparent">Course Settings</h3>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div className="space-y-2">
+                  <Label className="text-sm font-semibold">Self Study Course</Label>
+                  <div className="flex items-center gap-3">
+                    <button type="button" onClick={() => setFormData({ ...formData, self_study_course: !formData.self_study_course })} className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2 ${formData.self_study_course ? 'bg-green-500' : 'bg-gray-300'}`}>
+                      <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${formData.self_study_course ? 'translate-x-6' : 'translate-x-1'}`} />
+                    </button>
+                    <span className={`text-sm font-medium ${formData.self_study_course ? 'text-green-600' : 'text-gray-500'}`}>{formData.self_study_course ? 'Yes' : 'No'}</span>
+                  </div>
+                </div>
+                <div className="space-y-2">
+                  <Label className="text-sm font-semibold">Outside Class Course</Label>
+                  <div className="flex items-center gap-3">
+                    <button type="button" onClick={() => setFormData({ ...formData, outside_class_course: !formData.outside_class_course })} className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2 ${formData.outside_class_course ? 'bg-green-500' : 'bg-gray-300'}`}>
+                      <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${formData.outside_class_course ? 'translate-x-6' : 'translate-x-1'}`} />
+                    </button>
+                    <span className={`text-sm font-medium ${formData.outside_class_course ? 'text-green-600' : 'text-gray-500'}`}>{formData.outside_class_course ? 'Yes' : 'No'}</span>
+                  </div>
+                </div>
+                <div className="space-y-2">
+                  <Label className="text-sm font-semibold">Open Book</Label>
+                  <div className="flex items-center gap-3">
+                    <button type="button" onClick={() => setFormData({ ...formData, open_book: !formData.open_book })} className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2 ${formData.open_book ? 'bg-green-500' : 'bg-gray-300'}`}>
+                      <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${formData.open_book ? 'translate-x-6' : 'translate-x-1'}`} />
+                    </button>
+                    <span className={`text-sm font-medium ${formData.open_book ? 'text-green-600' : 'text-gray-500'}`}>{formData.open_book ? 'Yes' : 'No'}</span>
+                  </div>
+                </div>
+                <div className="space-y-2">
+                  <Label className="text-sm font-semibold">Online Course</Label>
+                  <div className="flex items-center gap-3">
+                    <button type="button" onClick={() => setFormData({ ...formData, online_course: !formData.online_course })} className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2 ${formData.online_course ? 'bg-green-500' : 'bg-gray-300'}`}>
+                      <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${formData.online_course ? 'translate-x-6' : 'translate-x-1'}`} />
+                    </button>
+                    <span className={`text-sm font-medium ${formData.online_course ? 'text-green-600' : 'text-gray-500'}`}>{formData.online_course ? 'Yes' : 'No'}</span>
+                  </div>
+                </div>
+                <div className="space-y-2">
+                  <Label className="text-sm font-semibold">Dummy Number Required</Label>
+                  <div className="flex items-center gap-3">
+                    <button type="button" onClick={() => setFormData({ ...formData, dummy_number_required: !formData.dummy_number_required })} className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2 ${formData.dummy_number_required ? 'bg-green-500' : 'bg-gray-300'}`}>
+                      <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${formData.dummy_number_required ? 'translate-x-6' : 'translate-x-1'}`} />
+                    </button>
+                    <span className={`text-sm font-medium ${formData.dummy_number_required ? 'text-green-600' : 'text-gray-500'}`}>{formData.dummy_number_required ? 'Yes' : 'No'}</span>
+                  </div>
+                </div>
+                <div className="space-y-2">
+                  <Label className="text-sm font-semibold">Annual Course</Label>
+                  <div className="flex items-center gap-3">
+                    <button type="button" onClick={() => setFormData({ ...formData, annual_course: !formData.annual_course })} className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2 ${formData.annual_course ? 'bg-green-500' : 'bg-gray-300'}`}>
+                      <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${formData.annual_course ? 'translate-x-6' : 'translate-x-1'}`} />
+                    </button>
+                    <span className={`text-sm font-medium ${formData.annual_course ? 'text-green-600' : 'text-gray-500'}`}>{formData.annual_course ? 'Yes' : 'No'}</span>
+                  </div>
+                </div>
+                <div className="space-y-2">
+                  <Label className="text-sm font-semibold">Multiple QP Set</Label>
+                  <div className="flex items-center gap-3">
+                    <button type="button" onClick={() => setFormData({ ...formData, multiple_qp_set: !formData.multiple_qp_set })} className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2 ${formData.multiple_qp_set ? 'bg-green-500' : 'bg-gray-300'}`}>
+                      <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${formData.multiple_qp_set ? 'translate-x-6' : 'translate-x-1'}`} />
+                    </button>
+                    <span className={`text-sm font-medium ${formData.multiple_qp_set ? 'text-green-600' : 'text-gray-500'}`}>{formData.multiple_qp_set ? 'Yes' : 'No'}</span>
+                  </div>
+                </div>
+                <div className="space-y-2">
+                  <Label className="text-sm font-semibold">No of QP Setter</Label>
+                  <Input type="number" step="1" value={formData.no_of_qp_setter} onChange={(e) => setFormData({ ...formData, no_of_qp_setter: e.target.value })} className="h-10" placeholder="0" />
+                </div>
+                <div className="space-y-2">
+                  <Label className="text-sm font-semibold">No of Scrutinizer</Label>
+                  <Input type="number" step="1" value={formData.no_of_scrutinizer} onChange={(e) => setFormData({ ...formData, no_of_scrutinizer: e.target.value })} className="h-10" placeholder="0" />
+                </div>
+                <div className="space-y-2">
+                  <Label className="text-sm font-semibold">Fee Exception</Label>
+                  <div className="flex items-center gap-3">
+                    <button type="button" onClick={() => setFormData({ ...formData, fee_exception: !formData.fee_exception })} className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2 ${formData.fee_exception ? 'bg-green-500' : 'bg-gray-300'}`}>
+                      <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${formData.fee_exception ? 'translate-x-6' : 'translate-x-1'}`} />
+                    </button>
+                    <span className={`text-sm font-medium ${formData.fee_exception ? 'text-green-600' : 'text-gray-500'}`}>{formData.fee_exception ? 'Yes' : 'No'}</span>
+                  </div>
+                </div>
+                <div className="space-y-2 md:col-span-3">
+                  <Label className="text-sm font-semibold">Status</Label>
+                  <div className="flex items-center gap-3">
+                    <button type="button" onClick={() => setFormData({ ...formData, is_active: !formData.is_active })} className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2 ${formData.is_active ? 'bg-green-500' : 'bg-gray-300'}`}>
+                      <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${formData.is_active ? 'translate-x-6' : 'translate-x-1'}`} />
+                    </button>
+                    <span className={`text-sm font-medium ${formData.is_active ? 'text-green-600' : 'text-red-500'}`}>{formData.is_active ? 'Active' : 'Inactive'}</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div className="pt-2 flex justify-end gap-3">
+              <Button variant="outline" size="sm" className="h-10 px-6" onClick={() => { setSheetOpen(false); resetForm() }}>Cancel</Button>
+              <Button size="sm" className="h-10 px-6" onClick={save}>{editing ? 'Update Course' : 'Create Course'}</Button>
+            </div>
+          </div>
+        </SheetContent>
+      </Sheet>
     </div>
   )
 }
