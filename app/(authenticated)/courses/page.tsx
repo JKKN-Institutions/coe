@@ -153,6 +153,7 @@ export default function CoursesPage() {
     course_code: "",
     course_title: "",
     display_code: "",
+<<<<<<< HEAD
     course_category: "",
     course_type: "",
     course_part_master: "",
@@ -164,12 +165,29 @@ export default function CoursesPage() {
     e_code_name: "",
     duration_hours: "",
     evaluation_type: "",
+=======
+    course_category: "Theory",
+    course_type: "",
+    course_part_master: "",
+    credits: "0",
+    split_credit: false,
+    theory_credit: "0",
+    practical_credit: "0",
+    qp_code: "",
+    e_code_name: "",
+    duration_hours: "",
+    evaluation_type: "CA",
+>>>>>>> 7dc009fabdfc05a849f2c23af941ad7b31e8a520
     result_type: "Mark",
     self_study_course: false,
     outside_class_course: false,
     open_book: false,
     online_course: false,
+<<<<<<< HEAD
     dummy_number_required: false,
+=======
+    dummy_number_not_required: true,
+>>>>>>> 7dc009fabdfc05a849f2c23af941ad7b31e8a520
     annual_course: false,
     multiple_qp_set: false,
     no_of_qp_setter: "",
@@ -309,7 +327,11 @@ export default function CoursesPage() {
       outside_class_course: false,
       open_book: false,
       online_course: false,
+<<<<<<< HEAD
       dummy_number_required: false,
+=======
+      dummy_number_not_required: true,
+>>>>>>> 7dc009fabdfc05a849f2c23af941ad7b31e8a520
       annual_course: false,
       multiple_qp_set: false,
       no_of_qp_setter: "",
@@ -327,6 +349,7 @@ export default function CoursesPage() {
   const openEdit = (row: Course) => {
     setEditing(row)
     setFormData({
+<<<<<<< HEAD
       institution_code: row.institution_code || "",
       regulation_code: row.regulation_code || "",
       offering_department_code: row.offering_department_code || "",
@@ -357,6 +380,38 @@ export default function CoursesPage() {
       fee_exception: Boolean(row.fee_exception) || false,
       syllabus_pdf_url: row.syllabus_pdf_url || "",
       description: row.description || "",
+=======
+      institution_code: (row as any).institution_code || "",
+      regulation_code: (row as any).regulation_code || "",
+      offering_department_code: (row as any).offering_department_code || "",
+      course_code: row.course_code || "",
+      course_title: row.course_title || "",
+      display_code: (row as any).display_code || (row.course_code || ''),
+      course_category: (row as any).course_category || "",
+      course_type: row.course_type || "",
+      course_part_master: (row as any).course_part_master || "",
+      credits: String(row.credits ?? '0'),
+      split_credit: Boolean((row as any).split_credit) || false,
+      theory_credit: String((row as any).theory_credit ?? '0'),
+      practical_credit: String((row as any).practical_credit ?? '0'),
+      qp_code: (row as any).qp_code || "",
+      e_code_name: (row as any).e_code_name || "",
+      duration_hours: String((row as any).duration_hours ?? ''),
+      evaluation_type: (row as any).evaluation_type || "",
+      result_type: (row as any).result_type || "Mark",
+      self_study_course: Boolean((row as any).self_study_course) || false,
+      outside_class_course: Boolean((row as any).outside_class_course) || false,
+      open_book: Boolean((row as any).open_book) || false,
+      online_course: Boolean((row as any).online_course) || false,
+      dummy_number_not_required: Boolean((row as any).dummy_number_not_required) !== false,
+      annual_course: Boolean((row as any).annual_course) || false,
+      multiple_qp_set: Boolean((row as any).multiple_qp_set) || false,
+      no_of_qp_setter: String((row as any).no_of_qp_setter ?? ''),
+      no_of_scrutinizer: String((row as any).no_of_scrutinizer ?? ''),
+      fee_exception: Boolean((row as any).fee_exception) || false,
+      syllabus_pdf_url: (row as any).syllabus_pdf_url || "",
+      description: (row as any).description || "",
+>>>>>>> 7dc009fabdfc05a849f2c23af941ad7b31e8a520
       is_active: row.is_active,
     })
     setSheetOpen(true)
@@ -403,7 +458,11 @@ export default function CoursesPage() {
         outside_class_course: Boolean(formData.outside_class_course),
         open_book: Boolean(formData.open_book),
         online_course: Boolean(formData.online_course),
+<<<<<<< HEAD
         dummy_number_required: Boolean(formData.dummy_number_required),
+=======
+        dummy_number_not_required: Boolean(formData.dummy_number_not_required),
+>>>>>>> 7dc009fabdfc05a849f2c23af941ad7b31e8a520
         annual_course: Boolean(formData.annual_course),
         multiple_qp_set: Boolean(formData.multiple_qp_set),
         no_of_qp_setter: formData.no_of_qp_setter ? Number(formData.no_of_qp_setter) : null,
@@ -1176,6 +1235,7 @@ export default function CoursesPage() {
                   <Input type="number" step="1" value={formData.credits} onChange={(e) => setFormData({ ...formData, credits: e.target.value })} className="h-10" placeholder="e.g., 3" />
                 </div>
                 <div className="space-y-2">
+<<<<<<< HEAD
                   <Label className="text-sm font-semibold">Split Credit</Label>
                   <div className="flex items-center gap-3">
                     <button type="button" onClick={() => setFormData({ ...formData, split_credit: !formData.split_credit })} className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2 ${formData.split_credit ? 'bg-green-500' : 'bg-gray-300'}`}>
@@ -1185,6 +1245,8 @@ export default function CoursesPage() {
                   </div>
                 </div>
                 <div className="space-y-2">
+=======
+>>>>>>> 7dc009fabdfc05a849f2c23af941ad7b31e8a520
                   <Label className="text-sm font-semibold">Theory Credit</Label>
                   <Input type="number" step="1" value={formData.theory_credit} onChange={(e) => setFormData({ ...formData, theory_credit: e.target.value })} className="h-10" />
                 </div>
@@ -1198,6 +1260,7 @@ export default function CoursesPage() {
                 </div>
                 <div className="space-y-2">
                   <Label className="text-sm font-semibold">E-Code Name</Label>
+<<<<<<< HEAD
                   <Select value={formData.e_code_name || undefined} onValueChange={(v) => setFormData({ ...formData, e_code_name: v })}>
                     <SelectTrigger className="h-10">
                       <SelectValue placeholder="Select language (optional)" />
@@ -1210,6 +1273,9 @@ export default function CoursesPage() {
                       <SelectItem value="Hindi">Hindi</SelectItem>
                     </SelectContent>
                   </Select>
+=======
+                  <Input value={formData.e_code_name} onChange={(e) => setFormData({ ...formData, e_code_name: e.target.value })} className="h-10" />
+>>>>>>> 7dc009fabdfc05a849f2c23af941ad7b31e8a520
                 </div>
                 <div className="space-y-2">
                   <Label className="text-sm font-semibold">Duration (hours)</Label>
@@ -1248,6 +1314,7 @@ export default function CoursesPage() {
                   <Label className="text-sm font-semibold">Description</Label>
                   <Textarea value={formData.description} onChange={(e) => setFormData({ ...formData, description: e.target.value })} className="min-h-[100px]" placeholder="Add details about the course" />
                 </div>
+<<<<<<< HEAD
               </div>
             </div>
 
@@ -1340,6 +1407,8 @@ export default function CoursesPage() {
                     <span className={`text-sm font-medium ${formData.fee_exception ? 'text-green-600' : 'text-gray-500'}`}>{formData.fee_exception ? 'Yes' : 'No'}</span>
                   </div>
                 </div>
+=======
+>>>>>>> 7dc009fabdfc05a849f2c23af941ad7b31e8a520
                 <div className="space-y-2 md:col-span-3">
                   <Label className="text-sm font-semibold">Status</Label>
                   <div className="flex items-center gap-3">
