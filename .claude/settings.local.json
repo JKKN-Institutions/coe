@@ -21,7 +21,8 @@
       "Bash(set:*)",
       "Bash(cmd /c:*)",
       "Bash(findstr:*)",
-      "Bash(Select-Object -First 20)"
+      "Bash(Select-Object -First 20)",
+      "Bash(npx shadcn@latest add:*)"
     ],
     "deny": [],
     "ask": []

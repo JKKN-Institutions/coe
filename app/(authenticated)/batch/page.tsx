@@ -68,6 +68,8 @@ import {
   GraduationCap,
   RefreshCw,
 } from "lucide-react"
+import { Switch } from "@/components/ui/switch"
+import { useToast } from "@/hooks/use-toast"
 
 // Batch type definition - matching actual database schema
 interface Batch {
@@ -105,6 +107,8 @@ export default function BatchPage() {
   const [editing, setEditing] = useState<Batch | null>(null)
   const [saving, setSaving] = useState(false)
   const [institutionOptions, setInstitutionOptions] = useState<InstitutionOption[]>([])
+  const [errors, setErrors] = useState<Record<string, string>>({})
+  const { toast } = useToast()
   const [formData, setFormData] = useState({
     institutions_id: '' as string | null,
     institution_code: '',
@@ -127,6 +131,41 @@ export default function BatchPage() {
       end_date: '',
       status: true,
     })
+    setErrors({})
+  }
+
+  const validate = () => {
+    const e: Record<string, string> = {}
+
+    // Required fields
+    if (!formData.institution_code.trim()) e.institution_code = 'Institution code is required'
+    if (!formData.batch_name.trim()) e.batch_name = 'Batch name is required'
+    if (!formData.batch_code.trim()) e.batch_code = 'Batch code is required'
+
+    // Batch year validation
+    const currentYear = new Date().getFullYear()
+    if (!formData.batch_year) {
+      e.batch_year = 'Batch year is required'
+    } else if (formData.batch_year < 1900 || formData.batch_year > currentYear + 10) {
+      e.batch_year = `Batch year must be between 1900 and ${currentYear + 10}`
+    }
+
+    // Batch code validation (alphanumeric and special characters)
+    if (formData.batch_code && !/^[A-Za-z0-9\-_]+$/.test(formData.batch_code)) {
+      e.batch_code = 'Batch code can only contain letters, numbers, hyphens, and underscores'
+    }
+
+    // Date validation
+    if (formData.start_date && formData.end_date) {
+      const startDate = new Date(formData.start_date)
+      const endDate = new Date(formData.end_date)
+      if (endDate <= startDate) {
+        e.end_date = 'End date must be after start date'
+      }
+    }
+
+    setErrors(e)
+    return Object.keys(e).length === 0
   }
 
   // When editing changes, populate the form from the selected row
@@ -1130,9 +1169,9 @@ export default function BatchPage() {
               </div>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="space-y-2">
-                  <Label className="text-sm font-semibold">Institution Code</Label>
+                  <Label className="text-sm font-semibold">Institution Code <span className="text-red-500">*</span></Label>
                   <Select value={formData.institution_code} onValueChange={(v) => setFormData({ ...formData, institution_code: v })}>
-                    <SelectTrigger className="h-10">
+                    <SelectTrigger className={`h-10 ${errors.institution_code ? 'border-destructive' : ''}`}>
                       <SelectValue placeholder="Select institution code" />
                     </SelectTrigger>
                     <SelectContent>
@@ -1141,34 +1180,38 @@ export default function BatchPage() {
                       ))}
                     </SelectContent>
                   </Select>
+                  {errors.institution_code && <p className="text-xs text-destructive">{errors.institution_code}</p>}
                 </div>
                 <div className="space-y-2">
-                  <Label className="text-sm font-semibold">Batch Year</Label>
+                  <Label className="text-sm font-semibold">Batch Year <span className="text-red-500">*</span></Label>
                   <Input
                     type="number"
                     value={formData.batch_year}
                     onChange={(e) => setFormData({ ...formData, batch_year: parseInt(e.target.value) || new Date().getFullYear() })}
-                    className="h-10"
+                    className={`h-10 ${errors.batch_year ? 'border-destructive' : ''}`}
                     placeholder="e.g., 2024"
                   />
+                  {errors.batch_year && <p className="text-xs text-destructive">{errors.batch_year}</p>}
                 </div>
                 <div className="space-y-2 md:col-span-2">
-                  <Label className="text-sm font-semibold">Batch Name</Label>
+                  <Label className="text-sm font-semibold">Batch Name <span className="text-red-500">*</span></Label>
                   <Input
                     value={formData.batch_name}
                     onChange={(e) => setFormData({ ...formData, batch_name: e.target.value })}
-                    className="h-10"
+                    className={`h-10 ${errors.batch_name ? 'border-destructive' : ''}`}
                     placeholder="e.g., 2024-2028 B.E. CSE"
                   />
+                  {errors.batch_name && <p className="text-xs text-destructive">{errors.batch_name}</p>}
                 </div>
                 <div className="space-y-2">
-                  <Label className="text-sm font-semibold">Batch Code</Label>
+                  <Label className="text-sm font-semibold">Batch Code <span className="text-red-500">*</span></Label>
                   <Input
                     value={formData.batch_code}
                     onChange={(e) => setFormData({ ...formData, batch_code: e.target.value })}
-                    className="h-10"
+                    className={`h-10 ${errors.batch_code ? 'border-destructive' : ''}`}
                     placeholder="e.g., B2024CS01"
                   />
+                  {errors.batch_code && <p className="text-xs text-destructive">{errors.batch_code}</p>}
                 </div>
               </div>
             </div>
@@ -1184,11 +1227,13 @@ export default function BatchPage() {
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="space-y-2">
                   <Label className="text-sm font-medium">Start Date</Label>
-                  <Input type="date" value={formData.start_date || ''} onChange={(e) => setFormData({ ...formData, start_date: e.target.value })} className="h-10" />
+                  <Input type="date" value={formData.start_date || ''} onChange={(e) => setFormData({ ...formData, start_date: e.target.value })} className={`h-10 ${errors.start_date ? 'border-destructive' : ''}`} />
+                  {errors.start_date && <p className="text-xs text-destructive">{errors.start_date}</p>}
                 </div>
                 <div className="space-y-2">
                   <Label className="text-sm font-medium">End Date</Label>
-                  <Input type="date" value={formData.end_date || ''} onChange={(e) => setFormData({ ...formData, end_date: e.target.value })} className="h-10" />
+                  <Input type="date" value={formData.end_date || ''} onChange={(e) => setFormData({ ...formData, end_date: e.target.value })} className={`h-10 ${errors.end_date ? 'border-destructive' : ''}`} />
+                  {errors.end_date && <p className="text-xs text-destructive">{errors.end_date}</p>}
                 </div>
               </div>
             </div>
@@ -1203,19 +1248,7 @@ export default function BatchPage() {
               </div>
               <div className="flex items-center gap-4">
                 <Label className="text-sm font-semibold">Batch Status</Label>
-                <button
-                  type="button"
-                  onClick={() => setFormData({ ...formData, status: !formData.status })}
-                  className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none ${
-                    formData.status ? 'bg-green-500' : 'bg-gray-300'
-                  }`}
-                >
-                  <span
-                    className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
-                      formData.status ? 'translate-x-6' : 'translate-x-1'
-                    }`}
-                  />
-                </button>
+                <Switch checked={formData.status} onCheckedChange={(v) => setFormData({ ...formData, status: v })} />
                 <span className={`text-sm font-medium ${formData.status ? 'text-green-600' : 'text-red-500'}`}>
                   {formData.status ? 'Active' : 'Inactive'}
                 </span>
@@ -1233,10 +1266,19 @@ export default function BatchPage() {
               >
                 Cancel
               </Button>
-              <Button 
-                size="sm" 
-                className="h-10 px-6" 
+              <Button
+                size="sm"
+                className="h-10 px-6"
                 onClick={async () => {
+                  if (!validate()) {
+                    toast({
+                      title: '❌ Validation Failed',
+                      description: 'Please correct the errors in the form before submitting.',
+                      variant: 'destructive',
+                      className: 'bg-red-50 border-red-200 text-red-800 dark:bg-red-900/20 dark:border-red-800 dark:text-red-200'
+                    })
+                    return
+                  }
                   try {
                     setSaving(true)
                     const method = editing ? 'PUT' : 'POST'
@@ -1245,12 +1287,22 @@ export default function BatchPage() {
                     if (!res.ok) throw new Error('Save failed')
                     const saved = await res.json()
                     setBatches(prev => editing ? prev.map(b => (b.id === saved.id ? saved : b)) : [saved, ...prev])
+                    toast({
+                      title: '✅ Success',
+                      description: `Batch ${editing ? 'updated' : 'created'} successfully!`,
+                      className: 'bg-green-50 border-green-200 text-green-800 dark:bg-green-900/20 dark:border-green-800 dark:text-green-200'
+                    })
                     setSheetOpen(false)
                     setEditing(null)
                     resetForm()
                   } catch (e) {
                     console.error(e)
-                    alert('Failed to save batch')
+                    toast({
+                      title: '❌ Error',
+                      description: 'Failed to save batch. Please try again.',
+                      variant: 'destructive',
+                      className: 'bg-red-50 border-red-200 text-red-800 dark:bg-red-900/20 dark:border-red-800 dark:text-red-200'
+                    })
                   } finally {
                     setSaving(false)
                   }

@@ -158,14 +158,272 @@ import { getSupabaseServer } from '@/lib/supabase-server'
 const supabase = getSupabaseServer() // Uses service role key
 ```
 
-### Validation Pattern
+### Comprehensive Form Validation Pattern
+
+Reference implementation: [app/(authenticated)/courses/page.tsx](app/(authenticated)/courses/page.tsx)
+
+**Validation Function Structure:**
 ```typescript
 const validate = () => {
   const e: Record<string, string> = {}
-  if (!formData.field.trim()) e.field = "Required"
+
+  // Required field validation
+  if (!formData.institution_code.trim()) e.institution_code = 'Institution code is required'
+  if (!formData.regulation_code.trim()) e.regulation_code = 'Regulation code is required'
+  if (!formData.course_code.trim()) e.course_code = 'Course code is required'
+  if (!formData.course_title.trim()) e.course_title = 'Course title is required'
+
+  // Format validation with regex
+  if (formData.course_code && !/^[A-Za-z0-9\-_]+$/.test(formData.course_code)) {
+    e.course_code = 'Course code can only contain letters, numbers, hyphens, and underscores'
+  }
+
+  // Numeric range validation
+  if (formData.credits && (Number(formData.credits) < 0 || Number(formData.credits) > 10)) {
+    e.credits = 'Credits must be between 0 and 10'
+  }
+
+  // Conditional validation based on other fields
+  if (formData.split_credit) {
+    if (!formData.theory_credit || Number(formData.theory_credit) === 0) {
+      e.theory_credit = 'Theory credit is required when split credit is enabled'
+    }
+    if (!formData.practical_credit || Number(formData.practical_credit) === 0) {
+      e.practical_credit = 'Practical credit is required when split credit is enabled'
+    }
+  }
+
+  // URL validation
+  if (formData.syllabus_pdf_url && formData.syllabus_pdf_url.trim()) {
+    try {
+      new URL(formData.syllabus_pdf_url)
+    } catch {
+      e.syllabus_pdf_url = 'Please enter a valid URL (e.g., https://example.com/syllabus.pdf)'
+    }
+  }
+
   setErrors(e)
   return Object.keys(e).length === 0
 }
+```
+
+**Error State Management:**
+```typescript
+const [errors, setErrors] = useState<Record<string, string>>({})
+```
+
+**Inline Error Display:**
+```typescript
+<div className="space-y-2">
+  <Label htmlFor="course_code">
+    Course Code <span className="text-red-500">*</span>
+  </Label>
+  <Input
+    id="course_code"
+    value={formData.course_code}
+    onChange={(e) => setFormData({ ...formData, course_code: e.target.value })}
+    className={errors.course_code ? 'border-red-500' : ''}
+  />
+  {errors.course_code && (
+    <p className="text-sm text-red-500">{errors.course_code}</p>
+  )}
+</div>
+```
+
+**Form Submission with Validation:**
+```typescript
+const handleSubmit = async () => {
+  if (!validate()) {
+    toast({
+      title: '⚠️ Validation Error',
+      description: 'Please fix all validation errors before submitting.',
+      variant: 'destructive'
+    })
+    return
+  }
+  // Proceed with API call
+}
+```
+
+### Import/Upload Error Handling Pattern
+
+Reference implementation: [app/(authenticated)/courses/page.tsx](app/(authenticated)/courses/page.tsx)
+
+**Error Tracking State:**
+```typescript
+const [uploadErrors, setUploadErrors] = useState<string[]>([])
+const [showErrorDialog, setShowErrorDialog] = useState(false)
+```
+
+**Row-by-Row Validation with Error Collection:**
+```typescript
+const handleFileUpload = async (jsonData: any[]) => {
+  const errorDetails: string[] = []
+  let successCount = 0
+  let errorCount = 0
+
+  for (let i = 0; i < jsonData.length; i++) {
+    const row = jsonData[i]
+    const rowNumber = i + 2 // +2 accounts for header row in Excel
+    const validationErrors: string[] = []
+
+    // Validate required fields
+    if (!payload.institution_code?.trim()) {
+      validationErrors.push('Institution code required')
+    }
+    if (!payload.course_code?.trim()) {
+      validationErrors.push('Course code required')
+    }
+
+    // Format validation
+    if (payload.course_code && !/^[A-Za-z0-9\-_]+$/.test(payload.course_code)) {
+      validationErrors.push('Invalid course code format')
+    }
+
+    // Numeric validation
+    if (payload.credits && (Number(payload.credits) < 0 || Number(payload.credits) > 10)) {
+      validationErrors.push('Credits must be between 0 and 10')
+    }
+
+    if (validationErrors.length > 0) {
+      errorCount++
+      errorDetails.push(`Row ${rowNumber}: ${validationErrors.join(', ')}`)
+      continue
+    }
+
+    // API call for valid rows
+    try {
+      const res = await fetch('/api/courses', {
+        method: 'POST',
+        body: JSON.stringify(payload)
+      })
+      if (!res.ok) {
+        const errData = await res.json()
+        errorCount++
+        errorDetails.push(`Row ${rowNumber}: ${errData.error || 'Server error'}`)
+      } else {
+        successCount++
+      }
+    } catch (err) {
+      errorCount++
+      errorDetails.push(`Row ${rowNumber}: Network error`)
+    }
+  }
+
+  // Show results
+  if (errorCount > 0) {
+    setUploadErrors(errorDetails)
+    setShowErrorDialog(true)
+  }
+
+  if (successCount > 0) {
+    toast({
+      title: '✅ Upload Complete',
+      description: `${successCount} courses uploaded successfully${errorCount > 0 ? `, ${errorCount} failed` : ''}`,
+      className: 'bg-green-50 border-green-200'
+    })
+  }
+}
+```
+
+**Visual Error Dialog:**
+```typescript
+<AlertDialog open={showErrorDialog} onOpenChange={setShowErrorDialog}>
+  <AlertDialogContent className="max-w-3xl max-h-[80vh] overflow-hidden flex flex-col">
+    <AlertDialogHeader>
+      <AlertDialogTitle className="flex items-center gap-2 text-red-600">
+        <AlertTriangle className="h-5 w-5" />
+        Upload Errors ({uploadErrors.length} rows failed)
+      </AlertDialogTitle>
+      <AlertDialogDescription>
+        The following rows contain validation errors. Please correct them and try again.
+      </AlertDialogDescription>
+    </AlertDialogHeader>
+
+    <div className="flex-1 overflow-y-auto border rounded-lg p-4 bg-muted/30 my-4">
+      <div className="space-y-2">
+        {uploadErrors.map((error, index) => (
+          <div key={index} className="p-3 bg-background border border-red-200 rounded-md">
+            <p className="text-sm font-mono text-red-600">{error}</p>
+          </div>
+        ))}
+      </div>
+    </div>
+
+    <AlertDialogFooter>
+      <AlertDialogAction onClick={() => setShowErrorDialog(false)}>
+        Close
+      </AlertDialogAction>
+    </AlertDialogFooter>
+  </AlertDialogContent>
+</AlertDialog>
+```
+
+### Toggle Button Implementation
+
+**Using shadcn/ui Switch Component:**
+```typescript
+import { Switch } from '@/components/ui/switch'
+
+// Simple toggle
+<div className="flex items-center gap-3">
+  <Label htmlFor="split_credit">Split Credit</Label>
+  <Switch
+    id="split_credit"
+    checked={formData.split_credit}
+    onCheckedChange={(v) => setFormData({ ...formData, split_credit: v })}
+  />
+</div>
+```
+
+**Conditional Field Enabling/Disabling:**
+```typescript
+// Theory Credit field - enabled only when Split Credit is ON
+<Input
+  type="number"
+  value={formData.theory_credit}
+  onChange={(e) => setFormData({ ...formData, theory_credit: e.target.value })}
+  disabled={!formData.split_credit}
+  className={!formData.split_credit ? 'bg-muted cursor-not-allowed' : ''}
+/>
+
+// Practical Credit field - enabled only when Split Credit is ON
+<Input
+  type="number"
+  value={formData.practical_credit}
+  onChange={(e) => setFormData({ ...formData, practical_credit: e.target.value })}
+  disabled={!formData.split_credit}
+  className={!formData.split_credit ? 'bg-muted cursor-not-allowed' : ''}
+/>
+```
+
+### Toast Notification Patterns
+
+**Success Toast (Green):**
+```typescript
+toast({
+  title: '✅ Success',
+  description: 'Course created successfully!',
+  className: 'bg-green-50 border-green-200'
+})
+```
+
+**Error Toast (Red):**
+```typescript
+toast({
+  title: '❌ Error',
+  description: errorMessage,
+  variant: 'destructive'
+})
+```
+
+**Warning Toast (Yellow):**
+```typescript
+toast({
+  title: '⚠️ Validation Error',
+  description: 'Please fix all errors before submitting.',
+  variant: 'destructive'
+})
 ```
 
 ## Important Notes

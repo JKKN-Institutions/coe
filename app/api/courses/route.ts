@@ -10,17 +10,12 @@ export async function GET(req: NextRequest) {
     const course_level = searchParams.get('course_level')
     const is_active = searchParams.get('is_active')
 
-<<<<<<< HEAD
     // NOTE: The actual table is public.course (singular). Select all fields
-=======
-    // NOTE: The actual table is public.course (singular). Select minimal fields
->>>>>>> 7dc009fabdfc05a849f2c23af941ad7b31e8a520
     const supabase = getSupabaseServer()
     let query = supabase
       .from('course')
       .select(`
         id,
-<<<<<<< HEAD
         institutions_id,
         regulation_id,
         offering_department_id,
@@ -54,12 +49,6 @@ export async function GET(req: NextRequest) {
         fee_exception,
         syllabus_pdf_url,
         description,
-=======
-        course_code,
-        course_name,
-        course_type,
-        credit,
->>>>>>> 7dc009fabdfc05a849f2c23af941ad7b31e8a520
         status,
         created_at,
         updated_at
@@ -165,7 +154,6 @@ CREATE INDEX IF NOT EXISTS idx_courses_created_at ON courses(created_at);
     // Map real table fields to the shape expected by the frontend
     const mapped = (data || []).map((row: any) => ({
       id: row.id,
-<<<<<<< HEAD
       institutions_id: row.institutions_id,
       regulation_id: row.regulation_id,
       offering_department_id: row.offering_department_id,
@@ -199,12 +187,6 @@ CREATE INDEX IF NOT EXISTS idx_courses_created_at ON courses(created_at);
       fee_exception: row.fee_exception,
       syllabus_pdf_url: row.syllabus_pdf_url,
       description: row.description,
-=======
-      course_code: row.course_code,
-      course_title: row.course_name, // map to expected field
-      course_type: row.course_type,
-      credits: row.credit ?? 0,
->>>>>>> 7dc009fabdfc05a849f2c23af941ad7b31e8a520
       course_level: 'Beginner', // not available; provide a default
       is_active: row.status ?? true,
       created_at: row.created_at,
@@ -250,11 +232,7 @@ export async function POST(req: NextRequest) {
       theory_credit: input.theory_credit !== undefined ? Number(input.theory_credit) : null,
       practical_credit: input.practical_credit !== undefined ? Number(input.practical_credit) : null,
       qp_code: input.qp_code ? String(input.qp_code) : null,
-<<<<<<< HEAD
-      ...(input.e_code_name && { e_code_name: String(input.e_code_name) }),
-=======
       e_code_name: input.e_code_name ? String(input.e_code_name) : null,
->>>>>>> 7dc009fabdfc05a849f2c23af941ad7b31e8a520
       duration_hours: input.duration_hours !== undefined ? Number(input.duration_hours) : null,
       evaluation_type: input.evaluation_type ? String(input.evaluation_type) : null,
       result_type: input.result_type ? String(input.result_type) : 'Mark',
@@ -262,11 +240,7 @@ export async function POST(req: NextRequest) {
       outside_class_course: input.outside_class_course !== undefined ? Boolean(input.outside_class_course) : false,
       open_book: input.open_book !== undefined ? Boolean(input.open_book) : false,
       online_course: input.online_course !== undefined ? Boolean(input.online_course) : false,
-<<<<<<< HEAD
-      dummy_number_not_required: input.dummy_number_required !== undefined ? Boolean(input.dummy_number_required) : false,
-=======
-      dummy_number_not_required: input.dummy_number_not_required !== undefined ? Boolean(input.dummy_number_not_required) : true,
->>>>>>> 7dc009fabdfc05a849f2c23af941ad7b31e8a520
+      dummy_number_not_required: input.dummy_number_required !== undefined ? Boolean(input.dummy_number_required) : true,
       annual_course: input.annual_course !== undefined ? Boolean(input.annual_course) : false,
       multiple_qp_set: input.multiple_qp_set !== undefined ? Boolean(input.multiple_qp_set) : false,
       no_of_qp_setter: input.no_of_qp_setter !== undefined ? Number(input.no_of_qp_setter) : null,

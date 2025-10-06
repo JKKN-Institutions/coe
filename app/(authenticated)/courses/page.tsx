@@ -63,7 +63,11 @@ import {
   Edit,
   Trash2,
   FileSpreadsheet,
+  RefreshCw,
+  FileJson,
+  AlertTriangle,
 } from "lucide-react"
+import { Switch } from "@/components/ui/switch"
 import * as XLSX from 'xlsx'
 
 // Course type definition
@@ -128,7 +132,7 @@ export default function CoursesPage() {
   const [searchTerm, setSearchTerm] = useState("")
   const [statusFilter, setStatusFilter] = useState("all")
   const [typeFilter, setTypeFilter] = useState("all")
-  const [levelFilter, setLevelFilter] = useState("all")
+
   const [currentPage, setCurrentPage] = useState(1)
   const [currentTime, setCurrentTime] = useState<Date | null>(null)
   const [deleteCourseId, setDeleteCourseId] = useState<string | null>(null)
@@ -145,6 +149,8 @@ export default function CoursesPage() {
   const [departmentsSrc, setDepartmentsSrc] = useState<Array<{ id: string, department_code: string, department_name?: string }>>([])
   const [regulations, setRegulations] = useState<Array<{ id: string, regulation_code: string }>>([])
   const [codesLoading, setCodesLoading] = useState(false)
+  const [uploadErrors, setUploadErrors] = useState<string[]>([])
+  const [showErrorDialog, setShowErrorDialog] = useState(false)
 
   const [formData, setFormData] = useState({
     institution_code: "",
@@ -153,7 +159,6 @@ export default function CoursesPage() {
     course_code: "",
     course_title: "",
     display_code: "",
-<<<<<<< HEAD
     course_category: "",
     course_type: "",
     course_part_master: "",
@@ -165,29 +170,12 @@ export default function CoursesPage() {
     e_code_name: "",
     duration_hours: "",
     evaluation_type: "",
-=======
-    course_category: "Theory",
-    course_type: "",
-    course_part_master: "",
-    credits: "0",
-    split_credit: false,
-    theory_credit: "0",
-    practical_credit: "0",
-    qp_code: "",
-    e_code_name: "",
-    duration_hours: "",
-    evaluation_type: "CA",
->>>>>>> 7dc009fabdfc05a849f2c23af941ad7b31e8a520
     result_type: "Mark",
     self_study_course: false,
     outside_class_course: false,
     open_book: false,
     online_course: false,
-<<<<<<< HEAD
     dummy_number_required: false,
-=======
-    dummy_number_not_required: true,
->>>>>>> 7dc009fabdfc05a849f2c23af941ad7b31e8a520
     annual_course: false,
     multiple_qp_set: false,
     no_of_qp_setter: "",
@@ -281,8 +269,8 @@ export default function CoursesPage() {
                          (statusFilter === "active" && course.is_active) ||
                          (statusFilter === "inactive" && !course.is_active)
     const matchesType = typeFilter === "all" || course.course_type === typeFilter
-    const matchesLevel = levelFilter === "all" || course.course_level === levelFilter
-    return matchesSearch && matchesStatus && matchesType && matchesLevel
+   
+    return matchesSearch && matchesStatus && matchesType 
   })
 
   const getStatusBadgeVariant = (course: Course) => {
@@ -327,11 +315,7 @@ export default function CoursesPage() {
       outside_class_course: false,
       open_book: false,
       online_course: false,
-<<<<<<< HEAD
       dummy_number_required: false,
-=======
-      dummy_number_not_required: true,
->>>>>>> 7dc009fabdfc05a849f2c23af941ad7b31e8a520
       annual_course: false,
       multiple_qp_set: false,
       no_of_qp_setter: "",
@@ -349,7 +333,6 @@ export default function CoursesPage() {
   const openEdit = (row: Course) => {
     setEditing(row)
     setFormData({
-<<<<<<< HEAD
       institution_code: row.institution_code || "",
       regulation_code: row.regulation_code || "",
       offering_department_code: row.offering_department_code || "",
@@ -380,38 +363,6 @@ export default function CoursesPage() {
       fee_exception: Boolean(row.fee_exception) || false,
       syllabus_pdf_url: row.syllabus_pdf_url || "",
       description: row.description || "",
-=======
-      institution_code: (row as any).institution_code || "",
-      regulation_code: (row as any).regulation_code || "",
-      offering_department_code: (row as any).offering_department_code || "",
-      course_code: row.course_code || "",
-      course_title: row.course_title || "",
-      display_code: (row as any).display_code || (row.course_code || ''),
-      course_category: (row as any).course_category || "",
-      course_type: row.course_type || "",
-      course_part_master: (row as any).course_part_master || "",
-      credits: String(row.credits ?? '0'),
-      split_credit: Boolean((row as any).split_credit) || false,
-      theory_credit: String((row as any).theory_credit ?? '0'),
-      practical_credit: String((row as any).practical_credit ?? '0'),
-      qp_code: (row as any).qp_code || "",
-      e_code_name: (row as any).e_code_name || "",
-      duration_hours: String((row as any).duration_hours ?? ''),
-      evaluation_type: (row as any).evaluation_type || "",
-      result_type: (row as any).result_type || "Mark",
-      self_study_course: Boolean((row as any).self_study_course) || false,
-      outside_class_course: Boolean((row as any).outside_class_course) || false,
-      open_book: Boolean((row as any).open_book) || false,
-      online_course: Boolean((row as any).online_course) || false,
-      dummy_number_not_required: Boolean((row as any).dummy_number_not_required) !== false,
-      annual_course: Boolean((row as any).annual_course) || false,
-      multiple_qp_set: Boolean((row as any).multiple_qp_set) || false,
-      no_of_qp_setter: String((row as any).no_of_qp_setter ?? ''),
-      no_of_scrutinizer: String((row as any).no_of_scrutinizer ?? ''),
-      fee_exception: Boolean((row as any).fee_exception) || false,
-      syllabus_pdf_url: (row as any).syllabus_pdf_url || "",
-      description: (row as any).description || "",
->>>>>>> 7dc009fabdfc05a849f2c23af941ad7b31e8a520
       is_active: row.is_active,
     })
     setSheetOpen(true)
@@ -419,21 +370,106 @@ export default function CoursesPage() {
 
   const validate = () => {
     const e: Record<string, string> = {}
-    if (!formData.institution_code) e.institution_code = 'Required'
-    if (!formData.regulation_code) e.regulation_code = 'Required'
-    if (!formData.course_code) e.course_code = 'Required'
-    if (!formData.course_title) e.course_title = 'Required'
-    if (!formData.display_code) e.display_code = 'Required'
-    if (!formData.qp_code) e.qp_code = 'Required'
-    if (!formData.course_category) e.course_category = 'Required'
-    if (!formData.evaluation_type) e.evaluation_type = 'Required'
-    if (!formData.result_type) e.result_type = 'Required'
+
+    // Required fields
+    if (!formData.institution_code.trim()) e.institution_code = 'Institution code is required'
+    if (!formData.regulation_code.trim()) e.regulation_code = 'Regulation code is required'
+    if (!formData.course_code.trim()) e.course_code = 'Course code is required'
+    if (!formData.course_title.trim()) e.course_title = 'Course name is required'
+    if (!formData.display_code.trim()) e.display_code = 'Display code is required'
+    if (!formData.qp_code.trim()) e.qp_code = 'QP code is required'
+    if (!formData.course_category) e.course_category = 'Course category is required'
+    if (!formData.evaluation_type) e.evaluation_type = 'Evaluation type is required'
+    if (!formData.result_type) e.result_type = 'Result type is required'
+
+    // Course code validation (alphanumeric and special characters)
+    if (formData.course_code && !/^[A-Za-z0-9\-_]+$/.test(formData.course_code)) {
+      e.course_code = 'Course code can only contain letters, numbers, hyphens, and underscores'
+    }
+
+    // Numeric field validations
+    if (formData.credits && Number(formData.credits) < 0) {
+      e.credits = 'Credit must be a positive number'
+    }
+    if (formData.credits && Number(formData.credits) > 99) {
+      e.credits = 'Credit cannot exceed 99'
+    }
+
+    if (formData.theory_credit && Number(formData.theory_credit) < 0) {
+      e.theory_credit = 'Theory credit must be a positive number'
+    }
+    if (formData.theory_credit && Number(formData.theory_credit) > 99) {
+      e.theory_credit = 'Theory credit cannot exceed 99'
+    }
+
+    if (formData.practical_credit && Number(formData.practical_credit) < 0) {
+      e.practical_credit = 'Practical credit must be a positive number'
+    }
+    if (formData.practical_credit && Number(formData.practical_credit) > 99) {
+      e.practical_credit = 'Practical credit cannot exceed 99'
+    }
+
+    if (formData.duration_hours && Number(formData.duration_hours) < 0) {
+      e.duration_hours = 'Duration must be a positive number'
+    }
+    if (formData.duration_hours && Number(formData.duration_hours) > 9999) {
+      e.duration_hours = 'Duration cannot exceed 9999 hours'
+    }
+
+    // Split credit validation
+    if (formData.split_credit) {
+      if (!formData.theory_credit || Number(formData.theory_credit) === 0) {
+        e.theory_credit = 'Theory credit is required when split credit is enabled'
+      }
+      if (!formData.practical_credit || Number(formData.practical_credit) === 0) {
+        e.practical_credit = 'Practical credit is required when split credit is enabled'
+      }
+      // Validate that theory + practical credits match total credits
+      const totalSplit = Number(formData.theory_credit || 0) + Number(formData.practical_credit || 0)
+      const totalCredit = Number(formData.credits || 0)
+      if (totalSplit !== totalCredit && totalCredit > 0) {
+        e.credits = 'Total credit should equal theory + practical credits'
+      }
+    }
+
+    // QP setter and scrutinizer validations
+    if (formData.no_of_qp_setter && Number(formData.no_of_qp_setter) < 0) {
+      e.no_of_qp_setter = 'Number of QP setter must be a positive number'
+    }
+    if (formData.no_of_qp_setter && Number(formData.no_of_qp_setter) > 100) {
+      e.no_of_qp_setter = 'Number of QP setter cannot exceed 100'
+    }
+
+    if (formData.no_of_scrutinizer && Number(formData.no_of_scrutinizer) < 0) {
+      e.no_of_scrutinizer = 'Number of scrutinizer must be a positive number'
+    }
+    if (formData.no_of_scrutinizer && Number(formData.no_of_scrutinizer) > 100) {
+      e.no_of_scrutinizer = 'Number of scrutinizer cannot exceed 100'
+    }
+
+    // URL validation
+    if (formData.syllabus_pdf_url && formData.syllabus_pdf_url.trim()) {
+      try {
+        new URL(formData.syllabus_pdf_url)
+      } catch {
+        e.syllabus_pdf_url = 'Please enter a valid URL'
+      }
+    }
+
     setErrors(e)
     return Object.keys(e).length === 0
   }
 
   const save = async () => {
-    if (!validate()) return
+    if (!validate()) {
+      toast({
+        title: '❌ Validation Failed',
+        description: 'Please correct the errors in the form before submitting.',
+        variant: 'destructive',
+        className: 'bg-red-50 border-red-200 text-red-800 dark:bg-red-900/20 dark:border-red-800 dark:text-red-200'
+      })
+      return
+    }
     try {
       const payload: any = {
         institution_code: formData.institution_code,
@@ -458,11 +494,7 @@ export default function CoursesPage() {
         outside_class_course: Boolean(formData.outside_class_course),
         open_book: Boolean(formData.open_book),
         online_course: Boolean(formData.online_course),
-<<<<<<< HEAD
         dummy_number_required: Boolean(formData.dummy_number_required),
-=======
-        dummy_number_not_required: Boolean(formData.dummy_number_not_required),
->>>>>>> 7dc009fabdfc05a849f2c23af941ad7b31e8a520
         annual_course: Boolean(formData.annual_course),
         multiple_qp_set: Boolean(formData.multiple_qp_set),
         no_of_qp_setter: formData.no_of_qp_setter ? Number(formData.no_of_qp_setter) : null,
@@ -598,53 +630,179 @@ export default function CoursesPage() {
     })
   }
 
+  const downloadCoursesJSON = () => {
+    const data = courses.map(c => ({
+      institution_code: c.institution_code || '',
+      regulation_code: c.regulation_code || '',
+      offering_department_code: c.offering_department_code || '',
+      course_code: c.course_code,
+      course_title: c.course_title,
+      display_code: c.display_code || '',
+      course_category: c.course_category || '',
+      course_type: c.course_type || '',
+      course_part_master: c.course_part_master || '',
+      credits: c.credits || 0,
+      split_credit: c.split_credit || false,
+      theory_credit: c.theory_credit || 0,
+      practical_credit: c.practical_credit || 0,
+      qp_code: c.qp_code || '',
+      e_code_name: c.e_code_name || '',
+      duration_hours: c.duration_hours || 0,
+      evaluation_type: c.evaluation_type || '',
+      result_type: c.result_type || 'Mark',
+      self_study_course: c.self_study_course || false,
+      outside_class_course: c.outside_class_course || false,
+      open_book: c.open_book || false,
+      online_course: c.online_course || false,
+      dummy_number_required: c.dummy_number_required || false,
+      annual_course: c.annual_course || false,
+      multiple_qp_set: c.multiple_qp_set || false,
+      no_of_qp_setter: c.no_of_qp_setter || null,
+      no_of_scrutinizer: c.no_of_scrutinizer || null,
+      fee_exception: c.fee_exception || false,
+      syllabus_pdf_url: c.syllabus_pdf_url || '',
+      description: c.description || '',
+      is_active: c.is_active
+    }))
+
+    const jsonStr = JSON.stringify(data, null, 2)
+    const blob = new Blob([jsonStr], { type: 'application/json' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `courses_${new Date().toISOString().split('T')[0]}.json`
+    document.body.appendChild(a)
+    a.click()
+    document.body.removeChild(a)
+    URL.revokeObjectURL(url)
+
+    toast({
+      title: '✅ Export Successful',
+      description: `${courses.length} courses exported to JSON.`,
+      className: 'bg-green-50 border-green-200 text-green-800 dark:bg-green-900/20 dark:border-green-800 dark:text-green-200'
+    })
+  }
+
+  const refreshCourses = async () => {
+    setLoading(true)
+    try {
+      const response = await fetch('/api/courses')
+      if (response.ok) {
+        const data = await response.json()
+        setCourses(data)
+        toast({
+          title: '✅ Refreshed',
+          description: `Loaded ${data.length} courses.`,
+          className: 'bg-green-50 border-green-200 text-green-800 dark:bg-green-900/20 dark:border-green-800 dark:text-green-200'
+        })
+      } else {
+        toast({
+          title: '❌ Refresh Failed',
+          description: 'Failed to load courses.',
+          variant: 'destructive'
+        })
+      }
+    } catch (error) {
+      console.error('Error refreshing courses:', error)
+      toast({
+        title: '❌ Refresh Failed',
+        description: 'Failed to load courses.',
+        variant: 'destructive'
+      })
+    } finally {
+      setLoading(false)
+    }
+  }
+
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
     if (!file) return
 
     try {
-      const data = await file.arrayBuffer()
-      const workbook = XLSX.read(data)
-      const worksheet = workbook.Sheets[workbook.SheetNames[0]]
-      const jsonData = XLSX.utils.sheet_to_json(worksheet) as any[]
+      let jsonData: any[] = []
+
+      // Check file type
+      if (file.name.endsWith('.json')) {
+        // Handle JSON file
+        const text = await file.text()
+        const parsed = JSON.parse(text)
+        jsonData = Array.isArray(parsed) ? parsed : [parsed]
+      } else {
+        // Handle Excel file
+        const data = await file.arrayBuffer()
+        const workbook = XLSX.read(data)
+        const worksheet = workbook.Sheets[workbook.SheetNames[0]]
+        jsonData = XLSX.utils.sheet_to_json(worksheet) as any[]
+      }
 
       let successCount = 0
       let errorCount = 0
+      const errorDetails: string[] = []
 
-      for (const row of jsonData) {
+      for (let i = 0; i < jsonData.length; i++) {
+        const row = jsonData[i]
+        const rowNumber = i + 2 // +2 because row 1 is headers and array is 0-indexed
+
         try {
           const payload = {
-            institution_code: row['Institution Code*'] || row['Institution Code'],
-            regulation_code: row['Regulation Code*'] || row['Regulation Code'],
-            offering_department_code: row['Offering Department Code'] || null,
-            course_code: row['Course Code*'] || row['Course Code'],
-            course_title: row['Course Name*'] || row['Course Name'],
-            display_code: row['Display Code*'] || row['Display Code'],
-            course_category: row['Course Category*'] || row['Course Category'],
-            course_type: row['Course Type'] || null,
-            course_part_master: row['Part'] || null,
-            credits: Number(row['Credit']) || 0,
-            split_credit: String(row['Split Credit (TRUE/FALSE)'] || row['Split Credit']).toUpperCase() === 'TRUE',
-            theory_credit: Number(row['Theory Credit']) || 0,
-            practical_credit: Number(row['Practical Credit']) || 0,
-            qp_code: row['QP Code*'] || row['QP Code'],
-            e_code_name: row['E-Code Name (Tamil/English/French/Malayalam/Hindi)'] || row['E-Code Name'] || null,
-            duration_hours: Number(row['Duration (hours)'] || row['Duration']) || 0,
-            evaluation_type: row['Evaluation Type* (CA/ESE/CA + ESE)'] || row['Evaluation Type'],
-            result_type: row['Result Type* (Mark/Status)'] || row['Result Type'] || 'Mark',
-            self_study_course: String(row['Self Study Course (TRUE/FALSE)'] || row['Self Study Course']).toUpperCase() === 'TRUE',
-            outside_class_course: String(row['Outside Class Course (TRUE/FALSE)'] || row['Outside Class Course']).toUpperCase() === 'TRUE',
-            open_book: String(row['Open Book (TRUE/FALSE)'] || row['Open Book']).toUpperCase() === 'TRUE',
-            online_course: String(row['Online Course (TRUE/FALSE)'] || row['Online Course']).toUpperCase() === 'TRUE',
-            dummy_number_required: String(row['Dummy Number Required (TRUE/FALSE)'] || row['Dummy Number Required']).toUpperCase() === 'TRUE',
-            annual_course: String(row['Annual Course (TRUE/FALSE)'] || row['Annual Course']).toUpperCase() === 'TRUE',
-            multiple_qp_set: String(row['Multiple QP Set (TRUE/FALSE)'] || row['Multiple QP Set']).toUpperCase() === 'TRUE',
-            no_of_qp_setter: Number(row['No of QP Setter']) || null,
-            no_of_scrutinizer: Number(row['No of Scrutinizer']) || null,
-            fee_exception: String(row['Fee Exception (TRUE/FALSE)'] || row['Fee Exception']).toUpperCase() === 'TRUE',
-            syllabus_pdf_url: row['Syllabus PDF URL'] || null,
-            description: row['Description'] || null,
-            is_active: String(row['Status (TRUE/FALSE)'] || row['Status']).toUpperCase() !== 'FALSE'
+            institution_code: row['Institution Code*'] || row['Institution Code'] || row.institution_code,
+            regulation_code: row['Regulation Code*'] || row['Regulation Code'] || row.regulation_code,
+            offering_department_code: row['Offering Department Code'] || row.offering_department_code || null,
+            course_code: row['Course Code*'] || row['Course Code'] || row.course_code,
+            course_title: row['Course Name*'] || row['Course Name'] || row.course_title,
+            display_code: row['Display Code*'] || row['Display Code'] || row.display_code,
+            course_category: row['Course Category*'] || row['Course Category'] || row.course_category,
+            course_type: row['Course Type'] || row.course_type || null,
+            course_part_master: row['Part'] || row.course_part_master || null,
+            credits: Number(row['Credit'] || row.credits) || 0,
+            split_credit: typeof row.split_credit === 'boolean' ? row.split_credit : String(row['Split Credit (TRUE/FALSE)'] || row['Split Credit'] || '').toUpperCase() === 'TRUE',
+            theory_credit: Number(row['Theory Credit'] || row.theory_credit) || 0,
+            practical_credit: Number(row['Practical Credit'] || row.practical_credit) || 0,
+            qp_code: row['QP Code*'] || row['QP Code'] || row.qp_code,
+            e_code_name: row['E-Code Name (Tamil/English/French/Malayalam/Hindi)'] || row['E-Code Name'] || row.e_code_name || null,
+            duration_hours: Number(row['Duration (hours)'] || row['Duration'] || row.duration_hours) || 0,
+            evaluation_type: row['Evaluation Type* (CA/ESE/CA + ESE)'] || row['Evaluation Type'] || row.evaluation_type,
+            result_type: row['Result Type* (Mark/Status)'] || row['Result Type'] || row.result_type || 'Mark',
+            self_study_course: typeof row.self_study_course === 'boolean' ? row.self_study_course : String(row['Self Study Course (TRUE/FALSE)'] || row['Self Study Course'] || '').toUpperCase() === 'TRUE',
+            outside_class_course: typeof row.outside_class_course === 'boolean' ? row.outside_class_course : String(row['Outside Class Course (TRUE/FALSE)'] || row['Outside Class Course'] || '').toUpperCase() === 'TRUE',
+            open_book: typeof row.open_book === 'boolean' ? row.open_book : String(row['Open Book (TRUE/FALSE)'] || row['Open Book'] || '').toUpperCase() === 'TRUE',
+            online_course: typeof row.online_course === 'boolean' ? row.online_course : String(row['Online Course (TRUE/FALSE)'] || row['Online Course'] || '').toUpperCase() === 'TRUE',
+            dummy_number_required: typeof row.dummy_number_required === 'boolean' ? row.dummy_number_required : String(row['Dummy Number Required (TRUE/FALSE)'] || row['Dummy Number Required'] || '').toUpperCase() === 'TRUE',
+            annual_course: typeof row.annual_course === 'boolean' ? row.annual_course : String(row['Annual Course (TRUE/FALSE)'] || row['Annual Course'] || '').toUpperCase() === 'TRUE',
+            multiple_qp_set: typeof row.multiple_qp_set === 'boolean' ? row.multiple_qp_set : String(row['Multiple QP Set (TRUE/FALSE)'] || row['Multiple QP Set'] || '').toUpperCase() === 'TRUE',
+            no_of_qp_setter: Number(row['No of QP Setter'] || row.no_of_qp_setter) || null,
+            no_of_scrutinizer: Number(row['No of Scrutinizer'] || row.no_of_scrutinizer) || null,
+            fee_exception: typeof row.fee_exception === 'boolean' ? row.fee_exception : String(row['Fee Exception (TRUE/FALSE)'] || row['Fee Exception'] || '').toUpperCase() === 'TRUE',
+            syllabus_pdf_url: row['Syllabus PDF URL'] || row.syllabus_pdf_url || null,
+            description: row['Description'] || row.description || null,
+            is_active: typeof row.is_active === 'boolean' ? row.is_active : String(row['Status (TRUE/FALSE)'] || row['Status'] || 'TRUE').toUpperCase() !== 'FALSE'
+          }
+
+          // Client-side validation
+          const validationErrors: string[] = []
+
+          if (!payload.institution_code?.trim()) validationErrors.push('Institution code required')
+          if (!payload.regulation_code?.trim()) validationErrors.push('Regulation code required')
+          if (!payload.course_code?.trim()) validationErrors.push('Course code required')
+          if (!payload.course_title?.trim()) validationErrors.push('Course name required')
+          if (!payload.display_code?.trim()) validationErrors.push('Display code required')
+          if (!payload.qp_code?.trim()) validationErrors.push('QP code required')
+          if (!payload.course_category) validationErrors.push('Course category required')
+          if (!payload.evaluation_type) validationErrors.push('Evaluation type required')
+          if (!payload.result_type) validationErrors.push('Result type required')
+
+          if (payload.course_code && !/^[A-Za-z0-9\-_]+$/.test(payload.course_code)) {
+            validationErrors.push('Invalid course code format')
+          }
+
+          if (payload.credits && (payload.credits < 0 || payload.credits > 99)) {
+            validationErrors.push('Credit must be 0-99')
+          }
+
+          if (validationErrors.length > 0) {
+            errorCount++
+            errorDetails.push(`Row ${rowNumber}: ${validationErrors.join(', ')}`)
+            continue
           }
 
           const res = await fetch('/api/courses', {
@@ -657,9 +815,14 @@ export default function CoursesPage() {
             successCount++
           } else {
             errorCount++
+            const errorData = await res.json().catch(() => ({}))
+            const errorMsg = errorData.error || errorData.details || 'Failed to save'
+            errorDetails.push(`Row ${rowNumber}: ${errorMsg}`)
           }
         } catch (err) {
           errorCount++
+          const errorMsg = err instanceof Error ? err.message : 'Unknown error'
+          errorDetails.push(`Row ${rowNumber}: ${errorMsg}`)
         }
       }
 
@@ -670,11 +833,31 @@ export default function CoursesPage() {
         setCourses(data)
       }
 
-      toast({
-        title: successCount > 0 ? '✅ Upload Complete' : '❌ Upload Failed',
-        description: `${successCount} courses uploaded successfully. ${errorCount} failed.`,
-        className: successCount > 0 ? 'bg-green-50 border-green-200 text-green-800 dark:bg-green-900/20 dark:border-green-800 dark:text-green-200' : 'bg-red-50 border-red-200 text-red-800 dark:bg-red-900/20 dark:border-red-800 dark:text-red-200'
-      })
+      // Show detailed results
+      if (errorCount === 0) {
+        toast({
+          title: '✅ Upload Complete',
+          description: `${successCount} courses uploaded successfully!`,
+          className: 'bg-green-50 border-green-200 text-green-800 dark:bg-green-900/20 dark:border-green-800 dark:text-green-200'
+        })
+      } else if (successCount > 0) {
+        setUploadErrors(errorDetails)
+        setShowErrorDialog(true)
+        toast({
+          title: '⚠️ Partial Upload',
+          description: `${successCount} succeeded, ${errorCount} failed. Click to view errors.`,
+          className: 'bg-yellow-50 border-yellow-200 text-yellow-800 dark:bg-yellow-900/20 dark:border-yellow-800 dark:text-yellow-200'
+        })
+      } else {
+        setUploadErrors(errorDetails)
+        setShowErrorDialog(true)
+        toast({
+          title: '❌ Upload Failed',
+          description: `All ${errorCount} rows failed. Click to view errors.`,
+          variant: 'destructive',
+          className: 'bg-red-50 border-red-200 text-red-800 dark:bg-red-900/20 dark:border-red-800 dark:text-red-200'
+        })
+      }
 
       // Reset file input
       e.target.value = ''
@@ -682,8 +865,9 @@ export default function CoursesPage() {
       console.error('Upload error:', error)
       toast({
         title: '❌ Upload Failed',
-        description: 'Failed to process Excel file.',
-        variant: 'destructive'
+        description: error instanceof Error ? error.message : 'Failed to process file.',
+        variant: 'destructive',
+        className: 'bg-red-50 border-red-200 text-red-800 dark:bg-red-900/20 dark:border-red-800 dark:text-red-200'
       })
     }
   }
@@ -845,17 +1029,7 @@ export default function CoursesPage() {
                       </SelectContent>
                     </Select>
 
-                    <Select value={levelFilter} onValueChange={setLevelFilter}>
-                      <SelectTrigger className="w-[140px] h-8">
-                        <SelectValue placeholder="All Levels" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="all">All Levels</SelectItem>
-                        <SelectItem value="Beginner">Beginner</SelectItem>
-                        <SelectItem value="Intermediate">Intermediate</SelectItem>
-                        <SelectItem value="Advanced">Advanced</SelectItem>
-                      </SelectContent>
-                    </Select>
+                    
 
                     {/* Search Bar */}
                     <div className="relative w-full sm:w-[220px]">
@@ -871,13 +1045,21 @@ export default function CoursesPage() {
 
                   {/* Action Buttons */}
                   <div className="flex gap-1 flex-wrap">
+                    <Button variant="outline" size="sm" className="text-xs px-2 h-8" onClick={refreshCourses} disabled={loading}>
+                      <RefreshCw className={`h-3 w-3 mr-1 ${loading ? 'animate-spin' : ''}`} />
+                      Refresh
+                    </Button>
                     <Button variant="outline" size="sm" className="text-xs px-2 h-8" onClick={downloadTemplate}>
                       <FileSpreadsheet className="h-3 w-3 mr-1" />
                       Template
                     </Button>
                     <Button variant="outline" size="sm" className="text-xs px-2 h-8" onClick={downloadCoursesExcel}>
                       <Download className="h-3 w-3 mr-1" />
-                      Export
+                      Excel
+                    </Button>
+                    <Button variant="outline" size="sm" className="text-xs px-2 h-8" onClick={downloadCoursesJSON}>
+                      <FileJson className="h-3 w-3 mr-1" />
+                      JSON
                     </Button>
                     <Button variant="outline" size="sm" className="text-xs px-2 h-8" onClick={() => document.getElementById('file-upload')?.click()}>
                       <Upload className="h-3 w-3 mr-1" />
@@ -886,12 +1068,12 @@ export default function CoursesPage() {
                     <input
                       id="file-upload"
                       type="file"
-                      accept=".xlsx,.xls"
+                      accept=".xlsx,.xls,.json"
                       onChange={handleFileUpload}
                       className="hidden"
                     />
-                    <Button 
-                      size="sm" 
+                    <Button
+                      size="sm"
                       className="text-xs px-2 h-8"
                       onClick={openAdd}
                     >
@@ -913,7 +1095,7 @@ export default function CoursesPage() {
                           <TableHead className="text-[11px]">Course Title</TableHead>
                           <TableHead className="w-[100px] text-[11px]">Type</TableHead>
                           <TableHead className="w-[80px] text-[11px]">Credits</TableHead>
-                          <TableHead className="w-[100px] text-[11px]">Level</TableHead>
+                          
                           <TableHead className="w-[100px] text-[11px]">Status</TableHead>
                           <TableHead className="w-[120px] text-[11px]">Created At</TableHead>
                           <TableHead className="w-[120px] text-[11px] text-center">Actions</TableHead>
@@ -1126,6 +1308,7 @@ export default function CoursesPage() {
                       ))}
                     </SelectContent>
                   </Select>
+                  {errors.institution_code && <p className="text-xs text-destructive">{errors.institution_code}</p>}
                 </div>
                 <div className="space-y-2">
                   <Label className="text-sm font-semibold">Regulation Code <span className="text-red-500">*</span></Label>
@@ -1139,6 +1322,7 @@ export default function CoursesPage() {
                       ))}
                     </SelectContent>
                   </Select>
+                  {errors.regulation_code && <p className="text-xs text-destructive">{errors.regulation_code}</p>}
                 </div>
                 <div className="space-y-2">
                   <Label className="text-sm font-semibold">Offering Department Code</Label>
@@ -1164,14 +1348,17 @@ export default function CoursesPage() {
                       qp_code: formData.qp_code || v,
                     })
                   }} className={`h-10 ${errors.course_code ? 'border-destructive' : ''}`} placeholder="e.g., CS101" />
+                  {errors.course_code && <p className="text-xs text-destructive">{errors.course_code}</p>}
                 </div>
                 <div className="space-y-2 md:col-span-2">
                   <Label className="text-sm font-semibold">Course Name <span className="text-red-500">*</span></Label>
                   <Input value={formData.course_title} onChange={(e) => setFormData({ ...formData, course_title: e.target.value })} className={`h-10 ${errors.course_title ? 'border-destructive' : ''}`} placeholder="Enter course name" />
+                  {errors.course_title && <p className="text-xs text-destructive">{errors.course_title}</p>}
                 </div>
                 <div className="space-y-2">
                   <Label className="text-sm font-semibold">Display Code <span className="text-red-500">*</span></Label>
                   <Input value={formData.display_code} onChange={(e) => setFormData({ ...formData, display_code: e.target.value })} className={`h-10 ${errors.display_code ? 'border-destructive' : ''}`} placeholder="Will default from course code" />
+                  {errors.display_code && <p className="text-xs text-destructive">{errors.display_code}</p>}
                 </div>
                 <div className="space-y-2">
                   <Label className="text-sm font-semibold">Course Category <span className="text-red-500">*</span></Label>
@@ -1191,6 +1378,7 @@ export default function CoursesPage() {
                       <SelectItem value="Group Project">Group Project</SelectItem>
                     </SelectContent>
                   </Select>
+                  {errors.course_category && <p className="text-xs text-destructive">{errors.course_category}</p>}
                 </div>
                 <div className="space-y-2">
                   <Label className="text-sm font-semibold">Course Type</Label>
@@ -1232,35 +1420,47 @@ export default function CoursesPage() {
                 </div>
                 <div className="space-y-2">
                   <Label className="text-sm font-semibold">Credit</Label>
-                  <Input type="number" step="1" value={formData.credits} onChange={(e) => setFormData({ ...formData, credits: e.target.value })} className="h-10" placeholder="e.g., 3" />
+                  <Input type="number" step="1" value={formData.credits} onChange={(e) => setFormData({ ...formData, credits: e.target.value })} className={`h-10 ${errors.credits ? 'border-destructive' : ''}`} placeholder="e.g., 3" />
+                  {errors.credits && <p className="text-xs text-destructive">{errors.credits}</p>}
                 </div>
                 <div className="space-y-2">
-<<<<<<< HEAD
                   <Label className="text-sm font-semibold">Split Credit</Label>
                   <div className="flex items-center gap-3">
-                    <button type="button" onClick={() => setFormData({ ...formData, split_credit: !formData.split_credit })} className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2 ${formData.split_credit ? 'bg-green-500' : 'bg-gray-300'}`}>
-                      <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${formData.split_credit ? 'translate-x-6' : 'translate-x-1'}`} />
-                    </button>
+                    <Switch checked={formData.split_credit} onCheckedChange={(v) => setFormData({ ...formData, split_credit: v })} />
                     <span className={`text-sm font-medium ${formData.split_credit ? 'text-green-600' : 'text-gray-500'}`}>{formData.split_credit ? 'Yes' : 'No'}</span>
                   </div>
                 </div>
                 <div className="space-y-2">
-=======
->>>>>>> 7dc009fabdfc05a849f2c23af941ad7b31e8a520
-                  <Label className="text-sm font-semibold">Theory Credit</Label>
-                  <Input type="number" step="1" value={formData.theory_credit} onChange={(e) => setFormData({ ...formData, theory_credit: e.target.value })} className="h-10" />
+                  <Label className={`text-sm font-semibold ${!formData.split_credit ? 'text-gray-400' : ''}`}>Theory Credit</Label>
+                  <Input
+                    type="number"
+                    step="1"
+                    value={formData.theory_credit}
+                    onChange={(e) => setFormData({ ...formData, theory_credit: e.target.value })}
+                    className={`h-10 ${errors.theory_credit ? 'border-destructive' : ''}`}
+                    disabled={!formData.split_credit}
+                  />
+                  {errors.theory_credit && <p className="text-xs text-destructive">{errors.theory_credit}</p>}
                 </div>
                 <div className="space-y-2">
-                  <Label className="text-sm font-semibold">Practical Credit</Label>
-                  <Input type="number" step="1" value={formData.practical_credit} onChange={(e) => setFormData({ ...formData, practical_credit: e.target.value })} className="h-10" />
+                  <Label className={`text-sm font-semibold ${!formData.split_credit ? 'text-gray-400' : ''}`}>Practical Credit</Label>
+                  <Input
+                    type="number"
+                    step="1"
+                    value={formData.practical_credit}
+                    onChange={(e) => setFormData({ ...formData, practical_credit: e.target.value })}
+                    className={`h-10 ${errors.practical_credit ? 'border-destructive' : ''}`}
+                    disabled={!formData.split_credit}
+                  />
+                  {errors.practical_credit && <p className="text-xs text-destructive">{errors.practical_credit}</p>}
                 </div>
                 <div className="space-y-2">
-                  <Label className="text-sm font-semibold">QP Code</Label>
-                  <Input value={formData.qp_code} onChange={(e) => setFormData({ ...formData, qp_code: e.target.value })} className="h-10" />
+                  <Label className="text-sm font-semibold">QP Code <span className="text-red-500">*</span></Label>
+                  <Input value={formData.qp_code} onChange={(e) => setFormData({ ...formData, qp_code: e.target.value })} className={`h-10 ${errors.qp_code ? 'border-destructive' : ''}`} />
+                  {errors.qp_code && <p className="text-xs text-destructive">{errors.qp_code}</p>}
                 </div>
                 <div className="space-y-2">
                   <Label className="text-sm font-semibold">E-Code Name</Label>
-<<<<<<< HEAD
                   <Select value={formData.e_code_name || undefined} onValueChange={(v) => setFormData({ ...formData, e_code_name: v })}>
                     <SelectTrigger className="h-10">
                       <SelectValue placeholder="Select language (optional)" />
@@ -1273,13 +1473,11 @@ export default function CoursesPage() {
                       <SelectItem value="Hindi">Hindi</SelectItem>
                     </SelectContent>
                   </Select>
-=======
-                  <Input value={formData.e_code_name} onChange={(e) => setFormData({ ...formData, e_code_name: e.target.value })} className="h-10" />
->>>>>>> 7dc009fabdfc05a849f2c23af941ad7b31e8a520
                 </div>
                 <div className="space-y-2">
                   <Label className="text-sm font-semibold">Duration (hours)</Label>
-                  <Input type="number" step="1" value={formData.duration_hours} onChange={(e) => setFormData({ ...formData, duration_hours: e.target.value })} className="h-10" />
+                  <Input type="number" step="1" value={formData.duration_hours} onChange={(e) => setFormData({ ...formData, duration_hours: e.target.value })} className={`h-10 ${errors.duration_hours ? 'border-destructive' : ''}`} />
+                  {errors.duration_hours && <p className="text-xs text-destructive">{errors.duration_hours}</p>}
                 </div>
                 <div className="space-y-2">
                   <Label className="text-sm font-semibold">Evaluation Type <span className="text-red-500">*</span></Label>
@@ -1293,6 +1491,7 @@ export default function CoursesPage() {
                       <SelectItem value="CA + ESE">CA + ESE</SelectItem>
                     </SelectContent>
                   </Select>
+                  {errors.evaluation_type && <p className="text-xs text-destructive">{errors.evaluation_type}</p>}
                 </div>
                 <div className="space-y-2">
                   <Label className="text-sm font-semibold">Result Type <span className="text-red-500">*</span></Label>
@@ -1305,16 +1504,17 @@ export default function CoursesPage() {
                       <SelectItem value="Status">Status</SelectItem>
                     </SelectContent>
                   </Select>
+                  {errors.result_type && <p className="text-xs text-destructive">{errors.result_type}</p>}
                 </div>
                 <div className="space-y-2 md:col-span-3">
                   <Label className="text-sm font-semibold">Syllabus PDF URL</Label>
-                  <Input value={formData.syllabus_pdf_url} onChange={(e) => setFormData({ ...formData, syllabus_pdf_url: e.target.value })} className="h-10" />
+                  <Input value={formData.syllabus_pdf_url} onChange={(e) => setFormData({ ...formData, syllabus_pdf_url: e.target.value })} className={`h-10 ${errors.syllabus_pdf_url ? 'border-destructive' : ''}`} />
+                  {errors.syllabus_pdf_url && <p className="text-xs text-destructive">{errors.syllabus_pdf_url}</p>}
                 </div>
                 <div className="space-y-2 md:col-span-3">
                   <Label className="text-sm font-semibold">Description</Label>
                   <Textarea value={formData.description} onChange={(e) => setFormData({ ...formData, description: e.target.value })} className="min-h-[100px]" placeholder="Add details about the course" />
                 </div>
-<<<<<<< HEAD
               </div>
             </div>
 
@@ -1330,91 +1530,73 @@ export default function CoursesPage() {
                 <div className="space-y-2">
                   <Label className="text-sm font-semibold">Self Study Course</Label>
                   <div className="flex items-center gap-3">
-                    <button type="button" onClick={() => setFormData({ ...formData, self_study_course: !formData.self_study_course })} className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2 ${formData.self_study_course ? 'bg-green-500' : 'bg-gray-300'}`}>
-                      <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${formData.self_study_course ? 'translate-x-6' : 'translate-x-1'}`} />
-                    </button>
+                    <Switch checked={formData.self_study_course} onCheckedChange={(v) => setFormData({ ...formData, self_study_course: v })} />
                     <span className={`text-sm font-medium ${formData.self_study_course ? 'text-green-600' : 'text-gray-500'}`}>{formData.self_study_course ? 'Yes' : 'No'}</span>
                   </div>
                 </div>
                 <div className="space-y-2">
                   <Label className="text-sm font-semibold">Outside Class Course</Label>
                   <div className="flex items-center gap-3">
-                    <button type="button" onClick={() => setFormData({ ...formData, outside_class_course: !formData.outside_class_course })} className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2 ${formData.outside_class_course ? 'bg-green-500' : 'bg-gray-300'}`}>
-                      <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${formData.outside_class_course ? 'translate-x-6' : 'translate-x-1'}`} />
-                    </button>
+                    <Switch checked={formData.outside_class_course} onCheckedChange={(v) => setFormData({ ...formData, outside_class_course: v })} />
                     <span className={`text-sm font-medium ${formData.outside_class_course ? 'text-green-600' : 'text-gray-500'}`}>{formData.outside_class_course ? 'Yes' : 'No'}</span>
                   </div>
                 </div>
                 <div className="space-y-2">
                   <Label className="text-sm font-semibold">Open Book</Label>
                   <div className="flex items-center gap-3">
-                    <button type="button" onClick={() => setFormData({ ...formData, open_book: !formData.open_book })} className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2 ${formData.open_book ? 'bg-green-500' : 'bg-gray-300'}`}>
-                      <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${formData.open_book ? 'translate-x-6' : 'translate-x-1'}`} />
-                    </button>
+                    <Switch checked={formData.open_book} onCheckedChange={(v) => setFormData({ ...formData, open_book: v })} />
                     <span className={`text-sm font-medium ${formData.open_book ? 'text-green-600' : 'text-gray-500'}`}>{formData.open_book ? 'Yes' : 'No'}</span>
                   </div>
                 </div>
                 <div className="space-y-2">
                   <Label className="text-sm font-semibold">Online Course</Label>
                   <div className="flex items-center gap-3">
-                    <button type="button" onClick={() => setFormData({ ...formData, online_course: !formData.online_course })} className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2 ${formData.online_course ? 'bg-green-500' : 'bg-gray-300'}`}>
-                      <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${formData.online_course ? 'translate-x-6' : 'translate-x-1'}`} />
-                    </button>
+                    <Switch checked={formData.online_course} onCheckedChange={(v) => setFormData({ ...formData, online_course: v })} />
                     <span className={`text-sm font-medium ${formData.online_course ? 'text-green-600' : 'text-gray-500'}`}>{formData.online_course ? 'Yes' : 'No'}</span>
                   </div>
                 </div>
                 <div className="space-y-2">
                   <Label className="text-sm font-semibold">Dummy Number Required</Label>
                   <div className="flex items-center gap-3">
-                    <button type="button" onClick={() => setFormData({ ...formData, dummy_number_required: !formData.dummy_number_required })} className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2 ${formData.dummy_number_required ? 'bg-green-500' : 'bg-gray-300'}`}>
-                      <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${formData.dummy_number_required ? 'translate-x-6' : 'translate-x-1'}`} />
-                    </button>
+                    <Switch checked={formData.dummy_number_required} onCheckedChange={(v) => setFormData({ ...formData, dummy_number_required: v })} />
                     <span className={`text-sm font-medium ${formData.dummy_number_required ? 'text-green-600' : 'text-gray-500'}`}>{formData.dummy_number_required ? 'Yes' : 'No'}</span>
                   </div>
                 </div>
                 <div className="space-y-2">
                   <Label className="text-sm font-semibold">Annual Course</Label>
                   <div className="flex items-center gap-3">
-                    <button type="button" onClick={() => setFormData({ ...formData, annual_course: !formData.annual_course })} className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2 ${formData.annual_course ? 'bg-green-500' : 'bg-gray-300'}`}>
-                      <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${formData.annual_course ? 'translate-x-6' : 'translate-x-1'}`} />
-                    </button>
+                    <Switch checked={formData.annual_course} onCheckedChange={(v) => setFormData({ ...formData, annual_course: v })} />
                     <span className={`text-sm font-medium ${formData.annual_course ? 'text-green-600' : 'text-gray-500'}`}>{formData.annual_course ? 'Yes' : 'No'}</span>
                   </div>
                 </div>
                 <div className="space-y-2">
                   <Label className="text-sm font-semibold">Multiple QP Set</Label>
                   <div className="flex items-center gap-3">
-                    <button type="button" onClick={() => setFormData({ ...formData, multiple_qp_set: !formData.multiple_qp_set })} className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2 ${formData.multiple_qp_set ? 'bg-green-500' : 'bg-gray-300'}`}>
-                      <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${formData.multiple_qp_set ? 'translate-x-6' : 'translate-x-1'}`} />
-                    </button>
+                    <Switch checked={formData.multiple_qp_set} onCheckedChange={(v) => setFormData({ ...formData, multiple_qp_set: v })} />
                     <span className={`text-sm font-medium ${formData.multiple_qp_set ? 'text-green-600' : 'text-gray-500'}`}>{formData.multiple_qp_set ? 'Yes' : 'No'}</span>
                   </div>
                 </div>
                 <div className="space-y-2">
                   <Label className="text-sm font-semibold">No of QP Setter</Label>
-                  <Input type="number" step="1" value={formData.no_of_qp_setter} onChange={(e) => setFormData({ ...formData, no_of_qp_setter: e.target.value })} className="h-10" placeholder="0" />
+                  <Input type="number" step="1" value={formData.no_of_qp_setter} onChange={(e) => setFormData({ ...formData, no_of_qp_setter: e.target.value })} className={`h-10 ${errors.no_of_qp_setter ? 'border-destructive' : ''}`} placeholder="0" />
+                  {errors.no_of_qp_setter && <p className="text-xs text-destructive">{errors.no_of_qp_setter}</p>}
                 </div>
                 <div className="space-y-2">
                   <Label className="text-sm font-semibold">No of Scrutinizer</Label>
-                  <Input type="number" step="1" value={formData.no_of_scrutinizer} onChange={(e) => setFormData({ ...formData, no_of_scrutinizer: e.target.value })} className="h-10" placeholder="0" />
+                  <Input type="number" step="1" value={formData.no_of_scrutinizer} onChange={(e) => setFormData({ ...formData, no_of_scrutinizer: e.target.value })} className={`h-10 ${errors.no_of_scrutinizer ? 'border-destructive' : ''}`} placeholder="0" />
+                  {errors.no_of_scrutinizer && <p className="text-xs text-destructive">{errors.no_of_scrutinizer}</p>}
                 </div>
                 <div className="space-y-2">
                   <Label className="text-sm font-semibold">Fee Exception</Label>
                   <div className="flex items-center gap-3">
-                    <button type="button" onClick={() => setFormData({ ...formData, fee_exception: !formData.fee_exception })} className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2 ${formData.fee_exception ? 'bg-green-500' : 'bg-gray-300'}`}>
-                      <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${formData.fee_exception ? 'translate-x-6' : 'translate-x-1'}`} />
-                    </button>
+                    <Switch checked={formData.fee_exception} onCheckedChange={(v) => setFormData({ ...formData, fee_exception: v })} />
                     <span className={`text-sm font-medium ${formData.fee_exception ? 'text-green-600' : 'text-gray-500'}`}>{formData.fee_exception ? 'Yes' : 'No'}</span>
                   </div>
                 </div>
-=======
->>>>>>> 7dc009fabdfc05a849f2c23af941ad7b31e8a520
                 <div className="space-y-2 md:col-span-3">
                   <Label className="text-sm font-semibold">Status</Label>
                   <div className="flex items-center gap-3">
-                    <button type="button" onClick={() => setFormData({ ...formData, is_active: !formData.is_active })} className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2 ${formData.is_active ? 'bg-green-500' : 'bg-gray-300'}`}>
-                      <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${formData.is_active ? 'translate-x-6' : 'translate-x-1'}`} />
-                    </button>
+                    <Switch checked={formData.is_active} onCheckedChange={(v) => setFormData({ ...formData, is_active: v })} />
                     <span className={`text-sm font-medium ${formData.is_active ? 'text-green-600' : 'text-red-500'}`}>{formData.is_active ? 'Active' : 'Inactive'}</span>
                   </div>
                 </div>
@@ -1428,6 +1610,43 @@ export default function CoursesPage() {
           </div>
         </SheetContent>
       </Sheet>
+
+      {/* Upload Error Dialog */}
+      <AlertDialog open={showErrorDialog} onOpenChange={setShowErrorDialog}>
+        <AlertDialogContent className="max-w-3xl max-h-[80vh] overflow-hidden flex flex-col">
+          <AlertDialogHeader>
+            <AlertDialogTitle className="flex items-center gap-2 text-red-600">
+              <AlertTriangle className="h-5 w-5" />
+              Upload Errors ({uploadErrors.length} rows failed)
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              The following rows could not be imported. Please fix these errors and try again.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+
+          <div className="flex-1 overflow-y-auto border rounded-lg p-4 bg-muted/30 my-4">
+            <div className="space-y-2">
+              {uploadErrors.map((error, index) => (
+                <div key={index} className="p-3 bg-background border border-red-200 rounded-md">
+                  <p className="text-sm font-mono text-red-600 dark:text-red-400">{error}</p>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <AlertDialogFooter>
+            <AlertDialogAction
+              onClick={() => {
+                setShowErrorDialog(false)
+                setUploadErrors([])
+              }}
+              className="bg-primary"
+            >
+              Close
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   )
 }

@@ -18,6 +18,8 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sh
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog"
 import Link from "next/link"
 import { PlusCircle, Edit, Trash2, Search, ChevronLeft, ChevronRight, ArrowUpDown, ArrowUp, ArrowDown, Building2, TrendingUp, FileSpreadsheet, RefreshCw } from "lucide-react"
+import { Switch } from "@/components/ui/switch"
+import { useToast } from "@/hooks/use-toast"
 
 type Department = {
   id: string
@@ -50,6 +52,7 @@ export default function DepartmentPage() {
 
   const [formData, setFormData] = useState({ institution_code: "", department_code: "", department_name: "", display_name: "", description: "", stream: "", is_active: true })
   const [errors, setErrors] = useState<Record<string, string>>({})
+  const { toast } = useToast()
 
   // Institutions for dropdown
   const [institutions, setInstitutions] = useState<Array<{ id: string; institution_code: string; name?: string }>>([])
@@ -160,11 +163,19 @@ export default function DepartmentPage() {
   }
 
   const save = async () => {
-    if (!validate()) return
-    
+    if (!validate()) {
+      toast({
+        title: '❌ Validation Failed',
+        description: 'Please correct the errors in the form before submitting.',
+        variant: 'destructive',
+        className: 'bg-red-50 border-red-200 text-red-800 dark:bg-red-900/20 dark:border-red-800 dark:text-red-200'
+      })
+      return
+    }
+
     try {
       setLoading(true)
-      
+
       if (editing) {
         // Update existing department
         const response = await fetch('/api/departments', {
@@ -172,17 +183,21 @@ export default function DepartmentPage() {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ id: (editing as any).id, ...formData })
         })
-        
+
         if (!response.ok) {
           const errorData = await response.json().catch(() => ({}))
           const errorMessage = errorData.error || errorData.details || 'Failed to update department'
           throw new Error(errorMessage)
         }
-        
+
         const updated = await response.json()
         setItems(p => p.map(x => x.id === (editing as any).id ? updated : x))
-        
-        alert(`Department "${updated.department_name}" has been successfully updated.`)
+
+        toast({
+          title: '✅ Success',
+          description: `Department "${updated.department_name}" has been successfully updated.`,
+          className: 'bg-green-50 border-green-200 text-green-800 dark:bg-green-900/20 dark:border-green-800 dark:text-green-200'
+        })
       } else {
         // Create new department
         const response = await fetch('/api/departments', {
@@ -190,25 +205,34 @@ export default function DepartmentPage() {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(formData)
         })
-        
+
         if (!response.ok) {
           const errorData = await response.json().catch(() => ({}))
           const errorMessage = errorData.error || errorData.details || 'Failed to create department'
           throw new Error(errorMessage)
         }
-        
+
         const created = await response.json()
         setItems(p => [created, ...p])
-        
-        alert(`Department "${created.department_name}" has been successfully created.`)
+
+        toast({
+          title: '✅ Success',
+          description: `Department "${created.department_name}" has been successfully created.`,
+          className: 'bg-green-50 border-green-200 text-green-800 dark:bg-green-900/20 dark:border-green-800 dark:text-green-200'
+        })
       }
-      
+
       setSheetOpen(false)
       resetForm()
     } catch (e) {
       console.error('Save department error:', e)
       const errorMessage = e instanceof Error ? e.message : 'Failed to save department'
-      alert(`Error: ${errorMessage}`)
+      toast({
+        title: '❌ Error',
+        description: errorMessage,
+        variant: 'destructive',
+        className: 'bg-red-50 border-red-200 text-red-800 dark:bg-red-900/20 dark:border-red-800 dark:text-red-200'
+      })
     } finally {
       setLoading(false)
     }
@@ -218,19 +242,28 @@ export default function DepartmentPage() {
     try {
       setLoading(true)
       const res = await fetch(`/api/departments?id=${id}`, { method: 'DELETE' })
-      
+
       if (!res.ok) {
         const errorData = await res.json().catch(() => ({}))
         const errorMessage = errorData.error || errorData.details || 'Delete failed'
         throw new Error(errorMessage)
       }
-      
+
       setItems(p => p.filter(x => x.id !== id))
-      alert('Department has been successfully deleted.')
+      toast({
+        title: '✅ Success',
+        description: 'Department has been successfully deleted.',
+        className: 'bg-green-50 border-green-200 text-green-800 dark:bg-green-900/20 dark:border-green-800 dark:text-green-200'
+      })
     } catch (e) {
       console.error('Delete department error:', e)
       const errorMessage = e instanceof Error ? e.message : 'Failed to delete department'
-      alert(`Error: ${errorMessage}`)
+      toast({
+        title: '❌ Error',
+        description: errorMessage,
+        variant: 'destructive',
+        className: 'bg-red-50 border-red-200 text-red-800 dark:bg-red-900/20 dark:border-red-800 dark:text-red-200'
+      })
     } finally {
       setLoading(false)
     }
@@ -713,13 +746,7 @@ export default function DepartmentPage() {
               <div className="space-y-2">
                 <Label className="text-sm font-semibold">Status</Label>
                 <div className="flex items-center gap-3">
-                  <button
-                    type="button"
-                    onClick={() => setFormData({ ...formData, is_active: !formData.is_active })}
-                    className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2 ${formData.is_active ? 'bg-green-500' : 'bg-gray-300'}`}
-                  >
-                    <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${formData.is_active ? 'translate-x-6' : 'translate-x-1'}`} />
-                  </button>
+                  <Switch checked={formData.is_active} onCheckedChange={(v) => setFormData({ ...formData, is_active: v })} />
                   <span className={`text-sm font-medium ${formData.is_active ? 'text-green-600' : 'text-red-500'}`}>
                     {formData.is_active ? 'Active' : 'Inactive'}
                   </span>
