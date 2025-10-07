@@ -41,11 +41,11 @@ export async function GET(request: Request) {
 				.select(`
 					*,
 					institution:institutions(id, institution_code, institution_name, institution_short_name),
-					degree:degree(id, degree_code, degree_name, degree_short_name),
-					department:department(id, department_code, department_name, department_short_name),
-					program:program(id, program_code, program_name, program_short_name, duration_years),
-					semester:semester(id, semester_code, semester_name, semester_number),
-					section:section(id, section_code, section_name),
+					degree:degrees(id, degree_code, degree_name, degree_short_name),
+					department:departments(id, department_code, department_name, department_short_name),
+					program:programs(id, program_code, program_name, program_short_name, duration_years),
+					semester:semesters(id, semester_code, semester_name, semester_number),
+					section:sections(id, section_code, section_name),
 					academic_year:academic_year(id, year_code, year_name, start_date, end_date)
 				`)
 				.order('created_at', { ascending: false })
@@ -136,11 +136,11 @@ export async function POST(request: Request) {
 			.select(`
 				*,
 				institution:institutions(id, institution_code, institution_name),
-				degree:degree(id, degree_code, degree_name),
-				department:department(id, department_code, department_name),
-				program:program(id, program_code, program_name),
-				semester:semester(id, semester_code, semester_name),
-				section:section(id, section_code, section_name),
+				degree:degrees(id, degree_code, degree_name),
+				department:departments(id, department_code, department_name),
+				program:programs(id, program_code, program_name),
+				semester:semesters(id, semester_code, semester_name),
+				section:sections(id, section_code, section_name),
 				academic_year:academic_year(id, year_code, year_name)
 			`)
 			.single()
@@ -213,11 +213,11 @@ export async function PUT(request: Request) {
 			.select(`
 				*,
 				institution:institutions(id, institution_code, institution_name),
-				degree:degree(id, degree_code, degree_name),
-				department:department(id, department_code, department_name),
-				program:program(id, program_code, program_name),
-				semester:semester(id, semester_code, semester_name),
-				section:section(id, section_code, section_name),
+				degree:degrees(id, degree_code, degree_name),
+				department:departments(id, department_code, department_name),
+				program:programs(id, program_code, program_name),
+				semester:semesters(id, semester_code, semester_name),
+				section:sections(id, section_code, section_name),
 				academic_year:academic_year(id, year_code, year_name)
 			`)
 			.single()

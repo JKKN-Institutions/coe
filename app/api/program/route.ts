@@ -8,10 +8,12 @@ export async function GET(req: NextRequest) {
     const { searchParams } = new URL(req.url)
     const search = searchParams.get('search')
     const is_active = searchParams.get('is_active')
+    const department_code = searchParams.get('department_code')
+    const institution_code = searchParams.get('institution_code')
 
     const supabase = getSupabaseServer()
     let query = supabase
-      .from('program')
+      .from('programs')
       .select('*')
       .order('created_at', { ascending: false })
 
@@ -21,9 +23,22 @@ export async function GET(req: NextRequest) {
     if (is_active !== null) {
       query = query.eq('is_active', is_active === 'true')
     }
+    if (department_code) {
+      query = query.eq('offering_department_code', department_code)
+    }
+    if (institution_code) {
+      query = query.eq('institution_code', institution_code)
+    }
 
-    const { data, error } = await query
+    const { data, error} = await query
     if (error) {
+      console.error('Program GET error:', {
+        code: error.code,
+        message: error.message,
+        details: error.details,
+        hint: error.hint
+      })
+
       // Fallback table creation hint
       if (error.message.includes('relation "program" does not exist') || error.message.includes('relation "public.program" does not exist')) {
         return NextResponse.json({
@@ -31,7 +46,7 @@ export async function GET(req: NextRequest) {
           message: 'The program table needs to be created in your Supabase database',
           instructions: {
             sql: `
-create table if not exists public.program (
+create table if not exists public.programs (
   id uuid primary key default gen_random_uuid(),
   institution_code varchar(50) not null,
   degree_code varchar(50) not null,
@@ -50,7 +65,20 @@ create table if not exists public.program (
           }
         }, { status: 404 })
       }
-      throw error
+
+      // Specific error for column not found
+      if (error.code === '42703') {
+        return NextResponse.json({
+          error: 'Database schema mismatch',
+          message: error.message,
+          hint: 'The programs table may be missing required columns. Check that the table schema matches the API expectations.'
+        }, { status: 500 })
+      }
+
+      return NextResponse.json({
+        error: 'Failed to fetch programs',
+        details: error.message
+      }, { status: 500 })
     }
 
     return NextResponse.json(data || [])
@@ -87,11 +115,58 @@ export async function POST(req: NextRequest) {
     }
 
     const supabase = getSupabaseServer()
+
+    // Validate and fetch institution_id from institution_code
+    const { data: institutionData, error: institutionError } = await supabase
+      .from('institutions')
+      .select('id')
+      .eq('institution_code', String(institution_code))
+      .single()
+
+    if (institutionError || !institutionData) {
+      return NextResponse.json({
+        error: `Institution with code "${institution_code}" not found. Please ensure the institution exists.`
+      }, { status: 400 })
+    }
+
+    // Validate and fetch degree_id from degree_code
+    const { data: degreeData, error: degreeError } = await supabase
+      .from('degrees')
+      .select('id')
+      .eq('degree_code', String(degree_code))
+      .single()
+
+    if (degreeError || !degreeData) {
+      return NextResponse.json({
+        error: `Degree with code "${degree_code}" not found. Please ensure the degree exists.`
+      }, { status: 400 })
+    }
+
+    // Validate and fetch offering_department_id from offering_department_code (optional)
+    let offeringDepartmentId = null
+    if (offering_department_code) {
+      const { data: deptData, error: deptError } = await supabase
+        .from('departments')
+        .select('id')
+        .eq('department_code', String(offering_department_code))
+        .single()
+
+      if (deptError || !deptData) {
+        return NextResponse.json({
+          error: `Department with code "${offering_department_code}" not found. Please ensure the department exists.`
+        }, { status: 400 })
+      }
+      offeringDepartmentId = deptData.id
+    }
+
     const { data, error } = await supabase
-      .from('program')
+      .from('programs')
       .insert({
+        institutions_id: institutionData.id,
         institution_code: String(institution_code),
+        degree_id: degreeData.id,
         degree_code: String(degree_code),
+        offering_department_id: offeringDepartmentId,
         offering_department_code: offering_department_code ? String(offering_department_code) : null,
         program_code: String(program_code),
         program_name: String(program_name),
@@ -105,7 +180,16 @@ export async function POST(req: NextRequest) {
       .select('*')
       .single()
 
-    if (error) throw error
+    if (error) {
+      console.error('Program insert error:', error)
+      // Handle foreign key constraint errors
+      if (error.code === '23503') {
+        return NextResponse.json({
+          error: 'Foreign key constraint failed. Ensure institution and degree exist.'
+        }, { status: 400 })
+      }
+      throw error
+    }
     return NextResponse.json(data, { status: 201 })
   } catch (err) {
     console.error('Program POST error:', err)

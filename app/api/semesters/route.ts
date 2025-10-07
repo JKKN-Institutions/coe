@@ -1,15 +1,28 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getSupabaseServer } from '@/lib/supabase-server'
 
-export async function GET() {
+export async function GET(request: Request) {
   try {
     const supabase = getSupabaseServer()
-    const { data, error } = await supabase
-      .from('semester')
+    const { searchParams } = new URL(request.url)
+    const program_id = searchParams.get('program_id')
+    const institution_id = searchParams.get('institution_id')
+
+    let query = supabase
+      .from('semesters')
       .select('*')
       .order('institution_code', { ascending: true })
       .order('degree_code', { ascending: true })
       .order('display_order', { ascending: true })
+
+    if (program_id) {
+      query = query.eq('program_id', program_id)
+    }
+    if (institution_id) {
+      query = query.eq('institution_id', institution_id)
+    }
+
+    const { data, error } = await query
 
     if (error) {
       console.error('Semester table error:', error)
@@ -32,7 +45,7 @@ export async function POST(request: NextRequest) {
     // Check for conflicts with existing semester (institution_code, degree_code, semester_name) combination
     if (body.institution_code && body.degree_code && body.semester_name) {
       const { data: existingSemester, error: checkError } = await supabase
-        .from('semester')
+        .from('semesters')
         .select('id, semester_name, institution_code, degree_code')
         .eq('institution_code', body.institution_code)
         .eq('degree_code', body.degree_code)
@@ -52,7 +65,7 @@ export async function POST(request: NextRequest) {
     }
 
     const { data, error } = await supabase
-      .from('semester')
+      .from('semesters')
       .insert([body])
       .select()
 

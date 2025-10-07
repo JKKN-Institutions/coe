@@ -49,6 +49,11 @@ export default function ProgramPage() {
   const [sheetOpen, setSheetOpen] = useState(false)
   const [editing, setEditing] = useState<Program | null>(null)
   const [statusFilter, setStatusFilter] = useState("all")
+
+  // Dropdown data
+  const [institutions, setInstitutions] = useState<Array<{ id: string; institution_code: string; name: string }>>([])
+  const [degrees, setDegrees] = useState<Array<{ id: string; degree_code: string; degree_name: string }>>([])
+  const [departments, setDepartments] = useState<Array<{ id: string; department_code: string; department_name: string }>>([])
   // removed year filter per request
 
   const [formData, setFormData] = useState({
@@ -143,12 +148,18 @@ export default function ProgramPage() {
       setSaving(true)
       if (editing) {
         const res = await fetch(`/api/program/${editing.id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(formData) })
-        if (!res.ok) throw new Error('Update failed')
+        if (!res.ok) {
+          const errorData = await res.json()
+          throw new Error(errorData.error || 'Update failed')
+        }
         const updated = await res.json()
         setItems((p) => p.map((x) => x.id === editing.id ? updated : x))
       } else {
         const res = await fetch('/api/program', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(formData) })
-        if (!res.ok) throw new Error('Create failed')
+        if (!res.ok) {
+          const errorData = await res.json()
+          throw new Error(errorData.error || 'Create failed')
+        }
         const created = await res.json()
         setItems((p) => [created, ...p])
       }
@@ -156,7 +167,8 @@ export default function ProgramPage() {
       resetForm()
     } catch (e) {
       console.error(e)
-      alert('Failed to save program')
+      const errorMessage = e instanceof Error ? e.message : 'Failed to save program'
+      alert(errorMessage)
     } finally {
       setSaving(false)
     }
@@ -252,23 +264,70 @@ export default function ProgramPage() {
             is_active: String(j['Status'] || '').toLowerCase() === 'active'
           }))
         }
-        const now = new Date().toISOString()
-        const mapped = rows.filter(r => r.institution_code && r.degree_code && r.program_code && r.program_name).map(r => ({
-          id: String(Date.now() + Math.random()),
-          institution_code: r.institution_code!,
-          degree_code: r.degree_code!,
-          offering_department_code: r.offering_department_code,
-          program_code: r.program_code!,
-          program_name: r.program_name as string,
-          display_name: r.display_name,
-          program_duration_yrs: r.program_duration_yrs || 3,
-          pattern_type: r.pattern_type || "Semester",
-          is_active: r.is_active ?? true,
-          created_at: now
-        })) as Program[]
-        setItems(p => [...mapped, ...p])
-      } catch {
-        alert('Import failed. Please check your file.')
+
+        // Filter out rows with missing required fields
+        const mapped = rows.filter(r => r.institution_code && r.degree_code && r.program_code && r.program_name)
+
+        if (mapped.length === 0) {
+          alert('No valid rows found. Ensure all required fields are provided.')
+          return
+        }
+
+        setLoading(true)
+        let successCount = 0
+        let errorCount = 0
+        const uploadErrors: string[] = []
+
+        for (let i = 0; i < mapped.length; i++) {
+          const row = mapped[i]
+          const rowNumber = i + 2 // +2 for header row in Excel
+
+          const payload = {
+            institution_code: row.institution_code,
+            degree_code: row.degree_code,
+            offering_department_code: row.offering_department_code,
+            program_code: row.program_code,
+            program_name: row.program_name,
+            display_name: row.display_name,
+            program_duration_yrs: row.program_duration_yrs || 3,
+            pattern_type: row.pattern_type || "Semester",
+            is_active: row.is_active ?? true
+          }
+
+          try {
+            const res = await fetch('/api/program', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(payload)
+            })
+
+            if (res.ok) {
+              const savedProgram = await res.json()
+              setItems(prev => [savedProgram, ...prev])
+              successCount++
+            } else {
+              const errorData = await res.json()
+              errorCount++
+              uploadErrors.push(`Row ${rowNumber} (${row.program_code}): ${errorData.error || 'Failed to save'}`)
+            }
+          } catch (error) {
+            errorCount++
+            uploadErrors.push(`Row ${rowNumber} (${row.program_code}): ${error instanceof Error ? error.message : 'Network error'}`)
+          }
+        }
+
+        setLoading(false)
+
+        // Show results
+        let resultMessage = `Upload complete: ${successCount} successful`
+        if (errorCount > 0) {
+          resultMessage += `, ${errorCount} failed\n\nErrors:\n${uploadErrors.join('\n')}`
+        }
+        alert(resultMessage)
+
+      } catch (err) {
+        console.error(err)
+        alert('Import failed. Please check your file format.')
       }
     }
     input.click()
@@ -289,7 +348,60 @@ export default function ProgramPage() {
     }
   }
 
-  useEffect(() => { fetchPrograms() }, [])
+  const fetchInstitutions = async () => {
+    try {
+      const res = await fetch('/api/institutions')
+      if (res.ok) {
+        const data = await res.json()
+        setInstitutions(data.filter((i: any) => i.is_active).map((i: any) => ({
+          id: i.id,
+          institution_code: i.institution_code,
+          name: i.name
+        })))
+      }
+    } catch (e) {
+      console.error('Failed to fetch institutions:', e)
+    }
+  }
+
+  const fetchDegrees = async () => {
+    try {
+      const res = await fetch('/api/degrees')
+      if (res.ok) {
+        const data = await res.json()
+        setDegrees(data.filter((d: any) => d.is_active).map((d: any) => ({
+          id: d.id,
+          degree_code: d.degree_code,
+          degree_name: d.degree_name
+        })))
+      }
+    } catch (e) {
+      console.error('Failed to fetch degrees:', e)
+    }
+  }
+
+  const fetchDepartments = async () => {
+    try {
+      const res = await fetch('/api/departments')
+      if (res.ok) {
+        const data = await res.json()
+        setDepartments(data.filter((d: any) => d.status || d.is_active).map((d: any) => ({
+          id: d.id,
+          department_code: d.department_code,
+          department_name: d.department_name
+        })))
+      }
+    } catch (e) {
+      console.error('Failed to fetch departments:', e)
+    }
+  }
+
+  useEffect(() => {
+    fetchPrograms()
+    fetchInstitutions()
+    fetchDegrees()
+    fetchDepartments()
+  }, [])
 
   return (
 
@@ -530,12 +642,34 @@ export default function ProgramPage() {
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="space-y-2">
                   <Label className="text-sm font-semibold">Institution Code *</Label>
-                  <Input value={formData.institution_code} onChange={(e) => setFormData({ ...formData, institution_code: e.target.value })} className={`h-10 ${errors.institution_code ? 'border-destructive' : ''}`} placeholder="e.g., JKKN" />
+                  <Select value={formData.institution_code} onValueChange={(v) => setFormData({ ...formData, institution_code: v })}>
+                    <SelectTrigger className={`h-10 ${errors.institution_code ? 'border-destructive' : ''}`}>
+                      <SelectValue placeholder="Select institution" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {institutions.map((inst) => (
+                        <SelectItem key={inst.id} value={inst.institution_code}>
+                          {inst.institution_code} - {inst.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                   {errors.institution_code && <p className="text-xs text-destructive">{errors.institution_code}</p>}
                 </div>
                 <div className="space-y-2">
                   <Label className="text-sm font-semibold">Degree Code *</Label>
-                  <Input value={formData.degree_code} onChange={(e) => setFormData({ ...formData, degree_code: e.target.value })} className={`h-10 ${errors.degree_code ? 'border-destructive' : ''}`} placeholder="e.g., BSC" />
+                  <Select value={formData.degree_code} onValueChange={(v) => setFormData({ ...formData, degree_code: v })}>
+                    <SelectTrigger className={`h-10 ${errors.degree_code ? 'border-destructive' : ''}`}>
+                      <SelectValue placeholder="Select degree" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {degrees.map((deg) => (
+                        <SelectItem key={deg.id} value={deg.degree_code}>
+                          {deg.degree_code} - {deg.degree_name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                   {errors.degree_code && <p className="text-xs text-destructive">{errors.degree_code}</p>}
                 </div>
                 <div className="space-y-2 md:col-span-2">
@@ -550,9 +684,24 @@ export default function ProgramPage() {
                 </div>
                 <div className="space-y-2">
                   <Label className="text-sm font-medium">Offering Department Code</Label>
-                  <Input value={formData.offering_department_code} onChange={(e) => setFormData({ ...formData, offering_department_code: e.target.value })} className="h-10" placeholder="e.g., SCI" />
+                  <Select
+                    value={formData.offering_department_code || "NONE"}
+                    onValueChange={(v) => setFormData({ ...formData, offering_department_code: v === "NONE" ? "" : v })}
+                  >
+                    <SelectTrigger className="h-10">
+                      <SelectValue placeholder="Select department (optional)" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="NONE">None</SelectItem>
+                      {departments.map((dept) => (
+                        <SelectItem key={dept.id} value={dept.department_code}>
+                          {dept.department_code} - {dept.department_name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                 </div>
-                <div className="space-y-2 md:col-span-2">
+                <div className="space-y-2">
                   <Label className="text-sm font-medium">Display Name</Label>
                   <Input value={formData.display_name} onChange={(e) => setFormData({ ...formData, display_name: e.target.value })} className="h-10" placeholder="Optional display name" />
                 </div>

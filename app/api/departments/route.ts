@@ -2,18 +2,41 @@ import { NextResponse } from 'next/server'
 import { getSupabaseServer } from '@/lib/supabase-server'
 
 // GET: list departments
-export async function GET() {
+export async function GET(request: Request) {
   try {
     const supabase = getSupabaseServer()
-    const { data, error } = await supabase
-      .from('department')
+    const { searchParams } = new URL(request.url)
+    const institutionCode = searchParams.get('institution_code')
+
+    let query = supabase
+      .from('departments')
       .select('*')
       .order('created_at', { ascending: false })
 
-    if (error) {
-      console.error('Departments table error:', error)
-      return NextResponse.json({ error: 'Failed to fetch departments' }, { status: 500 })
+    if (institutionCode) {
+      query = query.eq('institution_code', institutionCode)
     }
+
+    console.log('🔍 Departments API - Query params:', { institutionCode })
+
+    const { data, error } = await query
+
+    if (error) {
+      console.error('❌ Departments table error:', error)
+      console.error('Error details:', {
+        message: error.message,
+        details: error.details,
+        hint: error.hint,
+        code: error.code
+      })
+      return NextResponse.json({
+        error: 'Failed to fetch departments',
+        details: error.message,
+        hint: error.hint
+      }, { status: 500 })
+    }
+
+    console.log('✅ Departments fetched successfully:', data?.length, 'items')
 
     const normalized = (data || []).map((row: any) => ({
       ...row,
@@ -32,8 +55,50 @@ export async function POST(request: Request) {
     const body = await request.json()
     const supabase = getSupabaseServer()
 
+    // Auto-map institution_code to institutions_id
+    let institution_code: string | undefined = body.institution_code
+    let institutions_id: string | undefined = body.institutions_id
+
+    // If institution_code is provided, fetch institutions_id
+    if (institution_code) {
+      const { data: inst, error: instError } = await supabase
+        .from('institutions')
+        .select('id, institution_code')
+        .eq('institution_code', institution_code)
+        .maybeSingle()
+
+      if (instError || !inst) {
+        return NextResponse.json({
+          error: `Invalid institution_code: ${institution_code}. Institution not found.`
+        }, { status: 400 })
+      }
+
+      // Auto-map the institutions_id from the fetched institution
+      institutions_id = inst.id
+      console.log(`✅ Auto-mapped institution_code "${institution_code}" to institutions_id "${institutions_id}"`)
+    }
+    // If institutions_id is provided but no institution_code, fetch the code
+    else if (institutions_id && !institution_code) {
+      const { data: inst } = await supabase
+        .from('institutions')
+        .select('institution_code')
+        .eq('id', institutions_id)
+        .maybeSingle()
+      if (inst?.institution_code) {
+        institution_code = inst.institution_code
+      }
+    }
+
+    // Validate required fields
+    if (!institution_code || !institutions_id) {
+      return NextResponse.json({
+        error: 'institution_code is required and must be valid'
+      }, { status: 400 })
+    }
+
     const insertPayload: any = {
-      institution_code: body.institution_code,
+      institution_code: institution_code,
+      institutions_id: institutions_id,
       department_code: body.department_code,
       department_name: body.department_name,
       display_name: body.display_name ?? null,
@@ -43,14 +108,37 @@ export async function POST(request: Request) {
     }
 
     const { data, error } = await supabase
-      .from('department')
+      .from('departments')
       .insert([insertPayload])
       .select()
       .single()
 
     if (error) {
       console.error('Error creating department:', error)
-      return NextResponse.json({ error: 'Failed to create department' }, { status: 500 })
+      console.error('Error details:', {
+        message: error.message,
+        details: error.details,
+        hint: error.hint,
+        code: error.code
+      })
+
+      // Provide specific error messages
+      if (error.code === '23505') {
+        return NextResponse.json({
+          error: 'Department with this code already exists for this institution'
+        }, { status: 400 })
+      }
+
+      if (error.message.includes('foreign key') || error.code === '23503') {
+        return NextResponse.json({
+          error: 'Invalid institution_code. Please check the Institution Codes reference sheet.'
+        }, { status: 400 })
+      }
+
+      return NextResponse.json({
+        error: error.message || 'Failed to create department',
+        details: error.details
+      }, { status: 500 })
     }
 
     const normalized = data ? { ...data, is_active: (data as any).status ?? (data as any).is_active ?? true } : data
@@ -67,8 +155,41 @@ export async function PUT(request: Request) {
     const body = await request.json()
     const supabase = getSupabaseServer()
 
+    // Auto-map institution_code to institutions_id (same logic as POST)
+    let institution_code: string | undefined = body.institution_code
+    let institutions_id: string | undefined = body.institutions_id
+
+    // If institution_code is provided, fetch institutions_id
+    if (institution_code) {
+      const { data: inst, error: instError } = await supabase
+        .from('institutions')
+        .select('id, institution_code')
+        .eq('institution_code', institution_code)
+        .maybeSingle()
+
+      if (instError || !inst) {
+        return NextResponse.json({
+          error: `Invalid institution_code: ${institution_code}. Institution not found.`
+        }, { status: 400 })
+      }
+
+      // Auto-map the institutions_id from the fetched institution
+      institutions_id = inst.id
+      console.log(`✅ Auto-mapped institution_code "${institution_code}" to institutions_id "${institutions_id}" (UPDATE)`)
+    }
+    // If institutions_id is provided but no institution_code, fetch the code
+    else if (institutions_id && !institution_code) {
+      const { data: inst } = await supabase
+        .from('institutions')
+        .select('institution_code')
+        .eq('id', institutions_id)
+        .maybeSingle()
+      if (inst?.institution_code) {
+        institution_code = inst.institution_code
+      }
+    }
+
     const updatePayload: any = {
-      institution_code: body.institution_code,
       department_code: body.department_code,
       department_name: body.department_name,
       display_name: body.display_name ?? null,
@@ -76,9 +197,11 @@ export async function PUT(request: Request) {
       stream: body.stream ?? null,
       status: body.is_active,
     }
+    if (institution_code) updatePayload.institution_code = institution_code
+    if (institutions_id) updatePayload.institutions_id = institutions_id
 
     const { data, error } = await supabase
-      .from('department')
+      .from('departments')
       .update(updatePayload)
       .eq('id', body.id)
       .select()
@@ -86,7 +209,30 @@ export async function PUT(request: Request) {
 
     if (error) {
       console.error('Error updating department:', error)
-      return NextResponse.json({ error: 'Failed to update department' }, { status: 500 })
+      console.error('Error details:', {
+        message: error.message,
+        details: error.details,
+        hint: error.hint,
+        code: error.code
+      })
+
+      // Provide specific error messages
+      if (error.code === '23505') {
+        return NextResponse.json({
+          error: 'Department with this code already exists for this institution'
+        }, { status: 400 })
+      }
+
+      if (error.message.includes('foreign key') || error.code === '23503') {
+        return NextResponse.json({
+          error: 'Invalid institution_code. Please check the Institution Codes reference sheet.'
+        }, { status: 400 })
+      }
+
+      return NextResponse.json({
+        error: error.message || 'Failed to update department',
+        details: error.details
+      }, { status: 500 })
     }
 
     const normalized = data ? { ...data, is_active: (data as any).status ?? (data as any).is_active ?? true } : data
@@ -109,7 +255,7 @@ export async function DELETE(request: Request) {
 
     const supabase = getSupabaseServer()
     const { error } = await supabase
-      .from('department')
+      .from('departments')
       .delete()
       .eq('id', id)
 

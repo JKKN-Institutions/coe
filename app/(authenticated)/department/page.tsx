@@ -17,7 +17,7 @@ import { Label } from "@/components/ui/label"
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet"
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog"
 import Link from "next/link"
-import { PlusCircle, Edit, Trash2, Search, ChevronLeft, ChevronRight, ArrowUpDown, ArrowUp, ArrowDown, Building2, TrendingUp, FileSpreadsheet, RefreshCw } from "lucide-react"
+import { PlusCircle, Edit, Trash2, Search, ChevronLeft, ChevronRight, ArrowUpDown, ArrowUp, ArrowDown, Building2, TrendingUp, FileSpreadsheet, RefreshCw, XCircle, AlertTriangle } from "lucide-react"
 import { Switch } from "@/components/ui/switch"
 import { useToast } from "@/hooks/use-toast"
 
@@ -52,6 +52,22 @@ export default function DepartmentPage() {
 
   const [formData, setFormData] = useState({ institution_code: "", department_code: "", department_name: "", display_name: "", description: "", stream: "", is_active: true })
   const [errors, setErrors] = useState<Record<string, string>>({})
+
+  // Upload summary state
+  const [uploadSummary, setUploadSummary] = useState<{
+    total: number
+    success: number
+    failed: number
+  }>({ total: 0, success: 0, failed: 0 })
+
+  const [importErrors, setImportErrors] = useState<Array<{
+    row: number
+    department_code: string
+    department_name: string
+    errors: string[]
+  }>>([])
+
+  const [errorPopupOpen, setErrorPopupOpen] = useState(false)
   const { toast } = useToast()
 
   // Institutions for dropdown
@@ -288,61 +304,383 @@ export default function DepartmentPage() {
     XLSX.writeFile(wb, `department_export_${new Date().toISOString().split('T')[0]}.xlsx`)
   }
   const handleTemplateExport = () => {
-    const sample=[{'Institution Code':'JKKN','Department Code':'CSE','Department Name':'Computer Science and Engineering','Display Name':'CSE','Description':'Optional description','Stream':'Engineering','Status':'Active'}]
-    const ws=XLSX.utils.json_to_sheet(sample)
-    const wb=XLSX.utils.book_new()
-    XLSX.utils.book_append_sheet(wb,ws,'Template')
-    XLSX.writeFile(wb,`department_template_${new Date().toISOString().split('T')[0]}.xlsx`)
-  }
-  const handleImport = () => {
-    const input=document.createElement('input'); input.type='file'; input.accept='.json,.csv,.xlsx,.xls';
-    input.onchange=async(e)=>{ const file=(e.target as HTMLInputElement).files?.[0]; if(!file) return; try{
-      let rows: Partial<Department & { description?: string }>[]=[];
-      if(file.name.endsWith('.json')) rows=JSON.parse(await file.text());
-      else {
-        const data=new Uint8Array(await file.arrayBuffer()); const wb=XLSX.read(data,{type:'array'}); const ws=wb.Sheets[wb.SheetNames[0]]; const json=XLSX.utils.sheet_to_json(ws) as Record<string,unknown>[];
-        rows=json.map(j=>({
-          institution_code:String(j['Institution Code']||''),
-          department_code:String(j['Department Code']||''),
-          department_name:String(j['Department Name']||''),
-          display_name:String(j['Display Name']||''),
-          description:String(j['Description']||''),
-          stream:String(j['Stream']||''),
-          is_active:String(j['Status']||'').toLowerCase()==='active'
-        }))
-      }
-      const allowed=['Arts','Science','Management','Commerce','Engineering','Medical','Law']
-      const validRows=rows.filter(r=>r.institution_code&&r.department_code&&r.department_name).map(r=>({
-        institution_code:r.institution_code!,
-        department_code:r.department_code!,
-        department_name:r.department_name as string,
-        display_name:(r as any).display_name||'',
-        description:(r as any).description||'',
-        stream:(r as any).stream&&allowed.includes((r as any).stream!)?(r as any).stream:'',
-        is_active:(r as any).is_active ?? true,
-      }))
+    // Create workbook
+    const wb = XLSX.utils.book_new()
 
-      if (validRows.length === 0) { alert('No valid rows to import.'); return }
+    // Sheet 1: Template with sample row
+    const sample = [{
+      'Institution Code': 'JKKN',
+      'Department Code': 'CSE',
+      'Department Name': 'Computer Science and Engineering',
+      'Display Name': 'CSE',
+      'Description': 'Optional description',
+      'Stream': 'Engineering',
+      'Status': 'Active'
+    }]
 
-      setLoading(true)
-      let success=0, failed=0
-      for (const row of validRows) {
-        try {
-          const res = await fetch('/api/departments', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(row) })
-          if (res.ok) {
-            const saved = await res.json()
-            setItems(p => [saved, ...p])
-            success++
-          } else {
-            failed++
-          }
-        } catch {
-          failed++
+    const ws = XLSX.utils.json_to_sheet(sample)
+
+    // Set column widths for template sheet
+    const colWidths = [
+      { wch: 18 }, // Institution Code
+      { wch: 15 }, // Department Code
+      { wch: 35 }, // Department Name
+      { wch: 15 }, // Display Name
+      { wch: 30 }, // Description
+      { wch: 15 }, // Stream
+      { wch: 10 }  // Status
+    ]
+    ws['!cols'] = colWidths
+
+    // Style the header row to make mandatory fields red
+    const range = XLSX.utils.decode_range(ws['!ref'] || 'A1')
+    const mandatoryFields = ['Institution Code', 'Department Code', 'Department Name']
+
+    for (let col = range.s.c; col <= range.e.c; col++) {
+      const cellAddress = XLSX.utils.encode_cell({ r: 0, c: col })
+      if (!ws[cellAddress]) continue
+
+      const cell = ws[cellAddress]
+      const isMandatory = mandatoryFields.includes(cell.v as string)
+
+      if (isMandatory) {
+        // Make mandatory field headers red with asterisk
+        cell.v = cell.v + ' *'
+        cell.s = {
+          font: { color: { rgb: 'FF0000' }, bold: true },
+          fill: { fgColor: { rgb: 'FFE6E6' } }
+        }
+      } else {
+        // Regular field headers
+        cell.s = {
+          font: { bold: true },
+          fill: { fgColor: { rgb: 'F0F0F0' } }
         }
       }
-      setLoading(false)
-      alert(`Import completed. Successful: ${success}, Failed: ${failed}`)
-    } catch { alert('Import failed. Please check your file.') } };
+    }
+
+    XLSX.utils.book_append_sheet(wb, ws, 'Template')
+
+    // Sheet 2: Institution Code References
+    const institutionReference = institutions.map(inst => ({
+      'Institution Code': inst.institution_code,
+      'Institution Name': inst.name || 'N/A',
+      'Status': (inst as any).is_active ? 'Active' : 'Inactive'
+    }))
+
+    const wsRef = XLSX.utils.json_to_sheet(institutionReference)
+
+    // Set column widths for reference sheet
+    const refColWidths = [
+      { wch: 20 }, // Institution Code
+      { wch: 40 }, // Institution Name
+      { wch: 10 }  // Status
+    ]
+    wsRef['!cols'] = refColWidths
+
+    // Style the reference sheet header
+    const refRange = XLSX.utils.decode_range(wsRef['!ref'] || 'A1')
+    for (let col = refRange.s.c; col <= refRange.e.c; col++) {
+      const cellAddress = XLSX.utils.encode_cell({ r: 0, c: col })
+      if (wsRef[cellAddress]) {
+        wsRef[cellAddress].s = {
+          font: { bold: true, color: { rgb: '1F2937' } },
+          fill: { fgColor: { rgb: 'DBEAFE' } }
+        }
+      }
+    }
+
+    // Style data rows in reference sheet
+    for (let row = 1; row <= refRange.e.r; row++) {
+      for (let col = refRange.s.c; col <= refRange.e.c; col++) {
+        const cellAddress = XLSX.utils.encode_cell({ r: row, c: col })
+        if (wsRef[cellAddress]) {
+          wsRef[cellAddress].s = {
+            fill: { fgColor: { rgb: 'F0F9FF' } },
+            font: { color: { rgb: '374151' } }
+          }
+        }
+      }
+    }
+
+    XLSX.utils.book_append_sheet(wb, wsRef, 'Institution Codes')
+
+    XLSX.writeFile(wb, `department_template_${new Date().toISOString().split('T')[0]}.xlsx`)
+  }
+  const handleImport = () => {
+    const input = document.createElement('input')
+    input.type = 'file'
+    input.accept = '.json,.csv,.xlsx,.xls'
+
+    input.onchange = async (e) => {
+      const file = (e.target as HTMLInputElement).files?.[0]
+      if (!file) return
+
+      try {
+        let rows: Partial<Department & { description?: string }>[] = []
+
+        if (file.name.endsWith('.json')) {
+          rows = JSON.parse(await file.text())
+        } else {
+          const data = new Uint8Array(await file.arrayBuffer())
+          const wb = XLSX.read(data, { type: 'array' })
+          const ws = wb.Sheets[wb.SheetNames[0]]
+          const json = XLSX.utils.sheet_to_json(ws) as Record<string, unknown>[]
+
+          if (json.length === 0) {
+            toast({
+              title: '⚠️ Empty File',
+              description: 'The uploaded file contains no data rows.',
+              variant: 'destructive',
+              className: 'bg-red-50 border-red-200 text-red-800 dark:bg-red-900/20 dark:border-red-800 dark:text-red-200'
+            })
+            return
+          }
+
+          // Log available columns for debugging
+          const firstRow = json[0]
+          const availableColumns = Object.keys(firstRow)
+          console.log('📋 Available columns in Excel:', availableColumns)
+
+          // Helper function to find column value with flexible matching
+          const getColumnValue = (row: Record<string, unknown>, possibleNames: string[]): string => {
+            for (const name of possibleNames) {
+              const value = row[name]
+              if (value !== undefined && value !== null) {
+                return String(value).trim()
+              }
+            }
+            return ''
+          }
+
+          rows = json.map(j => {
+            const statusStr = getColumnValue(j, ['Status', 'status', 'is_active']).toLowerCase()
+            return {
+              institution_code: getColumnValue(j, ['Institution Code', 'institution_code', 'InstitutionCode', 'Inst Code', 'inst_code']),
+              department_code: getColumnValue(j, ['Department Code', 'department_code', 'DepartmentCode', 'Dept Code', 'dept_code']),
+              department_name: getColumnValue(j, ['Department Name', 'department_name', 'DepartmentName', 'Dept Name', 'dept_name']),
+              display_name: getColumnValue(j, ['Display Name', 'display_name', 'DisplayName']),
+              description: getColumnValue(j, ['Description', 'description']),
+              stream: getColumnValue(j, ['Stream', 'stream']),
+              is_active: statusStr === 'active' || statusStr === 'true' || statusStr === '1' || statusStr === ''
+            }
+          })
+
+          // If all rows have empty required fields, show column mismatch error
+          const allEmpty = rows.every(r => !r.institution_code && !r.department_code && !r.department_name)
+          if (allEmpty) {
+            toast({
+              title: '❌ Column Mismatch',
+              description: `Found columns: ${availableColumns.join(', ')}. Expected: Institution Code, Department Code, Department Name. Please check your Excel headers.`,
+              variant: 'destructive',
+              className: 'bg-red-50 border-red-200 text-red-800 dark:bg-red-900/20 dark:border-red-800 dark:text-red-200',
+              duration: 8000,
+            })
+            return
+          }
+        }
+
+        const allowed = ['Arts', 'Science', 'Management', 'Commerce', 'Engineering', 'Medical', 'Law']
+
+        // Validation with error tracking
+        const validationErrors: Array<{
+          row: number
+          department_code: string
+          department_name: string
+          errors: string[]
+        }> = []
+
+        const mapped = rows
+          .map((r, idx) => {
+            const rowNumber = idx + 2 // +2 for header row
+            const errors: string[] = []
+
+            // Required field validation
+            const instCode = String(r.institution_code || '').trim()
+            const deptCode = String(r.department_code || '').trim()
+            const deptName = String(r.department_name || '').trim()
+
+            if (!instCode) errors.push('Institution Code is required')
+            if (!deptCode) errors.push('Department Code is required')
+            if (!deptName) errors.push('Department Name is required')
+
+            // Format validation
+            if (deptCode && !/^[A-Za-z0-9\-_]+$/.test(deptCode)) {
+              errors.push('Department Code can only contain letters, numbers, hyphens, and underscores')
+            }
+
+            // Stream validation
+            const streamVal = String((r as any).stream || '').trim()
+            if (streamVal && !allowed.includes(streamVal)) {
+              errors.push(`Stream must be one of: ${allowed.join(', ')}`)
+            }
+
+            if (errors.length > 0) {
+              validationErrors.push({
+                row: rowNumber,
+                department_code: deptCode || 'N/A',
+                department_name: deptName || 'N/A',
+                errors
+              })
+              return null
+            }
+
+            return {
+              institution_code: instCode,
+              department_code: deptCode,
+              department_name: deptName,
+              display_name: String((r as any).display_name || '').trim(),
+              description: String((r as any).description || '').trim(),
+              stream: streamVal && allowed.includes(streamVal) ? streamVal : '',
+              is_active: (r as any).is_active ?? true,
+            }
+          })
+          .filter((x): x is NonNullable<typeof x> => x !== null)
+
+        // Show validation errors if any
+        if (validationErrors.length > 0) {
+          setImportErrors(validationErrors)
+          setErrorPopupOpen(true)
+          setLoading(false)
+          toast({
+            title: '❌ Validation Failed',
+            description: `${validationErrors.length} row${validationErrors.length > 1 ? 's' : ''} failed validation. View error details below.`,
+            variant: 'destructive',
+            className: 'bg-red-50 border-red-200 text-red-800 dark:bg-red-900/20 dark:border-red-800 dark:text-red-200',
+            duration: 6000,
+          })
+          return
+        }
+
+        if (mapped.length === 0) {
+          toast({
+            title: '⚠️ No Valid Data',
+            description: 'No valid rows found to import. Please check your file.',
+            variant: 'destructive',
+            className: 'bg-red-50 border-red-200 text-red-800 dark:bg-red-900/20 dark:border-red-800 dark:text-red-200'
+          })
+          return
+        }
+
+        // Upload with row tracking
+        setLoading(true)
+        let successCount = 0
+        let errorCount = 0
+        const uploadErrors: Array<{
+          row: number
+          department_code: string
+          department_name: string
+          errors: string[]
+        }> = []
+
+        for (let i = 0; i < mapped.length; i++) {
+          const department = mapped[i]
+          const rowNumber = i + 2 // +2 for header row in Excel
+
+          try {
+            // Check if department already exists
+            const existing = items.find(
+              item => item.institution_code === department.institution_code &&
+                      item.department_code === department.department_code
+            )
+
+            let response
+            if (existing) {
+              // Update existing department
+              response = await fetch('/api/departments', {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ id: existing.id, ...department }),
+              })
+            } else {
+              // Create new department
+              response = await fetch('/api/departments', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(department),
+              })
+            }
+
+            if (response.ok) {
+              const savedDepartment = await response.json()
+              if (existing) {
+                // Update in list
+                setItems(prev => prev.map(x => x.id === existing.id ? savedDepartment : x))
+              } else {
+                // Add to list
+                setItems(prev => [savedDepartment, ...prev])
+              }
+              successCount++
+            } else {
+              const errorData = await response.json()
+              errorCount++
+              uploadErrors.push({
+                row: rowNumber,
+                department_code: department.department_code || 'N/A',
+                department_name: department.department_name || 'N/A',
+                errors: [errorData.error || errorData.details || 'Failed to save department']
+              })
+            }
+          } catch (error) {
+            errorCount++
+            uploadErrors.push({
+              row: rowNumber,
+              department_code: department.department_code || 'N/A',
+              department_name: department.department_name || 'N/A',
+              errors: [error instanceof Error ? error.message : 'Network error']
+            })
+          }
+        }
+
+        setLoading(false)
+        const totalRows = mapped.length
+
+        // Update upload summary
+        setUploadSummary({
+          total: totalRows,
+          success: successCount,
+          failed: errorCount
+        })
+
+        // Show detailed results with error dialog if needed
+        if (uploadErrors.length > 0) {
+          setImportErrors(uploadErrors)
+          setErrorPopupOpen(true)
+        }
+
+        if (successCount > 0 && errorCount === 0) {
+          toast({
+            title: "✅ Upload Complete",
+            description: `Successfully uploaded all ${successCount} row${successCount > 1 ? 's' : ''} (${successCount} department${successCount > 1 ? 's' : ''}) to the database.`,
+            className: "bg-green-50 border-green-200 text-green-800 dark:bg-green-900/20 dark:border-green-800 dark:text-green-200",
+            duration: 5000,
+          })
+        } else if (successCount > 0 && errorCount > 0) {
+          toast({
+            title: "⚠️ Partial Upload Success",
+            description: `Processed ${totalRows} row${totalRows > 1 ? 's' : ''}: ${successCount} successful, ${errorCount} failed. View error details below.`,
+            className: "bg-yellow-50 border-yellow-200 text-yellow-800 dark:bg-yellow-900/20 dark:border-yellow-800 dark:text-yellow-200",
+            duration: 6000,
+          })
+        } else if (errorCount > 0) {
+          toast({
+            title: "❌ Upload Failed",
+            description: `Processed ${totalRows} row${totalRows > 1 ? 's' : ''}: 0 successful, ${errorCount} failed. View error details below.`,
+            variant: "destructive",
+            className: "bg-red-50 border-red-200 text-red-800 dark:bg-red-900/20 dark:border-red-800 dark:text-red-200",
+            duration: 6000,
+          })
+        }
+      } catch (error) {
+        toast({
+          title: '❌ Import Failed',
+          description: 'Failed to process the file. Please check your file format.',
+          variant: 'destructive',
+          className: 'bg-red-50 border-red-200 text-red-800 dark:bg-red-900/20 dark:border-red-800 dark:text-red-200'
+        })
+      }
+    }
+
     input.click()
   }
 
@@ -774,6 +1112,114 @@ export default function DepartmentPage() {
           </div>
         </SheetContent>
       </Sheet>
+
+      {/* Error Dialog for Upload Errors */}
+      <AlertDialog open={errorPopupOpen} onOpenChange={setErrorPopupOpen}>
+        <AlertDialogContent className="max-w-4xl max-h-[80vh] overflow-y-auto">
+          <AlertDialogHeader>
+            <div className="flex items-center gap-3">
+              <div className="h-10 w-10 rounded-full bg-red-100 dark:bg-red-900/20 flex items-center justify-center">
+                <XCircle className="h-5 w-5 text-red-600 dark:text-red-400" />
+              </div>
+              <div>
+                <AlertDialogTitle className="text-xl font-bold text-red-600 dark:text-red-400">
+                  Data Validation Errors
+                </AlertDialogTitle>
+                <AlertDialogDescription className="text-sm text-muted-foreground mt-1">
+                  Please fix the following errors before importing the data
+                </AlertDialogDescription>
+              </div>
+            </div>
+          </AlertDialogHeader>
+
+          <div className="space-y-4">
+            {/* Upload Summary Cards */}
+            {uploadSummary.total > 0 && (
+              <div className="grid grid-cols-3 gap-3">
+                <div className="bg-blue-50 dark:bg-blue-900/10 border border-blue-200 dark:border-blue-800 rounded-lg p-3">
+                  <div className="text-xs text-blue-600 dark:text-blue-400 font-medium mb-1">Total Rows</div>
+                  <div className="text-2xl font-bold text-blue-700 dark:text-blue-300">{uploadSummary.total}</div>
+                </div>
+                <div className="bg-green-50 dark:bg-green-900/10 border border-green-200 dark:border-green-800 rounded-lg p-3">
+                  <div className="text-xs text-green-600 dark:text-green-400 font-medium mb-1">Successful</div>
+                  <div className="text-2xl font-bold text-green-700 dark:text-green-300">{uploadSummary.success}</div>
+                </div>
+                <div className="bg-red-50 dark:bg-red-900/10 border border-red-200 dark:border-red-800 rounded-lg p-3">
+                  <div className="text-xs text-red-600 dark:text-red-400 font-medium mb-1">Failed</div>
+                  <div className="text-2xl font-bold text-red-700 dark:text-red-300">{uploadSummary.failed}</div>
+                </div>
+              </div>
+            )}
+
+            {/* Error Summary */}
+            <div className="bg-red-50 dark:bg-red-900/10 border border-red-200 dark:border-red-800 rounded-lg p-4">
+              <div className="flex items-center gap-2 mb-2">
+                <AlertTriangle className="h-4 w-4 text-red-600 dark:text-red-400" />
+                <span className="font-semibold text-red-800 dark:text-red-200">
+                  {importErrors.length} row{importErrors.length > 1 ? 's' : ''} failed validation
+                </span>
+              </div>
+              <p className="text-sm text-red-700 dark:text-red-300">
+                Please correct these errors in your Excel file and try uploading again. Row numbers correspond to your Excel file (including header row).
+              </p>
+            </div>
+
+            {/* Detailed Error List */}
+            <div className="space-y-3">
+              {importErrors.map((error, index) => (
+                <div key={index} className="border border-red-200 dark:border-red-800 rounded-lg p-4 bg-red-50/50 dark:bg-red-900/5">
+                  <div className="flex items-start justify-between mb-2">
+                    <div className="flex items-center gap-2">
+                      <Badge variant="outline" className="text-xs bg-red-100 text-red-800 border-red-300 dark:bg-red-900/20 dark:text-red-200 dark:border-red-700">
+                        Row {error.row}
+                      </Badge>
+                      <span className="font-medium text-sm">
+                        {error.department_code} - {error.department_name}
+                      </span>
+                    </div>
+                  </div>
+
+                  <div className="space-y-1">
+                    {error.errors.map((err, errIndex) => (
+                      <div key={errIndex} className="flex items-start gap-2 text-sm">
+                        <XCircle className="h-3 w-3 text-red-500 mt-0.5 flex-shrink-0" />
+                        <span className="text-red-700 dark:text-red-300">{err}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            {/* Helpful Tips */}
+            <div className="bg-blue-50 dark:bg-blue-900/10 border border-blue-200 dark:border-blue-800 rounded-lg p-4">
+              <div className="flex items-start gap-2">
+                <div className="h-5 w-5 rounded-full bg-blue-100 dark:bg-blue-900/20 flex items-center justify-center mt-0.5">
+                  <span className="text-xs font-bold text-blue-600 dark:text-blue-400">i</span>
+                </div>
+                <div>
+                  <h4 className="font-semibold text-blue-800 dark:text-blue-200 text-sm mb-1">Required Excel Format:</h4>
+                  <ul className="text-xs text-blue-700 dark:text-blue-300 space-y-1">
+                    <li>• <strong>Institution Code</strong> (required): Must match existing institution code (e.g., JKKN)</li>
+                    <li>• <strong>Department Code</strong> (required): Alphanumeric with hyphens/underscores only (e.g., CSE, IT-01)</li>
+                    <li>• <strong>Department Name</strong> (required): Full name (max 255 chars)</li>
+                    <li>• <strong>Display Name</strong> (optional): Short display name</li>
+                    <li>• <strong>Description</strong> (optional): Department description</li>
+                    <li>• <strong>Stream</strong> (optional): One of: Arts, Science, Management, Commerce, Engineering, Medical, Law</li>
+                    <li>• <strong>Status</strong> (optional): "Active" or "Inactive" (default: Active)</li>
+                  </ul>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <AlertDialogFooter>
+            <AlertDialogAction onClick={() => setErrorPopupOpen(false)}>
+              Close
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </SidebarProvider>
   )
 }

@@ -6,7 +6,7 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
     const supabase = getSupabaseServer()
     const { id } = await params
     const { data, error } = await supabase
-      .from('course')
+      .from('courses')
       .select(`
         id,
         institutions_id,
@@ -116,7 +116,7 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
       ...(input.theory_credit !== undefined && { theory_credit: Number(input.theory_credit) }),
       ...(input.practical_credit !== undefined && { practical_credit: Number(input.practical_credit) }),
       ...(input.qp_code !== undefined && { qp_code: String(input.qp_code) }),
-      ...(input.e_code_name && { e_code_name: String(input.e_code_name) }),
+      ...(input.e_code_name !== undefined && { e_code_name: String(input.e_code_name) }),
       ...(input.duration_hours !== undefined && { duration_hours: Number(input.duration_hours) }),
       ...(input.evaluation_type !== undefined && { evaluation_type: String(input.evaluation_type) }),
       ...(input.result_type !== undefined && { result_type: String(input.result_type) }),
@@ -137,7 +137,7 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
     }
 
     const { data: updated, error } = await supabase
-      .from('course')
+      .from('courses')
       .update({
         ...data,
         ...(input.display_code !== undefined && { display_code: input.display_code ? String(input.display_code) : null }),
@@ -161,7 +161,7 @@ export async function DELETE(_req: NextRequest, { params }: { params: Promise<{ 
   try {
     const supabase = getSupabaseServer()
     const { id } = await params
-    const { error } = await supabase.from('course').delete().eq('id', id)
+    const { error } = await supabase.from('courses').delete().eq('id', id)
     if (error) throw error
     return NextResponse.json({ message: 'Course deleted successfully' })
   } catch (err) {

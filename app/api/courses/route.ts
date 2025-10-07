@@ -13,7 +13,7 @@ export async function GET(req: NextRequest) {
     // NOTE: The actual table is public.course (singular). Select all fields
     const supabase = getSupabaseServer()
     let query = supabase
-      .from('course')
+      .from('courses')
       .select(`
         id,
         institutions_id,
@@ -131,7 +131,7 @@ CREATE INDEX IF NOT EXISTS idx_courses_created_at ON courses(created_at);
       // If joined select failed due to missing related tables/columns, try a simple select('*') fallback
       try {
         const simpleQuery = getSupabaseServer()
-          .from('course')
+          .from('courses')
           .select('*')
           .order('created_at', { ascending: false })
 
@@ -215,7 +215,7 @@ export async function POST(req: NextRequest) {
     }
 
     const supabase2 = getSupabaseServer()
-    const { data, error } = await supabase2.from('course').insert({
+    const { data, error } = await supabase2.from('courses').insert({
       institutions_id: input.institutions_id || null,
       regulation_id: input.regulation_id || null,
       offering_department_id: input.offering_department_id || null,

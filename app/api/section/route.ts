@@ -1,16 +1,21 @@
 import { NextResponse } from 'next/server'
 import { getSupabaseServer } from '@/lib/supabase-server'
 
-export async function GET() {
+export async function GET(request: Request) {
   try {
     const supabase = getSupabaseServer()
-    const { data, error } = await supabase
-      .from('section')
+    const { searchParams } = new URL(request.url)
+    const program_id = searchParams.get('program_id')
+    const institution_id = searchParams.get('institution_id')
+
+    let query = supabase
+      .from('sections')
       .select(`
         id,
         institutions_id,
         institution_code,
         section_name,
+        section_code,
         section_id,
         section_description,
         arrear_section,
@@ -19,6 +24,15 @@ export async function GET() {
         updated_at
       `)
       .order('created_at', { ascending: false })
+
+    if (program_id) {
+      query = query.eq('program_id', program_id)
+    }
+    if (institution_id) {
+      query = query.eq('institutions_id', institution_id)
+    }
+
+    const { data, error } = await query
 
     if (error) {
       console.error('Section table error:', error)
@@ -38,7 +52,7 @@ export async function POST(request: Request) {
     const supabase = getSupabaseServer()
     
     const { data, error } = await supabase
-      .from('section')
+      .from('sections')
       .insert([{
         institutions_id: body.institutions_id,
         institution_code: body.institution_code,
@@ -69,7 +83,7 @@ export async function PUT(request: Request) {
     const supabase = getSupabaseServer()
     
     const { data, error } = await supabase
-      .from('section')
+      .from('sections')
       .update({
         institutions_id: body.institutions_id,
         institution_code: body.institution_code,
@@ -108,7 +122,7 @@ export async function DELETE(request: Request) {
     const supabase = getSupabaseServer()
     
     const { error } = await supabase
-      .from('section')
+      .from('sections')
       .delete()
       .eq('id', id)
 

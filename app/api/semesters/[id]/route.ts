@@ -21,7 +21,7 @@ export async function PUT(
     // Check if there's a conflict with existing semester (institution_code, degree_code, semester_name) combination
     if (body.institution_code && body.degree_code && body.semester_name) {
       const { data: existingSemester, error: checkError } = await supabase
-        .from('semester')
+        .from('semesters')
         .select('id, semester_name, institution_code, degree_code')
         .eq('institution_code', body.institution_code)
         .eq('degree_code', body.degree_code)
@@ -42,7 +42,7 @@ export async function PUT(
     }
 
     const { data, error } = await supabase
-      .from('semester')
+      .from('semesters')
       .update(body)
       .eq('id', id)
       .select()
@@ -75,7 +75,7 @@ export async function DELETE(
     const { id } = await params
 
     const { error } = await supabase
-      .from('semester')
+      .from('semesters')
       .delete()
       .eq('id', id)
 

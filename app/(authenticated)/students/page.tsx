@@ -86,53 +86,211 @@ import {
 import Link from "next/link"
 import * as XLSX from 'xlsx'
 
-// Student type based on corrected schema
+// Comprehensive Student type based on full schema
 type Student = {
+	// PRIMARY IDENTIFIERS
 	id: string
-	roll_number: string
-	register_number?: string
 	application_id?: string
 	admission_id?: string
+	roll_number: string
+	register_number?: string
+
+	// BASIC INFORMATION
 	first_name: string
 	last_name?: string
 	initial?: string
-	full_name: string
+	full_name?: string
+	name_in_tamil?: string
 	date_of_birth: string
 	age?: number
 	gender: string
 	blood_group?: string
+
+	// CONTACT INFORMATION
 	student_mobile?: string
 	student_email?: string
 	college_email?: string
-	photo_url?: string
+	telephone_number?: string
+
+	// PERMANENT ADDRESS
+	permanent_address_door_no?: string
+	permanent_address_street?: string
+	permanent_address_village?: string
+	permanent_address_post_office?: string
+	permanent_address_taluk?: string
+	permanent_address_district?: string
+	permanent_address_state?: string
+	permanent_address_country?: string
+	permanent_address_pin_code?: string
+
+	// ACADEMIC ASSIGNMENT
 	institution_id: string
-	department_id: string
-	program_id: string
+	institution_code?: string
 	degree_id?: string
+	degree_code?: string
+	department_id: string
+	department_code?: string
+	program_id: string
+	program_code?: string
 	semester_id: string
+	semester_code?: string
 	section_id?: string
+	section_code?: string
 	academic_year_id: string
+	academic_year?: string
 	batch_year?: number
-	status: string
-	admission_status?: string
-	is_profile_complete: boolean
-	is_hostelite: boolean
-	is_bus_user: boolean
+
+	// DEMOGRAPHICS
 	nationality: string
 	religion?: string
 	community?: string
 	caste?: string
+	sub_caste?: string
+	aadhar_number?: string
+	emis_number?: string
+
+	// SPECIAL STATUS & CATEGORIES
+	first_graduate: boolean
 	quota?: string
 	category?: string
-	first_graduate: boolean
+	disability_type?: string
+	disability_percentage?: number
+	sports_quota?: string
+	ncc_number?: string
+	nss_number?: string
+
+	// FAMILY DETAILS
 	father_name?: string
+	father_occupation?: string
+	father_education?: string
 	father_mobile?: string
+	father_email?: string
 	mother_name?: string
+	mother_occupation?: string
+	mother_education?: string
 	mother_mobile?: string
-	district?: string
-	state: string
+	mother_email?: string
+	guardian_name?: string
+	guardian_relation?: string
+	guardian_mobile?: string
+	guardian_email?: string
+	annual_income?: number
+
+	// 10TH STANDARD
+	tenth_last_school?: string
+	tenth_board_of_study?: string
+	tenth_school_type?: string
+	tenth_school_name?: string
+	tenth_school_place?: string
+	tenth_board?: string
+	tenth_mode?: string
+	tenth_medium?: string
+	tenth_register_number?: string
+	tenth_passing_month?: string
+	tenth_passing_year?: number
+	tenth_marks?: any // JSONB
+
+	// 11TH STANDARD
+	eleventh_last_school?: string
+	eleventh_school_type?: string
+	eleventh_school_name?: string
+	eleventh_school_place?: string
+	eleventh_board?: string
+	eleventh_mode?: string
+	eleventh_medium?: string
+	eleventh_register_number?: string
+	eleventh_passing_month?: string
+	eleventh_passing_year?: number
+	eleventh_marks?: any // JSONB
+
+	// 12TH STANDARD
+	twelfth_last_school?: string
+	twelfth_school_type?: string
+	twelfth_school_name?: string
+	twelfth_school_place?: string
+	twelfth_board?: string
+	twelfth_mode?: string
+	twelfth_medium?: string
+	twelfth_register_number?: string
+	twelfth_passing_month?: string
+	twelfth_passing_year?: number
+	twelfth_marks?: any // JSONB
+	twelfth_subject_marks?: any // JSONB
+
+	// ENTRANCE EXAM
+	entry_type?: string
+	medical_cutoff_marks?: number
+	engineering_cutoff_marks?: number
+	neet_roll_number?: string
+	neet_score?: number
+	counseling_applied?: boolean
+	counseling_number?: string
+
+	// UG DEGREE (for PG students)
+	qualifying_degree?: string
+	ug_last_college?: string
+	ug_university?: string
+	ug_passing_month?: string
+	ug_passing_year?: number
+	ug_qualification_type?: string
+	ug_education_pattern?: string
+	ug_major_marks?: number
+	ug_major_max_marks?: number
+	ug_major_percentage?: number
+	ug_allied_marks?: number
+	ug_allied_max_marks?: number
+	ug_allied_percentage?: number
+	ug_total_marks?: number
+	ug_total_max_marks?: number
+	ug_total_percentage?: number
+	ug_class_obtained?: string
+	ug_overall_grade?: string
+
+	// ACCOMMODATION & TRANSPORT
+	accommodation_type?: string
+	hostel_type?: string
+	food_type?: string
+	bus_required?: boolean
+	bus_route?: string
+	bus_pickup_location?: string
+	is_hostelite: boolean
+	is_bus_user: boolean
+
+	// FINANCIAL DETAILS
+	bank_beneficiary_name?: string
+	bank_account_number?: string
+	bank_ifsc_code?: string
+	bank_name?: string
+	bank_branch?: string
+	fixed_fee?: number
+	fee_payment_date?: string
+	fee_amount_paid?: number
+
+	// DOCUMENTS & CERTIFICATES
+	original_certificates_submitted?: any // JSONB array
+	xerox_certificates_submitted?: any // JSONB array
+
+	// REFERENCE
+	reference_type?: string
+	reference_name?: string
+	reference_contact?: string
+
+	// MEDIA
+	student_photo_url?: string
+	photo_url?: string
+
+	// STATUS & FLAGS
+	status: string
+	admission_status?: string
+	is_profile_complete: boolean
+
+	// AUDIT FIELDS
 	created_at: string
 	updated_at?: string
+	created_by?: string
+	updated_by?: string
+	deleted_at?: string
+	deleted_by?: string
 }
 
 export default function StudentsPage() {
@@ -149,21 +307,41 @@ export default function StudentsPage() {
 	const [currentPage, setCurrentPage] = useState(1)
 	const [itemsPerPage] = useState(10)
 
-	// Form state for basic info
+	// Comprehensive form state
 	const [formData, setFormData] = useState({
+		// PRIMARY IDENTIFIERS
 		roll_number: "",
 		register_number: "",
 		application_id: "",
+		admission_id: "",
+
+		// BASIC INFORMATION
 		first_name: "",
 		last_name: "",
 		initial: "",
+		name_in_tamil: "",
 		date_of_birth: "",
 		gender: "",
 		blood_group: "",
+
+		// CONTACT INFORMATION
 		student_mobile: "",
 		student_email: "",
 		college_email: "",
-		photo_url: "",
+		telephone_number: "",
+
+		// PERMANENT ADDRESS
+		permanent_address_door_no: "",
+		permanent_address_street: "",
+		permanent_address_village: "",
+		permanent_address_post_office: "",
+		permanent_address_taluk: "",
+		permanent_address_district: "",
+		permanent_address_state: "Tamil Nadu",
+		permanent_address_country: "India",
+		permanent_address_pin_code: "",
+
+		// ACADEMIC ASSIGNMENT
 		institution_id: "",
 		department_id: "",
 		program_id: "",
@@ -172,30 +350,342 @@ export default function StudentsPage() {
 		section_id: "",
 		academic_year_id: "",
 		batch_year: "",
-		status: "active",
+
+		// DEMOGRAPHICS
 		nationality: "Indian",
 		religion: "",
 		community: "",
 		caste: "",
+		sub_caste: "",
+		aadhar_number: "",
+		emis_number: "",
+
+		// SPECIAL STATUS & CATEGORIES
+		first_graduate: false,
 		quota: "",
 		category: "",
-		first_graduate: false,
+		disability_type: "",
+		disability_percentage: "",
+		sports_quota: "",
+		ncc_number: "",
+		nss_number: "",
+
+		// FAMILY DETAILS
 		father_name: "",
+		father_occupation: "",
+		father_education: "",
 		father_mobile: "",
+		father_email: "",
 		mother_name: "",
+		mother_occupation: "",
+		mother_education: "",
 		mother_mobile: "",
-		district: "",
-		state: "Tamil Nadu",
+		mother_email: "",
+		guardian_name: "",
+		guardian_relation: "",
+		guardian_mobile: "",
+		guardian_email: "",
+		annual_income: "",
+
+		// 10TH STANDARD
+		tenth_last_school: "",
+		tenth_board_of_study: "",
+		tenth_school_type: "",
+		tenth_school_name: "",
+		tenth_school_place: "",
+		tenth_board: "",
+		tenth_mode: "",
+		tenth_medium: "",
+		tenth_register_number: "",
+		tenth_passing_month: "",
+		tenth_passing_year: "",
+		tenth_marks: "",
+
+		// 11TH STANDARD
+		eleventh_last_school: "",
+		eleventh_school_type: "",
+		eleventh_school_name: "",
+		eleventh_school_place: "",
+		eleventh_board: "",
+		eleventh_mode: "",
+		eleventh_medium: "",
+		eleventh_register_number: "",
+		eleventh_passing_month: "",
+		eleventh_passing_year: "",
+		eleventh_marks: "",
+
+		// 12TH STANDARD
+		twelfth_last_school: "",
+		twelfth_school_type: "",
+		twelfth_school_name: "",
+		twelfth_school_place: "",
+		twelfth_board: "",
+		twelfth_mode: "",
+		twelfth_medium: "",
+		twelfth_register_number: "",
+		twelfth_passing_month: "",
+		twelfth_passing_year: "",
+		twelfth_marks: "",
+		twelfth_subject_marks: "",
+
+		// ENTRANCE EXAM
+		entry_type: "",
+		medical_cutoff_marks: "",
+		engineering_cutoff_marks: "",
+		neet_roll_number: "",
+		neet_score: "",
+		counseling_applied: false,
+		counseling_number: "",
+
+		// UG DEGREE (for PG students)
+		qualifying_degree: "",
+		ug_last_college: "",
+		ug_university: "",
+		ug_passing_month: "",
+		ug_passing_year: "",
+		ug_qualification_type: "",
+		ug_education_pattern: "",
+		ug_major_marks: "",
+		ug_major_max_marks: "",
+		ug_major_percentage: "",
+		ug_allied_marks: "",
+		ug_allied_max_marks: "",
+		ug_allied_percentage: "",
+		ug_total_marks: "",
+		ug_total_max_marks: "",
+		ug_total_percentage: "",
+		ug_class_obtained: "",
+		ug_overall_grade: "",
+
+		// ACCOMMODATION & TRANSPORT
+		accommodation_type: "",
+		hostel_type: "",
+		food_type: "",
+		bus_required: false,
+		bus_route: "",
+		bus_pickup_location: "",
 		is_hostelite: false,
 		is_bus_user: false,
+
+		// FINANCIAL DETAILS
+		bank_beneficiary_name: "",
+		bank_account_number: "",
+		bank_ifsc_code: "",
+		bank_name: "",
+		bank_branch: "",
+		fixed_fee: "",
+		fee_payment_date: "",
+		fee_amount_paid: "",
+
+		// DOCUMENTS & CERTIFICATES (JSONB)
+		original_certificates_submitted: "",
+		xerox_certificates_submitted: "",
+
+		// REFERENCE
+		reference_type: "",
+		reference_name: "",
+		reference_contact: "",
+
+		// MEDIA
+		student_photo_url: "",
+		photo_url: "",
+
+		// STATUS
+		status: "active",
+		admission_status: "",
+		is_profile_complete: false,
 	})
 
 	const [errors, setErrors] = useState<Record<string, string>>({})
 
+	// Dropdown options state
+	const [institutions, setInstitutions] = useState<any[]>([])
+	const [departments, setDepartments] = useState<any[]>([])
+	const [programs, setPrograms] = useState<any[]>([])
+	const [degrees, setDegrees] = useState<any[]>([])
+	const [semesters, setSemesters] = useState<any[]>([])
+	const [sections, setSections] = useState<any[]>([])
+	const [academicYears, setAcademicYears] = useState<any[]>([])
+	const [isLoadingEdit, setIsLoadingEdit] = useState(false)
+
 	// Fetch students from API
 	useEffect(() => {
 		fetchStudents()
+		fetchDropdownData()
 	}, [])
+
+	const fetchDropdownData = async () => {
+		try {
+			// Fetch institutions and academic years (not dependent on other fields)
+			const [instRes, ayRes] = await Promise.all([
+				fetch('/api/institutions'),
+				fetch('/api/academic-year')
+			])
+
+			if (instRes.ok) setInstitutions(await instRes.json())
+			if (ayRes.ok) setAcademicYears(await ayRes.json())
+		} catch (error) {
+			console.error('Error fetching dropdown data:', error)
+		}
+	}
+
+	// Fetch departments when institution changes
+	useEffect(() => {
+		console.log('🔄 Institution useEffect triggered:', {
+			institution_id: formData.institution_id,
+			isLoadingEdit,
+			institutionsLoaded: institutions.length
+		})
+
+		if (formData.institution_id && !isLoadingEdit) {
+			console.log('✅ Calling fetchDepartments')
+			fetchDepartments(formData.institution_id)
+		} else if (!formData.institution_id && !isLoadingEdit) {
+			console.log('🧹 Clearing departments and dependent fields')
+			setDepartments([])
+			setPrograms([])
+			setDegrees([])
+			setSemesters([])
+			setSections([])
+			// Clear dependent fields only if not loading edit
+			setFormData(prev => ({
+				...prev,
+				department_id: '',
+				program_id: '',
+				degree_id: '',
+				semester_id: '',
+				section_id: ''
+			}))
+		}
+	}, [formData.institution_id, institutions])
+
+	// Fetch programs when department changes
+	useEffect(() => {
+		if (formData.department_id && !isLoadingEdit) {
+			fetchPrograms(formData.department_id)
+		} else if (!formData.department_id && !isLoadingEdit) {
+			setPrograms([])
+			setDegrees([])
+			setSemesters([])
+			setSections([])
+			// Clear dependent fields only if not loading edit
+			setFormData(prev => ({
+				...prev,
+				program_id: '',
+				degree_id: '',
+				semester_id: '',
+				section_id: ''
+			}))
+		}
+	}, [formData.department_id])
+
+	// Fetch degrees, semesters, and sections when program changes
+	useEffect(() => {
+		if (formData.program_id && !isLoadingEdit) {
+			fetchDegrees(formData.program_id)
+			fetchSemesters(formData.program_id)
+			fetchSections(formData.program_id)
+		} else if (!formData.program_id && !isLoadingEdit) {
+			setDegrees([])
+			setSemesters([])
+			setSections([])
+			// Clear dependent fields only if not loading edit
+			setFormData(prev => ({
+				...prev,
+				degree_id: '',
+				semester_id: '',
+				section_id: ''
+			}))
+		}
+	}, [formData.program_id])
+
+	const fetchDepartments = async (institutionId: string) => {
+		try {
+			// First get the institution to retrieve its code
+			const institution = institutions.find(inst => inst.id === institutionId)
+			console.log('🔍 fetchDepartments called with institutionId:', institutionId)
+			console.log('🏛️ Found institution:', institution)
+
+			if (!institution) {
+				console.error('❌ Institution not found in state. Available institutions:', institutions)
+				return
+			}
+
+			// Filter by institution_code only (departments table doesn't have institution_id)
+			const url = `/api/departments?institution_code=${institution.institution_code}`
+			console.log('📡 Fetching departments from:', url)
+
+			const res = await fetch(url)
+			console.log('📥 Response status:', res.status)
+
+			if (res.ok) {
+				const data = await res.json()
+				console.log('✅ Departments fetched:', data.length, 'items', data)
+				setDepartments(data)
+			} else {
+				const errorText = await res.text()
+				console.error('❌ Failed to fetch departments:', res.status, errorText)
+			}
+		} catch (error) {
+			console.error('❌ Error fetching departments:', error)
+		}
+	}
+
+	const fetchPrograms = async (departmentId: string) => {
+		try {
+			// Get department to retrieve its code
+			const department = departments.find(dept => dept.id === departmentId)
+			if (!department) {
+				console.error('Department not found')
+				return
+			}
+
+			// Filter by department_code only (programs table uses offering_department_code)
+			const res = await fetch(`/api/program?department_code=${department.department_code}`)
+			if (res.ok) {
+				const data = await res.json()
+				setPrograms(data)
+			}
+		} catch (error) {
+			console.error('Error fetching programs:', error)
+		}
+	}
+
+	const fetchDegrees = async (programId: string) => {
+		try {
+			const res = await fetch(`/api/degrees?program_id=${programId}`)
+			if (res.ok) {
+				const data = await res.json()
+				setDegrees(data)
+			}
+		} catch (error) {
+			console.error('Error fetching degrees:', error)
+		}
+	}
+
+	const fetchSemesters = async (programId: string) => {
+		try {
+			const res = await fetch(`/api/semesters?program_id=${programId}`)
+			if (res.ok) {
+				const data = await res.json()
+				setSemesters(data)
+			}
+		} catch (error) {
+			console.error('Error fetching semesters:', error)
+		}
+	}
+
+	const fetchSections = async (programId: string) => {
+		try {
+			const res = await fetch(`/api/section?program_id=${programId}`)
+			if (res.ok) {
+				const data = await res.json()
+				setSections(data)
+			}
+		} catch (error) {
+			console.error('Error fetching sections:', error)
+		}
+	}
 
 	const fetchStudents = async () => {
 		try {
@@ -247,19 +737,39 @@ export default function StudentsPage() {
 
 	const resetForm = () => {
 		setFormData({
+			// PRIMARY IDENTIFIERS
 			roll_number: "",
 			register_number: "",
 			application_id: "",
+			admission_id: "",
+
+			// BASIC INFORMATION
 			first_name: "",
 			last_name: "",
 			initial: "",
+			name_in_tamil: "",
 			date_of_birth: "",
 			gender: "",
 			blood_group: "",
+
+			// CONTACT INFORMATION
 			student_mobile: "",
 			student_email: "",
 			college_email: "",
-			photo_url: "",
+			telephone_number: "",
+
+			// PERMANENT ADDRESS
+			permanent_address_door_no: "",
+			permanent_address_street: "",
+			permanent_address_village: "",
+			permanent_address_post_office: "",
+			permanent_address_taluk: "",
+			permanent_address_district: "",
+			permanent_address_state: "Tamil Nadu",
+			permanent_address_country: "India",
+			permanent_address_pin_code: "",
+
+			// ACADEMIC ASSIGNMENT
 			institution_id: "",
 			department_id: "",
 			program_id: "",
@@ -268,22 +778,150 @@ export default function StudentsPage() {
 			section_id: "",
 			academic_year_id: "",
 			batch_year: "",
-			status: "active",
+
+			// DEMOGRAPHICS
 			nationality: "Indian",
 			religion: "",
 			community: "",
 			caste: "",
+			sub_caste: "",
+			aadhar_number: "",
+			emis_number: "",
+
+			// SPECIAL STATUS & CATEGORIES
+			first_graduate: false,
 			quota: "",
 			category: "",
-			first_graduate: false,
+			disability_type: "",
+			disability_percentage: "",
+			sports_quota: "",
+			ncc_number: "",
+			nss_number: "",
+
+			// FAMILY DETAILS
 			father_name: "",
+			father_occupation: "",
+			father_education: "",
 			father_mobile: "",
+			father_email: "",
 			mother_name: "",
+			mother_occupation: "",
+			mother_education: "",
 			mother_mobile: "",
-			district: "",
-			state: "Tamil Nadu",
+			mother_email: "",
+			guardian_name: "",
+			guardian_relation: "",
+			guardian_mobile: "",
+			guardian_email: "",
+			annual_income: "",
+
+			// 10TH STANDARD
+			tenth_last_school: "",
+			tenth_board_of_study: "",
+			tenth_school_type: "",
+			tenth_school_name: "",
+			tenth_school_place: "",
+			tenth_board: "",
+			tenth_mode: "",
+			tenth_medium: "",
+			tenth_register_number: "",
+			tenth_passing_month: "",
+			tenth_passing_year: "",
+			tenth_marks: "",
+
+			// 11TH STANDARD
+			eleventh_last_school: "",
+			eleventh_school_type: "",
+			eleventh_school_name: "",
+			eleventh_school_place: "",
+			eleventh_board: "",
+			eleventh_mode: "",
+			eleventh_medium: "",
+			eleventh_register_number: "",
+			eleventh_passing_month: "",
+			eleventh_passing_year: "",
+			eleventh_marks: "",
+
+			// 12TH STANDARD
+			twelfth_last_school: "",
+			twelfth_school_type: "",
+			twelfth_school_name: "",
+			twelfth_school_place: "",
+			twelfth_board: "",
+			twelfth_mode: "",
+			twelfth_medium: "",
+			twelfth_register_number: "",
+			twelfth_passing_month: "",
+			twelfth_passing_year: "",
+			twelfth_marks: "",
+			twelfth_subject_marks: "",
+
+			// ENTRANCE EXAM
+			entry_type: "",
+			medical_cutoff_marks: "",
+			engineering_cutoff_marks: "",
+			neet_roll_number: "",
+			neet_score: "",
+			counseling_applied: false,
+			counseling_number: "",
+
+			// UG DEGREE (for PG students)
+			qualifying_degree: "",
+			ug_last_college: "",
+			ug_university: "",
+			ug_passing_month: "",
+			ug_passing_year: "",
+			ug_qualification_type: "",
+			ug_education_pattern: "",
+			ug_major_marks: "",
+			ug_major_max_marks: "",
+			ug_major_percentage: "",
+			ug_allied_marks: "",
+			ug_allied_max_marks: "",
+			ug_allied_percentage: "",
+			ug_total_marks: "",
+			ug_total_max_marks: "",
+			ug_total_percentage: "",
+			ug_class_obtained: "",
+			ug_overall_grade: "",
+
+			// ACCOMMODATION & TRANSPORT
+			accommodation_type: "",
+			hostel_type: "",
+			food_type: "",
+			bus_required: false,
+			bus_route: "",
+			bus_pickup_location: "",
 			is_hostelite: false,
 			is_bus_user: false,
+
+			// FINANCIAL DETAILS
+			bank_beneficiary_name: "",
+			bank_account_number: "",
+			bank_ifsc_code: "",
+			bank_name: "",
+			bank_branch: "",
+			fixed_fee: "",
+			fee_payment_date: "",
+			fee_amount_paid: "",
+
+			// DOCUMENTS & CERTIFICATES (JSONB)
+			original_certificates_submitted: "",
+			xerox_certificates_submitted: "",
+
+			// REFERENCE
+			reference_type: "",
+			reference_name: "",
+			reference_contact: "",
+
+			// MEDIA
+			student_photo_url: "",
+			photo_url: "",
+
+			// STATUS
+			status: "active",
+			admission_status: "",
+			is_profile_complete: false,
 		})
 		setErrors({})
 		setEditing(null)
@@ -295,22 +933,57 @@ export default function StudentsPage() {
 		setSheetOpen(true)
 	}
 
-	const openEdit = (student: Student) => {
+	const openEdit = async (student: Student) => {
 		setEditing(student)
+		setIsLoadingEdit(true)
+
+		// Load dependent dropdowns based on existing student data
+		if (student.institution_id) {
+			await fetchDepartments(student.institution_id)
+		}
+		if (student.department_id) {
+			await fetchPrograms(student.department_id)
+		}
+		if (student.program_id) {
+			await fetchDegrees(student.program_id)
+			await fetchSemesters(student.program_id)
+			await fetchSections(student.program_id)
+		}
+
 		setFormData({
+			// PRIMARY IDENTIFIERS
 			roll_number: student.roll_number || "",
 			register_number: student.register_number || "",
 			application_id: student.application_id || "",
+			admission_id: student.admission_id || "",
+
+			// BASIC INFORMATION
 			first_name: student.first_name || "",
 			last_name: student.last_name || "",
 			initial: student.initial || "",
+			name_in_tamil: student.name_in_tamil || "",
 			date_of_birth: student.date_of_birth || "",
 			gender: student.gender || "",
 			blood_group: student.blood_group || "",
+
+			// CONTACT INFORMATION
 			student_mobile: student.student_mobile || "",
 			student_email: student.student_email || "",
 			college_email: student.college_email || "",
-			photo_url: student.photo_url || "",
+			telephone_number: student.telephone_number || "",
+
+			// PERMANENT ADDRESS
+			permanent_address_door_no: student.permanent_address_door_no || "",
+			permanent_address_street: student.permanent_address_street || "",
+			permanent_address_village: student.permanent_address_village || "",
+			permanent_address_post_office: student.permanent_address_post_office || "",
+			permanent_address_taluk: student.permanent_address_taluk || "",
+			permanent_address_district: student.permanent_address_district || "",
+			permanent_address_state: student.permanent_address_state || "Tamil Nadu",
+			permanent_address_country: student.permanent_address_country || "India",
+			permanent_address_pin_code: student.permanent_address_pin_code || "",
+
+			// ACADEMIC ASSIGNMENT
 			institution_id: student.institution_id || "",
 			department_id: student.department_id || "",
 			program_id: student.program_id || "",
@@ -319,23 +992,153 @@ export default function StudentsPage() {
 			section_id: student.section_id || "",
 			academic_year_id: student.academic_year_id || "",
 			batch_year: String(student.batch_year || ""),
-			status: student.status || "active",
+
+			// DEMOGRAPHICS
 			nationality: student.nationality || "Indian",
 			religion: student.religion || "",
 			community: student.community || "",
 			caste: student.caste || "",
+			sub_caste: student.sub_caste || "",
+			aadhar_number: student.aadhar_number || "",
+			emis_number: student.emis_number || "",
+
+			// SPECIAL STATUS & CATEGORIES
+			first_graduate: student.first_graduate || false,
 			quota: student.quota || "",
 			category: student.category || "",
-			first_graduate: student.first_graduate || false,
+			disability_type: student.disability_type || "",
+			disability_percentage: String(student.disability_percentage || ""),
+			sports_quota: student.sports_quota || "",
+			ncc_number: student.ncc_number || "",
+			nss_number: student.nss_number || "",
+
+			// FAMILY DETAILS
 			father_name: student.father_name || "",
+			father_occupation: student.father_occupation || "",
+			father_education: student.father_education || "",
 			father_mobile: student.father_mobile || "",
+			father_email: student.father_email || "",
 			mother_name: student.mother_name || "",
+			mother_occupation: student.mother_occupation || "",
+			mother_education: student.mother_education || "",
 			mother_mobile: student.mother_mobile || "",
-			district: student.district || "",
-			state: student.state || "Tamil Nadu",
+			mother_email: student.mother_email || "",
+			guardian_name: student.guardian_name || "",
+			guardian_relation: student.guardian_relation || "",
+			guardian_mobile: student.guardian_mobile || "",
+			guardian_email: student.guardian_email || "",
+			annual_income: String(student.annual_income || ""),
+
+			// 10TH STANDARD
+			tenth_last_school: student.tenth_last_school || "",
+			tenth_board_of_study: student.tenth_board_of_study || "",
+			tenth_school_type: student.tenth_school_type || "",
+			tenth_school_name: student.tenth_school_name || "",
+			tenth_school_place: student.tenth_school_place || "",
+			tenth_board: student.tenth_board || "",
+			tenth_mode: student.tenth_mode || "",
+			tenth_medium: student.tenth_medium || "",
+			tenth_register_number: student.tenth_register_number || "",
+			tenth_passing_month: student.tenth_passing_month || "",
+			tenth_passing_year: String(student.tenth_passing_year || ""),
+			tenth_marks: student.tenth_marks ? JSON.stringify(student.tenth_marks) : "",
+
+			// 11TH STANDARD
+			eleventh_last_school: student.eleventh_last_school || "",
+			eleventh_school_type: student.eleventh_school_type || "",
+			eleventh_school_name: student.eleventh_school_name || "",
+			eleventh_school_place: student.eleventh_school_place || "",
+			eleventh_board: student.eleventh_board || "",
+			eleventh_mode: student.eleventh_mode || "",
+			eleventh_medium: student.eleventh_medium || "",
+			eleventh_register_number: student.eleventh_register_number || "",
+			eleventh_passing_month: student.eleventh_passing_month || "",
+			eleventh_passing_year: String(student.eleventh_passing_year || ""),
+			eleventh_marks: student.eleventh_marks ? JSON.stringify(student.eleventh_marks) : "",
+
+			// 12TH STANDARD
+			twelfth_last_school: student.twelfth_last_school || "",
+			twelfth_school_type: student.twelfth_school_type || "",
+			twelfth_school_name: student.twelfth_school_name || "",
+			twelfth_school_place: student.twelfth_school_place || "",
+			twelfth_board: student.twelfth_board || "",
+			twelfth_mode: student.twelfth_mode || "",
+			twelfth_medium: student.twelfth_medium || "",
+			twelfth_register_number: student.twelfth_register_number || "",
+			twelfth_passing_month: student.twelfth_passing_month || "",
+			twelfth_passing_year: String(student.twelfth_passing_year || ""),
+			twelfth_marks: student.twelfth_marks ? JSON.stringify(student.twelfth_marks) : "",
+			twelfth_subject_marks: student.twelfth_subject_marks ? JSON.stringify(student.twelfth_subject_marks) : "",
+
+			// ENTRANCE EXAM
+			entry_type: student.entry_type || "",
+			medical_cutoff_marks: String(student.medical_cutoff_marks || ""),
+			engineering_cutoff_marks: String(student.engineering_cutoff_marks || ""),
+			neet_roll_number: student.neet_roll_number || "",
+			neet_score: String(student.neet_score || ""),
+			counseling_applied: student.counseling_applied || false,
+			counseling_number: student.counseling_number || "",
+
+			// UG DEGREE (for PG students)
+			qualifying_degree: student.qualifying_degree || "",
+			ug_last_college: student.ug_last_college || "",
+			ug_university: student.ug_university || "",
+			ug_passing_month: student.ug_passing_month || "",
+			ug_passing_year: String(student.ug_passing_year || ""),
+			ug_qualification_type: student.ug_qualification_type || "",
+			ug_education_pattern: student.ug_education_pattern || "",
+			ug_major_marks: String(student.ug_major_marks || ""),
+			ug_major_max_marks: String(student.ug_major_max_marks || ""),
+			ug_major_percentage: String(student.ug_major_percentage || ""),
+			ug_allied_marks: String(student.ug_allied_marks || ""),
+			ug_allied_max_marks: String(student.ug_allied_max_marks || ""),
+			ug_allied_percentage: String(student.ug_allied_percentage || ""),
+			ug_total_marks: String(student.ug_total_marks || ""),
+			ug_total_max_marks: String(student.ug_total_max_marks || ""),
+			ug_total_percentage: String(student.ug_total_percentage || ""),
+			ug_class_obtained: student.ug_class_obtained || "",
+			ug_overall_grade: student.ug_overall_grade || "",
+
+			// ACCOMMODATION & TRANSPORT
+			accommodation_type: student.accommodation_type || "",
+			hostel_type: student.hostel_type || "",
+			food_type: student.food_type || "",
+			bus_required: student.bus_required || false,
+			bus_route: student.bus_route || "",
+			bus_pickup_location: student.bus_pickup_location || "",
 			is_hostelite: student.is_hostelite || false,
 			is_bus_user: student.is_bus_user || false,
+
+			// FINANCIAL DETAILS
+			bank_beneficiary_name: student.bank_beneficiary_name || "",
+			bank_account_number: student.bank_account_number || "",
+			bank_ifsc_code: student.bank_ifsc_code || "",
+			bank_name: student.bank_name || "",
+			bank_branch: student.bank_branch || "",
+			fixed_fee: String(student.fixed_fee || ""),
+			fee_payment_date: student.fee_payment_date || "",
+			fee_amount_paid: String(student.fee_amount_paid || ""),
+
+			// DOCUMENTS & CERTIFICATES (JSONB)
+			original_certificates_submitted: student.original_certificates_submitted ? JSON.stringify(student.original_certificates_submitted) : "",
+			xerox_certificates_submitted: student.xerox_certificates_submitted ? JSON.stringify(student.xerox_certificates_submitted) : "",
+
+			// REFERENCE
+			reference_type: student.reference_type || "",
+			reference_name: student.reference_name || "",
+			reference_contact: student.reference_contact || "",
+
+			// MEDIA
+			student_photo_url: student.student_photo_url || student.photo_url || "",
+			photo_url: student.photo_url || student.student_photo_url || "",
+
+			// STATUS
+			status: student.status || "active",
+			admission_status: student.admission_status || "",
+			is_profile_complete: student.is_profile_complete || false,
 		})
+
+		setIsLoadingEdit(false)
 		setSheetOpen(true)
 	}
 
@@ -456,46 +1259,171 @@ export default function StudentsPage() {
 	// Export functions
 	const downloadStudentsExcel = () => {
 		const data = students.map(s => ({
+			// PRIMARY IDENTIFIERS
 			'Roll Number': s.roll_number || '',
 			'Register Number': s.register_number || '',
+			'Application ID': s.application_id || '',
+			'Admission ID': s.admission_id || '',
+
+			// BASIC INFORMATION
 			'First Name': s.first_name,
 			'Last Name': s.last_name || '',
 			'Initial': s.initial || '',
+			'Name in Tamil': s.name_in_tamil || '',
 			'Date of Birth': s.date_of_birth,
 			'Age': s.age || '',
 			'Gender': s.gender,
 			'Blood Group': s.blood_group || '',
-			'Mobile': s.student_mobile || '',
-			'Email': s.student_email || '',
+
+			// CONTACT INFORMATION
+			'Student Mobile': s.student_mobile || '',
+			'Student Email': s.student_email || '',
 			'College Email': s.college_email || '',
+			'Telephone': s.telephone_number || '',
+
+			// PERMANENT ADDRESS
+			'Address Door No': s.permanent_address_door_no || '',
+			'Address Street': s.permanent_address_street || '',
+			'Address Village': s.permanent_address_village || '',
+			'Address Post Office': s.permanent_address_post_office || '',
+			'Address Taluk': s.permanent_address_taluk || '',
+			'Address District': s.permanent_address_district || '',
+			'Address State': s.permanent_address_state || '',
+			'Address Country': s.permanent_address_country || '',
+			'Address PIN Code': s.permanent_address_pin_code || '',
+
+			// ACADEMIC ASSIGNMENT
+			'Institution Code': s.institution_code || '',
+			'Department Code': s.department_code || '',
+			'Program Code': s.program_code || '',
+			'Degree Code': s.degree_code || '',
+			'Semester Code': s.semester_code || '',
+			'Section Code': s.section_code || '',
+			'Academic Year': s.academic_year || '',
+			'Batch Year': s.batch_year || '',
+			'Status': s.status,
+
+			// DEMOGRAPHICS
 			'Nationality': s.nationality,
 			'Religion': s.religion || '',
 			'Community': s.community || '',
 			'Caste': s.caste || '',
+			'Sub Caste': s.sub_caste || '',
+			'Aadhar Number': s.aadhar_number || '',
+			'EMIS Number': s.emis_number || '',
+
+			// SPECIAL STATUS & CATEGORIES
+			'First Graduate': s.first_graduate ? 'Yes' : 'No',
 			'Quota': s.quota || '',
 			'Category': s.category || '',
-			'First Graduate': s.first_graduate ? 'Yes' : 'No',
+			'Disability Type': s.disability_type || '',
+			'Disability Percentage': s.disability_percentage || '',
+			'Sports Quota': s.sports_quota || '',
+			'NCC Number': s.ncc_number || '',
+			'NSS Number': s.nss_number || '',
+
+			// FAMILY DETAILS
 			'Father Name': s.father_name || '',
+			'Father Occupation': s.father_occupation || '',
+			'Father Education': s.father_education || '',
 			'Father Mobile': s.father_mobile || '',
+			'Father Email': s.father_email || '',
 			'Mother Name': s.mother_name || '',
+			'Mother Occupation': s.mother_occupation || '',
+			'Mother Education': s.mother_education || '',
 			'Mother Mobile': s.mother_mobile || '',
-			'District': s.district || '',
-			'State': s.state,
-			'Batch Year': s.batch_year || '',
-			'Status': s.status,
+			'Mother Email': s.mother_email || '',
+			'Guardian Name': s.guardian_name || '',
+			'Guardian Relation': s.guardian_relation || '',
+			'Guardian Mobile': s.guardian_mobile || '',
+			'Guardian Email': s.guardian_email || '',
+			'Annual Income': s.annual_income || '',
+
+			// 10TH STANDARD
+			'10th School Name': s.tenth_school_name || '',
+			'10th School Place': s.tenth_school_place || '',
+			'10th Board': s.tenth_board || '',
+			'10th Medium': s.tenth_medium || '',
+			'10th Register Number': s.tenth_register_number || '',
+			'10th Passing Year': s.tenth_passing_year || '',
+			'10th Marks (JSON)': s.tenth_marks ? JSON.stringify(s.tenth_marks) : '',
+
+			// 11TH STANDARD
+			'11th School Name': s.eleventh_school_name || '',
+			'11th School Place': s.eleventh_school_place || '',
+			'11th Board': s.eleventh_board || '',
+			'11th Passing Year': s.eleventh_passing_year || '',
+			'11th Marks (JSON)': s.eleventh_marks ? JSON.stringify(s.eleventh_marks) : '',
+
+			// 12TH STANDARD
+			'12th School Name': s.twelfth_school_name || '',
+			'12th School Place': s.twelfth_school_place || '',
+			'12th Board': s.twelfth_board || '',
+			'12th Register Number': s.twelfth_register_number || '',
+			'12th Passing Year': s.twelfth_passing_year || '',
+			'12th Marks (JSON)': s.twelfth_marks ? JSON.stringify(s.twelfth_marks) : '',
+			'12th Subject Marks (JSON)': s.twelfth_subject_marks ? JSON.stringify(s.twelfth_subject_marks) : '',
+
+			// ENTRANCE EXAM
+			'Entry Type': s.entry_type || '',
+			'Medical Cutoff': s.medical_cutoff_marks || '',
+			'Engineering Cutoff': s.engineering_cutoff_marks || '',
+			'NEET Roll Number': s.neet_roll_number || '',
+			'NEET Score': s.neet_score || '',
+			'Counseling Applied': s.counseling_applied ? 'Yes' : 'No',
+			'Counseling Number': s.counseling_number || '',
+
+			// UG DEGREE (for PG students)
+			'UG Qualifying Degree': s.qualifying_degree || '',
+			'UG College': s.ug_last_college || '',
+			'UG University': s.ug_university || '',
+			'UG Passing Year': s.ug_passing_year || '',
+			'UG Total Percentage': s.ug_total_percentage || '',
+			'UG Class Obtained': s.ug_class_obtained || '',
+
+			// ACCOMMODATION & TRANSPORT
+			'Accommodation Type': s.accommodation_type || '',
+			'Hostel Type': s.hostel_type || '',
+			'Food Type': s.food_type || '',
+			'Bus Required': s.bus_required ? 'Yes' : 'No',
+			'Bus Route': s.bus_route || '',
+			'Bus Pickup Location': s.bus_pickup_location || '',
 			'Hostelite': s.is_hostelite ? 'Yes' : 'No',
 			'Bus User': s.is_bus_user ? 'Yes' : 'No',
+
+			// FINANCIAL DETAILS
+			'Bank Beneficiary Name': s.bank_beneficiary_name || '',
+			'Bank Account Number': s.bank_account_number || '',
+			'Bank IFSC Code': s.bank_ifsc_code || '',
+			'Bank Name': s.bank_name || '',
+			'Bank Branch': s.bank_branch || '',
+			'Fixed Fee': s.fixed_fee || '',
+			'Fee Payment Date': s.fee_payment_date || '',
+			'Fee Amount Paid': s.fee_amount_paid || '',
+
+			// DOCUMENTS & REFERENCE
+			'Original Certificates (JSON)': s.original_certificates_submitted ? JSON.stringify(s.original_certificates_submitted) : '',
+			'Xerox Certificates (JSON)': s.xerox_certificates_submitted ? JSON.stringify(s.xerox_certificates_submitted) : '',
+			'Reference Type': s.reference_type || '',
+			'Reference Name': s.reference_name || '',
+			'Reference Contact': s.reference_contact || '',
+
+			// MEDIA
+			'Student Photo URL': s.student_photo_url || s.photo_url || '',
+
+			// STATUS
+			'Admission Status': s.admission_status || '',
 			'Profile Complete': s.is_profile_complete ? 'Yes' : 'No',
 		}))
 
 		const ws = XLSX.utils.json_to_sheet(data)
 		const wb = XLSX.utils.book_new()
 		XLSX.utils.book_append_sheet(wb, ws, 'Students')
-		XLSX.writeFile(wb, `students_${new Date().toISOString().split('T')[0]}.xlsx`)
+		XLSX.writeFile(wb, `students_comprehensive_${new Date().toISOString().split('T')[0]}.xlsx`)
 
 		toast({
 			title: '✅ Export Successful',
-			description: `${students.length} students exported to Excel.`,
+			description: `${students.length} students exported to Excel with all fields.`,
 			className: 'bg-green-50 border-green-200 text-green-800 dark:bg-green-900/20 dark:border-green-800 dark:text-green-200'
 		})
 	}
@@ -519,48 +1447,249 @@ export default function StudentsPage() {
 		})
 	}
 
-	const downloadTemplate = () => {
+	const downloadTemplate = async () => {
+		// Main template with correct column order
 		const template = [{
+			
+
+			// Columns A-G: Academic Codes (REQUIRED - after Roll Number)
+			'Institution Code*': '',
+			'Department Code*': '',
+			'Program Code*': '',
+			'Degree Code': '',
+			'Semester Code*': '',
+			'Section Code': '',
+			'Academic Year*': '',
+			'Batch Year': '',
+
+			// Column H: Roll Number
 			'Roll Number*': '',
+			
+			// PRIMARY IDENTIFIERS (continued)
 			'Register Number': '',
+			'Application ID': '',
+			'Admission ID': '',
+
+			// BASIC INFORMATION
 			'First Name*': '',
 			'Last Name': '',
 			'Initial': '',
-			'Date of Birth* (YYYY-MM-DD)': '',
+			'Name in Tamil': '',
+			'Date of Birth* (DD-MM-YYYY)': '',
 			'Gender* (Male/Female/Other/Transgender)': '',
 			'Blood Group (A+/A-/B+/B-/O+/O-/AB+/AB-)': '',
-			'Mobile': '',
-			'Email': '',
-			'College Email': '',
 			'Nationality': 'Indian',
+
+			// CONTACT INFORMATION
+			'Student Mobile': '',
+			'Student Email': '',
+			'College Email': '',
+			'Telephone': '',
+
+			// PERMANENT ADDRESS
+			'Address Door No': '',
+			'Address Street': '',
+			'Address Village': '',
+			'Address Post Office': '',
+			'Address Taluk': '',
+			'Address District': '',
+			'Address State': 'Tamil Nadu',
+			'Address Country': 'India',
+			'Address PIN Code': '',
+
+			// DEMOGRAPHICS
 			'Religion': '',
 			'Community': '',
 			'Caste': '',
+			'Sub Caste': '',
+			'Aadhar Number': '',
+			'EMIS Number': '',
+
+			// SPECIAL STATUS & CATEGORIES
+			'First Graduate (Yes/No)': 'No',
 			'Quota': '',
 			'Category': '',
-			'First Graduate (Yes/No)': 'No',
+			'Disability Type': '',
+			'Disability Percentage': '',
+			'Sports Quota': '',
+			'NCC Number': '',
+			'NSS Number': '',
+
+			// FAMILY DETAILS
 			'Father Name': '',
+			'Father Occupation': '',
+			'Father Education': '',
 			'Father Mobile': '',
+			'Father Email': '',
 			'Mother Name': '',
+			'Mother Occupation': '',
+			'Mother Education': '',
 			'Mother Mobile': '',
-			'District': '',
-			'State': 'Tamil Nadu',
-			'Batch Year': '',
-			'Status': 'active',
+			'Mother Email': '',
+			'Guardian Name': '',
+			'Guardian Relation': '',
+			'Guardian Mobile': '',
+			'Guardian Email': '',
+			'Annual Income': '',
+
+			// 10TH STANDARD (No JSON fields)
+			'10th School Name': '',
+			'10th School Place': '',
+			'10th Board': '',
+			'10th Medium': '',
+			'10th Register Number': '',
+			'10th Passing Year': '',
+
+			// 11TH STANDARD (No JSON fields)
+			'11th School Name': '',
+			'11th School Place': '',
+			'11th Board': '',
+			'11th Passing Year': '',
+
+			// 12TH STANDARD (No JSON fields)
+			'12th School Name': '',
+			'12th School Place': '',
+			'12th Board': '',
+			'12th Register Number': '',
+			'12th Passing Year': '',
+
+			// ENTRANCE EXAM
+			'Entry Type': '',
+			'Medical Cutoff': '',
+			'Engineering Cutoff': '',
+			'NEET Roll Number': '',
+			'NEET Score': '',
+			'Counseling Applied (Yes/No)': 'No',
+			'Counseling Number': '',
+
+			// UG DEGREE (for PG students)
+			'UG Qualifying Degree': '',
+			'UG College': '',
+			'UG University': '',
+			'UG Passing Year': '',
+			'UG Total Percentage': '',
+			'UG Class Obtained': '',
+
+			// ACCOMMODATION & TRANSPORT
+			'Accommodation Type': '',
+			'Hostel Type': '',
+			'Food Type': '',
+			'Bus Required (Yes/No)': 'No',
+			'Bus Route': '',
+			'Bus Pickup Location': '',
 			'Hostelite (Yes/No)': 'No',
 			'Bus User (Yes/No)': 'No',
+
+			// FINANCIAL DETAILS
+			'Bank Beneficiary Name': '',
+			'Bank Account Number': '',
+			'Bank IFSC Code': '',
+			'Bank Name': '',
+			'Bank Branch': '',
+			'Fixed Fee': '',
+			'Fee Payment Date (DD-MM-YYYY)': '',
+			'Fee Amount Paid': '',
+
+			// REFERENCE (No document JSON fields)
+			'Reference Type': '',
+			'Reference Name': '',
+			'Reference Contact': '',
+
+			// MEDIA
+			'Student Photo URL': '',
+
+			// STATUS
+			'Admission Status': '',
 		}]
 
-		const ws = XLSX.utils.json_to_sheet(template)
-		const wb = XLSX.utils.book_new()
-		XLSX.utils.book_append_sheet(wb, ws, 'Template')
-		XLSX.writeFile(wb, 'students_template.xlsx')
+		// Fetch ALL reference data for comprehensive single sheet
+		try {
+			// Fetch all departments
+			const deptRes = await fetch('/api/departments')
+			const allDepartments = deptRes.ok ? await deptRes.json() : []
 
-		toast({
-			title: '✅ Template Downloaded',
-			description: 'Students import template downloaded.',
-			className: 'bg-green-50 border-green-200 text-green-800 dark:bg-green-900/20 dark:border-green-800 dark:text-green-200'
-		})
+			// Fetch all programs
+			const progRes = await fetch('/api/program')
+			const allPrograms = progRes.ok ? await progRes.json() : []
+
+			// Fetch all semesters
+			const semRes = await fetch('/api/semesters')
+			const allSemesters = semRes.ok ? await semRes.json() : []
+
+			// Fetch all sections
+			const secRes = await fetch('/api/section')
+			const allSections = secRes.ok ? await secRes.json() : []
+
+			// Calculate max rows needed
+			const maxRows = Math.max(
+				institutions.length,
+				allDepartments.length,
+				allPrograms.length,
+				degrees.length,
+				allSemesters.length,
+				allSections.length,
+				academicYears.length,
+				4, // Gender values
+				8  // Blood group values
+			)
+
+			// Create single comprehensive reference sheet with all data side by side
+			const referenceData = []
+			for (let i = 0; i < maxRows; i++) {
+				referenceData.push({
+					'Institution Code': institutions[i]?.institution_code || '',
+					'Institution Name': institutions[i]?.institution_name || institutions[i]?.name || '',
+					'': '', // Spacer
+					'Department Code': allDepartments[i]?.department_code || '',
+					'Department Name': allDepartments[i]?.department_name || '',
+					' ': '', // Spacer
+					'Program Code': allPrograms[i]?.program_code || '',
+					'Program Name': allPrograms[i]?.program_name || '',
+					'  ': '', // Spacer
+					'Degree Code': degrees[i]?.degree_code || '',
+					'Degree Name': degrees[i]?.degree_name || '',
+					'   ': '', // Spacer
+					'Semester Code': allSemesters[i]?.semester_code || '',
+					'Semester Name': allSemesters[i]?.semester_name || '',
+					'    ': '', // Spacer
+					'Section Code': allSections[i]?.section_code || '',
+					'Section Name': allSections[i]?.section_name || '',
+					'     ': '', // Spacer
+					'Academic Year': academicYears[i]?.year_code || academicYears[i]?.year_name || '',
+					'      ': '', // Spacer
+					'Gender': ['Male', 'Female', 'Other', 'Transgender'][i] || '',
+					'       ': '', // Spacer
+					'Blood Group': ['A+', 'A-', 'B+', 'B-', 'O+', 'O-', 'AB+', 'AB-'][i] || ''
+				})
+			}
+
+			// Create workbook with 2 sheets
+			const wb = XLSX.utils.book_new()
+
+			// Main template sheet
+			const wsTemplate = XLSX.utils.json_to_sheet(template)
+			XLSX.utils.book_append_sheet(wb, wsTemplate, 'Student Upload Template')
+
+			// Single comprehensive reference sheet
+			const wsReference = XLSX.utils.json_to_sheet(referenceData)
+			XLSX.utils.book_append_sheet(wb, wsReference, 'Reference Data')
+
+			// Download file
+			XLSX.writeFile(wb, 'students_upload_template_with_references.xlsx')
+
+			toast({
+				title: '✅ Template Downloaded',
+				description: 'Student upload template with comprehensive reference data sheet downloaded successfully.',
+				className: 'bg-green-50 border-green-200 text-green-800 dark:bg-green-900/20 dark:border-green-800 dark:text-green-200'
+			})
+		} catch (error) {
+			console.error('Error generating template:', error)
+			toast({
+				title: '❌ Error',
+				description: 'Failed to generate template. Please try again.',
+				variant: 'destructive'
+			})
+		}
 	}
 
 	const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -945,11 +2074,16 @@ export default function StudentsPage() {
 						</SheetHeader>
 
 						<Tabs value={currentTab} onValueChange={setCurrentTab} className="mt-4">
-							<TabsList className="grid w-full grid-cols-4">
-								<TabsTrigger value="basic">Basic Info</TabsTrigger>
-								<TabsTrigger value="contact">Contact</TabsTrigger>
-								<TabsTrigger value="academic">Academic</TabsTrigger>
-								<TabsTrigger value="other">Other</TabsTrigger>
+							<TabsList className="grid w-full grid-cols-9 gap-1">
+								<TabsTrigger value="basic" className="text-xs px-2">Basic</TabsTrigger>
+								<TabsTrigger value="contact" className="text-xs px-2">Contact</TabsTrigger>
+								<TabsTrigger value="address" className="text-xs px-2">Address</TabsTrigger>
+								<TabsTrigger value="academic" className="text-xs px-2">Academic</TabsTrigger>
+								<TabsTrigger value="education" className="text-xs px-2">10th/11th/12th</TabsTrigger>
+								<TabsTrigger value="entrance" className="text-xs px-2">Entrance/UG</TabsTrigger>
+								<TabsTrigger value="accommodation" className="text-xs px-2">Transport/Fee</TabsTrigger>
+								<TabsTrigger value="documents" className="text-xs px-2">Documents</TabsTrigger>
+								<TabsTrigger value="other" className="text-xs px-2">Other</TabsTrigger>
 							</TabsList>
 
 							{/* Basic Info Tab */}
@@ -973,6 +2107,26 @@ export default function StudentsPage() {
 											onChange={(e) => setFormData({ ...formData, register_number: e.target.value })}
 											className="h-10"
 											placeholder="e.g., 412124CS001"
+										/>
+									</div>
+
+									<div className="space-y-2">
+										<Label className="text-sm font-semibold">Application ID</Label>
+										<Input
+											value={formData.application_id}
+											onChange={(e) => setFormData({ ...formData, application_id: e.target.value })}
+											className="h-10"
+											placeholder="Application ID"
+										/>
+									</div>
+
+									<div className="space-y-2">
+										<Label className="text-sm font-semibold">Admission ID</Label>
+										<Input
+											value={formData.admission_id}
+											onChange={(e) => setFormData({ ...formData, admission_id: e.target.value })}
+											className="h-10"
+											placeholder="Admission ID"
 										/>
 									</div>
 
@@ -1002,6 +2156,16 @@ export default function StudentsPage() {
 											onChange={(e) => setFormData({ ...formData, initial: e.target.value })}
 											className="h-10"
 											placeholder="e.g., S"
+										/>
+									</div>
+
+									<div className="space-y-2">
+										<Label className="text-sm font-semibold">Name in Tamil</Label>
+										<Input
+											value={formData.name_in_tamil}
+											onChange={(e) => setFormData({ ...formData, name_in_tamil: e.target.value })}
+											className="h-10"
+											placeholder="தமிழில் பெயர்"
 										/>
 									</div>
 
@@ -1050,6 +2214,16 @@ export default function StudentsPage() {
 											</SelectContent>
 										</Select>
 									</div>
+
+									<div className="space-y-2">
+										<Label className="text-sm font-semibold">Student Photo URL</Label>
+										<Input
+											value={formData.student_photo_url}
+											onChange={(e) => setFormData({ ...formData, student_photo_url: e.target.value })}
+											className="h-10"
+											placeholder="https://example.com/photo.jpg"
+										/>
+									</div>
 								</div>
 							</TabsContent>
 
@@ -1089,10 +2263,42 @@ export default function StudentsPage() {
 									</div>
 
 									<div className="space-y-2">
+										<Label className="text-sm font-semibold">Telephone Number</Label>
+										<Input
+											value={formData.telephone_number}
+											onChange={(e) => setFormData({ ...formData, telephone_number: e.target.value })}
+											className="h-10"
+											placeholder="Landline number"
+										/>
+									</div>
+
+									<div className="space-y-2 md:col-span-2">
+										<h3 className="text-sm font-bold text-blue-600 border-b pb-1">Father Details</h3>
+									</div>
+
+									<div className="space-y-2">
 										<Label className="text-sm font-semibold">Father Name</Label>
 										<Input
 											value={formData.father_name}
 											onChange={(e) => setFormData({ ...formData, father_name: e.target.value })}
+											className="h-10"
+										/>
+									</div>
+
+									<div className="space-y-2">
+										<Label className="text-sm font-semibold">Father Occupation</Label>
+										<Input
+											value={formData.father_occupation}
+											onChange={(e) => setFormData({ ...formData, father_occupation: e.target.value })}
+											className="h-10"
+										/>
+									</div>
+
+									<div className="space-y-2">
+										<Label className="text-sm font-semibold">Father Education</Label>
+										<Input
+											value={formData.father_education}
+											onChange={(e) => setFormData({ ...formData, father_education: e.target.value })}
 											className="h-10"
 										/>
 									</div>
@@ -1108,10 +2314,42 @@ export default function StudentsPage() {
 									</div>
 
 									<div className="space-y-2">
+										<Label className="text-sm font-semibold">Father Email</Label>
+										<Input
+											type="email"
+											value={formData.father_email}
+											onChange={(e) => setFormData({ ...formData, father_email: e.target.value })}
+											className="h-10"
+										/>
+									</div>
+
+									<div className="space-y-2 md:col-span-2">
+										<h3 className="text-sm font-bold text-blue-600 border-b pb-1">Mother Details</h3>
+									</div>
+
+									<div className="space-y-2">
 										<Label className="text-sm font-semibold">Mother Name</Label>
 										<Input
 											value={formData.mother_name}
 											onChange={(e) => setFormData({ ...formData, mother_name: e.target.value })}
+											className="h-10"
+										/>
+									</div>
+
+									<div className="space-y-2">
+										<Label className="text-sm font-semibold">Mother Occupation</Label>
+										<Input
+											value={formData.mother_occupation}
+											onChange={(e) => setFormData({ ...formData, mother_occupation: e.target.value })}
+											className="h-10"
+										/>
+									</div>
+
+									<div className="space-y-2">
+										<Label className="text-sm font-semibold">Mother Education</Label>
+										<Input
+											value={formData.mother_education}
+											onChange={(e) => setFormData({ ...formData, mother_education: e.target.value })}
 											className="h-10"
 										/>
 									</div>
@@ -1127,10 +2365,129 @@ export default function StudentsPage() {
 									</div>
 
 									<div className="space-y-2">
+										<Label className="text-sm font-semibold">Mother Email</Label>
+										<Input
+											type="email"
+											value={formData.mother_email}
+											onChange={(e) => setFormData({ ...formData, mother_email: e.target.value })}
+											className="h-10"
+										/>
+									</div>
+
+									<div className="space-y-2 md:col-span-2">
+										<h3 className="text-sm font-bold text-blue-600 border-b pb-1">Guardian Details (if applicable)</h3>
+									</div>
+
+									<div className="space-y-2">
+										<Label className="text-sm font-semibold">Guardian Name</Label>
+										<Input
+											value={formData.guardian_name}
+											onChange={(e) => setFormData({ ...formData, guardian_name: e.target.value })}
+											className="h-10"
+										/>
+									</div>
+
+									<div className="space-y-2">
+										<Label className="text-sm font-semibold">Guardian Relation</Label>
+										<Input
+											value={formData.guardian_relation}
+											onChange={(e) => setFormData({ ...formData, guardian_relation: e.target.value })}
+											className="h-10"
+											placeholder="e.g., Uncle, Aunt, Brother"
+										/>
+									</div>
+
+									<div className="space-y-2">
+										<Label className="text-sm font-semibold">Guardian Mobile</Label>
+										<Input
+											value={formData.guardian_mobile}
+											onChange={(e) => setFormData({ ...formData, guardian_mobile: e.target.value })}
+											className="h-10"
+											placeholder="10-digit mobile"
+										/>
+									</div>
+
+									<div className="space-y-2">
+										<Label className="text-sm font-semibold">Guardian Email</Label>
+										<Input
+											type="email"
+											value={formData.guardian_email}
+											onChange={(e) => setFormData({ ...formData, guardian_email: e.target.value })}
+											className="h-10"
+										/>
+									</div>
+
+									<div className="space-y-2">
+										<Label className="text-sm font-semibold">Annual Family Income (₹)</Label>
+										<Input
+											type="number"
+											value={formData.annual_income}
+											onChange={(e) => setFormData({ ...formData, annual_income: e.target.value })}
+											className="h-10"
+											placeholder="e.g., 500000"
+										/>
+									</div>
+								</div>
+							</TabsContent>
+
+							{/* Address Tab */}
+							<TabsContent value="address" className="space-y-4 mt-4">
+								<div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+									<div className="space-y-2 md:col-span-2">
+										<h3 className="text-sm font-bold text-blue-600 border-b pb-1">Permanent Address</h3>
+									</div>
+
+									<div className="space-y-2">
+										<Label className="text-sm font-semibold">Door No</Label>
+										<Input
+											value={formData.permanent_address_door_no}
+											onChange={(e) => setFormData({ ...formData, permanent_address_door_no: e.target.value })}
+											className="h-10"
+											placeholder="e.g., 12/A"
+										/>
+									</div>
+
+									<div className="space-y-2">
+										<Label className="text-sm font-semibold">Street</Label>
+										<Input
+											value={formData.permanent_address_street}
+											onChange={(e) => setFormData({ ...formData, permanent_address_street: e.target.value })}
+											className="h-10"
+										/>
+									</div>
+
+									<div className="space-y-2">
+										<Label className="text-sm font-semibold">Village/Area</Label>
+										<Input
+											value={formData.permanent_address_village}
+											onChange={(e) => setFormData({ ...formData, permanent_address_village: e.target.value })}
+											className="h-10"
+										/>
+									</div>
+
+									<div className="space-y-2">
+										<Label className="text-sm font-semibold">Post Office</Label>
+										<Input
+											value={formData.permanent_address_post_office}
+											onChange={(e) => setFormData({ ...formData, permanent_address_post_office: e.target.value })}
+											className="h-10"
+										/>
+									</div>
+
+									<div className="space-y-2">
+										<Label className="text-sm font-semibold">Taluk</Label>
+										<Input
+											value={formData.permanent_address_taluk}
+											onChange={(e) => setFormData({ ...formData, permanent_address_taluk: e.target.value })}
+											className="h-10"
+										/>
+									</div>
+
+									<div className="space-y-2">
 										<Label className="text-sm font-semibold">District</Label>
 										<Input
-											value={formData.district}
-											onChange={(e) => setFormData({ ...formData, district: e.target.value })}
+											value={formData.permanent_address_district}
+											onChange={(e) => setFormData({ ...formData, permanent_address_district: e.target.value })}
 											className="h-10"
 										/>
 									</div>
@@ -1138,9 +2495,29 @@ export default function StudentsPage() {
 									<div className="space-y-2">
 										<Label className="text-sm font-semibold">State</Label>
 										<Input
-											value={formData.state}
-											onChange={(e) => setFormData({ ...formData, state: e.target.value })}
+											value={formData.permanent_address_state}
+											onChange={(e) => setFormData({ ...formData, permanent_address_state: e.target.value })}
 											className="h-10"
+										/>
+									</div>
+
+									<div className="space-y-2">
+										<Label className="text-sm font-semibold">Country</Label>
+										<Input
+											value={formData.permanent_address_country}
+											onChange={(e) => setFormData({ ...formData, permanent_address_country: e.target.value })}
+											className="h-10"
+										/>
+									</div>
+
+									<div className="space-y-2">
+										<Label className="text-sm font-semibold">PIN Code</Label>
+										<Input
+											value={formData.permanent_address_pin_code}
+											onChange={(e) => setFormData({ ...formData, permanent_address_pin_code: e.target.value })}
+											className="h-10"
+											placeholder="6-digit PIN"
+											maxLength={6}
 										/>
 									</div>
 								</div>
@@ -1150,68 +2527,120 @@ export default function StudentsPage() {
 							<TabsContent value="academic" className="space-y-4 mt-4">
 								<div className="grid grid-cols-1 md:grid-cols-2 gap-4">
 									<div className="space-y-2">
-										<Label className="text-sm font-semibold">Institution ID <span className="text-red-500">*</span></Label>
-										<Input
-											value={formData.institution_id}
-											onChange={(e) => setFormData({ ...formData, institution_id: e.target.value })}
-											className={`h-10 ${errors.institution_id ? 'border-destructive' : ''}`}
-											placeholder="Institution UUID"
-										/>
+										<Label className="text-sm font-semibold">Institution <span className="text-red-500">*</span></Label>
+										<Select value={formData.institution_id} onValueChange={(v) => setFormData({ ...formData, institution_id: v })}>
+											<SelectTrigger className={`h-10 ${errors.institution_id ? 'border-destructive' : ''}`}>
+												<SelectValue placeholder="Select institution" />
+											</SelectTrigger>
+											<SelectContent>
+												{institutions.map((inst) => (
+													<SelectItem key={inst.id} value={inst.id}>
+														{inst.institution_code} - {inst.name}
+													</SelectItem>
+												))}
+											</SelectContent>
+										</Select>
 										{errors.institution_id && <p className="text-xs text-destructive">{errors.institution_id}</p>}
 									</div>
 
 									<div className="space-y-2">
-										<Label className="text-sm font-semibold">Department ID <span className="text-red-500">*</span></Label>
-										<Input
-											value={formData.department_id}
-											onChange={(e) => setFormData({ ...formData, department_id: e.target.value })}
-											className={`h-10 ${errors.department_id ? 'border-destructive' : ''}`}
-											placeholder="Department UUID"
-										/>
+										<Label className="text-sm font-semibold">Department <span className="text-red-500">*</span></Label>
+										<Select value={formData.department_id} onValueChange={(v) => setFormData({ ...formData, department_id: v })}>
+											<SelectTrigger className={`h-10 ${errors.department_id ? 'border-destructive' : ''}`}>
+												<SelectValue placeholder="Select department" />
+											</SelectTrigger>
+											<SelectContent>
+												{departments.map((dept) => (
+													<SelectItem key={dept.id} value={dept.id}>
+														{dept.department_code} - {dept.department_name}
+													</SelectItem>
+												))}
+											</SelectContent>
+										</Select>
 										{errors.department_id && <p className="text-xs text-destructive">{errors.department_id}</p>}
 									</div>
 
 									<div className="space-y-2">
-										<Label className="text-sm font-semibold">Program ID <span className="text-red-500">*</span></Label>
-										<Input
-											value={formData.program_id}
-											onChange={(e) => setFormData({ ...formData, program_id: e.target.value })}
-											className={`h-10 ${errors.program_id ? 'border-destructive' : ''}`}
-											placeholder="Program UUID"
-										/>
+										<Label className="text-sm font-semibold">Program <span className="text-red-500">*</span></Label>
+										<Select value={formData.program_id} onValueChange={(v) => setFormData({ ...formData, program_id: v })}>
+											<SelectTrigger className={`h-10 ${errors.program_id ? 'border-destructive' : ''}`}>
+												<SelectValue placeholder="Select program" />
+											</SelectTrigger>
+											<SelectContent>
+												{programs.map((prog) => (
+													<SelectItem key={prog.id} value={prog.id}>
+														{prog.program_code} - {prog.program_name}
+													</SelectItem>
+												))}
+											</SelectContent>
+										</Select>
 										{errors.program_id && <p className="text-xs text-destructive">{errors.program_id}</p>}
 									</div>
 
 									<div className="space-y-2">
-										<Label className="text-sm font-semibold">Semester ID <span className="text-red-500">*</span></Label>
-										<Input
-											value={formData.semester_id}
-											onChange={(e) => setFormData({ ...formData, semester_id: e.target.value })}
-											className={`h-10 ${errors.semester_id ? 'border-destructive' : ''}`}
-											placeholder="Semester UUID"
-										/>
+										<Label className="text-sm font-semibold">Degree</Label>
+										<Select value={formData.degree_id} onValueChange={(v) => setFormData({ ...formData, degree_id: v })}>
+											<SelectTrigger className="h-10">
+												<SelectValue placeholder="Select degree (optional)" />
+											</SelectTrigger>
+											<SelectContent>
+												{degrees.map((deg) => (
+													<SelectItem key={deg.id} value={deg.id}>
+														{deg.degree_code} - {deg.degree_name}
+													</SelectItem>
+												))}
+											</SelectContent>
+										</Select>
+									</div>
+
+									<div className="space-y-2">
+										<Label className="text-sm font-semibold">Semester <span className="text-red-500">*</span></Label>
+										<Select value={formData.semester_id} onValueChange={(v) => setFormData({ ...formData, semester_id: v })}>
+											<SelectTrigger className={`h-10 ${errors.semester_id ? 'border-destructive' : ''}`}>
+												<SelectValue placeholder="Select semester" />
+											</SelectTrigger>
+											<SelectContent>
+												{semesters.map((sem) => (
+													<SelectItem key={sem.id} value={sem.id}>
+														{sem.semester_code} - {sem.semester_name}
+													</SelectItem>
+												))}
+											</SelectContent>
+										</Select>
 										{errors.semester_id && <p className="text-xs text-destructive">{errors.semester_id}</p>}
 									</div>
 
 									<div className="space-y-2">
-										<Label className="text-sm font-semibold">Academic Year ID <span className="text-red-500">*</span></Label>
-										<Input
-											value={formData.academic_year_id}
-											onChange={(e) => setFormData({ ...formData, academic_year_id: e.target.value })}
-											className={`h-10 ${errors.academic_year_id ? 'border-destructive' : ''}`}
-											placeholder="Academic Year UUID"
-										/>
+										<Label className="text-sm font-semibold">Academic Year <span className="text-red-500">*</span></Label>
+										<Select value={formData.academic_year_id} onValueChange={(v) => setFormData({ ...formData, academic_year_id: v })}>
+											<SelectTrigger className={`h-10 ${errors.academic_year_id ? 'border-destructive' : ''}`}>
+												<SelectValue placeholder="Select academic year" />
+											</SelectTrigger>
+											<SelectContent>
+												{academicYears.map((ay) => (
+													<SelectItem key={ay.id} value={ay.id}>
+														{ay.year_code} - {ay.year_name}
+													</SelectItem>
+												))}
+											</SelectContent>
+										</Select>
 										{errors.academic_year_id && <p className="text-xs text-destructive">{errors.academic_year_id}</p>}
 									</div>
 
 									<div className="space-y-2">
-										<Label className="text-sm font-semibold">Section ID</Label>
-										<Input
-											value={formData.section_id}
-											onChange={(e) => setFormData({ ...formData, section_id: e.target.value })}
-											className="h-10"
-											placeholder="Section UUID (optional)"
-										/>
+										<Label className="text-sm font-semibold">Section</Label>
+										<Select value={formData.section_id} onValueChange={(v) => setFormData({ ...formData, section_id: v })}>
+											<SelectTrigger className="h-10">
+												<SelectValue placeholder="Select section (optional)" />
+											</SelectTrigger>
+											<SelectContent>
+												{sections.map((sec) => (
+													<SelectItem key={sec.id} value={sec.id}>
+														{sec.section_code} - {sec.section_name}
+													</SelectItem>
+												))}
+											</SelectContent>
+										</Select>
 									</div>
 
 									<div className="space-y-2">
@@ -1244,64 +2673,382 @@ export default function StudentsPage() {
 								</div>
 							</TabsContent>
 
+							{/* Education (10th/11th/12th) Tab */}
+							<TabsContent value="education" className="space-y-4 mt-4">
+								<div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+									<div className="space-y-2 md:col-span-2">
+										<h3 className="text-sm font-bold text-blue-600 border-b pb-1">10th Standard Details</h3>
+									</div>
+
+									<div className="space-y-2">
+										<Label className="text-sm font-semibold">School Name</Label>
+										<Input value={formData.tenth_school_name} onChange={(e) => setFormData({ ...formData, tenth_school_name: e.target.value })} className="h-10" />
+									</div>
+
+									<div className="space-y-2">
+										<Label className="text-sm font-semibold">School Place</Label>
+										<Input value={formData.tenth_school_place} onChange={(e) => setFormData({ ...formData, tenth_school_place: e.target.value })} className="h-10" />
+									</div>
+
+									<div className="space-y-2">
+										<Label className="text-sm font-semibold">Board</Label>
+										<Input value={formData.tenth_board} onChange={(e) => setFormData({ ...formData, tenth_board: e.target.value })} className="h-10" placeholder="e.g., CBSE, State Board" />
+									</div>
+
+									<div className="space-y-2">
+										<Label className="text-sm font-semibold">Medium</Label>
+										<Input value={formData.tenth_medium} onChange={(e) => setFormData({ ...formData, tenth_medium: e.target.value })} className="h-10" placeholder="e.g., English, Tamil" />
+									</div>
+
+									<div className="space-y-2">
+										<Label className="text-sm font-semibold">Register Number</Label>
+										<Input value={formData.tenth_register_number} onChange={(e) => setFormData({ ...formData, tenth_register_number: e.target.value })} className="h-10" />
+									</div>
+
+									<div className="space-y-2">
+										<Label className="text-sm font-semibold">Passing Year</Label>
+										<Input type="number" value={formData.tenth_passing_year} onChange={(e) => setFormData({ ...formData, tenth_passing_year: e.target.value })} className="h-10" placeholder="e.g., 2022" />
+									</div>
+
+									<div className="space-y-2 md:col-span-2">
+										<h3 className="text-sm font-bold text-blue-600 border-b pb-1 mt-4">11th Standard Details</h3>
+									</div>
+
+									<div className="space-y-2">
+										<Label className="text-sm font-semibold">School Name</Label>
+										<Input value={formData.eleventh_school_name} onChange={(e) => setFormData({ ...formData, eleventh_school_name: e.target.value })} className="h-10" />
+									</div>
+
+									<div className="space-y-2">
+										<Label className="text-sm font-semibold">School Place</Label>
+										<Input value={formData.eleventh_school_place} onChange={(e) => setFormData({ ...formData, eleventh_school_place: e.target.value })} className="h-10" />
+									</div>
+
+									<div className="space-y-2">
+										<Label className="text-sm font-semibold">Board</Label>
+										<Input value={formData.eleventh_board} onChange={(e) => setFormData({ ...formData, eleventh_board: e.target.value })} className="h-10" />
+									</div>
+
+									<div className="space-y-2">
+										<Label className="text-sm font-semibold">Passing Year</Label>
+										<Input type="number" value={formData.eleventh_passing_year} onChange={(e) => setFormData({ ...formData, eleventh_passing_year: e.target.value })} className="h-10" />
+									</div>
+
+									<div className="space-y-2 md:col-span-2">
+										<h3 className="text-sm font-bold text-blue-600 border-b pb-1 mt-4">12th Standard Details</h3>
+									</div>
+
+									<div className="space-y-2">
+										<Label className="text-sm font-semibold">School Name</Label>
+										<Input value={formData.twelfth_school_name} onChange={(e) => setFormData({ ...formData, twelfth_school_name: e.target.value })} className="h-10" />
+									</div>
+
+									<div className="space-y-2">
+										<Label className="text-sm font-semibold">School Place</Label>
+										<Input value={formData.twelfth_school_place} onChange={(e) => setFormData({ ...formData, twelfth_school_place: e.target.value })} className="h-10" />
+									</div>
+
+									<div className="space-y-2">
+										<Label className="text-sm font-semibold">Board</Label>
+										<Input value={formData.twelfth_board} onChange={(e) => setFormData({ ...formData, twelfth_board: e.target.value })} className="h-10" />
+									</div>
+
+									<div className="space-y-2">
+										<Label className="text-sm font-semibold">Register Number</Label>
+										<Input value={formData.twelfth_register_number} onChange={(e) => setFormData({ ...formData, twelfth_register_number: e.target.value })} className="h-10" />
+									</div>
+
+									<div className="space-y-2">
+										<Label className="text-sm font-semibold">Passing Year</Label>
+										<Input type="number" value={formData.twelfth_passing_year} onChange={(e) => setFormData({ ...formData, twelfth_passing_year: e.target.value })} className="h-10" />
+									</div>
+								</div>
+							</TabsContent>
+
+							{/* Entrance Exam & UG Details Tab */}
+							<TabsContent value="entrance" className="space-y-4 mt-4">
+								<div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+									<div className="space-y-2 md:col-span-2">
+										<h3 className="text-sm font-bold text-blue-600 border-b pb-1">Entrance Exam Details</h3>
+									</div>
+
+									<div className="space-y-2">
+										<Label className="text-sm font-semibold">Entry Type</Label>
+										<Input value={formData.entry_type} onChange={(e) => setFormData({ ...formData, entry_type: e.target.value })} className="h-10" placeholder="e.g., NEET, JEE, Direct" />
+									</div>
+
+									<div className="space-y-2">
+										<Label className="text-sm font-semibold">NEET Roll Number</Label>
+										<Input value={formData.neet_roll_number} onChange={(e) => setFormData({ ...formData, neet_roll_number: e.target.value })} className="h-10" />
+									</div>
+
+									<div className="space-y-2">
+										<Label className="text-sm font-semibold">NEET Score</Label>
+										<Input type="number" value={formData.neet_score} onChange={(e) => setFormData({ ...formData, neet_score: e.target.value })} className="h-10" />
+									</div>
+
+									<div className="space-y-2">
+										<Label className="text-sm font-semibold">Medical Cutoff Marks</Label>
+										<Input type="number" value={formData.medical_cutoff_marks} onChange={(e) => setFormData({ ...formData, medical_cutoff_marks: e.target.value })} className="h-10" />
+									</div>
+
+									<div className="space-y-2">
+										<Label className="text-sm font-semibold">Engineering Cutoff Marks</Label>
+										<Input type="number" value={formData.engineering_cutoff_marks} onChange={(e) => setFormData({ ...formData, engineering_cutoff_marks: e.target.value })} className="h-10" />
+									</div>
+
+									<div className="space-y-2">
+										<Label className="text-sm font-semibold">Counseling Number</Label>
+										<Input value={formData.counseling_number} onChange={(e) => setFormData({ ...formData, counseling_number: e.target.value })} className="h-10" />
+									</div>
+
+									<div className="space-y-2 md:col-span-2">
+										<h3 className="text-sm font-bold text-blue-600 border-b pb-1 mt-4">UG Degree Details (for PG students)</h3>
+									</div>
+
+									<div className="space-y-2">
+										<Label className="text-sm font-semibold">Qualifying Degree</Label>
+										<Input value={formData.qualifying_degree} onChange={(e) => setFormData({ ...formData, qualifying_degree: e.target.value })} className="h-10" placeholder="e.g., B.E., B.Tech, B.Sc." />
+									</div>
+
+									<div className="space-y-2">
+										<Label className="text-sm font-semibold">UG College</Label>
+										<Input value={formData.ug_last_college} onChange={(e) => setFormData({ ...formData, ug_last_college: e.target.value })} className="h-10" />
+									</div>
+
+									<div className="space-y-2">
+										<Label className="text-sm font-semibold">UG University</Label>
+										<Input value={formData.ug_university} onChange={(e) => setFormData({ ...formData, ug_university: e.target.value })} className="h-10" />
+									</div>
+
+									<div className="space-y-2">
+										<Label className="text-sm font-semibold">UG Passing Year</Label>
+										<Input type="number" value={formData.ug_passing_year} onChange={(e) => setFormData({ ...formData, ug_passing_year: e.target.value })} className="h-10" />
+									</div>
+
+									<div className="space-y-2">
+										<Label className="text-sm font-semibold">UG Total Percentage</Label>
+										<Input type="number" value={formData.ug_total_percentage} onChange={(e) => setFormData({ ...formData, ug_total_percentage: e.target.value })} className="h-10" placeholder="e.g., 85.5" />
+									</div>
+
+									<div className="space-y-2">
+										<Label className="text-sm font-semibold">UG Class Obtained</Label>
+										<Input value={formData.ug_class_obtained} onChange={(e) => setFormData({ ...formData, ug_class_obtained: e.target.value })} className="h-10" placeholder="e.g., First Class" />
+									</div>
+								</div>
+							</TabsContent>
+
+							{/* Accommodation & Financial Tab */}
+							<TabsContent value="accommodation" className="space-y-4 mt-4">
+								<div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+									<div className="space-y-2 md:col-span-2">
+										<h3 className="text-sm font-bold text-blue-600 border-b pb-1">Accommodation & Transport</h3>
+									</div>
+
+									<div className="space-y-2">
+										<Label className="text-sm font-semibold">Accommodation Type</Label>
+										<Input value={formData.accommodation_type} onChange={(e) => setFormData({ ...formData, accommodation_type: e.target.value })} className="h-10" placeholder="e.g., Day Scholar, Hosteller" />
+									</div>
+
+									<div className="space-y-2">
+										<Label className="text-sm font-semibold">Hostel Type</Label>
+										<Input value={formData.hostel_type} onChange={(e) => setFormData({ ...formData, hostel_type: e.target.value })} className="h-10" />
+									</div>
+
+									<div className="space-y-2">
+										<Label className="text-sm font-semibold">Food Type</Label>
+										<Input value={formData.food_type} onChange={(e) => setFormData({ ...formData, food_type: e.target.value })} className="h-10" placeholder="e.g., Veg, Non-Veg" />
+									</div>
+
+									<div className="space-y-2">
+										<Label className="text-sm font-semibold">Bus Route</Label>
+										<Input value={formData.bus_route} onChange={(e) => setFormData({ ...formData, bus_route: e.target.value })} className="h-10" />
+									</div>
+
+									<div className="space-y-2">
+										<Label className="text-sm font-semibold">Bus Pickup Location</Label>
+										<Input value={formData.bus_pickup_location} onChange={(e) => setFormData({ ...formData, bus_pickup_location: e.target.value })} className="h-10" />
+									</div>
+
+									<div className="space-y-2 md:col-span-2">
+										<h3 className="text-sm font-bold text-blue-600 border-b pb-1 mt-4">Financial Details</h3>
+									</div>
+
+									<div className="space-y-2">
+										<Label className="text-sm font-semibold">Bank Beneficiary Name</Label>
+										<Input value={formData.bank_beneficiary_name} onChange={(e) => setFormData({ ...formData, bank_beneficiary_name: e.target.value })} className="h-10" />
+									</div>
+
+									<div className="space-y-2">
+										<Label className="text-sm font-semibold">Bank Account Number</Label>
+										<Input value={formData.bank_account_number} onChange={(e) => setFormData({ ...formData, bank_account_number: e.target.value })} className="h-10" />
+									</div>
+
+									<div className="space-y-2">
+										<Label className="text-sm font-semibold">Bank IFSC Code</Label>
+										<Input value={formData.bank_ifsc_code} onChange={(e) => setFormData({ ...formData, bank_ifsc_code: e.target.value })} className="h-10" />
+									</div>
+
+									<div className="space-y-2">
+										<Label className="text-sm font-semibold">Bank Name</Label>
+										<Input value={formData.bank_name} onChange={(e) => setFormData({ ...formData, bank_name: e.target.value })} className="h-10" />
+									</div>
+
+									<div className="space-y-2">
+										<Label className="text-sm font-semibold">Bank Branch</Label>
+										<Input value={formData.bank_branch} onChange={(e) => setFormData({ ...formData, bank_branch: e.target.value })} className="h-10" />
+									</div>
+
+									<div className="space-y-2">
+										<Label className="text-sm font-semibold">Fixed Fee (₹)</Label>
+										<Input type="number" value={formData.fixed_fee} onChange={(e) => setFormData({ ...formData, fixed_fee: e.target.value })} className="h-10" />
+									</div>
+
+									<div className="space-y-2">
+										<Label className="text-sm font-semibold">Fee Payment Date</Label>
+										<Input type="date" value={formData.fee_payment_date} onChange={(e) => setFormData({ ...formData, fee_payment_date: e.target.value })} className="h-10" />
+									</div>
+
+									<div className="space-y-2">
+										<Label className="text-sm font-semibold">Fee Amount Paid (₹)</Label>
+										<Input type="number" value={formData.fee_amount_paid} onChange={(e) => setFormData({ ...formData, fee_amount_paid: e.target.value })} className="h-10" />
+									</div>
+								</div>
+							</TabsContent>
+
+							{/* Documents & Reference Tab */}
+							<TabsContent value="documents" className="space-y-4 mt-4">
+								<div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+									<div className="space-y-2 md:col-span-2">
+										<h3 className="text-sm font-bold text-blue-600 border-b pb-1">Reference Information</h3>
+									</div>
+
+									<div className="space-y-2">
+										<Label className="text-sm font-semibold">Reference Type</Label>
+										<Input value={formData.reference_type} onChange={(e) => setFormData({ ...formData, reference_type: e.target.value })} className="h-10" placeholder="e.g., Alumni, Faculty, Advertisement" />
+									</div>
+
+									<div className="space-y-2">
+										<Label className="text-sm font-semibold">Reference Name</Label>
+										<Input value={formData.reference_name} onChange={(e) => setFormData({ ...formData, reference_name: e.target.value })} className="h-10" />
+									</div>
+
+									<div className="space-y-2">
+										<Label className="text-sm font-semibold">Reference Contact</Label>
+										<Input value={formData.reference_contact} onChange={(e) => setFormData({ ...formData, reference_contact: e.target.value })} className="h-10" />
+									</div>
+
+									<div className="space-y-2 md:col-span-2">
+										<h3 className="text-sm font-bold text-blue-600 border-b pb-1 mt-4">Documents & Certificates</h3>
+									</div>
+
+									<div className="space-y-2 md:col-span-2">
+										<Label className="text-sm font-semibold">Original Certificates Submitted (JSON Format)</Label>
+										<Textarea
+											value={formData.original_certificates_submitted}
+											onChange={(e) => setFormData({ ...formData, original_certificates_submitted: e.target.value })}
+											className="min-h-[80px]"
+											placeholder='e.g., ["10th Certificate", "12th Certificate", "Transfer Certificate"]'
+										/>
+										<p className="text-xs text-muted-foreground">Enter JSON array format</p>
+									</div>
+
+									<div className="space-y-2 md:col-span-2">
+										<Label className="text-sm font-semibold">Xerox Certificates Submitted (JSON Format)</Label>
+										<Textarea
+											value={formData.xerox_certificates_submitted}
+											onChange={(e) => setFormData({ ...formData, xerox_certificates_submitted: e.target.value })}
+											className="min-h-[80px]"
+											placeholder='e.g., ["Aadhar Copy", "Community Certificate", "Income Certificate"]'
+										/>
+										<p className="text-xs text-muted-foreground">Enter JSON array format</p>
+									</div>
+								</div>
+							</TabsContent>
+
 							{/* Other Tab */}
 							<TabsContent value="other" className="space-y-4 mt-4">
 								<div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+									<div className="space-y-2 md:col-span-2">
+										<h3 className="text-sm font-bold text-blue-600 border-b pb-1">Demographics</h3>
+									</div>
+
 									<div className="space-y-2">
 										<Label className="text-sm font-semibold">Nationality</Label>
-										<Input
-											value={formData.nationality}
-											onChange={(e) => setFormData({ ...formData, nationality: e.target.value })}
-											className="h-10"
-										/>
+										<Input value={formData.nationality} onChange={(e) => setFormData({ ...formData, nationality: e.target.value })} className="h-10" />
 									</div>
 
 									<div className="space-y-2">
 										<Label className="text-sm font-semibold">Religion</Label>
-										<Input
-											value={formData.religion}
-											onChange={(e) => setFormData({ ...formData, religion: e.target.value })}
-											className="h-10"
-										/>
+										<Input value={formData.religion} onChange={(e) => setFormData({ ...formData, religion: e.target.value })} className="h-10" />
 									</div>
 
 									<div className="space-y-2">
 										<Label className="text-sm font-semibold">Community</Label>
-										<Input
-											value={formData.community}
-											onChange={(e) => setFormData({ ...formData, community: e.target.value })}
-											className="h-10"
-											placeholder="e.g., BC, MBC, SC, ST, OC"
-										/>
+										<Input value={formData.community} onChange={(e) => setFormData({ ...formData, community: e.target.value })} className="h-10" placeholder="e.g., BC, MBC, SC, ST, OC" />
 									</div>
 
 									<div className="space-y-2">
 										<Label className="text-sm font-semibold">Caste</Label>
-										<Input
-											value={formData.caste}
-											onChange={(e) => setFormData({ ...formData, caste: e.target.value })}
-											className="h-10"
-										/>
+										<Input value={formData.caste} onChange={(e) => setFormData({ ...formData, caste: e.target.value })} className="h-10" />
+									</div>
+
+									<div className="space-y-2">
+										<Label className="text-sm font-semibold">Sub Caste</Label>
+										<Input value={formData.sub_caste} onChange={(e) => setFormData({ ...formData, sub_caste: e.target.value })} className="h-10" />
+									</div>
+
+									<div className="space-y-2">
+										<Label className="text-sm font-semibold">Aadhar Number</Label>
+										<Input value={formData.aadhar_number} onChange={(e) => setFormData({ ...formData, aadhar_number: e.target.value })} className="h-10" placeholder="12-digit Aadhar" maxLength={12} />
+									</div>
+
+									<div className="space-y-2">
+										<Label className="text-sm font-semibold">EMIS Number</Label>
+										<Input value={formData.emis_number} onChange={(e) => setFormData({ ...formData, emis_number: e.target.value })} className="h-10" />
+									</div>
+
+									<div className="space-y-2 md:col-span-2">
+										<h3 className="text-sm font-bold text-blue-600 border-b pb-1 mt-4">Category & Status</h3>
 									</div>
 
 									<div className="space-y-2">
 										<Label className="text-sm font-semibold">Quota</Label>
-										<Input
-											value={formData.quota}
-											onChange={(e) => setFormData({ ...formData, quota: e.target.value })}
-											className="h-10"
-											placeholder="e.g., Government, Management"
-										/>
+										<Input value={formData.quota} onChange={(e) => setFormData({ ...formData, quota: e.target.value })} className="h-10" placeholder="e.g., Government, Management" />
 									</div>
 
 									<div className="space-y-2">
 										<Label className="text-sm font-semibold">Category</Label>
-										<Input
-											value={formData.category}
-											onChange={(e) => setFormData({ ...formData, category: e.target.value })}
-											className="h-10"
-											placeholder="e.g., General, OBC, SC, ST"
-										/>
+										<Input value={formData.category} onChange={(e) => setFormData({ ...formData, category: e.target.value })} className="h-10" placeholder="e.g., General, OBC, SC, ST" />
+									</div>
+
+									<div className="space-y-2">
+										<Label className="text-sm font-semibold">Disability Type</Label>
+										<Input value={formData.disability_type} onChange={(e) => setFormData({ ...formData, disability_type: e.target.value })} className="h-10" />
+									</div>
+
+									<div className="space-y-2">
+										<Label className="text-sm font-semibold">Disability Percentage</Label>
+										<Input type="number" value={formData.disability_percentage} onChange={(e) => setFormData({ ...formData, disability_percentage: e.target.value })} className="h-10" placeholder="e.g., 40" />
+									</div>
+
+									<div className="space-y-2">
+										<Label className="text-sm font-semibold">Sports Quota</Label>
+										<Input value={formData.sports_quota} onChange={(e) => setFormData({ ...formData, sports_quota: e.target.value })} className="h-10" />
+									</div>
+
+									<div className="space-y-2">
+										<Label className="text-sm font-semibold">NCC Number</Label>
+										<Input value={formData.ncc_number} onChange={(e) => setFormData({ ...formData, ncc_number: e.target.value })} className="h-10" />
+									</div>
+
+									<div className="space-y-2">
+										<Label className="text-sm font-semibold">NSS Number</Label>
+										<Input value={formData.nss_number} onChange={(e) => setFormData({ ...formData, nss_number: e.target.value })} className="h-10" />
+									</div>
+
+									<div className="space-y-2 md:col-span-2">
+										<h3 className="text-sm font-bold text-blue-600 border-b pb-1 mt-4">Boolean Flags</h3>
 									</div>
 
 									<div className="space-y-2">
@@ -1352,14 +3099,41 @@ export default function StudentsPage() {
 										</div>
 									</div>
 
-									<div className="space-y-2 md:col-span-2">
-										<Label className="text-sm font-semibold">Photo URL</Label>
-										<Input
-											value={formData.photo_url}
-											onChange={(e) => setFormData({ ...formData, photo_url: e.target.value })}
-											className="h-10"
-											placeholder="https://example.com/photo.jpg"
-										/>
+									<div className="space-y-2">
+										<Label className="text-sm font-semibold">Bus Required</Label>
+										<div className="flex items-center gap-3 h-10">
+											<button
+												type="button"
+												onClick={() => setFormData({ ...formData, bus_required: !formData.bus_required })}
+												className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${formData.bus_required ? 'bg-green-500' : 'bg-gray-300'}`}
+											>
+												<span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${formData.bus_required ? 'translate-x-6' : 'translate-x-1'}`} />
+											</button>
+											<span className={`text-sm font-medium ${formData.bus_required ? 'text-green-600' : 'text-gray-500'}`}>
+												{formData.bus_required ? 'Yes' : 'No'}
+											</span>
+										</div>
+									</div>
+
+									<div className="space-y-2">
+										<Label className="text-sm font-semibold">Counseling Applied</Label>
+										<div className="flex items-center gap-3 h-10">
+											<button
+												type="button"
+												onClick={() => setFormData({ ...formData, counseling_applied: !formData.counseling_applied })}
+												className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${formData.counseling_applied ? 'bg-green-500' : 'bg-gray-300'}`}
+											>
+												<span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${formData.counseling_applied ? 'translate-x-6' : 'translate-x-1'}`} />
+											</button>
+											<span className={`text-sm font-medium ${formData.counseling_applied ? 'text-green-600' : 'text-gray-500'}`}>
+												{formData.counseling_applied ? 'Yes' : 'No'}
+											</span>
+										</div>
+									</div>
+
+									<div className="space-y-2">
+										<Label className="text-sm font-semibold">Admission Status</Label>
+										<Input value={formData.admission_status} onChange={(e) => setFormData({ ...formData, admission_status: e.target.value })} className="h-10" placeholder="e.g., Confirmed, Provisional" />
 									</div>
 								</div>
 							</TabsContent>

@@ -22,7 +22,10 @@
       "Bash(cmd /c:*)",
       "Bash(findstr:*)",
       "Bash(Select-Object -First 20)",
-      "Bash(npx shadcn@latest add:*)"
+      "Bash(npx shadcn@latest add:*)",
+      "Bash(dir:*)",
+      "Read(//c/**)",
+      "Bash(wc:*)"
     ],
     "deny": [],
     "ask": []

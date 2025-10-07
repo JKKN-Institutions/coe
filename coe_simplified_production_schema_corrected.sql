@@ -11,11 +11,11 @@
 NOTE: This schema references the following tables from the existing database.
 These tables must exist before creating the student tables:
 - institutions
-- department
-- program
-- degree
-- semester
-- section
+- departments
+- programs
+- degrees
+- semesters
+- sections
 - academic_year
 - admissions (optional)
 - auth.users
@@ -78,11 +78,11 @@ CREATE TABLE IF NOT EXISTS public.students (
   
   -- Academic Assignment (Critical for Exam Operations)
   institution_id uuid NOT NULL REFERENCES public.institutions(id),
-  department_id uuid NOT NULL REFERENCES public.department(id),
-  program_id uuid NOT NULL REFERENCES public.program(id),
-  degree_id uuid REFERENCES public.degree(id),
-  semester_id uuid NOT NULL REFERENCES public.semester(id),
-  section_id uuid REFERENCES public.section(id),
+  department_id uuid NOT NULL REFERENCES public.departments(id),
+  program_id uuid NOT NULL REFERENCES public.programs(id),
+  degree_id uuid REFERENCES public.degrees(id),
+  semester_id uuid NOT NULL REFERENCES public.semesters(id),
+  section_id uuid REFERENCES public.sections(id),
   academic_year_id uuid NOT NULL REFERENCES public.academic_year(id),
   batch_year integer, -- e.g., 2021, 2022
   
@@ -714,10 +714,10 @@ LEFT JOIN student_details sd ON s.id = sd.student_id
 LEFT JOIN student_education se ON s.id = se.student_id
 LEFT JOIN student_financial sf ON s.id = sf.student_id
 LEFT JOIN institutions i ON s.institution_id = i.id
-LEFT JOIN program p ON s.program_id = p.id
-LEFT JOIN department d ON s.department_id = d.id
-LEFT JOIN semester sem ON s.semester_id = sem.id
-LEFT JOIN section sec ON s.section_id = sec.id
+LEFT JOIN programs p ON s.program_id = p.id
+LEFT JOIN departments d ON s.department_id = d.id
+LEFT JOIN semesters sem ON s.semester_id = sem.id
+LEFT JOIN sections sec ON s.section_id = sec.id
 LEFT JOIN academic_year ay ON s.academic_year_id = ay.id;
 
 -- View 2: Hall Ticket View (Exam Operations)
@@ -738,10 +738,10 @@ SELECT
   sec.section_name,
   s.status
 FROM students s
-JOIN program p ON s.program_id = p.id
-JOIN semester sem ON s.semester_id = sem.id
-JOIN department d ON s.department_id = d.id
-LEFT JOIN section sec ON s.section_id = sec.id
+JOIN programs p ON s.program_id = p.id
+JOIN semesters sem ON s.semester_id = sem.id
+JOIN departments d ON s.department_id = d.id
+LEFT JOIN sections sec ON s.section_id = sec.id
 WHERE s.status = 'active';
 
 -- View 3: Student Contact List
@@ -766,8 +766,8 @@ SELECT
   s.status
 FROM students s
 LEFT JOIN student_details sd ON s.id = sd.student_id
-LEFT JOIN program p ON s.program_id = p.id
-LEFT JOIN semester sem ON s.semester_id = sem.id;
+LEFT JOIN programs p ON s.program_id = p.id
+LEFT JOIN semesters sem ON s.semester_id = sem.id;
 
 -- View 4: Fee Defaulters
 CREATE OR REPLACE VIEW vw_fee_defaulters AS
@@ -790,8 +790,8 @@ SELECT
   END as priority
 FROM students s
 JOIN student_financial sf ON s.id = sf.student_id
-JOIN program p ON s.program_id = p.id
-JOIN semester sem ON s.semester_id = sem.id
+JOIN programs p ON s.program_id = p.id
+JOIN semesters sem ON s.semester_id = sem.id
 WHERE sf.balance_amount > 0
   AND s.status = 'active'
 ORDER BY sf.balance_amount DESC;
@@ -861,8 +861,8 @@ BEGIN
     sem.semester_name,
     ts_rank(s.search_vector, plainto_tsquery('english', p_search_term)) as match_rank
   FROM students s
-  LEFT JOIN program p ON s.program_id = p.id
-  LEFT JOIN semester sem ON s.semester_id = sem.id
+  LEFT JOIN programs p ON s.program_id = p.id
+  LEFT JOIN semesters sem ON s.semester_id = sem.id
   WHERE s.search_vector @@ plainto_tsquery('english', p_search_term)
      OR s.roll_number ILIKE '%' || p_search_term || '%'
      OR s.register_number ILIKE '%' || p_search_term || '%'

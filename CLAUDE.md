@@ -426,6 +426,522 @@ toast({
 })
 ```
 
+### Enhanced Upload Summary with Row Count Tracking
+
+Reference implementation: [app/(authenticated)/degree/page.tsx](app/(authenticated)/degree/page.tsx)
+
+**State Management for Upload Summary:**
+```typescript
+const [uploadSummary, setUploadSummary] = useState<{
+  total: number
+  success: number
+  failed: number
+}>({ total: 0, success: 0, failed: 0 })
+
+const [uploadErrors, setUploadErrors] = useState<Array<{
+  row: number
+  degree_code: string
+  degree_name: string
+  errors: string[]
+}>>([])
+```
+
+**Upload with Detailed Row Tracking:**
+```typescript
+const handleImport = async () => {
+  // ... file parsing logic ...
+
+  setLoading(true)
+  let successCount = 0
+  let errorCount = 0
+  const uploadErrors: Array<{
+    row: number
+    degree_code: string
+    degree_name: string
+    errors: string[]
+  }> = []
+
+  for (let i = 0; i < mapped.length; i++) {
+    const degree = mapped[i]
+    const rowNumber = i + 2 // +2 for header row in Excel
+
+    try {
+      const response = await fetch('/api/degrees', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(degree),
+      })
+
+      if (response.ok) {
+        const savedDegree = await response.json()
+        setItems(prev => [savedDegree, ...prev])
+        successCount++
+      } else {
+        const errorData = await response.json()
+        errorCount++
+        uploadErrors.push({
+          row: rowNumber,
+          degree_code: degree.degree_code || 'N/A',
+          degree_name: degree.degree_name || 'N/A',
+          errors: [errorData.error || 'Failed to save degree']
+        })
+      }
+    } catch (error) {
+      errorCount++
+      uploadErrors.push({
+        row: rowNumber,
+        degree_code: degree.degree_code || 'N/A',
+        degree_name: degree.degree_name || 'N/A',
+        errors: [error instanceof Error ? error.message : 'Network error']
+      })
+    }
+  }
+
+  setLoading(false)
+  const totalRows = mapped.length
+
+  // Update upload summary
+  setUploadSummary({
+    total: totalRows,
+    success: successCount,
+    failed: errorCount
+  })
+
+  // Show error dialog if needed
+  if (uploadErrors.length > 0) {
+    setImportErrors(uploadErrors)
+    setErrorPopupOpen(true)
+  }
+
+  // Show appropriate toast message
+  if (successCount > 0 && errorCount === 0) {
+    toast({
+      title: "✅ Upload Complete",
+      description: `Successfully uploaded all ${successCount} row${successCount > 1 ? 's' : ''} (${successCount} degree${successCount > 1 ? 's' : ''}) to the database.`,
+      className: "bg-green-50 border-green-200 text-green-800 dark:bg-green-900/20 dark:border-green-800 dark:text-green-200",
+      duration: 5000,
+    })
+  } else if (successCount > 0 && errorCount > 0) {
+    toast({
+      title: "⚠️ Partial Upload Success",
+      description: `Processed ${totalRows} row${totalRows > 1 ? 's' : ''}: ${successCount} successful, ${errorCount} failed. View error details below.`,
+      className: "bg-yellow-50 border-yellow-200 text-yellow-800 dark:bg-yellow-900/20 dark:border-yellow-800 dark:text-yellow-200",
+      duration: 6000,
+    })
+  } else if (errorCount > 0) {
+    toast({
+      title: "❌ Upload Failed",
+      description: `Processed ${totalRows} row${totalRows > 1 ? 's' : ''}: 0 successful, ${errorCount} failed. View error details below.`,
+      variant: "destructive",
+      className: "bg-red-50 border-red-200 text-red-800 dark:bg-red-900/20 dark:border-red-800 dark:text-red-200",
+      duration: 6000,
+    })
+  }
+}
+```
+
+**Visual Upload Summary in Error Dialog:**
+```typescript
+<AlertDialog open={errorPopupOpen} onOpenChange={setErrorPopupOpen}>
+  <AlertDialogContent className="max-w-4xl max-h-[80vh] overflow-y-auto">
+    <AlertDialogHeader>
+      <div className="flex items-center gap-3">
+        <div className="h-10 w-10 rounded-full bg-red-100 dark:bg-red-900/20 flex items-center justify-center">
+          <XCircle className="h-5 w-5 text-red-600 dark:text-red-400" />
+        </div>
+        <div>
+          <AlertDialogTitle className="text-xl font-bold text-red-600 dark:text-red-400">
+            Data Validation Errors
+          </AlertDialogTitle>
+          <AlertDialogDescription className="text-sm text-muted-foreground mt-1">
+            Please fix the following errors before importing the data
+          </AlertDialogDescription>
+        </div>
+      </div>
+    </AlertDialogHeader>
+
+    <div className="space-y-4">
+      {/* Upload Summary Cards */}
+      {uploadSummary.total > 0 && (
+        <div className="grid grid-cols-3 gap-3">
+          <div className="bg-blue-50 dark:bg-blue-900/10 border border-blue-200 dark:border-blue-800 rounded-lg p-3">
+            <div className="text-xs text-blue-600 dark:text-blue-400 font-medium mb-1">Total Rows</div>
+            <div className="text-2xl font-bold text-blue-700 dark:text-blue-300">{uploadSummary.total}</div>
+          </div>
+          <div className="bg-green-50 dark:bg-green-900/10 border border-green-200 dark:border-green-800 rounded-lg p-3">
+            <div className="text-xs text-green-600 dark:text-green-400 font-medium mb-1">Successful</div>
+            <div className="text-2xl font-bold text-green-700 dark:text-green-300">{uploadSummary.success}</div>
+          </div>
+          <div className="bg-red-50 dark:bg-red-900/10 border border-red-200 dark:border-red-800 rounded-lg p-3">
+            <div className="text-xs text-red-600 dark:text-red-400 font-medium mb-1">Failed</div>
+            <div className="text-2xl font-bold text-red-700 dark:text-red-300">{uploadSummary.failed}</div>
+          </div>
+        </div>
+      )}
+
+      {/* Error Summary */}
+      <div className="bg-red-50 dark:bg-red-900/10 border border-red-200 dark:border-red-800 rounded-lg p-4">
+        <div className="flex items-center gap-2 mb-2">
+          <AlertTriangle className="h-4 w-4 text-red-600 dark:text-red-400" />
+          <span className="font-semibold text-red-800 dark:text-red-200">
+            {importErrors.length} row{importErrors.length > 1 ? 's' : ''} failed validation
+          </span>
+        </div>
+        <p className="text-sm text-red-700 dark:text-red-300">
+          Please correct these errors in your Excel file and try uploading again. Row numbers correspond to your Excel file (including header row).
+        </p>
+      </div>
+
+      {/* Detailed Error List */}
+      <div className="space-y-3">
+        {importErrors.map((error, index) => (
+          <div key={index} className="border border-red-200 dark:border-red-800 rounded-lg p-4 bg-red-50/50 dark:bg-red-900/5">
+            <div className="flex items-start justify-between mb-2">
+              <div className="flex items-center gap-2">
+                <Badge variant="outline" className="text-xs bg-red-100 text-red-800 border-red-300 dark:bg-red-900/20 dark:text-red-200 dark:border-red-700">
+                  Row {error.row}
+                </Badge>
+                <span className="font-medium text-sm">
+                  {error.degree_code} - {error.degree_name}
+                </span>
+              </div>
+            </div>
+
+            <div className="space-y-1">
+              {error.errors.map((err, errIndex) => (
+                <div key={errIndex} className="flex items-start gap-2 text-sm">
+                  <XCircle className="h-3 w-3 text-red-500 mt-0.5 flex-shrink-0" />
+                  <span className="text-red-700 dark:text-red-300">{err}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {/* Helpful Tips */}
+      <div className="bg-blue-50 dark:bg-blue-900/10 border border-blue-200 dark:border-blue-800 rounded-lg p-4">
+        <div className="flex items-start gap-2">
+          <div className="h-5 w-5 rounded-full bg-blue-100 dark:bg-blue-900/20 flex items-center justify-center mt-0.5">
+            <span className="text-xs font-bold text-blue-600 dark:text-blue-400">i</span>
+          </div>
+          <div>
+            <h4 className="font-semibold text-blue-800 dark:text-blue-200 text-sm mb-1">Common Fixes:</h4>
+            <ul className="text-xs text-blue-700 dark:text-blue-300 space-y-1">
+              <li>• Ensure all required fields are provided and not empty</li>
+              <li>• Foreign keys must reference existing records (e.g., institution_code)</li>
+              <li>• Check field length constraints (e.g., degree_code ≤ 50 chars)</li>
+              <li>• Verify data format matches expected patterns</li>
+              <li>• Status values: true/false or Active/Inactive</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <AlertDialogFooter>
+      <AlertDialogAction onClick={() => setErrorPopupOpen(false)}>
+        Close
+      </AlertDialogAction>
+    </AlertDialogFooter>
+  </AlertDialogContent>
+</AlertDialog>
+```
+
+**Enhanced API Error Handling:**
+```typescript
+// Individual save operations with specific error messages
+const save = async () => {
+  if (!validate()) return
+
+  try {
+    const response = await fetch('/api/degrees', {
+      method: editing ? 'PUT' : 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(formData),
+    })
+
+    if (!response.ok) {
+      const errorData = await response.json()
+      throw new Error(errorData.error || 'Failed to save degree')
+    }
+
+    const savedDegree = await response.json()
+
+    toast({
+      title: editing ? "✅ Degree Updated" : "✅ Degree Created",
+      description: `${savedDegree.degree_name} has been successfully ${editing ? 'updated' : 'created'}.`,
+      className: "bg-green-50 border-green-200 text-green-800 dark:bg-green-900/20 dark:border-green-800 dark:text-green-200",
+    })
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : 'Failed to save degree. Please try again.'
+    toast({
+      title: "❌ Save Failed",
+      description: errorMessage,
+      variant: "destructive",
+      className: "bg-red-50 border-red-200 text-red-800 dark:bg-red-900/20 dark:border-red-800 dark:text-red-200",
+    })
+  }
+}
+```
+
+**Key Features:**
+- ✅ **Row Count Tracking**: Displays exact counts (total, success, failed)
+- ✅ **Visual Summary Cards**: Color-coded cards in error dialog (blue/green/red)
+- ✅ **Detailed Error Messages**: Shows Excel row numbers and specific validation errors
+- ✅ **Foreign Key Validation**: Client-side and server-side validation with clear error messages
+- ✅ **User-Friendly Feedback**: Clear, actionable messages with proper pluralization
+- ✅ **Enhanced Duration**: Longer toast duration (5-6s) for complex messages
+- ✅ **Error Prevention Tips**: Helpful guidance in error dialog
+
+### Foreign Key Auto-Mapping Pattern
+
+**IMPORTANT**: When creating or updating entities with foreign key relationships, implement automatic ID mapping from codes to ensure referential integrity.
+
+#### Program Module: Institution, Degree & Department Auto-Mapping
+
+Reference implementation: [app/api/program/route.ts](app/api/program/route.ts) and [app/api/program/[id]/route.ts](app/api/program/[id]/route.ts)
+
+**API Implementation (POST/PUT endpoints):**
+
+```typescript
+// 1. Validate and fetch institutions_id from institution_code (required)
+const { data: institutionData, error: institutionError } = await supabase
+  .from('institutions')
+  .select('id')
+  .eq('institution_code', String(institution_code))
+  .single()
+
+if (institutionError || !institutionData) {
+  return NextResponse.json({
+    error: `Institution with code "${institution_code}" not found. Please ensure the institution exists.`
+  }, { status: 400 })
+}
+
+// 2. Validate and fetch degree_id from degree_code (required)
+const { data: degreeData, error: degreeError } = await supabase
+  .from('degrees')
+  .select('id')
+  .eq('degree_code', String(degree_code))
+  .single()
+
+if (degreeError || !degreeData) {
+  return NextResponse.json({
+    error: `Degree with code "${degree_code}" not found. Please ensure the degree exists.`
+  }, { status: 400 })
+}
+
+// 3. Validate and fetch offering_department_id from offering_department_code (optional)
+let offeringDepartmentId = null
+if (offering_department_code) {
+  const { data: deptData, error: deptError } = await supabase
+    .from('departments')
+    .select('id')
+    .eq('department_code', String(offering_department_code))
+    .single()
+
+  if (deptError || !deptData) {
+    return NextResponse.json({
+      error: `Department with code "${offering_department_code}" not found. Please ensure the department exists.`
+    }, { status: 400 })
+  }
+  offeringDepartmentId = deptData.id
+}
+
+// 4. Insert with both IDs and codes
+const { data, error } = await supabase
+  .from('programs')
+  .insert({
+    institutions_id: institutionData.id,        // FK reference
+    institution_code: String(institution_code), // Human-readable code
+    degree_id: degreeData.id,                   // FK reference
+    degree_code: String(degree_code),           // Human-readable code
+    offering_department_id: offeringDepartmentId, // Optional FK reference
+    offering_department_code: offering_department_code ? String(offering_department_code) : null,
+    // ... other fields
+  })
+  .select('*')
+  .single()
+
+// 5. Handle foreign key constraint errors
+if (error) {
+  console.error('Program insert error:', error)
+  if (error.code === '23503') {
+    return NextResponse.json({
+      error: 'Foreign key constraint failed. Ensure institution and degree exist.'
+    }, { status: 400 })
+  }
+  throw error
+}
+```
+
+**Frontend Error Handling:**
+
+```typescript
+const save = async () => {
+  if (!validate()) return
+  try {
+    setSaving(true)
+    const res = await fetch('/api/program', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(formData)
+    })
+
+    if (!res.ok) {
+      const errorData = await res.json()
+      throw new Error(errorData.error || 'Create failed')
+    }
+
+    const created = await res.json()
+    setItems((p) => [created, ...p])
+    // ... success handling
+  } catch (e) {
+    const errorMessage = e instanceof Error ? e.message : 'Failed to save program'
+    alert(errorMessage)
+  }
+}
+```
+
+**Key Features:**
+- ✅ **Automatic ID Resolution**: Maps human-readable codes to database UUIDs
+- ✅ **Pre-Insert Validation**: Ensures all referenced entities exist before insertion
+- ✅ **Clear Error Messages**: Specific messages indicating which code is invalid
+- ✅ **Optional FK Support**: Handles nullable foreign keys (e.g., offering_department_id)
+- ✅ **Referential Integrity**: Prevents orphaned records and constraint violations
+- ✅ **User-Friendly**: Shows codes in error messages instead of UUIDs
+
+**Applies To:**
+- Programs: `institution_code` → `institutions_id`, `degree_code` → `degree_id`, `offering_department_code` → `offering_department_id`
+- Courses: Similar pattern for any course-related foreign keys
+- Students: Similar pattern for program/section/semester foreign keys
+
+### Standardized Upload/Import Pattern for All Pages
+
+**IMPORTANT**: When adding or modifying upload/import functionality in any entity page ([courses](app/(authenticated)/courses/page.tsx), [degree](app/(authenticated)/degree/page.tsx), [department](app/(authenticated)/department/page.tsx), [institutions](app/(authenticated)/institutions/page.tsx), [program](app/(authenticated)/program/page.tsx), [regulations](app/(authenticated)/regulations/page.tsx), [section](app/(authenticated)/section/page.tsx), [semester](app/(authenticated)/semester/page.tsx), [students](app/(authenticated)/students/page.tsx)), you **MUST** include the following standardized structure using the [degree/page.tsx](app/(authenticated)/degree/page.tsx) implementation as the reference pattern.
+
+**Required Components:**
+
+1. **State Management for Upload Summary**
+   - Track total rows processed, successful saves, and failures
+   - Use structured error objects with row numbers and detailed error messages
+   ```typescript
+   const [uploadSummary, setUploadSummary] = useState<{
+     total: number
+     success: number
+     failed: number
+   }>({ total: 0, success: 0, failed: 0 })
+
+   const [importErrors, setImportErrors] = useState<Array<{
+     row: number
+     [entity]_code: string  // e.g., degree_code, course_code
+     [entity]_name: string  // e.g., degree_name, course_title
+     errors: string[]
+   }>>([])
+   ```
+
+2. **Upload Implementation with Row Tracking**
+   - Loop through parsed Excel data with row number tracking (`i + 2` for Excel files)
+   - Collect success/failure counts and detailed error information
+   - Extract specific error messages from API response JSON
+   ```typescript
+   for (let i = 0; i < mapped.length; i++) {
+     const item = mapped[i]
+     const rowNumber = i + 2 // +2 for header row in Excel
+
+     try {
+       const response = await fetch('/api/[entity]', {
+         method: 'POST',
+         headers: { 'Content-Type': 'application/json' },
+         body: JSON.stringify(item),
+       })
+
+       if (response.ok) {
+         successCount++
+       } else {
+         const errorData = await response.json()
+         errorCount++
+         uploadErrors.push({
+           row: rowNumber,
+           [entity]_code: item.[entity]_code || 'N/A',
+           [entity]_name: item.[entity]_name || 'N/A',
+           errors: [errorData.error || 'Failed to save']
+         })
+       }
+     } catch (error) {
+       errorCount++
+       uploadErrors.push({
+         row: rowNumber,
+         [entity]_code: item.[entity]_code || 'N/A',
+         [entity]_name: item.[entity]_name || 'N/A',
+         errors: [error instanceof Error ? error.message : 'Network error']
+       })
+     }
+   }
+   ```
+
+3. **Visual Upload Summary in Error Dialog**
+   - Display 3-column summary cards (Total, Successful, Failed)
+   - Color-coded design: Blue (total), Green (success), Red (failed)
+   - Show detailed error list with row numbers and specific error messages
+   - Include helpful tips section for common fixes
+   - See lines 1127-1202 in [degree/page.tsx](app/(authenticated)/degree/page.tsx)
+
+4. **Enhanced API Error Handling**
+   - Extract specific error messages from API response JSON
+   - Differentiate between validation errors, foreign key errors, and network errors
+   - Provide user-friendly error messages in both individual saves and bulk uploads
+   ```typescript
+   if (!response.ok) {
+     const errorData = await response.json()
+     throw new Error(errorData.error || 'Failed to save [entity]')
+   }
+   ```
+
+5. **Toast Notification Messages**
+   - **Full Success**: Green toast with total count and entity count
+     ```typescript
+     toast({
+       title: "✅ Upload Complete",
+       description: `Successfully uploaded all ${successCount} row${successCount > 1 ? 's' : ''} (${successCount} [entity]${successCount > 1 ? 's' : ''}) to the database.`,
+       className: "bg-green-50 border-green-200 text-green-800 dark:bg-green-900/20 dark:border-green-800 dark:text-green-200",
+       duration: 5000,
+     })
+     ```
+   - **Partial Success**: Yellow toast with total, success, and failure counts
+     ```typescript
+     toast({
+       title: "⚠️ Partial Upload Success",
+       description: `Processed ${totalRows} row${totalRows > 1 ? 's' : ''}: ${successCount} successful, ${errorCount} failed. View error details below.`,
+       className: "bg-yellow-50 border-yellow-200 text-yellow-800 dark:bg-yellow-900/20 dark:border-yellow-800 dark:text-yellow-200",
+       duration: 6000,
+     })
+     ```
+   - **Full Failure**: Red toast with total and failure counts
+     ```typescript
+     toast({
+       title: "❌ Upload Failed",
+       description: `Processed ${totalRows} row${totalRows > 1 ? 's' : ''}: 0 successful, ${errorCount} failed. View error details below.`,
+       variant: "destructive",
+       className: "bg-red-50 border-red-200 text-red-800 dark:bg-red-900/20 dark:border-red-800 dark:text-red-200",
+       duration: 6000,
+     })
+     ```
+
+**Key Features Checklist:**
+- ✅ Row count tracking in state (total, success, failed)
+- ✅ Visual summary cards (3-column grid: blue/green/red)
+- ✅ Detailed error messages with Excel row numbers
+- ✅ Foreign key validation (if applicable to entity)
+- ✅ User-friendly toast messages with proper counts
+- ✅ Proper pluralization in all messages (row/rows, entity/entities)
+- ✅ Enhanced toast duration (5s for success, 6s for partial/failure)
+- ✅ Error dialog with helpful common fixes tips
+- ✅ API error extraction from response JSON
+- ✅ Differentiation between validation, FK, and network errors
+
+**Reference Implementation:** See [app/(authenticated)/degree/page.tsx](app/(authenticated)/degree/page.tsx) lines 62-66 (state), 590-682 (upload logic), 1127-1202 (error dialog), 233-240 (API error handling).
+
 ## Important Notes
 
 - **Race Conditions:** Always use atomic updates with conditional checks when marking records as used/processed

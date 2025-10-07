@@ -59,6 +59,11 @@ export default function DegreePage() {
     degree_name: string
     errors: string[]
   }>>([])
+  const [uploadSummary, setUploadSummary] = useState<{
+    total: number
+    success: number
+    failed: number
+  }>({ total: 0, success: 0, failed: 0 })
 
   // Institutions for dropdown
   const [institutions, setInstitutions] = useState<Array<{ id: string; institution_code: string; name?: string }>>([])
@@ -97,7 +102,11 @@ export default function DegreePage() {
       if (res.ok) {
         const data = await res.json()
         const mapped = Array.isArray(data)
-          ? data.filter((i: any) => i?.institution_code).map((i: any) => ({ id: i.id, institution_code: i.institution_code, name: i.name }))
+          ? data.filter((i: any) => i?.institution_code).map((i: any) => ({
+              id: i.id,
+              institution_code: i.institution_code,
+              name: i.institution_name || i.name  // Support both field names
+            }))
           : []
         setInstitutions(mapped)
       }
@@ -199,27 +208,28 @@ export default function DegreePage() {
 
   const save = async () => {
     if (!validate()) return
-    
+
     try {
       setLoading(true)
-      // Ensure institution_code is present before save
-      let payload = { ...formData }
-      if (!payload.institution_code) {
-        try {
-          const user = supabaseAuthService.getUser()
-          if (user?.institution_id) {
-            const res = await fetch('/api/institutions')
-            if (res.ok) {
-              const list = await res.json()
-              const inst = Array.isArray(list) ? list.find((i: any) => i.id === user.institution_id) : null
-              if (inst?.institution_code) {
-                payload.institution_code = inst.institution_code
-              }
-            }
-          }
-        } catch {}
+      // Find the selected institution to get its ID
+      const selectedInstitution = institutions.find(inst => inst.institution_code === formData.institution_code)
+
+      if (!selectedInstitution) {
+        toast({
+          title: "❌ Error",
+          description: "Selected institution not found. Please refresh and try again.",
+          variant: "destructive",
+        })
+        setLoading(false)
+        return
       }
-      
+
+      // Create payload with both institution_code and institutions_id (note: plural)
+      let payload = {
+        ...formData,
+        institutions_id: selectedInstitution.id  // Add institutions_id from selected institution
+      }
+
       if (editing) {
         // Update existing degree
         const response = await fetch('/api/degrees', {
@@ -231,12 +241,13 @@ export default function DegreePage() {
         })
         
         if (!response.ok) {
-          throw new Error('Failed to update degree')
+          const errorData = await response.json()
+          throw new Error(errorData.error || 'Failed to update degree')
         }
-        
+
         const updatedDegree = await response.json()
         setItems((prev) => prev.map((p) => (p.id === editing.id ? updatedDegree : p)))
-        
+
         toast({
           title: "✅ Degree Updated",
           description: `${updatedDegree.degree_name} has been successfully updated.`,
@@ -251,28 +262,30 @@ export default function DegreePage() {
           },
           body: JSON.stringify(payload),
         })
-        
+
         if (!response.ok) {
-          throw new Error('Failed to create degree')
+          const errorData = await response.json()
+          throw new Error(errorData.error || 'Failed to create degree')
         }
-        
+
         const newDegree = await response.json()
         setItems((prev) => [newDegree, ...prev])
-        
+
         toast({
           title: "✅ Degree Created",
           description: `${newDegree.degree_name} has been successfully created.`,
           className: "bg-green-50 border-green-200 text-green-800 dark:bg-green-900/20 dark:border-green-800 dark:text-green-200",
         })
       }
-      
+
       setSheetOpen(false)
       resetForm()
     } catch (error) {
       console.error('Error saving degree:', error)
+      const errorMessage = error instanceof Error ? error.message : 'Failed to save degree. Please try again.'
       toast({
         title: "❌ Save Failed",
-        description: "Failed to save degree. Please try again.",
+        description: errorMessage,
         variant: "destructive",
         className: "bg-red-50 border-red-200 text-red-800 dark:bg-red-900/20 dark:border-red-800 dark:text-red-200",
       })
@@ -284,18 +297,19 @@ export default function DegreePage() {
   const remove = async (id: string) => {
     try {
       setLoading(true)
-      
+      const degreeName = items.find(i => i.id === id)?.degree_name || 'Degree'
+
       const response = await fetch(`/api/degrees?id=${id}`, {
         method: 'DELETE',
       })
-      
+
       if (!response.ok) {
-        throw new Error('Failed to delete degree')
+        const errorData = await response.json()
+        throw new Error(errorData.error || 'Failed to delete degree')
       }
-      
-      const degreeName = items.find(i => i.id === id)?.degree_name || 'Degree'
+
       setItems((prev) => prev.filter((p) => p.id !== id))
-      
+
       toast({
         title: "✅ Degree Deleted",
         description: `${degreeName} has been successfully deleted.`,
@@ -303,9 +317,10 @@ export default function DegreePage() {
       })
     } catch (error) {
       console.error('Error deleting degree:', error)
+      const errorMessage = error instanceof Error ? error.message : 'Failed to delete degree. Please try again.'
       toast({
         title: "❌ Delete Failed",
-        description: "Failed to delete degree. Please try again.",
+        description: errorMessage,
         variant: "destructive",
         className: "bg-red-50 border-red-200 text-red-800 dark:bg-red-900/20 dark:border-red-800 dark:text-red-200",
       })
@@ -414,6 +429,10 @@ export default function DegreePage() {
   }
 
   const handleTemplateExport = () => {
+    // Create workbook
+    const wb = XLSX.utils.book_new()
+
+    // Sheet 1: Template with sample row
     const sample = [{
       'Institution Code': 'JKKN',
       'Degree Code': 'BSC',
@@ -422,10 +441,10 @@ export default function DegreePage() {
       'Description': 'A comprehensive science degree program',
       'Status': 'Active'
     }]
-    
+
     const ws = XLSX.utils.json_to_sheet(sample)
-    
-    // Set column widths
+
+    // Set column widths for template sheet
     const colWidths = [
       { wch: 18 }, // Institution Code
       { wch: 15 }, // Degree Code
@@ -446,7 +465,7 @@ export default function DegreePage() {
 
       const cell = ws[cellAddress]
       const isMandatory = mandatoryFields.includes(cell.v as string)
-      
+
       if (isMandatory) {
         // Make mandatory field headers red with asterisk
         cell.v = cell.v + ' *'
@@ -462,9 +481,53 @@ export default function DegreePage() {
         }
       }
     }
-    
-    const wb = XLSX.utils.book_new()
+
     XLSX.utils.book_append_sheet(wb, ws, 'Template')
+
+    // Sheet 2: Institution Code References
+    const institutionReference = institutions.map(inst => ({
+      'Institution Code': inst.institution_code,
+      'Institution Name': inst.name || 'N/A',
+      'Status': inst.is_active ? 'Active' : 'Inactive'
+    }))
+
+    const wsRef = XLSX.utils.json_to_sheet(institutionReference)
+
+    // Set column widths for reference sheet
+    const refColWidths = [
+      { wch: 20 }, // Institution Code
+      { wch: 40 }, // Institution Name
+      { wch: 10 }  // Status
+    ]
+    wsRef['!cols'] = refColWidths
+
+    // Style the reference sheet header
+    const refRange = XLSX.utils.decode_range(wsRef['!ref'] || 'A1')
+    for (let col = refRange.s.c; col <= refRange.e.c; col++) {
+      const cellAddress = XLSX.utils.encode_cell({ r: 0, c: col })
+      if (wsRef[cellAddress]) {
+        wsRef[cellAddress].s = {
+          font: { bold: true, color: { rgb: '1F2937' } },
+          fill: { fgColor: { rgb: 'DBEAFE' } }
+        }
+      }
+    }
+
+    // Style data rows in reference sheet
+    for (let row = 1; row <= refRange.e.r; row++) {
+      for (let col = refRange.s.c; col <= refRange.e.c; col++) {
+        const cellAddress = XLSX.utils.encode_cell({ r: row, c: col })
+        if (wsRef[cellAddress]) {
+          wsRef[cellAddress].s = {
+            fill: { fgColor: { rgb: 'F0F9FF' } },
+            font: { color: { rgb: '374151' } }
+          }
+        }
+      }
+    }
+
+    XLSX.utils.book_append_sheet(wb, wsRef, 'Institution Codes')
+
     XLSX.writeFile(wb, `degrees_template_${new Date().toISOString().split('T')[0]}.xlsx`)
   }
 
@@ -562,6 +625,11 @@ export default function DegreePage() {
         // If there are validation errors, show them in popup
         if (validationErrors.length > 0) {
           setImportErrors(validationErrors)
+          setUploadSummary({
+            total: rows.length,
+            success: 0,
+            failed: validationErrors.length
+          })
           setErrorPopupOpen(true)
           return
         }
@@ -580,9 +648,19 @@ export default function DegreePage() {
         setLoading(true)
         let successCount = 0
         let errorCount = 0
-        
-        for (const degree of mapped) {
+        const uploadErrors: Array<{
+          row: number
+          degree_code: string
+          degree_name: string
+          errors: string[]
+        }> = []
+
+        for (let i = 0; i < mapped.length; i++) {
+          const degree = mapped[i]
+          const rowNumber = i + 2 // +2 for header row in Excel
+
           try {
+            // Send degree with institution_code - API will auto-map to institutions_id
             const response = await fetch('/api/degrees', {
               method: 'POST',
               headers: {
@@ -590,42 +668,70 @@ export default function DegreePage() {
               },
               body: JSON.stringify(degree),
             })
-            
+
             if (response.ok) {
               const savedDegree = await response.json()
               setItems(prev => [savedDegree, ...prev])
               successCount++
             } else {
-              console.error('Failed to save degree:', degree.degree_code)
+              const errorData = await response.json()
               errorCount++
-        }
-      } catch (error) {
-            console.error('Error saving degree:', degree.degree_code, error)
+              uploadErrors.push({
+                row: rowNumber,
+                degree_code: degree.degree_code || 'N/A',
+                degree_name: degree.degree_name || 'N/A',
+                errors: [errorData.error || 'Failed to save degree']
+              })
+            }
+          } catch (error) {
             errorCount++
+            uploadErrors.push({
+              row: rowNumber,
+              degree_code: degree.degree_code || 'N/A',
+              degree_name: degree.degree_name || 'N/A',
+              errors: [error instanceof Error ? error.message : 'Network error']
+            })
           }
         }
-        
+
         setLoading(false)
-        
-        // Show detailed results
+
+        const totalRows = mapped.length
+
+        // Update upload summary
+        setUploadSummary({
+          total: totalRows,
+          success: successCount,
+          failed: errorCount
+        })
+
+        // Show detailed results with error dialog if needed
+        if (uploadErrors.length > 0) {
+          setImportErrors(uploadErrors)
+          setErrorPopupOpen(true)
+        }
+
         if (successCount > 0 && errorCount === 0) {
           toast({
-            title: "✅ Import Successful",
-            description: `Successfully imported ${successCount} degree(s) to the database.`,
+            title: "✅ Upload Complete",
+            description: `Successfully uploaded all ${successCount} row${successCount > 1 ? 's' : ''} (${successCount} degree${successCount > 1 ? 's' : ''}) to the database.`,
             className: "bg-green-50 border-green-200 text-green-800 dark:bg-green-900/20 dark:border-green-800 dark:text-green-200",
+            duration: 5000,
           })
         } else if (successCount > 0 && errorCount > 0) {
           toast({
-            title: "⚠️ Partial Import Success",
-            description: `Imported ${successCount} degree(s) successfully, ${errorCount} failed. Check console for details.`,
+            title: "⚠️ Partial Upload Success",
+            description: `Processed ${totalRows} row${totalRows > 1 ? 's' : ''}: ${successCount} successful, ${errorCount} failed. View error details below.`,
             className: "bg-yellow-50 border-yellow-200 text-yellow-800 dark:bg-yellow-900/20 dark:border-yellow-800 dark:text-yellow-200",
+            duration: 6000,
           })
-        } else {
+        } else if (errorCount > 0) {
           toast({
-            title: "❌ Import Failed",
-            description: "Failed to import any degrees. Please check your data and try again.",
+            title: "❌ Upload Failed",
+            description: `Processed ${totalRows} row${totalRows > 1 ? 's' : ''}: 0 successful, ${errorCount} failed. View error details below.`,
             variant: "destructive",
             className: "bg-red-50 border-red-200 text-red-800 dark:bg-red-900/20 dark:border-red-800 dark:text-red-200",
+            duration: 6000,
           })
         }
       } catch (err) {
@@ -1072,15 +1178,33 @@ export default function DegreePage() {
           </AlertDialogHeader>
           
           <div className="space-y-4">
+            {/* Upload Summary */}
+            {uploadSummary.total > 0 && (
+              <div className="grid grid-cols-3 gap-3">
+                <div className="bg-blue-50 dark:bg-blue-900/10 border border-blue-200 dark:border-blue-800 rounded-lg p-3">
+                  <div className="text-xs text-blue-600 dark:text-blue-400 font-medium mb-1">Total Rows</div>
+                  <div className="text-2xl font-bold text-blue-700 dark:text-blue-300">{uploadSummary.total}</div>
+                </div>
+                <div className="bg-green-50 dark:bg-green-900/10 border border-green-200 dark:border-green-800 rounded-lg p-3">
+                  <div className="text-xs text-green-600 dark:text-green-400 font-medium mb-1">Successful</div>
+                  <div className="text-2xl font-bold text-green-700 dark:text-green-300">{uploadSummary.success}</div>
+                </div>
+                <div className="bg-red-50 dark:bg-red-900/10 border border-red-200 dark:border-red-800 rounded-lg p-3">
+                  <div className="text-xs text-red-600 dark:text-red-400 font-medium mb-1">Failed</div>
+                  <div className="text-2xl font-bold text-red-700 dark:text-red-300">{uploadSummary.failed}</div>
+                </div>
+              </div>
+            )}
+
             <div className="bg-red-50 dark:bg-red-900/10 border border-red-200 dark:border-red-800 rounded-lg p-4">
               <div className="flex items-center gap-2 mb-2">
                 <AlertTriangle className="h-4 w-4 text-red-600 dark:text-red-400" />
                 <span className="font-semibold text-red-800 dark:text-red-200">
-                  {importErrors.length} record(s) have validation errors
+                  {importErrors.length} row{importErrors.length > 1 ? 's' : ''} failed validation
                 </span>
               </div>
               <p className="text-sm text-red-700 dark:text-red-300">
-                Please correct these errors in your file and try importing again.
+                Please correct these errors in your Excel file and try uploading again. Row numbers correspond to your Excel file (including header row).
               </p>
             </div>
 
@@ -1119,6 +1243,7 @@ export default function DegreePage() {
                   <h4 className="font-semibold text-blue-800 dark:text-blue-200 text-sm mb-1">Common Fixes:</h4>
                   <ul className="text-xs text-blue-700 dark:text-blue-300 space-y-1">
                     <li>• Ensure Degree Code and Degree Name are provided and not empty</li>
+                    <li>• Institution Code must exist in the institutions table (foreign key validation)</li>
                     <li>• Degree Code must be 50 characters or less</li>
                     <li>• Degree Name must be 255 characters or less</li>
                     <li>• Display Name must be 255 characters or less</li>
