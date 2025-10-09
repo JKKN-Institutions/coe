@@ -237,11 +237,55 @@ const handleSubmit = async () => {
     toast({
       title: '⚠️ Validation Error',
       description: 'Please fix all validation errors before submitting.',
-      variant: 'destructive'
+      variant: 'destructive',
+      className: 'bg-red-50 border-red-200 text-red-800 dark:bg-red-900/20 dark:border-red-800 dark:text-red-200'
     })
     return
   }
-  // Proceed with API call
+  
+  try {
+    setLoading(true)
+    
+    const response = await fetch('/api/endpoint', {
+      method: editing ? 'PUT' : 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(formData)
+    })
+    
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}))
+      const errorMsg = errorData.error || 'Failed to save record'
+      
+      // Check for specific error types
+      if (errorMsg.includes('duplicate') || errorMsg.includes('already exists')) {
+        throw new Error(`This record already exists. Please use different values.`)
+      }
+      
+      throw new Error(errorMsg)
+    }
+    
+    const savedData = await response.json()
+    
+    toast({
+      title: editing ? '✅ Record Updated' : '✅ Record Created',
+      description: `Successfully ${editing ? 'updated' : 'created'} the record.`,
+      className: 'bg-green-50 border-green-200 text-green-800 dark:bg-green-900/20 dark:border-green-800 dark:text-green-200'
+    })
+    
+    setSheetOpen(false)
+    resetForm()
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : 'Failed to save record. Please try again.'
+    
+    toast({
+      title: '❌ Save Failed',
+      description: errorMessage,
+      variant: 'destructive',
+      className: 'bg-red-50 border-red-200 text-red-800 dark:bg-red-900/20 dark:border-red-800 dark:text-red-200'
+    })
+  } finally {
+    setLoading(false)
+  }
 }
 ```
 
@@ -949,3 +993,57 @@ const save = async () => {
 - **Session Timeout:** Handled via middleware and client-side session timeout provider
 - **Inactive Users:** Automatically signed out and redirected to login with error cookie
 - **Page Refresh Issues:** Middleware includes delays to prevent race conditions during auth state hydration
+
+## API Error Handling
+
+### Server-Side Error Response Pattern
+
+**Reference Implementation:** [app/api/section/route.ts](app/api/section/route.ts)
+
+All API routes should handle common database errors and return user-friendly error messages:
+
+```typescript
+if (error) {
+  console.error('Error creating/updating record:', error)
+  
+  // Handle duplicate key constraint violation (23505)
+  if (error.code === '23505') {
+    return NextResponse.json({ 
+      error: `Record already exists. Please use different values.` 
+    }, { status: 400 })
+  }
+  
+  // Handle foreign key constraint violation (23503)
+  if (error.code === '23503') {
+    return NextResponse.json({ 
+      error: 'Invalid reference. Please select a valid option.' 
+    }, { status: 400 })
+  }
+  
+  // Handle check constraint violation (23514)
+  if (error.code === '23514') {
+    return NextResponse.json({ 
+      error: 'Invalid value. Please check your input.' 
+    }, { status: 400 })
+  }
+  
+  // Generic error
+  return NextResponse.json({ error: 'Failed to save record' }, { status: 500 })
+}
+```
+
+### Common PostgreSQL Error Codes
+
+- **23505**: Unique constraint violation (duplicates)
+- **23503**: Foreign key constraint violation (invalid reference)
+- **23514**: Check constraint violation (invalid value)
+- **23502**: Not-null constraint violation (missing required field)
+
+### Best Practices
+
+1. **Always log the full error** for debugging: `console.error('Error:', error)`
+2. **Return specific messages** based on error codes
+3. **Use 400 status** for validation/constraint errors
+4. **Use 500 status** for unexpected server errors
+5. **Include field context** in error messages (e.g., which field caused the duplicate)
+6. **Don't expose sensitive details** to end users (keep technical details in server logs)

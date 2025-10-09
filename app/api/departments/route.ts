@@ -6,18 +6,18 @@ export async function GET(request: Request) {
   try {
     const supabase = getSupabaseServer()
     const { searchParams } = new URL(request.url)
-    const institutionCode = searchParams.get('institution_code')
+    const institution_code = searchParams.get('institution_code')
 
     let query = supabase
       .from('departments')
       .select('*')
       .order('created_at', { ascending: false })
 
-    if (institutionCode) {
-      query = query.eq('institution_code', institutionCode)
+    if (institution_code) {
+      query = query.eq('institution_code', institution_code)
     }
 
-    console.log('🔍 Departments API - Query params:', { institutionCode })
+    console.log('🔍 Departments API - Query params:', { institution_code })
 
     const { data, error } = await query
 

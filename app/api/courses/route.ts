@@ -6,6 +6,10 @@ export async function GET(req: NextRequest) {
     const { searchParams } = new URL(req.url)
     const search = searchParams.get('search')
     const program_id = searchParams.get('program_id')
+    const institution_code = searchParams.get('institution_code')
+    const program_code = searchParams.get('program_code')
+    const regulation_code = searchParams.get('regulation_code')
+    const offering_department_code = searchParams.get('offering_department_code')
     const course_type = searchParams.get('course_type')
     const course_level = searchParams.get('course_level')
     const is_active = searchParams.get('is_active')
@@ -58,6 +62,17 @@ export async function GET(req: NextRequest) {
     // Apply filters against the real column names
     if (search) {
       query = query.or(`course_code.ilike.%${search}%,course_name.ilike.%${search}%`)
+    }
+    if (institution_code) {
+      query = query.eq('institution_code', institution_code)
+    }
+    // Note: courses table doesn't have program_code column
+    // Filter by offering_department_code instead which is derived from program
+    if (offering_department_code) {
+      query = query.eq('offering_department_code', offering_department_code)
+    }
+    if (regulation_code) {
+      query = query.eq('regulation_code', regulation_code)
     }
     if (course_type) {
       query = query.eq('course_type', course_type)

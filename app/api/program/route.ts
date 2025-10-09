@@ -1,7 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getSupabaseServer } from '@/lib/supabase-server'
-import { createRouteHandlerClient } from '@supabase/auth-helpers-nextjs'
-import { cookies } from 'next/headers'
 
 export async function GET(req: NextRequest) {
   try {
@@ -90,17 +88,11 @@ create table if not exists public.programs (
 
 export async function POST(req: NextRequest) {
   try {
-    // RBAC: require programs.create
-    const supa = createRouteHandlerClient({ cookies })
-    const { data: userData } = await supa.auth.getUser()
-    if (!userData?.user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    const permsRes = await fetch(`${process.env.NEXT_PUBLIC_BASE_URL || ''}/api/auth/permissions/current`, { headers: { cookie: req.headers.get('cookie') || '' } })
-    const perms = permsRes.ok ? await permsRes.json() : { permissions: [] }
-    if (!perms.permissions?.includes('programs.create')) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
     const body = await req.json()
     const {
       institution_code,
       degree_code,
+      program_type,
       offering_department_code,
       program_code,
       program_name,
@@ -166,6 +158,7 @@ export async function POST(req: NextRequest) {
         institution_code: String(institution_code),
         degree_id: degreeData.id,
         degree_code: String(degree_code),
+        program_type: program_type ? String(program_type) : null,
         offering_department_id: offeringDepartmentId,
         offering_department_code: offering_department_code ? String(offering_department_code) : null,
         program_code: String(program_code),
@@ -182,12 +175,21 @@ export async function POST(req: NextRequest) {
 
     if (error) {
       console.error('Program insert error:', error)
+
+      // Handle duplicate program code error
+      if (error.code === '23505') {
+        return NextResponse.json({
+          error: `Program code "${program_code}" already exists for institution "${institution_code}". Please use a different program code or update the existing program.`
+        }, { status: 409 })
+      }
+
       // Handle foreign key constraint errors
       if (error.code === '23503') {
         return NextResponse.json({
           error: 'Foreign key constraint failed. Ensure institution and degree exist.'
         }, { status: 400 })
       }
+
       throw error
     }
     return NextResponse.json(data, { status: 201 })

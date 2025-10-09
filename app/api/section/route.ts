@@ -15,7 +15,6 @@ export async function GET(request: Request) {
         institutions_id,
         institution_code,
         section_name,
-        section_code,
         section_id,
         section_description,
         arrear_section,
@@ -67,6 +66,21 @@ export async function POST(request: Request) {
 
     if (error) {
       console.error('Error creating section:', error)
+      
+      // Handle duplicate key constraint violation
+      if (error.code === '23505') {
+        return NextResponse.json({ 
+          error: `Section ID "${body.section_id}" already exists for this institution. Please use a different Section ID.` 
+        }, { status: 400 })
+      }
+      
+      // Handle foreign key constraint violation
+      if (error.code === '23503') {
+        return NextResponse.json({ 
+          error: 'Invalid institution. Please select a valid institution.' 
+        }, { status: 400 })
+      }
+      
       return NextResponse.json({ error: 'Failed to create section' }, { status: 500 })
     }
 
@@ -100,6 +114,21 @@ export async function PUT(request: Request) {
 
     if (error) {
       console.error('Error updating section:', error)
+      
+      // Handle duplicate key constraint violation
+      if (error.code === '23505') {
+        return NextResponse.json({ 
+          error: `Section ID "${body.section_id}" already exists for this institution. Please use a different Section ID.` 
+        }, { status: 400 })
+      }
+      
+      // Handle foreign key constraint violation
+      if (error.code === '23503') {
+        return NextResponse.json({ 
+          error: 'Invalid institution. Please select a valid institution.' 
+        }, { status: 400 })
+      }
+      
       return NextResponse.json({ error: 'Failed to update section' }, { status: 500 })
     }
 

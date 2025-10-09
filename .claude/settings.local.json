@@ -25,7 +25,9 @@
       "Bash(npx shadcn@latest add:*)",
       "Bash(dir:*)",
       "Read(//c/**)",
-      "Bash(wc:*)"
+      "Bash(wc:*)",
+      "Bash(git checkout:*)",
+      "Bash(git status:*)"
     ],
     "deny": [],
     "ask": []

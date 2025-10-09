@@ -35,23 +35,10 @@ export async function GET(request: Request) {
 
 			return NextResponse.json(data || [])
 		} else {
-			// Use basic query with manual joins
+			// Use basic query without joins - will fetch course data separately if needed
 			let query = supabase
 				.from('course_mapping')
-				.select(`
-					*,
-					course:courses!course_id (
-						id,
-						course_code,
-						course_title,
-						course_short_name,
-						course_type,
-						credits,
-						institution_code,
-						program_code,
-						regulation_code
-					)
-				`)
+				.select('*')
 				.order('created_at', { ascending: false })
 
 			if (institutionCode) query = query.eq('institution_code', institutionCode)
@@ -80,6 +67,177 @@ export async function POST(request: Request) {
 		const supabase = getSupabaseServer()
 		const body = await request.json()
 
+		// Check if it's a bulk operation (multiple semesters)
+		if (body.bulk && Array.isArray(body.mappings)) {
+			const results = []
+			const errors = []
+
+			for (const mapping of body.mappings) {
+				// Validate required fields
+				if (!mapping.course_id || !mapping.institution_code || !mapping.program_code || !mapping.batch_code) {
+					errors.push({
+						semester_code: mapping.semester_code,
+						course_id: mapping.course_id,
+						error: 'Missing required fields'
+					})
+					continue
+				}
+
+				// Validate marks consistency
+				if (mapping.internal_pass_mark > mapping.internal_max_mark ||
+					mapping.external_pass_mark > mapping.external_max_mark ||
+					mapping.total_pass_mark > mapping.total_max_mark) {
+					errors.push({
+						semester_code: mapping.semester_code,
+						course_id: mapping.course_id,
+						error: 'Pass marks cannot exceed max marks'
+					})
+					continue
+				}
+
+				// Fetch course_code from courses table
+				const { data: courseData, error: courseError } = await supabase
+					.from('courses')
+					.select('course_code')
+					.eq('id', mapping.course_id)
+					.single()
+
+				if (courseError || !courseData) {
+					errors.push({
+						semester_code: mapping.semester_code,
+						course_id: mapping.course_id,
+						error: 'Course not found'
+					})
+					continue
+				}
+
+				// Fetch institution_id from institutions table based on institution_code
+				const { data: institutionData, error: institutionError } = await supabase
+					.from('institutions')
+					.select('id')
+					.eq('institution_code', mapping.institution_code)
+					.single()
+
+				if (institutionError || !institutionData) {
+					errors.push({
+						semester_code: mapping.semester_code,
+						course_id: mapping.course_id,
+						error: `Institution not found: ${mapping.institution_code}`
+					})
+					continue
+				}
+
+				// Fetch program_id from programs table based on program_code
+				const { data: programData, error: programError } = await supabase
+					.from('programs')
+					.select('id')
+					.eq('program_code', mapping.program_code)
+					.eq('institution_code', mapping.institution_code)
+					.single()
+
+				if (programError || !programData) {
+					errors.push({
+						semester_code: mapping.semester_code,
+						course_id: mapping.course_id,
+						error: `Program not found: ${mapping.program_code}`
+					})
+					continue
+				}
+
+				// Fetch batch_id from batch table based on batch_code
+				const { data: batchData, error: batchError } = await supabase
+					.from('batch')
+					.select('id')
+					.eq('batch_code', mapping.batch_code)
+					.eq('institution_code', mapping.institution_code)
+					.single()
+
+				if (batchError || !batchData) {
+					errors.push({
+						semester_code: mapping.semester_code,
+						course_id: mapping.course_id,
+						error: `Batch not found: ${mapping.batch_code}`
+					})
+					continue
+				}
+
+				// Fetch regulation_id from regulations table based on regulation_code (if provided)
+				let regulationId = null
+				if (mapping.regulation_code) {
+					const { data: regulationData, error: regulationError } = await supabase
+						.from('regulations')
+						.select('id')
+						.eq('regulation_code', mapping.regulation_code)
+						.eq('institution_code', mapping.institution_code)
+						.single()
+
+					if (regulationError || !regulationData) {
+						errors.push({
+							semester_code: mapping.semester_code,
+							course_id: mapping.course_id,
+							error: `Regulation not found: ${mapping.regulation_code}`
+						})
+						continue
+					}
+					regulationId = regulationData.id
+				}
+
+				// Check for duplicate mapping
+				const { data: existing } = await supabase
+					.from('course_mapping')
+					.select('id')
+					.eq('course_id', mapping.course_id)
+					.eq('institution_code', mapping.institution_code)
+					.eq('program_code', mapping.program_code)
+					.eq('batch_code', mapping.batch_code)
+					.eq('semester_code', mapping.semester_code || '')
+					.eq('is_active', true)
+					.single()
+
+				if (existing) {
+					errors.push({
+						semester_code: mapping.semester_code,
+						course_id: mapping.course_id,
+						error: 'Duplicate mapping exists'
+					})
+					continue
+				}
+
+				const { data, error } = await supabase
+					.from('course_mapping')
+					.insert([{
+						...mapping,
+						course_code: courseData.course_code,
+						institutions_id: institutionData.id,  // Add institution ID
+						program_id: programData.id,           // Add program ID
+						batch_id: batchData.id,               // Add batch ID
+						regulation_id: regulationId,          // Add regulation ID if provided
+						created_at: new Date().toISOString(),
+						updated_at: new Date().toISOString()
+					}])
+					.select('*')
+					.single()
+
+				if (error) {
+					console.error('Error creating course mapping:', error)
+					errors.push({
+						semester_code: mapping.semester_code,
+						course_id: mapping.course_id,
+						error: error.message
+					})
+				} else {
+					results.push(data)
+				}
+			}
+
+			return NextResponse.json({
+				success: results,
+				errors: errors,
+				message: `${results.length} mappings created successfully${errors.length > 0 ? `, ${errors.length} failed` : ''}`
+			})
+		}
+
+		// Single mapping creation (existing logic)
 		// Validate required fields
 		if (!body.course_id) {
 			return NextResponse.json(
@@ -131,6 +289,83 @@ export async function POST(request: Request) {
 			)
 		}
 
+		// Fetch course_code from courses table
+		const { data: courseData, error: courseError } = await supabase
+			.from('courses')
+			.select('course_code')
+			.eq('id', body.course_id)
+			.single()
+
+		if (courseError || !courseData) {
+			return NextResponse.json(
+				{ error: 'Course not found' },
+				{ status: 404 }
+			)
+		}
+
+		// Fetch institution_id from institutions table based on institution_code
+		const { data: institutionData, error: institutionError } = await supabase
+			.from('institutions')
+			.select('id')
+			.eq('institution_code', body.institution_code)
+			.single()
+
+		if (institutionError || !institutionData) {
+			return NextResponse.json(
+				{ error: `Institution not found: ${body.institution_code}` },
+				{ status: 404 }
+			)
+		}
+
+		// Fetch program_id from programs table based on program_code
+		const { data: programData, error: programError } = await supabase
+			.from('programs')
+			.select('id')
+			.eq('program_code', body.program_code)
+			.eq('institution_code', body.institution_code)
+			.single()
+
+		if (programError || !programData) {
+			return NextResponse.json(
+				{ error: `Program not found: ${body.program_code}` },
+				{ status: 404 }
+			)
+		}
+
+		// Fetch batch_id from batch table based on batch_code
+		const { data: batchData, error: batchError } = await supabase
+			.from('batch')
+			.select('id')
+			.eq('batch_code', body.batch_code)
+			.eq('institution_code', body.institution_code)
+			.single()
+
+		if (batchError || !batchData) {
+			return NextResponse.json(
+				{ error: `Batch not found: ${body.batch_code}` },
+				{ status: 404 }
+			)
+		}
+
+		// Fetch regulation_id from regulations table based on regulation_code (if provided)
+		let regulationId = null
+		if (body.regulation_code) {
+			const { data: regulationData, error: regulationError } = await supabase
+				.from('regulations')
+				.select('id')
+				.eq('regulation_code', body.regulation_code)
+				.eq('institution_code', body.institution_code)
+				.single()
+
+			if (regulationError || !regulationData) {
+				return NextResponse.json(
+					{ error: `Regulation not found: ${body.regulation_code}` },
+					{ status: 404 }
+				)
+			}
+			regulationId = regulationData.id
+		}
+
 		// Check for duplicate mapping
 		const { data: existing } = await supabase
 			.from('course_mapping')
@@ -152,18 +387,15 @@ export async function POST(request: Request) {
 
 		const { data, error } = await supabase
 			.from('course_mapping')
-			.insert([body])
-			.select(`
-				*,
-				course:courses!course_id (
-					id,
-					course_code,
-					course_title,
-					course_short_name,
-					institution_code,
-					program_code
-				)
-			`)
+			.insert([{
+				...body,
+				course_code: courseData.course_code,
+				institutions_id: institutionData.id,  // Add institution ID
+				program_id: programData.id,           // Add program ID
+				batch_id: batchData.id,               // Add batch ID
+				regulation_id: regulationId           // Add regulation ID if provided
+			}])
+			.select('*')
 			.single()
 
 		if (error) {
@@ -214,21 +446,29 @@ export async function PUT(request: Request) {
 
 		const { id, ...updateData } = body
 
+		// If course_id is being updated, fetch the new course_code
+		if (updateData.course_id) {
+			const { data: courseData, error: courseError } = await supabase
+				.from('courses')
+				.select('course_code')
+				.eq('id', updateData.course_id)
+				.single()
+
+			if (courseError || !courseData) {
+				return NextResponse.json(
+					{ error: 'Course not found' },
+					{ status: 404 }
+				)
+			}
+
+			updateData.course_code = courseData.course_code
+		}
+
 		const { data, error } = await supabase
 			.from('course_mapping')
 			.update(updateData)
 			.eq('id', id)
-			.select(`
-				*,
-				course:courses!course_id (
-					id,
-					course_code,
-					course_title,
-					course_short_name,
-					institution_code,
-					program_code
-				)
-			`)
+			.select('*')
 			.single()
 
 		if (error) {

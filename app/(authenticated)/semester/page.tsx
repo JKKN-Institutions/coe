@@ -19,16 +19,18 @@ import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, 
 import { useToast } from "@/hooks/use-toast"
 import { Toaster } from "@/components/ui/toaster"
 import Link from "next/link"
-import { PlusCircle, Edit, Trash2, Search, ChevronLeft, ChevronRight, ArrowUpDown, ArrowUp, ArrowDown, BookOpen, TrendingUp, FileSpreadsheet, RefreshCw } from "lucide-react"
+import { PlusCircle, Edit, Trash2, Search, ChevronLeft, ChevronRight, ArrowUpDown, ArrowUp, ArrowDown, BookOpen, TrendingUp, FileSpreadsheet, RefreshCw, XCircle, AlertTriangle, Upload } from "lucide-react"
 
 
 type Semester = {
   id: string
   institution_code: string
-  degree_code: string
+  program_code: string
+  semester_code: string
   semester_name: string
   display_name?: string
-  student_group?: string
+  semester_type?: string
+  semester_group?: string
   display_order?: number
   initial_semester?: boolean
   terminal_semester?: boolean
@@ -36,7 +38,7 @@ type Semester = {
 }
 
 const MOCK_SEMESTERS: Semester[] = [
-  { id: "1", institution_code: "JKKN", degree_code: "BSC", semester_name: "Semester 1", display_name: "Sem I", student_group: "UG", display_order: 1, initial_semester: true, terminal_semester: false, created_at: new Date().toISOString() },
+  { id: "1", institution_code: "JKKN", program_code: "JKKN-BSC-CS", semester_code: "SEM1", semester_name: "Semester 1", display_name: "Sem I", semester_type: "Odd", semester_group: "UG", display_order: 1, initial_semester: true, terminal_semester: false, created_at: new Date().toISOString() },
 ]
 
 export default function SemesterPage() {
@@ -53,22 +55,41 @@ export default function SemesterPage() {
   const [editing, setEditing] = useState<Semester | null>(null)
   const [yearFilter, setYearFilter] = useState("all")
   
-  // Add state for institutions and degrees
+  // Add state for institutions and programs
   const [institutions, setInstitutions] = useState<Array<{id: string, institution_code: string, name: string}>>([])
-  const [degrees, setDegrees] = useState<Array<{id: string, degree_code: string, degree_name: string}>>([])
+  const [programs, setPrograms] = useState<Array<{id: string, program_code: string, program_name: string}>>([])
   const [loadingDropdowns, setLoadingDropdowns] = useState(false)
 
   const [formData, setFormData] = useState({
     institution_code: "",
-    degree_code: "",
+    program_code: "",
+    semester_code: "",
     semester_name: "",
     display_name: "",
-    student_group: "",
+    semester_type: "",
+    semester_group: "",
     display_order: 1,
     initial_semester: false,
     terminal_semester: false,
   })
   const [errors, setErrors] = useState<Record<string, string>>({})
+
+  // Upload tracking state
+  const [uploadSummary, setUploadSummary] = useState<{
+    total: number
+    success: number
+    failed: number
+  }>({ total: 0, success: 0, failed: 0 })
+
+  const [importErrors, setImportErrors] = useState<Array<{
+    row: number
+    semester_code: string
+    semester_name: string
+    errors: string[]
+  }>>([])
+  
+  const [errorPopupOpen, setErrorPopupOpen] = useState(false)
+  const [saving, setSaving] = useState(false)
 
   // Fetch data from API
   const fetchSemesters = async () => {
@@ -132,35 +153,35 @@ export default function SemesterPage() {
     }
   }
 
-  // Fetch degrees for dropdown
-  const fetchDegrees = async () => {
+  // Fetch programs for dropdown
+  const fetchPrograms = async () => {
     try {
       setLoadingDropdowns(true)
-      const response = await fetch('/api/degrees')
+      const response = await fetch('/api/program')
       if (!response.ok) {
-        throw new Error('Failed to fetch degrees')
+        throw new Error('Failed to fetch programs')
       }
       const data = await response.json()
-      
+
       // Remove duplicates and create unique entries
-      const uniqueDegrees = data.reduce((acc: any[], degree: any) => {
-        const existingIndex = acc.findIndex(d => d.degree_code === degree.degree_code)
+      const uniquePrograms = data.reduce((acc: any[], program: any) => {
+        const existingIndex = acc.findIndex(p => p.program_code === program.program_code)
         if (existingIndex === -1) {
           acc.push({
-            degree_code: degree.degree_code,
-            degree_name: degree.degree_name,
-            id: degree.id // Add id for unique key
+            program_code: program.program_code,
+            program_name: program.program_name,
+            id: program.id // Add id for unique key
           })
         }
         return acc
       }, [])
-      
-      setDegrees(uniqueDegrees)
+
+      setPrograms(uniquePrograms)
     } catch (error) {
-      console.error('Error fetching degrees:', error)
+      console.error('Error fetching programs:', error)
       toast({
         title: "❌ Fetch Failed",
-        description: "Failed to load degrees. Please try again.",
+        description: "Failed to load programs. Please try again.",
         variant: "destructive",
         className: "bg-red-50 border-red-200 text-red-800 dark:bg-red-900/20 dark:border-red-800 dark:text-red-200",
       })
@@ -173,10 +194,10 @@ export default function SemesterPage() {
   useEffect(() => {
     fetchSemesters()
     fetchInstitutions()
-    fetchDegrees()
+    fetchPrograms()
   }, [])
 
-  const resetForm = () => { setFormData({ institution_code: "", degree_code: "", semester_name: "", display_name: "", student_group: "", display_order: 1, initial_semester: false, terminal_semester: false }); setErrors({}); setEditing(null) }
+  const resetForm = () => { setFormData({ institution_code: "", program_code: "", semester_code: "", semester_name: "", display_name: "", semester_type: "", semester_group: "", display_order: 1, initial_semester: false, terminal_semester: false }); setErrors({}); setEditing(null) }
 
   const handleSort = (c: string) => { if (sortColumn === c) setSortDirection(sortDirection === "asc" ? "desc" : "asc"); else { setSortColumn(c); setSortDirection("asc") } }
   const getSortIcon = (c: string) => sortColumn !== c ? <ArrowUpDown className="h-3 w-3 text-muted-foreground" /> : (sortDirection === "asc" ? <ArrowUp className="h-3 w-3" /> : <ArrowDown className="h-3 w-3" />)
@@ -184,7 +205,7 @@ export default function SemesterPage() {
   const filtered = useMemo(() => {
     const q = searchTerm.toLowerCase()
     const data = items
-      .filter((i) => [i.institution_code, i.degree_code, i.semester_name, i.display_name, i.student_group].filter(Boolean).some((v) => String(v).toLowerCase().includes(q)))
+      .filter((i) => [i.institution_code, i.program_code, i.semester_code, i.semester_name, i.display_name, i.semester_type, i.semester_group].filter(Boolean).some((v) => String(v).toLowerCase().includes(q)))
       .filter((i) => yearFilter === "all" || new Date(i.created_at).getFullYear().toString() === yearFilter)
     if (!sortColumn) return data
     return [...data].sort((a, b) => {
@@ -203,18 +224,23 @@ export default function SemesterPage() {
   const uniqueYears = useMemo(() => Array.from(new Set(items.map(i => new Date(i.created_at).getFullYear()))).sort((a,b)=>b-a), [items])
 
   const openAdd = () => { resetForm(); setSheetOpen(true) }
-  const openEdit = (row: Semester) => { setEditing(row); setFormData({ institution_code: row.institution_code, degree_code: row.degree_code, semester_name: row.semester_name, display_name: row.display_name || "", student_group: row.student_group || "", display_order: row.display_order || 1, initial_semester: !!row.initial_semester, terminal_semester: !!row.terminal_semester }); setSheetOpen(true) }
+  const openEdit = (row: Semester) => { setEditing(row); setFormData({ institution_code: row.institution_code, program_code: row.program_code, semester_code: row.semester_code, semester_name: row.semester_name, display_name: row.display_name || "", semester_type: row.semester_type || "", semester_group: row.semester_group || "", display_order: row.display_order || 1, initial_semester: !!row.initial_semester, terminal_semester: !!row.terminal_semester }); setSheetOpen(true) }
 
-  const validate = () => { const e: Record<string, string> = {}; if (!formData.institution_code.trim()) e.institution_code = "Required"; if (!formData.degree_code.trim()) e.degree_code = "Required"; if (!formData.semester_name.trim()) e.semester_name = "Required"; setErrors(e); return Object.keys(e).length === 0 }
+  const validate = () => { const e: Record<string, string> = {}; if (!formData.institution_code.trim()) e.institution_code = "Required"; if (!formData.program_code.trim()) e.program_code = "Required"; if (!formData.semester_code.trim()) e.semester_code = "Required"; if (!formData.semester_name.trim()) e.semester_name = "Required"; setErrors(e); return Object.keys(e).length === 0 }
 
   const save = async () => {
-    if (!validate()) return
-
-    console.log('Form data before save:', formData)
-    console.log('Validation passed, proceeding with save...')
+    if (!validate()) {
+      toast({
+        title: "⚠️ Validation Error",
+        description: "Please fix all validation errors before submitting.",
+        variant: "destructive",
+        className: "bg-yellow-50 border-yellow-200 text-yellow-800 dark:bg-yellow-900/20 dark:border-yellow-800 dark:text-yellow-200",
+      })
+      return
+    }
 
     try {
-      setLoading(true)
+      setSaving(true)
 
       if (editing) {
         // Update existing semester
@@ -228,19 +254,19 @@ export default function SemesterPage() {
 
         if (!response.ok) {
           const errorData = await response.json().catch(() => ({ error: 'Unknown error' }))
-          console.error('API Error Response:', {
-            status: response.status,
-            statusText: response.statusText,
-            errorData
-          })
-          throw new Error(`Failed to update semester: ${errorData.error || response.statusText}`)
+          throw new Error(errorData.error || 'Failed to update semester')
         }
 
         const updatedSemester = await response.json()
         setItems((prev) => prev.map((p) => (p.id === editing.id ? updatedSemester : p)))
+
+        toast({
+          title: "✅ Semester Updated",
+          description: `${updatedSemester.semester_name} has been successfully updated.`,
+          className: "bg-green-50 border-green-200 text-green-800 dark:bg-green-900/20 dark:border-green-800 dark:text-green-200",
+        })
       } else {
         // Create new semester
-        console.log('Creating semester with data:', formData)
         const response = await fetch('/api/semesters', {
           method: 'POST',
           headers: {
@@ -251,30 +277,31 @@ export default function SemesterPage() {
 
         if (!response.ok) {
           const errorData = await response.json().catch(() => ({ error: 'Unknown error' }))
-          console.error('API Error Response:', {
-            status: response.status,
-            statusText: response.statusText,
-            errorData
-          })
-          throw new Error(`Failed to create semester: ${errorData.error || response.statusText}`)
+          throw new Error(errorData.error || 'Failed to create semester')
         }
 
         const newSemester = await response.json()
         setItems((prev) => [newSemester, ...prev])
+
+        toast({
+          title: "✅ Semester Created",
+          description: `${newSemester.semester_name} has been successfully created.`,
+          className: "bg-green-50 border-green-200 text-green-800 dark:bg-green-900/20 dark:border-green-800 dark:text-green-200",
+        })
       }
 
       setSheetOpen(false)
       resetForm()
     } catch (error) {
-      console.error('Error saving semester:', error)
+      const errorMessage = error instanceof Error ? error.message : 'Failed to save semester. Please try again.'
       toast({
         title: "❌ Save Failed",
-        description: "Failed to save semester. Please try again.",
+        description: errorMessage,
         variant: "destructive",
         className: "bg-red-50 border-red-200 text-red-800 dark:bg-red-900/20 dark:border-red-800 dark:text-red-200",
       })
     } finally {
-      setLoading(false)
+      setSaving(false)
     }
   }
 
@@ -306,9 +333,225 @@ export default function SemesterPage() {
   const formatDate = (d: string) => new Date(d).toLocaleDateString("en-US", { year: "numeric", month: "short", day: "numeric" })
 
   const handleDownload = () => { const json = JSON.stringify(filtered, null, 2); const blob = new Blob([json], { type: 'application/json' }); const url = URL.createObjectURL(blob); const a = document.createElement('a'); a.href = url; a.download = `semester_${new Date().toISOString().split('T')[0]}.json`; document.body.appendChild(a); a.click(); document.body.removeChild(a); URL.revokeObjectURL(url) }
-  const handleExport = () => { const excelData = filtered.map(r=>({'Institution Code':r.institution_code,'Degree Code':r.degree_code,'Semester Name':r.semester_name,'Display Name':r.display_name||'','Student Group':r.student_group||'','Order':r.display_order||'', 'Initial':r.initial_semester?'Yes':'No','Terminal':r.terminal_semester?'Yes':'No','Created':new Date(r.created_at).toISOString().split('T')[0]})); const ws=XLSX.utils.json_to_sheet(excelData); const wb=XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb,ws,'Semester'); XLSX.writeFile(wb,`semester_export_${new Date().toISOString().split('T')[0]}.xlsx`) }
-  const handleTemplateExport = () => { const sample=[{'Institution Code':'JKKN','Degree Code':'BSC','Semester Name':'Semester 1','Display Name':'Sem I','Student Group':'UG','Order':1,'Initial':'Yes','Terminal':'No'}]; const ws=XLSX.utils.json_to_sheet(sample); const wb=XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb,ws,'Template'); XLSX.writeFile(wb,`semester_template_${new Date().toISOString().split('T')[0]}.xlsx`) }
-  const handleImport = () => { const input=document.createElement('input'); input.type='file'; input.accept='.json,.csv,.xlsx,.xls'; input.onchange=async(e)=>{ const file=(e.target as HTMLInputElement).files?.[0]; if(!file) return; try{ let rows: Partial<Semester>[]=[]; if(file.name.endsWith('.json')) rows=JSON.parse(await file.text()); else { const data=new Uint8Array(await file.arrayBuffer()); const wb=XLSX.read(data,{type:'array'}); const ws=wb.Sheets[wb.SheetNames[0]]; const json=XLSX.utils.sheet_to_json(ws) as Record<string,unknown>[]; rows=json.map(j=>({institution_code:String(j['Institution Code']||''),degree_code:String(j['Degree Code']||''),semester_name:String(j['Semester Name']||''),display_name:String(j['Display Name']||''),student_group:String(j['Student Group']||''),display_order:Number(j['Order']||0),initial_semester:String(j['Initial']||'').toLowerCase()==='yes',terminal_semester:String(j['Terminal']||'').toLowerCase()==='yes'})) } const now=new Date().toISOString(); const mapped=rows.filter(r=>r.institution_code&&r.degree_code&&r.semester_name).map(r=>({ id:String(Date.now()+Math.random()), created_at:now, institution_code:r.institution_code!, degree_code:r.degree_code!, semester_name:r.semester_name as string, display_name:(r as any).display_name||'', student_group:(r as any).student_group||'', display_order:(r as any).display_order||1, initial_semester:(r as any).initial_semester??false, terminal_semester:(r as any).terminal_semester??false })) as Semester[]; setItems(p=>[...mapped,...p]) } catch { alert('Import failed. Please check your file.') } }; input.click() }
+  const handleExport = () => { const excelData = filtered.map(r=>({'Institution Code':r.institution_code,'Program Code':r.program_code,'Semester Code':r.semester_code,'Semester Name':r.semester_name,'Display Name':r.display_name||'','Semester Type':r.semester_type||'','Semester Group':r.semester_group||'','Order':r.display_order||'', 'Initial':r.initial_semester?'Yes':'No','Terminal':r.terminal_semester?'Yes':'No','Created':new Date(r.created_at).toISOString().split('T')[0]})); const ws=XLSX.utils.json_to_sheet(excelData); const wb=XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb,ws,'Semester'); XLSX.writeFile(wb,`semester_export_${new Date().toISOString().split('T')[0]}.xlsx`) }
+  const handleTemplateExport = () => {
+    // Main template sheet
+    const sample = [{
+      'Institution Code': 'JKKN',
+      'Program Code': 'JKKN-BSC-CS',
+      'Semester Code': 'SEM1',
+      'Semester Name': 'Semester 1',
+      'Display Name': 'Sem I',
+      'Semester Type': 'Odd',
+      'Semester Group': 'Year 1',
+      'Order': 1,
+      'Initial': 'Yes',
+      'Terminal': 'No'
+    }]
+    const wsTemplate = XLSX.utils.json_to_sheet(sample)
+
+    // Combined Reference sheet with all reference data
+    const referenceData: any[] = []
+    
+    // Section 1: Institution Codes
+    referenceData.push({ 'Category': 'INSTITUTION CODES', 'Code/Value': '', 'Name/Description': '', '': '' })
+    referenceData.push({ 'Category': 'Institution Code', 'Code/Value': 'Institution Name', 'Name/Description': '', '': '' })
+    if (institutions.length > 0) {
+      institutions.forEach(inst => {
+        referenceData.push({
+          'Category': '',
+          'Code/Value': inst.institution_code,
+          'Name/Description': inst.name,
+          '': ''
+        })
+      })
+    } else {
+      referenceData.push({ 'Category': '', 'Code/Value': 'JKKN', 'Name/Description': 'Example Institution', '': '' })
+    }
+    
+    // Add spacing
+    referenceData.push({ 'Category': '', 'Code/Value': '', 'Name/Description': '', '': '' })
+    
+    // Section 2: Program Codes
+    referenceData.push({ 'Category': 'PROGRAM CODES', 'Code/Value': '', 'Name/Description': '', '': '' })
+    referenceData.push({ 'Category': 'Program Code', 'Code/Value': 'Program Name', 'Name/Description': '', '': '' })
+    if (programs.length > 0) {
+      programs.forEach(prog => {
+        referenceData.push({
+          'Category': '',
+          'Code/Value': prog.program_code,
+          'Name/Description': prog.program_name,
+          '': ''
+        })
+      })
+    } else {
+      referenceData.push({ 'Category': '', 'Code/Value': 'JKKN-BSC-CS', 'Name/Description': 'Example Program', '': '' })
+    }
+    
+    // Add spacing
+    referenceData.push({ 'Category': '', 'Code/Value': '', 'Name/Description': '', '': '' })
+    
+    // Section 3: Semester Type
+    referenceData.push({ 'Category': 'SEMESTER TYPE', 'Code/Value': '', 'Name/Description': '', '': '' })
+    referenceData.push({ 'Category': 'Value', 'Code/Value': 'Description', 'Name/Description': '', '': '' })
+    referenceData.push({ 'Category': '', 'Code/Value': 'Odd', 'Name/Description': 'Odd semester (e.g., 1st, 3rd, 5th)', '': '' })
+    referenceData.push({ 'Category': '', 'Code/Value': 'Even', 'Name/Description': 'Even semester (e.g., 2nd, 4th, 6th)', '': '' })
+    
+    // Add spacing
+    referenceData.push({ 'Category': '', 'Code/Value': '', 'Name/Description': '', '': '' })
+    
+    // Section 4: Semester Group
+    referenceData.push({ 'Category': 'SEMESTER GROUP', 'Code/Value': '', 'Name/Description': '', '': '' })
+    referenceData.push({ 'Category': 'Value', 'Code/Value': 'Description', 'Name/Description': '', '': '' })
+    referenceData.push({ 'Category': '', 'Code/Value': 'Year 1', 'Name/Description': 'First year semesters', '': '' })
+    referenceData.push({ 'Category': '', 'Code/Value': 'Year 2', 'Name/Description': 'Second year semesters', '': '' })
+    referenceData.push({ 'Category': '', 'Code/Value': 'Year 3', 'Name/Description': 'Third year semesters', '': '' })
+    referenceData.push({ 'Category': '', 'Code/Value': 'Year 4', 'Name/Description': 'Fourth year semesters', '': '' })
+    referenceData.push({ 'Category': '', 'Code/Value': 'Year 5', 'Name/Description': 'Fifth year semesters', '': '' })
+
+    const wsReference = XLSX.utils.json_to_sheet(referenceData)
+
+    // Create workbook and append sheets
+    const wb = XLSX.utils.book_new()
+    XLSX.utils.book_append_sheet(wb, wsTemplate, 'Template')
+    XLSX.utils.book_append_sheet(wb, wsReference, 'Reference')
+
+    // Write file
+    XLSX.writeFile(wb, `semester_template_${new Date().toISOString().split('T')[0]}.xlsx`)
+  }
+  const handleImport = () => {
+    const input = document.createElement('input')
+    input.type = 'file'
+    input.accept = '.json,.csv,.xlsx,.xls'
+    input.onchange = async (e) => {
+      const file = (e.target as HTMLInputElement).files?.[0]
+      if (!file) return
+
+      try {
+        setLoading(true)
+        let rows: any[] = []
+
+        if (file.name.endsWith('.json')) {
+          rows = JSON.parse(await file.text())
+        } else {
+          const data = new Uint8Array(await file.arrayBuffer())
+          const wb = XLSX.read(data, { type: 'array' })
+          const ws = wb.Sheets[wb.SheetNames[0]]
+          const json = XLSX.utils.sheet_to_json(ws) as Record<string, unknown>[]
+          rows = json.map(j => ({
+            institution_code: String(j['Institution Code'] || ''),
+            program_code: String(j['Program Code'] || ''),
+            semester_code: String(j['Semester Code'] || ''),
+            semester_name: String(j['Semester Name'] || ''),
+            display_name: String(j['Display Name'] || ''),
+            semester_type: String(j['Semester Type'] || ''),
+            semester_group: String(j['Semester Group'] || ''),
+            display_order: Number(j['Order'] || 0),
+            initial_semester: String(j['Initial'] || '').toLowerCase() === 'yes',
+            terminal_semester: String(j['Terminal'] || '').toLowerCase() === 'yes'
+          }))
+        }
+
+        const mapped = rows.filter(r => r.institution_code && r.program_code && r.semester_code && r.semester_name)
+
+        // Row-by-row upload with error tracking
+        let successCount = 0
+        let errorCount = 0
+        const uploadErrors: Array<{
+          row: number
+          semester_code: string
+          semester_name: string
+          errors: string[]
+        }> = []
+
+        for (let i = 0; i < mapped.length; i++) {
+          const semester = mapped[i]
+          const rowNumber = i + 2 // +2 for header row in Excel
+
+          try {
+            const response = await fetch('/api/semesters', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(semester),
+            })
+
+            if (response.ok) {
+              const savedSemester = await response.json()
+              setItems(prev => [savedSemester, ...prev])
+              successCount++
+            } else {
+              const errorData = await response.json()
+              errorCount++
+              uploadErrors.push({
+                row: rowNumber,
+                semester_code: semester.semester_code || 'N/A',
+                semester_name: semester.semester_name || 'N/A',
+                errors: [errorData.error || 'Failed to save semester']
+              })
+            }
+          } catch (error) {
+            errorCount++
+            uploadErrors.push({
+              row: rowNumber,
+              semester_code: semester.semester_code || 'N/A',
+              semester_name: semester.semester_name || 'N/A',
+              errors: [error instanceof Error ? error.message : 'Network error']
+            })
+          }
+        }
+
+        setLoading(false)
+        const totalRows = mapped.length
+
+        // Update upload summary
+        setUploadSummary({
+          total: totalRows,
+          success: successCount,
+          failed: errorCount
+        })
+
+        // Show error dialog if needed
+        if (uploadErrors.length > 0) {
+          setImportErrors(uploadErrors)
+          setErrorPopupOpen(true)
+        }
+
+        // Show appropriate toast message
+        if (successCount > 0 && errorCount === 0) {
+          toast({
+            title: "✅ Upload Complete",
+            description: `Successfully uploaded all ${successCount} row${successCount > 1 ? 's' : ''} (${successCount} semester${successCount > 1 ? 's' : ''}) to the database.`,
+            className: "bg-green-50 border-green-200 text-green-800 dark:bg-green-900/20 dark:border-green-800 dark:text-green-200",
+            duration: 5000,
+          })
+        } else if (successCount > 0 && errorCount > 0) {
+          toast({
+            title: "⚠️ Partial Upload Success",
+            description: `Processed ${totalRows} row${totalRows > 1 ? 's' : ''}: ${successCount} successful, ${errorCount} failed. View error details below.`,
+            className: "bg-yellow-50 border-yellow-200 text-yellow-800 dark:bg-yellow-900/20 dark:border-yellow-800 dark:text-yellow-200",
+            duration: 6000,
+          })
+        } else if (errorCount > 0) {
+          toast({
+            title: "❌ Upload Failed",
+            description: `Processed ${totalRows} row${totalRows > 1 ? 's' : ''}: 0 successful, ${errorCount} failed. View error details below.`,
+            variant: "destructive",
+            className: "bg-red-50 border-red-200 text-red-800 dark:bg-red-900/20 dark:border-red-800 dark:text-red-200",
+            duration: 6000,
+          })
+        }
+      } catch (error) {
+        setLoading(false)
+        toast({
+          title: "❌ Import Failed",
+          description: "Failed to parse file. Please check your file format.",
+          variant: "destructive",
+          className: "bg-red-50 border-red-200 text-red-800 dark:bg-red-900/20 dark:border-red-800 dark:text-red-200",
+        })
+      }
+    }
+    input.click()
+  }
 
   return (
 
@@ -428,8 +671,10 @@ export default function SemesterPage() {
                     <RefreshCw className={`h-3 w-3 mr-1 ${loading ? 'animate-spin' : ''}`} />
                     Refresh
                   </Button>
-        
-       
+                  <Button variant="outline" size="sm" className="text-xs px-2 h-8" onClick={handleImport} disabled={loading}>
+                    <Upload className="h-3 w-3 mr-1" />
+                    Upload
+                  </Button>
                   <Button variant="outline" size="sm" className="text-xs px-2 h-8" onClick={handleTemplateExport}>
                     <FileSpreadsheet className="h-3 w-3 mr-1" />
                     Template
@@ -447,16 +692,16 @@ export default function SemesterPage() {
                   <Table>
                     <TableHeader className="sticky top-0 z-10 bg-slate-50 dark:bg-slate-900/50">
                       <TableRow>
-                        <TableHead className="w-[110px] text-[11px]"><Button variant="ghost" size="sm" onClick={() => handleSort("institution_code")} className="h-auto p-0 font-medium hover:bg-transparent">Inst. Code <span className="ml-1">{getSortIcon("institution_code")}</span></Button></TableHead>
-                        <TableHead className="w-[110px] text-[11px]"><Button variant="ghost" size="sm" onClick={() => handleSort("degree_code")} className="h-auto p-0 font-medium hover:bg-transparent">Degree <span className="ml-1">{getSortIcon("degree_code")}</span></Button></TableHead>
+                        <TableHead className="w-[100px] text-[11px]"><Button variant="ghost" size="sm" onClick={() => handleSort("institution_code")} className="h-auto p-0 font-medium hover:bg-transparent">Inst. Code <span className="ml-1">{getSortIcon("institution_code")}</span></Button></TableHead>
+                        <TableHead className="w-[140px] text-[11px]"><Button variant="ghost" size="sm" onClick={() => handleSort("program_code")} className="h-auto p-0 font-medium hover:bg-transparent">Program <span className="ml-1">{getSortIcon("program_code")}</span></Button></TableHead>
+                        <TableHead className="w-[100px] text-[11px]"><Button variant="ghost" size="sm" onClick={() => handleSort("semester_code")} className="h-auto p-0 font-medium hover:bg-transparent">Sem Code <span className="ml-1">{getSortIcon("semester_code")}</span></Button></TableHead>
                         <TableHead className="text-[11px]"><Button variant="ghost" size="sm" onClick={() => handleSort("semester_name")} className="h-auto p-0 font-medium hover:bg-transparent">Semester Name <span className="ml-1">{getSortIcon("semester_name")}</span></Button></TableHead>
-                        <TableHead className="w-[140px] text-[11px]">Display</TableHead>
-                        <TableHead className="w-[120px] text-[11px]">Student Group</TableHead>
+                        <TableHead className="w-[100px] text-[11px]">Type</TableHead>
                         <TableHead className="w-[80px] text-[11px]"><Button variant="ghost" size="sm" onClick={() => handleSort("display_order")} className="h-auto p-0 font-medium hover:bg-transparent">Order <span className="ml-1">{getSortIcon("display_order")}</span></Button></TableHead>
-                        <TableHead className="w-[100px] text-[11px]">Initial</TableHead>
-                        <TableHead className="w-[100px] text-[11px]">Terminal</TableHead>
-                        <TableHead className="w-[120px] text-[11px]"><Button variant="ghost" size="sm" onClick={() => handleSort("created_at")} className="h-auto p-0 font-medium hover:bg-transparent">Created <span className="ml-1">{getSortIcon("created_at")}</span></Button></TableHead>
-                        <TableHead className="w-[120px] text-[11px] text-center">Actions</TableHead>
+                        <TableHead className="w-[80px] text-[11px]">Initial</TableHead>
+                        <TableHead className="w-[80px] text-[11px]">Terminal</TableHead>
+                        <TableHead className="w-[110px] text-[11px]"><Button variant="ghost" size="sm" onClick={() => handleSort("created_at")} className="h-auto p-0 font-medium hover:bg-transparent">Created <span className="ml-1">{getSortIcon("created_at")}</span></Button></TableHead>
+                        <TableHead className="w-[110px] text-[11px] text-center">Actions</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
@@ -467,10 +712,10 @@ export default function SemesterPage() {
                           {pageItems.map((row) => (
                             <TableRow key={row.id}>
                               <TableCell className="text-[11px] font-medium">{row.institution_code}</TableCell>
-                              <TableCell className="text-[11px]">{row.degree_code}</TableCell>
+                              <TableCell className="text-[11px]">{row.program_code}</TableCell>
+                              <TableCell className="text-[11px] font-medium">{row.semester_code}</TableCell>
                               <TableCell className="text-[11px]">{row.semester_name}</TableCell>
-                              <TableCell className="text-[11px] text-muted-foreground">{row.display_name}</TableCell>
-                              <TableCell className="text-[11px]">{row.student_group}</TableCell>
+                              <TableCell className="text-[11px]">{row.semester_type}</TableCell>
                               <TableCell className="text-[11px]">{row.display_order}</TableCell>
                               <TableCell className="text-[11px]">{row.initial_semester ? "Yes" : "No"}</TableCell>
                               <TableCell className="text-[11px]">{row.terminal_semester ? "Yes" : "No"}</TableCell>
@@ -570,24 +815,46 @@ export default function SemesterPage() {
                   {errors.institution_code && <p className="text-xs text-destructive">{errors.institution_code}</p>}
                 </div>
                 <div className="space-y-2">
-                  <Label className="text-sm font-semibold">Degree <span className="text-red-500">*</span></Label>
-                  <Select 
-                    value={formData.degree_code} 
-                    onValueChange={(value) => setFormData({ ...formData, degree_code: value })}
+                  <Label className="text-sm font-semibold">Program <span className="text-red-500">*</span></Label>
+                  <Select
+                    value={formData.program_code}
+                    onValueChange={(value) => setFormData({ ...formData, program_code: value })}
                     disabled={loadingDropdowns}
                   >
-                    <SelectTrigger className={`h-9 ${errors.degree_code ? 'border-destructive' : ''}`}>
-                      <SelectValue placeholder={loadingDropdowns ? "Loading..." : "Select Degree"} />
+                    <SelectTrigger className={`h-9 ${errors.program_code ? 'border-destructive' : ''}`}>
+                      <SelectValue placeholder={loadingDropdowns ? "Loading..." : "Select Program"} />
                     </SelectTrigger>
                     <SelectContent>
-                      {degrees.map((degree) => (
-                        <SelectItem key={degree.id} value={degree.degree_code}>
-                          {degree.degree_code} - {degree.degree_name}
+                      {programs.map((program) => (
+                        <SelectItem key={program.id} value={program.program_code}>
+                          {program.program_code} - {program.program_name}
                         </SelectItem>
                       ))}
                     </SelectContent>
                   </Select>
-                  {errors.degree_code && <p className="text-xs text-destructive">{errors.degree_code}</p>}
+                  {errors.program_code && <p className="text-xs text-destructive">{errors.program_code}</p>}
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-2">
+                  <Label className="text-sm font-semibold">Semester Code <span className="text-red-500">*</span></Label>
+                  <Input value={formData.semester_code} onChange={(e) => setFormData({ ...formData, semester_code: e.target.value })} className={`h-9 ${errors.semester_code ? 'border-destructive' : ''}`} placeholder="e.g., SEM1" />
+                  {errors.semester_code && <p className="text-xs text-destructive">{errors.semester_code}</p>}
+                </div>
+                <div className="space-y-2">
+                  <Label className="text-sm font-semibold">Semester Type</Label>
+                  <Select
+                    value={formData.semester_type}
+                    onValueChange={(value) => setFormData({ ...formData, semester_type: value })}
+                  >
+                    <SelectTrigger className="h-9">
+                      <SelectValue placeholder="Select Type" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="Odd">Odd</SelectItem>
+                      <SelectItem value="Even">Even</SelectItem>
+                    </SelectContent>
+                  </Select>
                 </div>
               </div>
               <div className="space-y-2">
@@ -611,8 +878,22 @@ export default function SemesterPage() {
                   <Input value={formData.display_name} onChange={(e) => setFormData({ ...formData, display_name: e.target.value })} className="h-9" placeholder="e.g., Sem I" />
                 </div>
                 <div className="space-y-2">
-                  <Label className="text-sm font-medium">Student Group</Label>
-                  <Input value={formData.student_group} onChange={(e) => setFormData({ ...formData, student_group: e.target.value })} className="h-9" placeholder="e.g., UG" />
+                  <Label className="text-sm font-medium">Semester Group</Label>
+                  <Select
+                    value={formData.semester_group}
+                    onValueChange={(value) => setFormData({ ...formData, semester_group: value })}
+                  >
+                    <SelectTrigger className="h-9">
+                      <SelectValue placeholder="Select Year" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="Year 1">Year 1</SelectItem>
+                      <SelectItem value="Year 2">Year 2</SelectItem>
+                      <SelectItem value="Year 3">Year 3</SelectItem>
+                      <SelectItem value="Year 4">Year 4</SelectItem>
+                      <SelectItem value="Year 5">Year 5</SelectItem>
+                    </SelectContent>
+                  </Select>
                 </div>
               </div>
               <div className="space-y-2">
@@ -667,12 +948,123 @@ export default function SemesterPage() {
 
             {/* Action Buttons */}
             <div className="flex justify-end gap-3 pt-6 border-t">
-              <Button variant="outline" size="sm" className="h-10 px-6" onClick={() => { setSheetOpen(false); resetForm() }}>Cancel</Button>
-              <Button size="sm" className="h-10 px-6" onClick={save}>{editing ? "Update Semester" : "Create Semester"}</Button>
+              <Button variant="outline" size="sm" className="h-10 px-6" onClick={() => { setSheetOpen(false); resetForm() }} disabled={saving}>Cancel</Button>
+              <Button size="sm" className="h-10 px-6" onClick={save} disabled={saving}>
+                {saving ? 'Saving...' : (editing ? "Update Semester" : "Create Semester")}
+              </Button>
             </div>
           </div>
         </SheetContent>
       </Sheet>
+
+      {/* Error Dialog for Upload Errors */}
+      <AlertDialog open={errorPopupOpen} onOpenChange={setErrorPopupOpen}>
+        <AlertDialogContent className="max-w-4xl max-h-[80vh] overflow-y-auto">
+          <AlertDialogHeader>
+            <div className="flex items-center gap-3">
+              <div className="h-10 w-10 rounded-full bg-red-100 dark:bg-red-900/20 flex items-center justify-center">
+                <XCircle className="h-5 w-5 text-red-600 dark:text-red-400" />
+              </div>
+              <div>
+                <AlertDialogTitle className="text-xl font-bold text-red-600 dark:text-red-400">
+                  Data Validation Errors
+                </AlertDialogTitle>
+                <AlertDialogDescription className="text-sm text-muted-foreground mt-1">
+                  Please fix the following errors before importing the data
+                </AlertDialogDescription>
+              </div>
+            </div>
+          </AlertDialogHeader>
+
+          <div className="space-y-4">
+            {/* Upload Summary Cards */}
+            {uploadSummary.total > 0 && (
+              <div className="grid grid-cols-3 gap-3">
+                <div className="bg-blue-50 dark:bg-blue-900/10 border border-blue-200 dark:border-blue-800 rounded-lg p-3">
+                  <div className="text-xs text-blue-600 dark:text-blue-400 font-medium mb-1">Total Rows</div>
+                  <div className="text-2xl font-bold text-blue-700 dark:text-blue-300">{uploadSummary.total}</div>
+                </div>
+                <div className="bg-green-50 dark:bg-green-900/10 border border-green-200 dark:border-green-800 rounded-lg p-3">
+                  <div className="text-xs text-green-600 dark:text-green-400 font-medium mb-1">Successful</div>
+                  <div className="text-2xl font-bold text-green-700 dark:text-green-300">{uploadSummary.success}</div>
+                </div>
+                <div className="bg-red-50 dark:bg-red-900/10 border border-red-200 dark:border-red-800 rounded-lg p-3">
+                  <div className="text-xs text-red-600 dark:text-red-400 font-medium mb-1">Failed</div>
+                  <div className="text-2xl font-bold text-red-700 dark:text-red-300">{uploadSummary.failed}</div>
+                </div>
+              </div>
+            )}
+
+            {/* Error Summary */}
+            <div className="bg-red-50 dark:bg-red-900/10 border border-red-200 dark:border-red-800 rounded-lg p-4">
+              <div className="flex items-center gap-2 mb-2">
+                <AlertTriangle className="h-4 w-4 text-red-600 dark:text-red-400" />
+                <span className="font-semibold text-red-800 dark:text-red-200">
+                  {importErrors.length} row{importErrors.length > 1 ? 's' : ''} failed validation
+                </span>
+              </div>
+              <p className="text-sm text-red-700 dark:text-red-300">
+                Please correct these errors in your Excel file and try uploading again. Row numbers correspond to your Excel file (including header row).
+              </p>
+            </div>
+
+            {/* Detailed Error List */}
+            <div className="space-y-3">
+              {importErrors.map((error, index) => (
+                <div key={index} className="border border-red-200 dark:border-red-800 rounded-lg p-4 bg-red-50/50 dark:bg-red-900/5">
+                  <div className="flex items-start justify-between mb-2">
+                    <div className="flex items-center gap-2">
+                      <Badge variant="outline" className="text-xs bg-red-100 text-red-800 border-red-300 dark:bg-red-900/20 dark:text-red-200 dark:border-red-700">
+                        Row {error.row}
+                      </Badge>
+                      <span className="font-medium text-sm">
+                        {error.semester_code} - {error.semester_name}
+                      </span>
+                    </div>
+                  </div>
+
+                  <div className="space-y-1">
+                    {error.errors.map((err, errIndex) => (
+                      <div key={errIndex} className="flex items-start gap-2 text-sm">
+                        <XCircle className="h-3 w-3 text-red-500 mt-0.5 flex-shrink-0" />
+                        <span className="text-red-700 dark:text-red-300">{err}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            {/* Helpful Tips */}
+            <div className="bg-blue-50 dark:bg-blue-900/10 border border-blue-200 dark:border-blue-800 rounded-lg p-4">
+              <div className="flex items-start gap-2">
+                <div className="h-5 w-5 rounded-full bg-blue-100 dark:bg-blue-900/20 flex items-center justify-center mt-0.5">
+                  <span className="text-xs font-bold text-blue-600 dark:text-blue-400">i</span>
+                </div>
+                <div>
+                  <h4 className="font-semibold text-blue-800 dark:text-blue-200 text-sm mb-1">Common Fixes:</h4>
+                  <ul className="text-xs text-blue-700 dark:text-blue-300 space-y-1">
+                    <li>• Ensure all required fields are provided and not empty</li>
+                    <li>• Foreign keys must reference existing records (institution_code, program_code)</li>
+                    <li>• Check field length constraints (e.g., semester_code ≤ 50 chars)</li>
+                    <li>• Verify data format matches expected patterns</li>
+                    <li>• Semester Type values: Odd/Even</li>
+                    <li>• Semester Group values: Year 1, Year 2, Year 3, Year 4, Year 5</li>
+                    <li>• Initial/Terminal values: Yes/No</li>
+                  </ul>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <AlertDialogFooter>
+            <AlertDialogAction onClick={() => setErrorPopupOpen(false)}>
+              Close
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
       <Toaster />
     </SidebarProvider>
 

@@ -39,10 +39,6 @@ type Section = {
   updated_at?: string
 }
 
-const MOCK_SECTIONS: Section[] = [
-  { id: "1", institution_code: "JKKN", section_name: "A", section_id: "A1", section_description: "Regular", arrear_section: false, status: true, created_at: new Date().toISOString() },
-]
-
 export default function SectionPage() {
   const { toast } = useToast()
   const [items, setItems] = useState<Section[]>([])
@@ -88,8 +84,12 @@ export default function SectionPage() {
       setItems(data)
     } catch (error) {
       console.error('Error fetching sections:', error)
-      // Fallback to mock data on error
-      setItems(MOCK_SECTIONS)
+      toast({
+        title: "❌ Fetch Failed",
+        description: "Failed to load sections. Please refresh the page.",
+        variant: "destructive",
+        className: "bg-red-50 border-red-200 text-red-800 dark:bg-red-900/20 dark:border-red-800 dark:text-red-200",
+      })
     } finally {
       setLoading(false)
     }
@@ -214,7 +214,8 @@ export default function SectionPage() {
         })
         
         if (!response.ok) {
-          throw new Error('Failed to update section')
+          const errorData = await response.json().catch(() => ({}))
+          throw new Error(errorData.error || 'Failed to update section')
         }
         
         const updatedSection = await response.json()
@@ -236,7 +237,15 @@ export default function SectionPage() {
         })
         
         if (!response.ok) {
-          throw new Error('Failed to create section')
+          const errorData = await response.json().catch(() => ({}))
+          const errorMsg = errorData.error || 'Failed to create section'
+          
+          // Check for duplicate error
+          if (errorMsg.includes('duplicate') || errorMsg.includes('already exists')) {
+            throw new Error(`Section ID "${formData.section_id}" already exists for this institution. Please use a different Section ID.`)
+          }
+          
+          throw new Error(errorMsg)
         }
         
         const newSection = await response.json()
@@ -253,9 +262,11 @@ export default function SectionPage() {
       resetForm()
     } catch (error) {
       console.error('Error saving section:', error)
+      const errorMessage = error instanceof Error ? error.message : 'Failed to save section. Please try again.'
+      
       toast({
         title: "❌ Save Failed",
-        description: "Failed to save section. Please try again.",
+        description: errorMessage,
         variant: "destructive",
         className: "bg-red-50 border-red-200 text-red-800 dark:bg-red-900/20 dark:border-red-800 dark:text-red-200",
       })
@@ -495,8 +506,17 @@ export default function SectionPage() {
         setLoading(true)
         let successCount = 0
         let errorCount = 0
+        const uploadErrors: Array<{
+          row: number
+          institution_code: string
+          section_name: string
+          errors: string[]
+        }> = []
         
-        for (const section of mapped) {
+        for (let i = 0; i < mapped.length; i++) {
+          const section = mapped[i]
+          const rowNumber = i + 2 // +2 for header row
+          
           try {
             const response = await fetch('/api/section', {
               method: 'POST',
@@ -511,13 +531,35 @@ export default function SectionPage() {
               setItems(prev => [savedSection, ...prev])
               successCount++
             } else {
-              console.error('Failed to save section:', section.section_id)
+              const errorData = await response.json().catch(() => ({}))
+              const errorMsg = errorData.error || 'Failed to save section'
+              
               errorCount++
+              uploadErrors.push({
+                row: rowNumber,
+                institution_code: section.institution_code,
+                section_name: section.section_name,
+                errors: [errorMsg.includes('duplicate') || errorMsg.includes('already exists') 
+                  ? `Duplicate: Section ID "${section.section_id}" already exists for this institution`
+                  : errorMsg
+                ]
+              })
             }
           } catch (error) {
-            console.error('Error saving section:', section.section_id, error)
             errorCount++
+            uploadErrors.push({
+              row: rowNumber,
+              institution_code: section.institution_code,
+              section_name: section.section_name,
+              errors: [error instanceof Error ? error.message : 'Network error']
+            })
           }
+        }
+        
+        // Show error dialog if there are errors
+        if (uploadErrors.length > 0) {
+          setImportErrors(uploadErrors)
+          setErrorPopupOpen(true)
         }
         
         setLoading(false)
@@ -978,6 +1020,93 @@ export default function SectionPage() {
           </div>
         </SheetContent>
       </Sheet>
+
+      {/* Upload Error Dialog */}
+      <AlertDialog open={errorPopupOpen} onOpenChange={setErrorPopupOpen}>
+        <AlertDialogContent className="max-w-4xl max-h-[80vh] overflow-y-auto">
+          <AlertDialogHeader>
+            <div className="flex items-center gap-3">
+              <div className="h-10 w-10 rounded-full bg-red-100 dark:bg-red-900/20 flex items-center justify-center">
+                <XCircle className="h-5 w-5 text-red-600 dark:text-red-400" />
+              </div>
+              <div>
+                <AlertDialogTitle className="text-xl font-bold text-red-600 dark:text-red-400">
+                  Upload Errors ({importErrors.length} row{importErrors.length > 1 ? 's' : ''} failed)
+                </AlertDialogTitle>
+                <AlertDialogDescription className="text-sm text-muted-foreground mt-1">
+                  Please fix the following errors before importing the data
+                </AlertDialogDescription>
+              </div>
+            </div>
+          </AlertDialogHeader>
+
+          <div className="space-y-4">
+            {/* Error Summary */}
+            <div className="bg-red-50 dark:bg-red-900/10 border border-red-200 dark:border-red-800 rounded-lg p-4">
+              <div className="flex items-center gap-2 mb-2">
+                <AlertTriangle className="h-4 w-4 text-red-600 dark:text-red-400" />
+                <span className="font-semibold text-red-800 dark:text-red-200">
+                  {importErrors.length} row{importErrors.length > 1 ? 's' : ''} failed validation
+                </span>
+              </div>
+              <p className="text-sm text-red-700 dark:text-red-300">
+                Please correct these errors in your file and try uploading again. Row numbers correspond to your Excel file (including header row).
+              </p>
+            </div>
+
+            {/* Detailed Error List */}
+            <div className="space-y-3">
+              {importErrors.map((error, index) => (
+                <div key={index} className="border border-red-200 dark:border-red-800 rounded-lg p-4 bg-red-50/50 dark:bg-red-900/5">
+                  <div className="flex items-start justify-between mb-2">
+                    <div className="flex items-center gap-2">
+                      <Badge variant="outline" className="text-xs bg-red-100 text-red-800 border-red-300 dark:bg-red-900/20 dark:text-red-200 dark:border-red-700">
+                        Row {error.row}
+                      </Badge>
+                      <span className="font-medium text-sm">
+                        {error.institution_code} - {error.section_name}
+                      </span>
+                    </div>
+                  </div>
+
+                  <div className="space-y-1">
+                    {error.errors.map((err, errIndex) => (
+                      <div key={errIndex} className="flex items-start gap-2 text-sm">
+                        <XCircle className="h-3 w-3 text-red-500 mt-0.5 flex-shrink-0" />
+                        <span className="text-red-700 dark:text-red-300">{err}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            {/* Helpful Tips */}
+            <div className="bg-blue-50 dark:bg-blue-900/10 border border-blue-200 dark:border-blue-800 rounded-lg p-4">
+              <div className="flex items-start gap-2">
+                <div className="h-5 w-5 rounded-full bg-blue-100 dark:bg-blue-900/20 flex items-center justify-center mt-0.5">
+                  <span className="text-xs font-bold text-blue-600 dark:text-blue-400">i</span>
+                </div>
+                <div>
+                  <h4 className="font-semibold text-blue-800 dark:text-blue-200 text-sm mb-1">Common Fixes:</h4>
+                  <ul className="text-xs text-blue-700 dark:text-blue-300 space-y-1">
+                    <li>• Section ID must be unique per institution</li>
+                    <li>• Ensure all required fields are provided (Institution Code, Section ID, Section Name)</li>
+                    <li>• Check for duplicate entries in your file</li>
+                    <li>• Verify institution codes match existing institutions</li>
+                  </ul>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <AlertDialogFooter>
+            <AlertDialogAction onClick={() => setErrorPopupOpen(false)}>
+              Close
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </SidebarProvider>
   )
 }

@@ -16,14 +16,16 @@ import { Badge } from "@/components/ui/badge"
 import { Label } from "@/components/ui/label"
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet"
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog"
+import { useToast } from "@/hooks/use-toast"
 import Link from "next/link"
-import { PlusCircle, Edit, Trash2, Search, ChevronLeft, ChevronRight, ArrowUpDown, ArrowUp, ArrowDown, BookOpen, TrendingUp, FileSpreadsheet, RefreshCw, Download, Upload } from "lucide-react"
+import { PlusCircle, Edit, Trash2, Search, ChevronLeft, ChevronRight, ArrowUpDown, ArrowUp, ArrowDown, BookOpen, TrendingUp, FileSpreadsheet, RefreshCw, Download, Upload, XCircle, AlertTriangle } from "lucide-react"
 
 type Program = {
   id: string
   institution_code: string
   degree_code: string
   offering_department_code?: string
+  program_type?: "UG" | "PG" | "M.Phil" | "Ph.D"
   program_code: string
   program_name: string
   display_name?: string
@@ -38,6 +40,7 @@ const MOCK_PROGRAMS: Program[] = [
 ]
 
 export default function ProgramPage() {
+  const { toast } = useToast()
   const [items, setItems] = useState<Program[]>([])
   const [loading, setLoading] = useState(false)
   const [searchTerm, setSearchTerm] = useState("")
@@ -60,6 +63,7 @@ export default function ProgramPage() {
     institution_code: "",
     degree_code: "",
     offering_department_code: "",
+    program_type: "" as "" | "UG" | "PG" | "M.Phil" | "Ph.D",
     program_code: "",
     program_name: "",
     display_name: "",
@@ -69,11 +73,28 @@ export default function ProgramPage() {
   })
   const [errors, setErrors] = useState<Record<string, string>>({})
 
+  // Upload summary state
+  const [uploadSummary, setUploadSummary] = useState<{
+    total: number
+    success: number
+    failed: number
+  }>({ total: 0, success: 0, failed: 0 })
+
+  const [importErrors, setImportErrors] = useState<Array<{
+    row: number
+    program_code: string
+    program_name: string
+    errors: string[]
+  }>>([])
+
+  const [errorPopupOpen, setErrorPopupOpen] = useState(false)
+
   const resetForm = () => {
     setFormData({
       institution_code: "",
       degree_code: "",
       offering_department_code: "",
+      program_type: "",
       program_code: "",
       program_name: "",
       display_name: "",
@@ -120,6 +141,7 @@ export default function ProgramPage() {
       institution_code: row.institution_code,
       degree_code: row.degree_code,
       offering_department_code: row.offering_department_code || "",
+      program_type: row.program_type || "",
       program_code: row.program_code,
       program_name: row.program_name,
       display_name: row.display_name || "",
@@ -197,12 +219,19 @@ export default function ProgramPage() {
     a.click()
     document.body.removeChild(a)
     URL.revokeObjectURL(url)
+
+    toast({
+      title: '✅ Export Successful',
+      description: `${filtered.length} programs exported to JSON.`,
+      className: 'bg-green-50 border-green-200 text-green-800 dark:bg-green-900/20 dark:border-green-800 dark:text-green-200'
+    })
   }
 
   const handleExport = () => {
     const excelData = filtered.map(r => ({
       'Institution Code': r.institution_code,
       'Degree Code': r.degree_code,
+      'Program Type': r.program_type || '',
       'Offering Dept': r.offering_department_code || '',
       'Program Code': r.program_code,
       'Program Name': r.program_name,
@@ -216,12 +245,82 @@ export default function ProgramPage() {
     const wb = XLSX.utils.book_new()
     XLSX.utils.book_append_sheet(wb, ws, 'Program')
     XLSX.writeFile(wb, `program_export_${new Date().toISOString().split('T')[0]}.xlsx`)
+
+    toast({
+      title: '✅ Export Successful',
+      description: `${filtered.length} programs exported to Excel.`,
+      className: 'bg-green-50 border-green-200 text-green-800 dark:bg-green-900/20 dark:border-green-800 dark:text-green-200'
+    })
   }
 
-  const handleTemplateExport = () => {
+  const handleTemplateExport = async () => {
+    // Ensure reference data is loaded
+    let currentInstitutions = institutions
+    let currentDegrees = degrees
+    let currentDepartments = departments
+
+    // Fetch data if not already loaded
+    if (institutions.length === 0 || degrees.length === 0 || departments.length === 0) {
+      toast({
+        title: '⏳ Loading Reference Data',
+        description: 'Fetching latest reference data...',
+        className: 'bg-blue-50 border-blue-200 text-blue-800 dark:bg-blue-900/20 dark:border-blue-800 dark:text-blue-200'
+      })
+
+      try {
+        // Fetch institutions
+        if (institutions.length === 0) {
+          const resInst = await fetch('/api/institutions')
+          if (resInst.ok) {
+            const dataInst = await resInst.json()
+            currentInstitutions = dataInst.filter((i: any) => i.is_active).map((i: any) => ({
+              id: i.id,
+              institution_code: i.institution_code,
+              name: i.name
+            }))
+            setInstitutions(currentInstitutions)
+          }
+        }
+
+        // Fetch degrees
+        if (degrees.length === 0) {
+          const resDeg = await fetch('/api/degrees')
+          if (resDeg.ok) {
+            const dataDeg = await resDeg.json()
+            currentDegrees = dataDeg.filter((d: any) => d.is_active).map((d: any) => ({
+              id: d.id,
+              degree_code: d.degree_code,
+              degree_name: d.degree_name
+            }))
+            setDegrees(currentDegrees)
+          }
+        }
+
+        // Fetch departments
+        if (departments.length === 0) {
+          const resDept = await fetch('/api/departments')
+          if (resDept.ok) {
+            const dataDept = await resDept.json()
+            currentDepartments = dataDept.filter((d: any) => d.status || d.is_active).map((d: any) => ({
+              id: d.id,
+              department_code: d.department_code,
+              department_name: d.department_name
+            }))
+            setDepartments(currentDepartments)
+          }
+        }
+      } catch (error) {
+        console.error('Error fetching reference data:', error)
+      }
+    }
+
+    const wb = XLSX.utils.book_new()
+
+    // Sheet 1: Template with sample row
     const sample = [{
       'Institution Code': 'JKKN',
       'Degree Code': 'BSC',
+      'Program Type': 'UG',
       'Offering Dept': 'SCI',
       'Program Code': 'BSC-CS',
       'Program Name': 'B.Sc Computer Science',
@@ -230,10 +329,90 @@ export default function ProgramPage() {
       'Pattern': 'Semester',
       'Status': 'Active'
     }]
-    const ws = XLSX.utils.json_to_sheet(sample)
-    const wb = XLSX.utils.book_new()
-    XLSX.utils.book_append_sheet(wb, ws, 'Template')
+
+    const wsTemplate = XLSX.utils.json_to_sheet(sample)
+    wsTemplate['!cols'] = [
+      { wch: 18 }, // Institution Code
+      { wch: 15 }, // Degree Code
+      { wch: 15 }, // Program Type
+      { wch: 15 }, // Offering Dept
+      { wch: 18 }, // Program Code
+      { wch: 35 }, // Program Name
+      { wch: 15 }, // Display Name
+      { wch: 18 }, // Duration (Years)
+      { wch: 12 }, // Pattern
+      { wch: 10 }  // Status
+    ]
+    XLSX.utils.book_append_sheet(wb, wsTemplate, 'Template')
+
+    // Sheet 2: Reference with organized sections
+    const referenceData: any[] = []
+
+    // Institution Codes Section
+    referenceData.push({ 'Code': 'Institution Codes', 'Name': '' })
+    referenceData.push({ 'Code': '', 'Name': '' }) // Blank row
+    currentInstitutions.forEach(inst => {
+      referenceData.push({
+        'Code': inst.institution_code,
+        'Name': inst.name
+      })
+    })
+    if (currentInstitutions.length === 0) {
+      referenceData.push({ 'Code': 'No data available', 'Name': '' })
+    }
+    referenceData.push({ 'Code': '', 'Name': '' }) // Blank separator
+
+    // Degree Codes Section
+    referenceData.push({ 'Code': 'Degree Codes', 'Name': '' })
+    referenceData.push({ 'Code': '', 'Name': '' }) // Blank row
+    currentDegrees.forEach(deg => {
+      referenceData.push({
+        'Code': deg.degree_code,
+        'Name': deg.degree_name
+      })
+    })
+    if (currentDegrees.length === 0) {
+      referenceData.push({ 'Code': 'No data available', 'Name': '' })
+    }
+    referenceData.push({ 'Code': '', 'Name': '' }) // Blank separator
+
+    // Department Codes Section
+    referenceData.push({ 'Code': 'Department Codes', 'Name': '' })
+    referenceData.push({ 'Code': '', 'Name': '' }) // Blank row
+    currentDepartments.forEach(dept => {
+      referenceData.push({
+        'Code': dept.department_code,
+        'Name': dept.department_name
+      })
+    })
+    if (currentDepartments.length === 0) {
+      referenceData.push({ 'Code': 'No data available', 'Name': '' })
+    }
+    referenceData.push({ 'Code': '', 'Name': '' }) // Blank separator
+
+    // Program Types Section
+    referenceData.push({ 'Code': 'Program Types', 'Name': '' })
+    referenceData.push({ 'Code': '', 'Name': '' }) // Blank row
+    referenceData.push({ 'Code': 'UG', 'Name': 'Under Graduate' })
+    referenceData.push({ 'Code': 'PG', 'Name': 'Post Graduate' })
+    referenceData.push({ 'Code': 'M.Phil', 'Name': 'Master of Philosophy' })
+    referenceData.push({ 'Code': 'Ph.D', 'Name': 'Doctor of Philosophy' })
+
+    const wsReference = XLSX.utils.json_to_sheet(referenceData)
+    wsReference['!cols'] = [
+      { wch: 25 }, // Code column
+      { wch: 50 }  // Name column
+    ]
+    XLSX.utils.book_append_sheet(wb, wsReference, 'Reference')
+
+    // Export file
     XLSX.writeFile(wb, `program_template_${new Date().toISOString().split('T')[0]}.xlsx`)
+
+    toast({
+      title: '✅ Template Downloaded',
+      description: 'Program upload template with reference data has been downloaded successfully.',
+      className: 'bg-green-50 border-green-200 text-green-800 dark:bg-green-900/20 dark:border-green-800 dark:text-green-200'
+    })
   }
 
   const handleImport = () => {
@@ -252,17 +431,21 @@ export default function ProgramPage() {
           const wb = XLSX.read(data, { type: 'array' })
           const ws = wb.Sheets[wb.SheetNames[0]]
           const json = XLSX.utils.sheet_to_json(ws) as Record<string, unknown>[]
-          rows = json.map(j => ({
-            institution_code: String(j['Institution Code'] || ''),
-            degree_code: String(j['Degree Code'] || ''),
-            offering_department_code: String(j['Offering Dept'] || ''),
-            program_code: String(j['Program Code'] || ''),
-            program_name: String(j['Program Name'] || ''),
-            display_name: String(j['Display Name'] || ''),
-            program_duration_yrs: Number(j['Duration (Years)'] || 3),
-            pattern_type: String(j['Pattern'] || 'Semester') as "Year" | "Semester",
-            is_active: String(j['Status'] || '').toLowerCase() === 'active'
-          }))
+          rows = json.map(j => {
+            const programType = String(j['Program Type'] || '').trim()
+            return {
+              institution_code: String(j['Institution Code'] || ''),
+              degree_code: String(j['Degree Code'] || ''),
+              program_type: programType === '' ? undefined : programType as "UG" | "PG" | "M.Phil" | "Ph.D",
+              offering_department_code: String(j['Offering Dept'] || ''),
+              program_code: String(j['Program Code'] || ''),
+              program_name: String(j['Program Name'] || ''),
+              display_name: String(j['Display Name'] || ''),
+              program_duration_yrs: Number(j['Duration (Years)'] || 3),
+              pattern_type: String(j['Pattern'] || 'Semester') as "Year" | "Semester",
+              is_active: String(j['Status'] || '').toLowerCase() === 'active'
+            }
+          })
         }
 
         // Filter out rows with missing required fields
@@ -273,58 +456,79 @@ export default function ProgramPage() {
           return
         }
 
+        // Upload with row tracking
         setLoading(true)
         let successCount = 0
         let errorCount = 0
-        const uploadErrors: string[] = []
+        const uploadErrors: Array<{
+          row: number
+          program_code: string
+          program_name: string
+          errors: string[]
+        }> = []
 
         for (let i = 0; i < mapped.length; i++) {
-          const row = mapped[i]
+          const program = mapped[i]
           const rowNumber = i + 2 // +2 for header row in Excel
 
           const payload = {
-            institution_code: row.institution_code,
-            degree_code: row.degree_code,
-            offering_department_code: row.offering_department_code,
-            program_code: row.program_code,
-            program_name: row.program_name,
-            display_name: row.display_name,
-            program_duration_yrs: row.program_duration_yrs || 3,
-            pattern_type: row.pattern_type || "Semester",
-            is_active: row.is_active ?? true
+            institution_code: program.institution_code,
+            degree_code: program.degree_code,
+            program_type: program.program_type || undefined,
+            offering_department_code: program.offering_department_code,
+            program_code: program.program_code,
+            program_name: program.program_name,
+            display_name: program.display_name,
+            program_duration_yrs: program.program_duration_yrs || 3,
+            pattern_type: program.pattern_type || "Semester",
+            is_active: program.is_active ?? true
           }
 
           try {
-            const res = await fetch('/api/program', {
+            const response = await fetch('/api/program', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify(payload)
             })
 
-            if (res.ok) {
-              const savedProgram = await res.json()
+            if (response.ok) {
+              const savedProgram = await response.json()
               setItems(prev => [savedProgram, ...prev])
               successCount++
             } else {
-              const errorData = await res.json()
+              const errorData = await response.json()
               errorCount++
-              uploadErrors.push(`Row ${rowNumber} (${row.program_code}): ${errorData.error || 'Failed to save'}`)
+              uploadErrors.push({
+                row: rowNumber,
+                program_code: program.program_code || 'N/A',
+                program_name: program.program_name || 'N/A',
+                errors: [errorData.error || 'Failed to save program']
+              })
             }
           } catch (error) {
             errorCount++
-            uploadErrors.push(`Row ${rowNumber} (${row.program_code}): ${error instanceof Error ? error.message : 'Network error'}`)
+            uploadErrors.push({
+              row: rowNumber,
+              program_code: program.program_code || 'N/A',
+              program_name: program.program_name || 'N/A',
+              errors: [error instanceof Error ? error.message : 'Network error']
+            })
           }
         }
 
         setLoading(false)
+        const totalRows = mapped.length
 
-        // Show results
-        let resultMessage = `Upload complete: ${successCount} successful`
-        if (errorCount > 0) {
-          resultMessage += `, ${errorCount} failed\n\nErrors:\n${uploadErrors.join('\n')}`
-        }
-        alert(resultMessage)
+        // Update upload summary
+        setUploadSummary({
+          total: totalRows,
+          success: successCount,
+          failed: errorCount
+        })
 
+        // Always show error dialog with upload summary
+        setImportErrors(uploadErrors)
+        setErrorPopupOpen(true)
       } catch (err) {
         console.error(err)
         alert('Import failed. Please check your file format.')
@@ -516,16 +720,30 @@ export default function ProgramPage() {
                 </div>
                 
                 <div className="flex gap-1 flex-wrap">
-                <Button variant="outline" size="sm" className="text-xs px-2 h-8" onClick={fetchPrograms} disabled={loading}><RefreshCw className={`h-3 w-3 mr-1 ${loading ? 'animate-spin' : ''}`} /> Refresh</Button>
+                  <Button variant="outline" size="sm" className="text-xs px-2 h-8" onClick={fetchPrograms} disabled={loading}>
+                    <RefreshCw className={`h-3 w-3 mr-1 ${loading ? 'animate-spin' : ''}`} />
+                    Refresh
+                  </Button>
                   <Button variant="outline" size="sm" className="text-xs px-2 h-8" onClick={handleTemplateExport}>
                     <FileSpreadsheet className="h-3 w-3 mr-1" />
                     Template
                   </Button>
-                  <Button variant="outline" size="sm" className="text-xs px-2 h-8" onClick={handleDownload}><Download className="h-3 w-3 mr-1" /> Json</Button>
-                  <Button variant="outline" size="sm" className="text-xs px-2 h-8" onClick={handleExport}><Download className="h-3 w-3 mr-1" /> Download</Button>
-                  <Button variant="outline" size="sm" className="text-xs px-2 h-8" onClick={handleImport}><Upload className="h-3 w-3 mr-1" /> Upload</Button>
-                  
-                  <Button size="sm" className="text-xs px-2 h-8" onClick={openAdd}><PlusCircle className="h-3 w-3 mr-1" /> Add</Button>
+                  <Button variant="outline" size="sm" className="text-xs px-2 h-8" onClick={handleExport}>
+                    <Download className="h-3 w-3 mr-1" />
+                    Download
+                  </Button>
+                  <Button variant="outline" size="sm" className="text-xs px-2 h-8" onClick={handleDownload}>
+                    <Download className="h-3 w-3 mr-1" />
+                    JSON
+                  </Button>
+                  <Button variant="outline" size="sm" className="text-xs px-2 h-8" onClick={handleImport}>
+                    <Upload className="h-3 w-3 mr-1" />
+                    Upload
+                  </Button>
+                  <Button size="sm" className="text-xs px-2 h-8" onClick={openAdd}>
+                    <PlusCircle className="h-3 w-3 mr-1" />
+                    Add
+                  </Button>
                 </div>
               </div>
             </CardHeader>
@@ -538,6 +756,7 @@ export default function ProgramPage() {
                       <TableRow>
                         <TableHead className="w-[110px] text-[11px]"><Button variant="ghost" size="sm" onClick={() => handleSort("institution_code")} className="h-auto p-0 font-medium hover:bg-transparent">Inst. Code <span className="ml-1">{getSortIcon("institution_code")}</span></Button></TableHead>
                         <TableHead className="w-[110px] text-[11px]"><Button variant="ghost" size="sm" onClick={() => handleSort("degree_code")} className="h-auto p-0 font-medium hover:bg-transparent">Degree <span className="ml-1">{getSortIcon("degree_code")}</span></Button></TableHead>
+                        <TableHead className="w-[90px] text-[11px]"><Button variant="ghost" size="sm" onClick={() => handleSort("program_type")} className="h-auto p-0 font-medium hover:bg-transparent">Type <span className="ml-1">{getSortIcon("program_type")}</span></Button></TableHead>
                         <TableHead className="w-[140px] text-[11px]">Off. Dept</TableHead>
                         <TableHead className="w-[120px] text-[11px]"><Button variant="ghost" size="sm" onClick={() => handleSort("program_code")} className="h-auto p-0 font-medium hover:bg-transparent">Program Code <span className="ml-1">{getSortIcon("program_code")}</span></Button></TableHead>
                         <TableHead className="text-[11px]"><Button variant="ghost" size="sm" onClick={() => handleSort("program_name")} className="h-auto p-0 font-medium hover:bg-transparent">Program Name <span className="ml-1">{getSortIcon("program_name")}</span></Button></TableHead>
@@ -550,14 +769,15 @@ export default function ProgramPage() {
                     </TableHeader>
                     <TableBody>
                       {loading ? (
-                        <TableRow><TableCell colSpan={10} className="h-24 text-center text-[11px]">Loading…</TableCell></TableRow>
+                        <TableRow><TableCell colSpan={11} className="h-24 text-center text-[11px]">Loading…</TableCell></TableRow>
                       ) : pageItems.length ? (
                         <>
                           {pageItems.map((row) => (
                             <TableRow key={row.id}>
                               <TableCell className="text-[11px] font-medium">{row.institution_code}</TableCell>
                               <TableCell className="text-[11px]">{row.degree_code}</TableCell>
-                              <TableCell className="text-[11px] text-muted-foreground">{row.offering_department_code}</TableCell>
+                              <TableCell className="text-[11px]">{row.program_type ? <Badge variant="outline" className="text-[11px]">{row.program_type}</Badge> : <span className="text-muted-foreground">-</span>}</TableCell>
+                              <TableCell className="text-[11px] text-muted-foreground">{row.offering_department_code || "-"}</TableCell>
                               <TableCell className="text-[11px]">{row.program_code}</TableCell>
                               <TableCell className="text-[11px]">{row.program_name}</TableCell>
                               <TableCell className="text-[11px]">{row.program_duration_yrs}</TableCell>
@@ -588,7 +808,7 @@ export default function ProgramPage() {
                           ))}
                         </>
                       ) : (
-                        <TableRow><TableCell colSpan={10} className="h-24 text-center text-[11px]">No data</TableCell></TableRow>
+                        <TableRow><TableCell colSpan={11} className="h-24 text-center text-[11px]">No data</TableCell></TableRow>
                       )}
                     </TableBody>
                   </Table>
@@ -683,6 +903,24 @@ export default function ProgramPage() {
                   {errors.program_code && <p className="text-xs text-destructive">{errors.program_code}</p>}
                 </div>
                 <div className="space-y-2">
+                  <Label className="text-sm font-semibold">Program Type</Label>
+                  <Select
+                    value={formData.program_type || "NONE"}
+                    onValueChange={(v) => setFormData({ ...formData, program_type: v === "NONE" ? "" : v as "UG" | "PG" | "M.Phil" | "Ph.D" })}
+                  >
+                    <SelectTrigger className="h-10">
+                      <SelectValue placeholder="Select program type (optional)" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="NONE">None</SelectItem>
+                      <SelectItem value="UG">UG (Under Graduate)</SelectItem>
+                      <SelectItem value="PG">PG (Post Graduate)</SelectItem>
+                      <SelectItem value="M.Phil">M.Phil</SelectItem>
+                      <SelectItem value="Ph.D">Ph.D</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-2">
                   <Label className="text-sm font-medium">Offering Department Code</Label>
                   <Select
                     value={formData.offering_department_code || "NONE"}
@@ -771,6 +1009,147 @@ export default function ProgramPage() {
           </div>
         </SheetContent>
       </Sheet>
+
+      {/* Upload Results Dialog */}
+      <AlertDialog open={errorPopupOpen} onOpenChange={setErrorPopupOpen}>
+        <AlertDialogContent className="max-w-4xl max-h-[80vh] overflow-y-auto">
+          <AlertDialogHeader>
+            <div className="flex items-center gap-3">
+              <div className={`h-10 w-10 rounded-full flex items-center justify-center ${
+                importErrors.length === 0
+                  ? 'bg-green-100 dark:bg-green-900/20'
+                  : 'bg-red-100 dark:bg-red-900/20'
+              }`}>
+                {importErrors.length === 0 ? (
+                  <BookOpen className="h-5 w-5 text-green-600 dark:text-green-400" />
+                ) : (
+                  <XCircle className="h-5 w-5 text-red-600 dark:text-red-400" />
+                )}
+              </div>
+              <div>
+                <AlertDialogTitle className={`text-xl font-bold ${
+                  importErrors.length === 0
+                    ? 'text-green-600 dark:text-green-400'
+                    : 'text-red-600 dark:text-red-400'
+                }`}>
+                  {importErrors.length === 0 ? 'Upload Successful' : 'Data Validation Errors'}
+                </AlertDialogTitle>
+                <AlertDialogDescription className="text-sm text-muted-foreground mt-1">
+                  {importErrors.length === 0
+                    ? 'All programs have been successfully uploaded to the database'
+                    : 'Please fix the following errors before importing the data'}
+                </AlertDialogDescription>
+              </div>
+            </div>
+          </AlertDialogHeader>
+
+          <div className="space-y-4">
+            {/* Upload Summary Cards */}
+            {uploadSummary.total > 0 && (
+              <div className="grid grid-cols-3 gap-3">
+                <div className="bg-blue-50 dark:bg-blue-900/10 border border-blue-200 dark:border-blue-800 rounded-lg p-3">
+                  <div className="text-xs text-blue-600 dark:text-blue-400 font-medium mb-1">Total Rows</div>
+                  <div className="text-2xl font-bold text-blue-700 dark:text-blue-300">{uploadSummary.total}</div>
+                </div>
+                <div className="bg-green-50 dark:bg-green-900/10 border border-green-200 dark:border-green-800 rounded-lg p-3">
+                  <div className="text-xs text-green-600 dark:text-green-400 font-medium mb-1">Successful</div>
+                  <div className="text-2xl font-bold text-green-700 dark:text-green-300">{uploadSummary.success}</div>
+                </div>
+                <div className="bg-red-50 dark:bg-red-900/10 border border-red-200 dark:border-red-800 rounded-lg p-3">
+                  <div className="text-xs text-red-600 dark:text-red-400 font-medium mb-1">Failed</div>
+                  <div className="text-2xl font-bold text-red-700 dark:text-red-300">{uploadSummary.failed}</div>
+                </div>
+              </div>
+            )}
+
+            {/* Error Summary - Only show if there are errors */}
+            {importErrors.length > 0 && (
+              <>
+                <div className="bg-red-50 dark:bg-red-900/10 border border-red-200 dark:border-red-800 rounded-lg p-4">
+                  <div className="flex items-center gap-2 mb-2">
+                    <AlertTriangle className="h-4 w-4 text-red-600 dark:text-red-400" />
+                    <span className="font-semibold text-red-800 dark:text-red-200">
+                      {importErrors.length} row{importErrors.length > 1 ? 's' : ''} failed validation
+                    </span>
+                  </div>
+                  <p className="text-sm text-red-700 dark:text-red-300">
+                    Please correct these errors in your Excel file and try uploading again. Row numbers correspond to your Excel file (including header row).
+                  </p>
+                </div>
+
+                {/* Detailed Error List */}
+                <div className="space-y-3">
+                  {importErrors.map((error, index) => (
+                    <div key={index} className="border border-red-200 dark:border-red-800 rounded-lg p-4 bg-red-50/50 dark:bg-red-900/5">
+                      <div className="flex items-start justify-between mb-2">
+                        <div className="flex items-center gap-2">
+                          <Badge variant="outline" className="text-xs bg-red-100 text-red-800 border-red-300 dark:bg-red-900/20 dark:text-red-200 dark:border-red-700">
+                            Row {error.row}
+                          </Badge>
+                          <span className="font-medium text-sm">
+                            {error.program_code} - {error.program_name}
+                          </span>
+                        </div>
+                      </div>
+
+                      <div className="space-y-1">
+                        {error.errors.map((err, errIndex) => (
+                          <div key={errIndex} className="flex items-start gap-2 text-sm">
+                            <XCircle className="h-3 w-3 text-red-500 mt-0.5 flex-shrink-0" />
+                            <span className="text-red-700 dark:text-red-300">{err}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </>
+            )}
+
+            {/* Success Message - Only show if no errors */}
+            {importErrors.length === 0 && uploadSummary.total > 0 && (
+              <div className="bg-green-50 dark:bg-green-900/10 border border-green-200 dark:border-green-800 rounded-lg p-4">
+                <div className="flex items-center gap-2">
+                  <BookOpen className="h-5 w-5 text-green-600 dark:text-green-400" />
+                  <span className="font-semibold text-green-800 dark:text-green-200">
+                    All {uploadSummary.success} program{uploadSummary.success > 1 ? 's' : ''} uploaded successfully
+                  </span>
+                </div>
+              </div>
+            )}
+
+            {/* Helpful Tips */}
+            <div className="bg-blue-50 dark:bg-blue-900/10 border border-blue-200 dark:border-blue-800 rounded-lg p-4">
+              <div className="flex items-start gap-2">
+                <div className="h-5 w-5 rounded-full bg-blue-100 dark:bg-blue-900/20 flex items-center justify-center mt-0.5">
+                  <span className="text-xs font-bold text-blue-600 dark:text-blue-400">i</span>
+                </div>
+                <div>
+                  <h4 className="font-semibold text-blue-800 dark:text-blue-200 text-sm mb-1">Required Excel Format:</h4>
+                  <ul className="text-xs text-blue-700 dark:text-blue-300 space-y-1">
+                    <li>• <strong>Institution Code</strong> (required): Must match existing institution code (e.g., JKKN)</li>
+                    <li>• <strong>Degree Code</strong> (required): Must match existing degree code (e.g., BSC, BE)</li>
+                    <li>• <strong>Program Type</strong> (optional): UG, PG, M.Phil, or Ph.D</li>
+                    <li>• <strong>Program Code</strong> (required): Unique program identifier (e.g., BSC-CS)</li>
+                    <li>• <strong>Program Name</strong> (required): Full program name</li>
+                    <li>• <strong>Offering Dept</strong> (optional): Department code if applicable</li>
+                    <li>• <strong>Display Name</strong> (optional): Short display name</li>
+                    <li>• <strong>Duration (Years)</strong> (optional): Program duration in years (default: 3)</li>
+                    <li>• <strong>Pattern</strong> (optional): "Year" or "Semester" (default: Semester)</li>
+                    <li>• <strong>Status</strong> (optional): "Active" or "Inactive" (default: Active)</li>
+                  </ul>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <AlertDialogFooter>
+            <AlertDialogAction onClick={() => setErrorPopupOpen(false)}>
+              Close
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </SidebarProvider>
 
   )

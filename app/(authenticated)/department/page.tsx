@@ -307,14 +307,14 @@ export default function DepartmentPage() {
     // Create workbook
     const wb = XLSX.utils.book_new()
 
-    // Sheet 1: Template with sample row
+    // Sheet 1: Template with EMPTY row (no sample data to avoid confusion)
     const sample = [{
-      'Institution Code': 'JKKN',
-      'Department Code': 'CSE',
-      'Department Name': 'Computer Science and Engineering',
-      'Display Name': 'CSE',
-      'Description': 'Optional description',
-      'Stream': 'Engineering',
+      'Institution Code': '',
+      'Department Code': '',
+      'Department Name': '',
+      'Display Name': '',
+      'Description': '',
+      'Stream': '',
       'Status': 'Active'
     }]
 
@@ -361,7 +361,25 @@ export default function DepartmentPage() {
 
     XLSX.utils.book_append_sheet(wb, ws, 'Template')
 
-    // Sheet 2: Institution Code References
+    // Sheet 2: Instructions
+    const instructions = [
+      { '📋 HOW TO USE THIS TEMPLATE': '' },
+      { '📋 HOW TO USE THIS TEMPLATE': '1. Fill in the Template sheet with your department data' },
+      { '📋 HOW TO USE THIS TEMPLATE': '2. Required fields are marked with * (Institution Code, Department Code, Department Name)' },
+      { '📋 HOW TO USE THIS TEMPLATE': '3. Use the Institution Codes sheet to find valid institution codes' },
+      { '📋 HOW TO USE THIS TEMPLATE': '4. Stream must be one of: Arts, Science, Management, Commerce, Engineering, Medical, Law' },
+      { '📋 HOW TO USE THIS TEMPLATE': '5. Status should be "Active" or "Inactive"' },
+      { '📋 HOW TO USE THIS TEMPLATE': '6. Delete the empty row in Template sheet before uploading' },
+      { '📋 HOW TO USE THIS TEMPLATE': '7. Save the file and upload via the Upload button' },
+      { '📋 HOW TO USE THIS TEMPLATE': '' },
+      { '📋 HOW TO USE THIS TEMPLATE': '⚠️ IMPORTANT: Make sure the departments table exists in your database first!' },
+      { '📋 HOW TO USE THIS TEMPLATE': '⚠️ IMPORTANT: Institution codes must already exist in the institutions table!' },
+    ]
+    const wsInst = XLSX.utils.json_to_sheet(instructions)
+    wsInst['!cols'] = [{ wch: 80 }]
+    XLSX.utils.book_append_sheet(wb, wsInst, 'Instructions')
+
+    // Sheet 3: Institution Code References
     const institutionReference = institutions.map(inst => ({
       'Institution Code': inst.institution_code,
       'Institution Name': inst.name || 'N/A',
@@ -443,11 +461,31 @@ export default function DepartmentPage() {
           console.log('📋 Available columns in Excel:', availableColumns)
 
           // Helper function to find column value with flexible matching
+          // Handles columns with asterisks (e.g., "Institution Code *")
           const getColumnValue = (row: Record<string, unknown>, possibleNames: string[]): string => {
             for (const name of possibleNames) {
-              const value = row[name]
+              // Try exact match first
+              let value = row[name]
               if (value !== undefined && value !== null) {
                 return String(value).trim()
+              }
+              
+              // Try with asterisk (for mandatory fields)
+              value = row[`${name} *`]
+              if (value !== undefined && value !== null) {
+                return String(value).trim()
+              }
+              
+              // Try finding by removing asterisk from column name
+              const columnWithAsterisk = Object.keys(row).find(key => {
+                const cleanKey = key.replace(/\s*\*\s*$/, '').trim()
+                return cleanKey === name
+              })
+              if (columnWithAsterisk) {
+                value = row[columnWithAsterisk]
+                if (value !== undefined && value !== null) {
+                  return String(value).trim()
+                }
               }
             }
             return ''
@@ -464,7 +502,21 @@ export default function DepartmentPage() {
               stream: getColumnValue(j, ['Stream', 'stream']),
               is_active: statusStr === 'active' || statusStr === 'true' || statusStr === '1' || statusStr === ''
             }
+          }).filter(r => {
+            // Skip completely empty rows
+            return r.institution_code || r.department_code || r.department_name
           })
+
+          // Check if template is empty
+          if (rows.length === 0) {
+            toast({
+              title: '📝 Empty Template',
+              description: 'The template file is empty. Please add department data to the rows and try again.',
+              className: 'bg-blue-50 border-blue-200 text-blue-800 dark:bg-blue-900/20 dark:border-blue-800 dark:text-blue-200',
+              duration: 6000,
+            })
+            return
+          }
 
           // If all rows have empty required fields, show column mismatch error
           const allEmpty = rows.every(r => !r.institution_code && !r.department_code && !r.department_name)
