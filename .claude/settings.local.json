@@ -1,33 +1,7 @@
 {
   "permissions": {
     "allow": [
-      "Bash(npx eslint:*)",
-      "Bash(npm run build:*)",
-      "Bash(npx next build:*)",
-      "Bash(rm:*)",
-      "Bash(ls:*)",
-      "Bash(npm run dev:*)",
-      "Bash(npm install:*)",
-      "Bash(cat:*)",
-      "Bash(curl:*)",
-      "Bash(node:*)",
-      "Bash(npm run typecheck:*)",
-      "Bash(npx tsc:*)",
-      "Bash(NEXT_DISABLE_ESLINT=true npx next build)",
-      "Bash(mkdir:*)",
-      "Bash(npm uninstall:*)",
-      "Bash(npx supabase:*)",
-      "Bash(set NEXT_PUBLIC_SUPABASE_URL=https://qtsuqhduiuagjjtlalbh.supabase.co)",
-      "Bash(set:*)",
-      "Bash(cmd /c:*)",
-      "Bash(findstr:*)",
-      "Bash(Select-Object -First 20)",
-      "Bash(npx shadcn@latest add:*)",
-      "Bash(dir:*)",
-      "Read(//c/**)",
-      "Bash(wc:*)",
-      "Bash(git checkout:*)",
-      "Bash(git status:*)"
+      "Bash(npm run build:*)"
     ],
     "deny": [],
     "ask": []

@@ -88,7 +88,7 @@ const data = {
         { title: "Regulations", url: "/regulations", icon: LibraryBig },
         { title: "Section", url: "/section", icon: Shapes },
         { title: "Courses", url: "/courses", icon: BookText },
-        { title: "Course Mapping", url: "/course-mapping", icon: TableProperties },
+        { title: "Course Mapping", url: "/course-mapping-index", icon: TableProperties },
         { title: "Grade Card Report", url: "#", icon: FileText },
         { title: "Hall", url: "#", icon: Shapes },
         { title: "QP Template", url: "#", icon: NotepadText },

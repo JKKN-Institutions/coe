@@ -6,6 +6,8 @@ interface CourseMapping {
 	semester_code: string
 	semester_name: string
 	semester_number: number
+	display_order: number
+	part_name: string
 	course_code: string
 	course_title: string
 	course_category?: string
@@ -15,6 +17,7 @@ interface CourseMapping {
 	credits?: number
 	exam_hours?: number
 	course_order?: number
+	sort_order?: number
 	internal_max_mark?: number
 	internal_pass_mark?: number
 	internal_converted_mark?: number
@@ -29,9 +32,14 @@ interface ReportData {
 	institutionName: string
 	institutionAddress?: string
 	programName: string
+	programCode?: string
 	degreeName: string
 	batchName: string
+	batchCode?: string
+	batchYear?: number
 	regulationName?: string
+	regulationCode?: string
+	logoImage?: string
 	mappings: CourseMapping[]
 }
 
@@ -42,51 +50,58 @@ export function generateCourseMappingPDF(data: ReportData) {
 
 	// Helper function to add header to each page
 	const addHeader = () => {
-		// College Logo placeholder (left)
-		doc.setFillColor(230, 230, 230)
-		doc.rect(10, 10, 25, 25, 'F')
-		doc.setFontSize(8)
-		doc.setTextColor(100)
-		doc.text('LOGO', 22.5, 22.5, { align: 'center' })
+		// College Logo (left) - using actual image
+		if (data.logoImage) {
+			try {
+				doc.addImage(data.logoImage, 'PNG', 10, 10, 20, 20)
+			} catch (e) {
+				console.warn('Failed to add logo to PDF:', e)
+				// Fallback to placeholder
+				doc.setFillColor(240, 240, 240)
+				doc.rect(10, 10, 20, 20, 'F')
+			}
+		} else {
+			// Fallback to placeholder if image not loaded
+			doc.setFillColor(240, 240, 240)
+			doc.rect(10, 10, 20, 20, 'F')
+		}
 
 		// College name and details (centered)
-		doc.setFontSize(14)
+		doc.setFontSize(16)
 		doc.setFont('helvetica', 'bold')
 		doc.setTextColor(0, 0, 0)
-		doc.text(data.institutionName.toUpperCase(), pageWidth / 2, 15, { align: 'center' })
+		doc.text(data.institutionName.toUpperCase(), pageWidth / 2, 16, { align: 'center' })
 
 		if (data.institutionAddress) {
-			doc.setFontSize(9)
+			doc.setFontSize(8)
 			doc.setFont('helvetica', 'normal')
-			doc.text(data.institutionAddress, pageWidth / 2, 20, { align: 'center' })
+			doc.text(data.institutionAddress, pageWidth / 2, 21, { align: 'center' })
 		}
-
-		doc.setFontSize(8)
-		doc.setFont('helvetica', 'italic')
-		doc.text('(An Autonomous Institution)', pageWidth / 2, 25, { align: 'center' })
-
-		// Title
-		doc.setFontSize(12)
-		doc.setFont('helvetica', 'bold')
-		doc.text('DEGREE BRANCH COURSE DETAILS', pageWidth / 2, 32, { align: 'center' })
-
-		// Program/Degree Branch and Batch
-		doc.setFontSize(10)
-		doc.setFont('helvetica', 'bold')
-		const programText = `${data.degreeName} - ${data.programName}`
-		doc.text(programText, pageWidth / 2, 38, { align: 'center' })
 
 		doc.setFontSize(9)
-		doc.setFont('helvetica', 'normal')
-		doc.text(`Batch: ${data.batchName}`, pageWidth / 2, 43, { align: 'center' })
+		doc.setFont('helvetica', 'italic')
+		doc.text('(An Autonomous Institution)', pageWidth / 2, 26, { align: 'center' })
 
-		if (data.regulationName) {
-			doc.text(`Regulation: ${data.regulationName}`, pageWidth / 2, 48, { align: 'center' })
-		}
+		// Title
+		doc.setFontSize(11)
+		doc.setFont('helvetica', 'bold')
+		doc.text('DEGREE BRANCH : ', 15, 32)
+
+		doc.setFont('helvetica', 'normal')
+		const degreeText = `${data.programName} - (Aided)`
+		doc.text(degreeText, 60, 32)
+
+		// Batch info on right side
+		doc.setFont('helvetica', 'bold')
+		doc.text('BATCH : ', pageWidth - 80, 32)
+
+		doc.setFont('helvetica', 'normal')
+		const batchYear = data.batchYear || data.batchCode?.substring(1) || ''
+		doc.text(`${batchYear}`, pageWidth - 40, 32)
 
 		// Horizontal line
 		doc.setLineWidth(0.5)
-		doc.line(10, data.regulationName ? 50 : 45, pageWidth - 10, data.regulationName ? 50 : 45)
+		doc.line(10, 35, pageWidth - 10, 35)
 	}
 
 	// Add initial header
@@ -113,7 +128,7 @@ export function generateCourseMappingPDF(data: ReportData) {
 		return semA - semB
 	})
 
-	let startY = data.regulationName ? 53 : 48
+	let startY = 38
 
 	// Generate table for each semester
 	sortedSemesters.forEach((semKey, index) => {
@@ -127,42 +142,34 @@ export function generateCourseMappingPDF(data: ReportData) {
 		})
 
 		// Prepare table data
-		const tableData = sortedCourses.map((course) => {
-			// Determine PART based on course_group
-			let part = '-'
-			if (course.course_group) {
-				if (course.course_group.toLowerCase().includes('general')) {
-					part = 'I'
-				} else if (course.course_group.toLowerCase().includes('elective')) {
-					part = course.course_group
-				} else {
-					part = course.course_group
-				}
-			}
+		const tableData = sortedCourses.map((course, index) => {
+			// Use part_name from course (already fetched from courses table)
+			const part = course.part_name || '-'
 
-			// Format internal marks
-			const internalMarks = `${course.internal_max_mark || 0}, ${course.internal_pass_mark || 0}, ${course.internal_converted_mark || 0}`
-
-			// Format external marks (ESE)
-			const externalMarks = `${course.external_max_mark || 0}, ${course.external_pass_mark || 0}, ${course.external_converted_mark || 0}`
-
-			// Format total marks
-			const totalMarks = `${course.total_max_mark || 0}, ${course.total_pass_mark || 0}`
+			// Use display_order from semesters table
+			const semValue = course.display_order || '-'
 
 			return [
-				semester.semesterNumber || semKey,
-				part,
+				semValue, // Semester number (display_order from semesters table)
+				part, // Part (from courses.course_part_master)
 				course.course_code || '-',
 				course.course_title || '-',
-				course.course_category || '-',
 				course.course_type || '-',
 				course.evaluation_pattern || '-',
 				course.credits?.toString() || '-',
 				course.exam_hours?.toString() || '-',
-				course.course_order?.toString() || '-',
-				internalMarks,
-				externalMarks,
-				totalMarks
+				course.sort_order?.toString() || '-',
+				// Internal marks (MAX, PASS, CONV)
+				course.internal_max_mark?.toString() || '0',
+				course.internal_pass_mark?.toString() || '0',
+				course.internal_converted_mark?.toString() || '0',
+				// ESE marks (MAX, PASS, CONV)
+				course.external_max_mark?.toString() || '0',
+				course.external_pass_mark?.toString() || '0',
+				course.external_converted_mark?.toString() || '0',
+				// Total marks (MAX, MIN)
+				course.total_max_mark?.toString() || '0',
+				course.total_pass_mark?.toString() || '0'
 			]
 		})
 
@@ -173,54 +180,64 @@ export function generateCourseMappingPDF(data: ReportData) {
 
 		autoTable(doc, {
 			startY: startY,
-			head: [[
-				'SEM',
-				'PART',
-				'COURSE\nCODE',
-				'COURSE TITLE',
-				'COURSE\nCATEG.',
-				'COURSE\nTYPE',
-				'EVALUATION\nPATTERN',
-				'CREDIT',
-				'EXAM\nHRS',
-				'SORT\nORDER',
-				'INTERNAL MARKS\n(Max, Pass, Conv)',
-				'ESE MARKS\n(Max, Pass, Conv)',
-				'TOTAL\n(Max, Min)'
-			]],
+			head: [
+				[
+					{ content: 'SEM', rowSpan: 2 },
+					{ content: 'PART', rowSpan: 2 },
+					{ content: 'COURSE\nCODE', rowSpan: 2 },
+					{ content: 'COURSE TITLE', rowSpan: 2 },
+					{ content: 'COURSE\nTYPE', rowSpan: 2 },
+					{ content: 'EVALUATION\nPATTERN', rowSpan: 2 },
+					{ content: 'CREDIT', rowSpan: 2 },
+					{ content: 'EXAM\nHRS', rowSpan: 2 },
+					{ content: 'SORT\nORDER', rowSpan: 2 },
+					{ content: 'INTERNAL MARKS', colSpan: 3 },
+					{ content: 'ESE MARKS', colSpan: 3 },
+					{ content: 'TOTAL', colSpan: 2 }
+				],
+				[
+					'MAX', 'PASS', 'CONV', // Internal
+					'MAX', 'PASS', 'CONV', // ESE
+					'MAX', 'MIN' // Total
+				]
+			],
 			body: tableData,
 			theme: 'grid',
 			headStyles: {
-				fillColor: [41, 128, 185],
-				textColor: 255,
+				fillColor: [240, 240, 240],
+				textColor: [0, 0, 0],
 				fontSize: 7,
 				fontStyle: 'bold',
 				halign: 'center',
 				valign: 'middle',
-				lineWidth: 0.1,
+				lineWidth: 0.5,
 				lineColor: [0, 0, 0]
 			},
 			bodyStyles: {
 				fontSize: 7,
 				cellPadding: 2,
 				valign: 'middle',
-				lineWidth: 0.1,
+				lineWidth: 0.5,
 				lineColor: [0, 0, 0]
 			},
 			columnStyles: {
-				0: { halign: 'center', cellWidth: 12 }, // SEM
-				1: { halign: 'center', cellWidth: 15 }, // PART
+				0: { halign: 'center', cellWidth: 10 }, // SEM
+				1: { halign: 'center', cellWidth: 18 }, // PART
 				2: { halign: 'center', cellWidth: 22 }, // COURSE CODE
-				3: { halign: 'left', cellWidth: 45 }, // COURSE TITLE
-				4: { halign: 'center', cellWidth: 18 }, // COURSE CATEG
-				5: { halign: 'center', cellWidth: 18 }, // COURSE TYPE
-				6: { halign: 'center', cellWidth: 22 }, // EVALUATION PATTERN
-				7: { halign: 'center', cellWidth: 14 }, // CREDIT
-				8: { halign: 'center', cellWidth: 14 }, // EXAM HRS
-				9: { halign: 'center', cellWidth: 14 }, // SORT ORDER
-				10: { halign: 'center', cellWidth: 28 }, // INTERNAL MARKS
-				11: { halign: 'center', cellWidth: 28 }, // ESE MARKS
-				12: { halign: 'center', cellWidth: 24 } // TOTAL
+				3: { halign: 'left', cellWidth: 55 }, // COURSE TITLE
+				4: { halign: 'center', cellWidth: 20 }, // COURSE TYPE
+				5: { halign: 'center', cellWidth: 22 }, // EVALUATION PATTERN
+				6: { halign: 'center', cellWidth: 12 }, // CREDIT
+				7: { halign: 'center', cellWidth: 12 }, // EXAM HRS
+				8: { halign: 'center', cellWidth: 12 }, // SORT ORDER
+				9: { halign: 'center', cellWidth: 12 }, // INT MAX
+				10: { halign: 'center', cellWidth: 12 }, // INT PASS
+				11: { halign: 'center', cellWidth: 12 }, // INT CONV
+				12: { halign: 'center', cellWidth: 12 }, // ESE MAX
+				13: { halign: 'center', cellWidth: 12 }, // ESE PASS
+				14: { halign: 'center', cellWidth: 12 }, // ESE CONV
+				15: { halign: 'center', cellWidth: 12 }, // TOTAL MAX
+				16: { halign: 'center', cellWidth: 12 } // TOTAL MIN
 			},
 			margin: { left: 10, right: 10 },
 			didDrawPage: (data) => {

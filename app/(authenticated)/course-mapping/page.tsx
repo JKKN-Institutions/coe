@@ -1,6 +1,7 @@
 "use client"
 
 import { useMemo, useState, useEffect } from "react"
+import { useSearchParams } from "next/navigation"
 import { AppSidebar } from "@/components/app-sidebar"
 import { AppHeader } from "@/components/app-header"
 import { AppFooter } from "@/components/app-footer"
@@ -16,7 +17,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Switch } from "@/components/ui/switch"
 import { useToast } from "@/hooks/use-toast"
 import Link from "next/link"
-import { PlusCircle, Edit, Trash2, Save, RefreshCw, Link2, BookText, School, Calendar, Plus, X, ChevronDown, ChevronRight, CheckCircle2, Info, FileText } from "lucide-react"
+import { PlusCircle, Edit, Trash2, Save, RefreshCw, Link2, BookText, School, Calendar, Plus, X, ChevronDown, ChevronRight, CheckCircle2, Info } from "lucide-react"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
 import { Badge } from "@/components/ui/badge"
@@ -24,7 +25,6 @@ import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, Command
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { Check, ChevronsUpDown } from "lucide-react"
 import { cn } from "@/lib/utils"
-import { generateCourseMappingPDF } from "@/lib/utils/generate-course-mapping-pdf"
 
 type CourseMapping = {
 	id?: string
@@ -77,6 +77,7 @@ const COURSE_GROUPS = [
 ]
 
 export default function CourseMappingPage() {
+	const searchParams = useSearchParams()
 	const [loading, setLoading] = useState(false)
 	const [saving, setSaving] = useState(false)
 	const { toast } = useToast()
@@ -109,9 +110,20 @@ export default function CourseMappingPage() {
 	// Popover open state for course selection (track by semesterIndex_rowIndex)
 	const [openPopovers, setOpenPopovers] = useState<{ [key: string]: boolean }>({})
 
-	// Fetch institutions on mount
+	// Fetch institutions on mount and handle URL parameters
 	useEffect(() => {
 		fetchInstitutions()
+
+		// Pre-populate from URL parameters
+		const institution = searchParams.get('institution')
+		const program = searchParams.get('program')
+		const batch = searchParams.get('batch')
+		const regulation = searchParams.get('regulation')
+
+		if (institution) setSelectedInstitution(institution)
+		if (program) setSelectedProgram(program)
+		if (batch) setSelectedBatch(batch)
+		if (regulation) setSelectedRegulation(regulation)
 	}, [])
 
 	// Fetch programs when institution changes
@@ -672,65 +684,6 @@ export default function CourseMappingPage() {
 		}
 	}
 
-	const handleGeneratePDF = async () => {
-		if (!selectedInstitution || !selectedProgram || !selectedBatch) {
-			toast({
-				title: '⚠️ Validation Error',
-				description: 'Please select Institution, Program, and Batch to generate the report.',
-				variant: 'destructive'
-			})
-			return
-		}
-
-		try {
-			setLoading(true)
-
-			// Build API URL
-			let url = `/api/course-mapping/report?institution_code=${selectedInstitution}&program_code=${selectedProgram}&batch_code=${selectedBatch}`
-			if (selectedRegulation) {
-				url += `&regulation_code=${selectedRegulation}`
-			}
-
-			// Fetch report data
-			const response = await fetch(url)
-
-			if (!response.ok) {
-				const errorData = await response.json()
-				throw new Error(errorData.error || 'Failed to fetch report data')
-			}
-
-			const reportData = await response.json()
-
-			// Check if there are any mappings
-			if (!reportData.mappings || reportData.mappings.length === 0) {
-				toast({
-					title: '⚠️ No Data',
-					description: 'No course mappings found for the selected criteria.',
-					variant: 'destructive'
-				})
-				return
-			}
-
-			// Generate PDF
-			generateCourseMappingPDF(reportData)
-
-			toast({
-				title: '✅ PDF Generated',
-				description: 'Course mapping report has been downloaded successfully.',
-				className: 'bg-green-50 border-green-200 text-green-800 dark:bg-green-900/20 dark:border-green-800 dark:text-green-200'
-			})
-		} catch (error) {
-			console.error('Error generating PDF:', error)
-			toast({
-				title: '❌ Generation Failed',
-				description: error instanceof Error ? error.message : 'Failed to generate PDF report.',
-				variant: 'destructive'
-			})
-		} finally {
-			setLoading(false)
-		}
-	}
-
 	return (
 		<SidebarProvider>
 			<AppSidebar />
@@ -767,15 +720,6 @@ export default function CourseMappingPage() {
 									</div>
 								</div>
 								<div className="flex gap-2">
-									<Button
-										variant="outline"
-										size="sm"
-										onClick={handleGeneratePDF}
-										disabled={loading || !selectedInstitution || !selectedProgram || !selectedBatch}
-									>
-										<FileText className="h-4 w-4 mr-2" />
-										Generate PDF
-									</Button>
 									<Button variant="outline" size="sm" onClick={handleRefresh} disabled={loading || !selectedBatch}>
 										<RefreshCw className={`h-4 w-4 mr-2 ${loading ? 'animate-spin' : ''}`} />
 										Refresh

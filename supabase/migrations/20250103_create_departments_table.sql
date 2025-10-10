@@ -92,3 +92,4 @@ COMMENT ON TABLE public.departments IS 'Departments table - stores department in
 -- WHERE i.institution_code = 'JKKN'
 -- LIMIT 1;
 
+

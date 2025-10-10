@@ -238,10 +238,10 @@ export async function POST(request: Request) {
 		}
 
 		// Single mapping creation (existing logic)
-		// Validate required fields
-		if (!body.course_id) {
+		// Validate required fields - support both course_id and course_code
+		if (!body.course_id && !body.course_code) {
 			return NextResponse.json(
-				{ error: 'course_id is required' },
+				{ error: 'course_id or course_code is required' },
 				{ status: 400 }
 			)
 		}
@@ -289,18 +289,41 @@ export async function POST(request: Request) {
 			)
 		}
 
-		// Fetch course_code from courses table
-		const { data: courseData, error: courseError } = await supabase
-			.from('courses')
-			.select('course_code')
-			.eq('id', body.course_id)
-			.single()
+		// Lookup course_id from course_code if course_id not provided
+		let courseId = body.course_id
+		let courseCode = body.course_code
 
-		if (courseError || !courseData) {
-			return NextResponse.json(
-				{ error: 'Course not found' },
-				{ status: 404 }
-			)
+		if (!courseId && courseCode) {
+			// Lookup course by course_code
+			const { data: courseData, error: courseError } = await supabase
+				.from('courses')
+				.select('id, course_code')
+				.eq('course_code', courseCode)
+				.single()
+
+			if (courseError || !courseData) {
+				return NextResponse.json(
+					{ error: `Course not found with code: ${courseCode}` },
+					{ status: 404 }
+				)
+			}
+			courseId = courseData.id
+			courseCode = courseData.course_code
+		} else if (courseId && !courseCode) {
+			// Fetch course_code from courses table using course_id
+			const { data: courseData, error: courseError } = await supabase
+				.from('courses')
+				.select('course_code')
+				.eq('id', courseId)
+				.single()
+
+			if (courseError || !courseData) {
+				return NextResponse.json(
+					{ error: 'Course not found' },
+					{ status: 404 }
+				)
+			}
+			courseCode = courseData.course_code
 		}
 
 		// Fetch institution_id from institutions table based on institution_code
@@ -370,7 +393,7 @@ export async function POST(request: Request) {
 		const { data: existing } = await supabase
 			.from('course_mapping')
 			.select('id')
-			.eq('course_id', body.course_id)
+			.eq('course_id', courseId)
 			.eq('institution_code', body.institution_code)
 			.eq('program_code', body.program_code)
 			.eq('batch_code', body.batch_code)
@@ -389,7 +412,8 @@ export async function POST(request: Request) {
 			.from('course_mapping')
 			.insert([{
 				...body,
-				course_code: courseData.course_code,
+				course_id: courseId,                  // Ensure course_id is set
+				course_code: courseCode,              // Ensure course_code is set
 				institutions_id: institutionData.id,  // Add institution ID
 				program_id: programData.id,           // Add program ID
 				batch_id: batchData.id,               // Add batch ID
