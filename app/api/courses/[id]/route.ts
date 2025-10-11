@@ -17,6 +17,7 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
         offering_department_code,
         course_code,
         course_name,
+        display_code,
         course_category,
         course_type,
         course_part_master,
@@ -59,6 +60,7 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
       offering_department_code: data.offering_department_code,
       course_code: data.course_code,
       course_title: data.course_name,
+      display_code: data.display_code,
       course_category: data.course_category,
       course_type: data.course_type,
       course_part_master: data.course_part_master,
@@ -99,55 +101,110 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
     const { id } = await params
     const body = await req.json()
     const input = body as Record<string, unknown>
+
     const data: Record<string, unknown> = {
-      ...(input.institutions_id !== undefined && { institutions_id: input.institutions_id }),
-      ...(input.regulation_id !== undefined && { regulation_id: input.regulation_id }),
-      ...(input.offering_department_id !== undefined && { offering_department_id: input.offering_department_id }),
-      ...(input.institution_code !== undefined && { institution_code: String(input.institution_code) }),
-      ...(input.regulation_code !== undefined && { regulation_code: String(input.regulation_code) }),
-      ...(input.offering_department_code !== undefined && { offering_department_code: String(input.offering_department_code) }),
-      ...(input.course_code !== undefined && { course_code: String(input.course_code) }),
-      ...(input.course_title !== undefined && { course_name: String(input.course_title) }),
-      ...(input.course_category !== undefined && { course_category: String(input.course_category) }),
-      ...(input.course_type !== undefined && { course_type: String(input.course_type) }),
-      ...(input.course_part_master !== undefined && { course_part_master: String(input.course_part_master) }),
-      ...(input.credits !== undefined && { credit: Number(input.credits) }),
-      ...(input.split_credit !== undefined && { split_credit: Boolean(input.split_credit) }),
-      ...(input.theory_credit !== undefined && { theory_credit: Number(input.theory_credit) }),
-      ...(input.practical_credit !== undefined && { practical_credit: Number(input.practical_credit) }),
-      ...(input.qp_code !== undefined && { qp_code: String(input.qp_code) }),
-      ...(input.e_code_name !== undefined && { e_code_name: String(input.e_code_name) }),
-      ...(input.duration_hours !== undefined && { duration_hours: Number(input.duration_hours) }),
-      ...(input.evaluation_type !== undefined && { evaluation_type: String(input.evaluation_type) }),
-      ...(input.result_type !== undefined && { result_type: String(input.result_type) }),
-      ...(input.self_study_course !== undefined && { self_study_course: Boolean(input.self_study_course) }),
-      ...(input.outside_class_course !== undefined && { outside_class_course: Boolean(input.outside_class_course) }),
-      ...(input.open_book !== undefined && { open_book: Boolean(input.open_book) }),
-      ...(input.online_course !== undefined && { online_course: Boolean(input.online_course) }),
-      ...(input.dummy_number_required !== undefined && { dummy_number_not_required: Boolean(input.dummy_number_required) }),
-      ...(input.annual_course !== undefined && { annual_course: Boolean(input.annual_course) }),
-      ...(input.multiple_qp_set !== undefined && { multiple_qp_set: Boolean(input.multiple_qp_set) }),
-      ...(input.no_of_qp_setter !== undefined && { no_of_qp_setter: Number(input.no_of_qp_setter) }),
-      ...(input.no_of_scrutinizer !== undefined && { no_of_scrutinizer: Number(input.no_of_scrutinizer) }),
-      ...(input.fee_exception !== undefined && { fee_exception: Boolean(input.fee_exception) }),
-      ...(input.syllabus_pdf_url !== undefined && { syllabus_pdf_url: String(input.syllabus_pdf_url) }),
-      ...(input.description !== undefined && { description: String(input.description) }),
-      ...(input.is_active !== undefined && { status: Boolean(input.is_active) }),
       updated_at: new Date().toISOString(),
     }
 
+    // Resolve foreign keys if codes are provided
+    if (input.institution_code !== undefined) {
+      const { data: institutionData, error: institutionError } = await supabase
+        .from('institutions')
+        .select('id')
+        .eq('institution_code', String(input.institution_code))
+        .single()
+
+      if (institutionError || !institutionData) {
+        return NextResponse.json({
+          error: `Institution with code "${input.institution_code}" not found.`
+        }, { status: 400 })
+      }
+
+      data.institutions_id = institutionData.id
+      data.institution_code = String(input.institution_code)
+    }
+
+    if (input.regulation_code !== undefined) {
+      const { data: regulationData, error: regulationError } = await supabase
+        .from('regulations')
+        .select('id')
+        .eq('regulation_code', String(input.regulation_code))
+        .single()
+
+      if (regulationError || !regulationData) {
+        return NextResponse.json({
+          error: `Regulation with code "${input.regulation_code}" not found.`
+        }, { status: 400 })
+      }
+
+      data.regulation_id = regulationData.id
+      data.regulation_code = String(input.regulation_code)
+    }
+
+    if (input.offering_department_code !== undefined && input.offering_department_code) {
+      const { data: deptData, error: deptError } = await supabase
+        .from('departments')
+        .select('id')
+        .eq('department_code', String(input.offering_department_code))
+        .single()
+
+      if (deptError || !deptData) {
+        return NextResponse.json({
+          error: `Department with code "${input.offering_department_code}" not found.`
+        }, { status: 400 })
+      }
+
+      data.offering_department_id = deptData.id
+      data.offering_department_code = String(input.offering_department_code)
+    }
+
+    // Add all other fields
+    if (input.course_code !== undefined) data.course_code = String(input.course_code)
+    if (input.course_title !== undefined) data.course_name = String(input.course_title)
+    if (input.display_code !== undefined) data.display_code = input.display_code ? String(input.display_code) : null
+    if (input.course_category !== undefined) data.course_category = String(input.course_category)
+    if (input.course_type !== undefined) data.course_type = String(input.course_type)
+    if (input.course_part_master !== undefined) data.course_part_master = String(input.course_part_master)
+    if (input.credits !== undefined) data.credit = Number(input.credits)
+    if (input.split_credit !== undefined) data.split_credit = Boolean(input.split_credit)
+    if (input.theory_credit !== undefined) data.theory_credit = Number(input.theory_credit)
+    if (input.practical_credit !== undefined) data.practical_credit = Number(input.practical_credit)
+    if (input.qp_code !== undefined) data.qp_code = String(input.qp_code)
+    if (input.e_code_name !== undefined) data.e_code_name = String(input.e_code_name)
+    if (input.duration_hours !== undefined) data.duration_hours = Number(input.duration_hours)
+    if (input.evaluation_type !== undefined) data.evaluation_type = String(input.evaluation_type)
+    if (input.result_type !== undefined) data.result_type = String(input.result_type)
+    if (input.self_study_course !== undefined) data.self_study_course = Boolean(input.self_study_course)
+    if (input.outside_class_course !== undefined) data.outside_class_course = Boolean(input.outside_class_course)
+    if (input.open_book !== undefined) data.open_book = Boolean(input.open_book)
+    if (input.online_course !== undefined) data.online_course = Boolean(input.online_course)
+    if (input.dummy_number_required !== undefined) data.dummy_number_not_required = Boolean(input.dummy_number_required)
+    if (input.annual_course !== undefined) data.annual_course = Boolean(input.annual_course)
+    if (input.multiple_qp_set !== undefined) data.multiple_qp_set = Boolean(input.multiple_qp_set)
+    if (input.no_of_qp_setter !== undefined) data.no_of_qp_setter = Number(input.no_of_qp_setter)
+    if (input.no_of_scrutinizer !== undefined) data.no_of_scrutinizer = Number(input.no_of_scrutinizer)
+    if (input.fee_exception !== undefined) data.fee_exception = Boolean(input.fee_exception)
+    if (input.syllabus_pdf_url !== undefined) data.syllabus_pdf_url = String(input.syllabus_pdf_url)
+    if (input.description !== undefined) data.description = String(input.description)
+    if (input.is_active !== undefined) data.status = Boolean(input.is_active)
+
     const { data: updated, error } = await supabase
       .from('courses')
-      .update({
-        ...data,
-        ...(input.display_code !== undefined && { display_code: input.display_code ? String(input.display_code) : null }),
-      })
+      .update(data)
       .eq('id', id)
       .select('*')
       .single()
 
     if (error) {
       console.error('Supabase update error:', error)
+
+      // Handle foreign key constraint violation
+      if (error.code === '23503') {
+        return NextResponse.json({
+          error: 'Foreign key constraint failed. Ensure institution, regulation, and department exist.'
+        }, { status: 400 })
+      }
+
       throw error
     }
     return NextResponse.json(updated)

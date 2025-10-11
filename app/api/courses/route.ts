@@ -224,21 +224,67 @@ export async function POST(req: NextRequest) {
     const input = body as Record<string, unknown>
 
     if (!input.institution_code || !input.regulation_code || !input.course_code || !input.course_title) {
-      return NextResponse.json({ 
-        error: 'Missing required fields: institution_code, regulation_code, course_code, course_title' 
+      return NextResponse.json({
+        error: 'Missing required fields: institution_code, regulation_code, course_code, course_title'
       }, { status: 400 })
     }
 
     const supabase2 = getSupabaseServer()
+
+    // 1. Fetch institutions_id from institution_code
+    const { data: institutionData, error: institutionError } = await supabase2
+      .from('institutions')
+      .select('id')
+      .eq('institution_code', String(input.institution_code))
+      .single()
+
+    if (institutionError || !institutionData) {
+      return NextResponse.json({
+        error: `Institution with code "${input.institution_code}" not found. Please ensure the institution exists.`
+      }, { status: 400 })
+    }
+
+    // 2. Fetch regulation_id from regulation_code
+    const { data: regulationData, error: regulationError } = await supabase2
+      .from('regulations')
+      .select('id')
+      .eq('regulation_code', String(input.regulation_code))
+      .single()
+
+    if (regulationError || !regulationData) {
+      return NextResponse.json({
+        error: `Regulation with code "${input.regulation_code}" not found. Please ensure the regulation exists.`
+      }, { status: 400 })
+    }
+
+    // 3. Fetch offering_department_id from offering_department_code (optional)
+    let offeringDepartmentId = null
+    if (input.offering_department_code) {
+      const { data: deptData, error: deptError } = await supabase2
+        .from('departments')
+        .select('id')
+        .eq('department_code', String(input.offering_department_code))
+        .single()
+
+      if (deptError || !deptData) {
+        return NextResponse.json({
+          error: `Department with code "${input.offering_department_code}" not found. Please ensure the department exists.`
+        }, { status: 400 })
+      }
+      offeringDepartmentId = deptData.id
+    }
+
+    // 4. Insert course with resolved IDs
     const { data, error } = await supabase2.from('courses').insert({
-      institutions_id: input.institutions_id || null,
-      regulation_id: input.regulation_id || null,
-      offering_department_id: input.offering_department_id || null,
+      institutions_id: institutionData.id,
+      regulation_id: regulationData.id,
+      offering_department_id: offeringDepartmentId,
       institution_code: String(input.institution_code),
       regulation_code: String(input.regulation_code),
       offering_department_code: input.offering_department_code ? String(input.offering_department_code) : null,
       course_code: String(input.course_code),
       course_name: String(input.course_title),
+      display_code: input.display_code ? String(input.display_code) : null,
       course_category: input.course_category ? String(input.course_category) : null,
       course_type: input.course_type ? String(input.course_type) : null,
       course_part_master: input.course_part_master ? String(input.course_part_master) : null,
@@ -270,15 +316,30 @@ export async function POST(req: NextRequest) {
 
     if (error) {
       console.error('Supabase error:', error)
+
+      // Handle foreign key constraint violation
+      if (error.code === '23503') {
+        return NextResponse.json({
+          error: 'Foreign key constraint failed. Ensure institution, regulation, and department exist.'
+        }, { status: 400 })
+      }
+
+      // Handle duplicate key violation
+      if (error.code === '23505') {
+        return NextResponse.json({
+          error: 'Course already exists. Please use different values.'
+        }, { status: 400 })
+      }
+
       throw error
     }
-    
+
     return NextResponse.json(data, { status: 201 })
   } catch (err) {
     console.error('API Error:', err)
-    return NextResponse.json({ 
-      error: 'Failed to create course', 
-      details: err instanceof Error ? err.message : 'Unknown error' 
+    return NextResponse.json({
+      error: 'Failed to create course',
+      details: err instanceof Error ? err.message : 'Unknown error'
     }, { status: 500 })
   }
 }

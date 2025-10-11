@@ -555,32 +555,42 @@ export default function CoursesPage() {
     }
   }
 
-  const downloadTemplate = () => {
-    const headers = [
-      'Institution Code*', 'Regulation Code*', 'Offering Department Code',
-      'Course Code*', 'Course Name*', 'Display Code*',
-      'Course Category*', 'Course Type', 'Part',
-      'Credit', 'Split Credit (TRUE/FALSE)', 'Theory Credit', 'Practical Credit',
-      'QP Code*', 'E-Code Name (Tamil/English/French/Malayalam/Hindi)', 'Duration (hours)',
-      'Evaluation Type* (CA/ESE/CA + ESE)', 'Result Type* (Mark/Status)',
-      'Self Study Course (TRUE/FALSE)', 'Outside Class Course (TRUE/FALSE)',
-      'Open Book (TRUE/FALSE)', 'Online Course (TRUE/FALSE)',
-      'Dummy Number Required (TRUE/FALSE)', 'Annual Course (TRUE/FALSE)',
-      'Multiple QP Set (TRUE/FALSE)', 'No of QP Setter', 'No of Scrutinizer',
-      'Fee Exception (TRUE/FALSE)', 'Syllabus PDF URL', 'Description', 'Status (TRUE/FALSE)'
-    ]
+  const downloadTemplate = async () => {
+    try {
+      // Fetch the template from the API
+      const response = await fetch('/api/courses/template')
 
-    const ws = XLSX.utils.aoa_to_sheet([headers])
-    ws['!cols'] = headers.map(() => ({ wch: 20 }))
-    const wb = XLSX.utils.book_new()
-    XLSX.utils.book_append_sheet(wb, ws, 'Courses Template')
-    XLSX.writeFile(wb, 'courses_template.xlsx')
+      if (!response.ok) {
+        throw new Error('Failed to download template')
+      }
 
-    toast({
-      title: '✅ Template Downloaded',
-      description: 'Course upload template has been downloaded successfully.',
-      className: 'bg-green-50 border-green-200 text-green-800 dark:bg-green-900/20 dark:border-green-800 dark:text-green-200'
-    })
+      // Get the blob from the response
+      const blob = await response.blob()
+
+      // Create a download link
+      const url = window.URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `Course_Master_Template_${new Date().toISOString().split('T')[0]}.xlsx`
+      document.body.appendChild(a)
+      a.click()
+      document.body.removeChild(a)
+      window.URL.revokeObjectURL(url)
+
+      toast({
+        title: '✅ Template Downloaded',
+        description: 'Course master template with reference data has been downloaded successfully.',
+        className: 'bg-green-50 border-green-200 text-green-800 dark:bg-green-900/20 dark:border-green-800 dark:text-green-200'
+      })
+    } catch (error) {
+      console.error('Template download error:', error)
+      toast({
+        title: '❌ Download Failed',
+        description: 'Failed to download course template. Please try again.',
+        variant: 'destructive',
+        className: 'bg-red-50 border-red-200 text-red-800 dark:bg-red-900/20 dark:border-red-800 dark:text-red-200'
+      })
+    }
   }
 
   const downloadCoursesExcel = () => {
@@ -747,35 +757,35 @@ export default function CoursesPage() {
           const payload = {
             institution_code: row['Institution Code*'] || row['Institution Code'] || row.institution_code,
             regulation_code: row['Regulation Code*'] || row['Regulation Code'] || row.regulation_code,
-            offering_department_code: row['Offering Department Code'] || row.offering_department_code || null,
+            offering_department_code: row['Offering Department Code*'] || row['Offering Department Code'] || row.offering_department_code || null,
             course_code: row['Course Code*'] || row['Course Code'] || row.course_code,
             course_title: row['Course Name*'] || row['Course Name'] || row.course_title,
             display_code: row['Display Code*'] || row['Display Code'] || row.display_code,
             course_category: row['Course Category*'] || row['Course Category'] || row.course_category,
             course_type: row['Course Type'] || row.course_type || null,
-            course_part_master: row['Part'] || row.course_part_master || null,
+            course_part_master: row['Course Part Master'] || row['Part'] || row.course_part_master || null,
             credits: Number(row['Credit'] || row.credits) || 0,
-            split_credit: typeof row.split_credit === 'boolean' ? row.split_credit : String(row['Split Credit (TRUE/FALSE)'] || row['Split Credit'] || '').toUpperCase() === 'TRUE',
+            split_credit: typeof row.split_credit === 'boolean' ? row.split_credit : String(row['Split Credit'] || row['Split Credit (TRUE/FALSE)'] || '').toUpperCase() === 'TRUE',
             theory_credit: Number(row['Theory Credit'] || row.theory_credit) || 0,
             practical_credit: Number(row['Practical Credit'] || row.practical_credit) || 0,
             qp_code: row['QP Code*'] || row['QP Code'] || row.qp_code,
-            e_code_name: row['E-Code Name (Tamil/English/French/Malayalam/Hindi)'] || row['E-Code Name'] || row.e_code_name || null,
-            duration_hours: Number(row['Duration (hours)'] || row['Duration'] || row.duration_hours) || 0,
-            evaluation_type: row['Evaluation Type* (CA/ESE/CA + ESE)'] || row['Evaluation Type'] || row.evaluation_type,
-            result_type: row['Result Type* (Mark/Status)'] || row['Result Type'] || row.result_type || 'Mark',
-            self_study_course: typeof row.self_study_course === 'boolean' ? row.self_study_course : String(row['Self Study Course (TRUE/FALSE)'] || row['Self Study Course'] || '').toUpperCase() === 'TRUE',
-            outside_class_course: typeof row.outside_class_course === 'boolean' ? row.outside_class_course : String(row['Outside Class Course (TRUE/FALSE)'] || row['Outside Class Course'] || '').toUpperCase() === 'TRUE',
-            open_book: typeof row.open_book === 'boolean' ? row.open_book : String(row['Open Book (TRUE/FALSE)'] || row['Open Book'] || '').toUpperCase() === 'TRUE',
-            online_course: typeof row.online_course === 'boolean' ? row.online_course : String(row['Online Course (TRUE/FALSE)'] || row['Online Course'] || '').toUpperCase() === 'TRUE',
-            dummy_number_required: typeof row.dummy_number_required === 'boolean' ? row.dummy_number_required : String(row['Dummy Number Required (TRUE/FALSE)'] || row['Dummy Number Required'] || '').toUpperCase() === 'TRUE',
-            annual_course: typeof row.annual_course === 'boolean' ? row.annual_course : String(row['Annual Course (TRUE/FALSE)'] || row['Annual Course'] || '').toUpperCase() === 'TRUE',
-            multiple_qp_set: typeof row.multiple_qp_set === 'boolean' ? row.multiple_qp_set : String(row['Multiple QP Set (TRUE/FALSE)'] || row['Multiple QP Set'] || '').toUpperCase() === 'TRUE',
+            e_code_name: row['E Code Name'] || row['E-Code Name'] || row['E-Code Name (Tamil/English/French/Malayalam/Hindi)'] || row.e_code_name || null,
+            duration_hours: Number(row['Duration Hours'] || row['Duration (hours)'] || row['Duration'] || row.duration_hours) || 0,
+            evaluation_type: row['Evaluation Type*'] || row['Evaluation Type'] || row['Evaluation Type* (CA/ESE/CA + ESE)'] || row.evaluation_type,
+            result_type: row['Result Type*'] || row['Result Type'] || row['Result Type* (Mark/Status)'] || row.result_type || 'Mark',
+            self_study_course: typeof row.self_study_course === 'boolean' ? row.self_study_course : String(row['Self Study Course'] || row['Self Study Course (TRUE/FALSE)'] || '').toUpperCase() === 'TRUE',
+            outside_class_course: typeof row.outside_class_course === 'boolean' ? row.outside_class_course : String(row['Outside Class Course'] || row['Outside Class Course (TRUE/FALSE)'] || '').toUpperCase() === 'TRUE',
+            open_book: typeof row.open_book === 'boolean' ? row.open_book : String(row['Open Book'] || row['Open Book (TRUE/FALSE)'] || '').toUpperCase() === 'TRUE',
+            online_course: typeof row.online_course === 'boolean' ? row.online_course : String(row['Online Course'] || row['Online Course (TRUE/FALSE)'] || '').toUpperCase() === 'TRUE',
+            dummy_number_required: typeof row.dummy_number_required === 'boolean' ? row.dummy_number_required : String(row['Dummy Number Not Required'] || row['Dummy Number Required'] || row['Dummy Number Required (TRUE/FALSE)'] || '').toUpperCase() === 'TRUE',
+            annual_course: typeof row.annual_course === 'boolean' ? row.annual_course : String(row['Annual Course'] || row['Annual Course (TRUE/FALSE)'] || '').toUpperCase() === 'TRUE',
+            multiple_qp_set: typeof row.multiple_qp_set === 'boolean' ? row.multiple_qp_set : String(row['Multiple QP Set'] || row['Multiple QP Set (TRUE/FALSE)'] || '').toUpperCase() === 'TRUE',
             no_of_qp_setter: Number(row['No of QP Setter'] || row.no_of_qp_setter) || null,
             no_of_scrutinizer: Number(row['No of Scrutinizer'] || row.no_of_scrutinizer) || null,
-            fee_exception: typeof row.fee_exception === 'boolean' ? row.fee_exception : String(row['Fee Exception (TRUE/FALSE)'] || row['Fee Exception'] || '').toUpperCase() === 'TRUE',
+            fee_exception: typeof row.fee_exception === 'boolean' ? row.fee_exception : String(row['Fee Exception'] || row['Fee Exception (TRUE/FALSE)'] || '').toUpperCase() === 'TRUE',
             syllabus_pdf_url: row['Syllabus PDF URL'] || row.syllabus_pdf_url || null,
             description: row['Description'] || row.description || null,
-            is_active: typeof row.is_active === 'boolean' ? row.is_active : String(row['Status (TRUE/FALSE)'] || row['Status'] || 'TRUE').toUpperCase() !== 'FALSE'
+            is_active: typeof row.is_active === 'boolean' ? row.is_active : String(row['Status'] || row['Status (TRUE/FALSE)'] || 'TRUE').toUpperCase() !== 'FALSE'
           }
 
           // Client-side validation
