@@ -413,11 +413,38 @@ export default function CourseMappingPage() {
 			[field]: value
 		}
 
-		// Auto-fill course category when course is selected
+		// Auto-fill course details when course is selected
 		if (field === 'course_id' && value) {
 			const course = courses.find(c => c.id === value)
 			if (course) {
+				// Auto-fill course category
 				updated[semesterIndex].mappings[rowIndex].course_category = course.course_category || course.course_type || ''
+
+				// Auto-fill marks details from the course
+				if (course.internal_max_mark !== undefined) {
+					updated[semesterIndex].mappings[rowIndex].internal_max_mark = course.internal_max_mark
+				}
+				if (course.internal_pass_mark !== undefined) {
+					updated[semesterIndex].mappings[rowIndex].internal_pass_mark = course.internal_pass_mark
+				}
+				if (course.internal_converted_mark !== undefined) {
+					updated[semesterIndex].mappings[rowIndex].internal_converted_mark = course.internal_converted_mark
+				}
+				if (course.external_max_mark !== undefined) {
+					updated[semesterIndex].mappings[rowIndex].external_max_mark = course.external_max_mark
+				}
+				if (course.external_pass_mark !== undefined) {
+					updated[semesterIndex].mappings[rowIndex].external_pass_mark = course.external_pass_mark
+				}
+				if (course.external_converted_mark !== undefined) {
+					updated[semesterIndex].mappings[rowIndex].external_converted_mark = course.external_converted_mark
+				}
+				if (course.total_pass_mark !== undefined) {
+					updated[semesterIndex].mappings[rowIndex].total_pass_mark = course.total_pass_mark
+				}
+				if (course.total_max_mark !== undefined) {
+					updated[semesterIndex].mappings[rowIndex].total_max_mark = course.total_max_mark
+				}
 			}
 		}
 
@@ -1034,10 +1061,11 @@ export default function CourseMappingPage() {
 																			<Input
 																				type="number"
 																				value={mapping.course_order || 1}
-																				onChange={(e) => updateCourseRow(semIndex, rowIndex, 'course_order', parseInt(e.target.value))}
+																				onChange={(e) => updateCourseRow(semIndex, rowIndex, 'course_order', parseFloat(e.target.value))}
 																				className="h-9 w-20 text-sm text-center"
-																				min={1}
+																				min={0.1}
 																				max={999}
+																				step={0.1}
 																			/>
 																		</TableCell>
 																		<TableCell className="py-3">

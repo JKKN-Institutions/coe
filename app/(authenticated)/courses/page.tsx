@@ -65,6 +65,9 @@ import {
   FileSpreadsheet,
   RefreshCw,
   FileJson,
+  ArrowUpDown,
+  ArrowUp,
+  ArrowDown,
   AlertTriangle,
 } from "lucide-react"
 import { Switch } from "@/components/ui/switch"
@@ -91,7 +94,7 @@ interface Course {
   practical_credit?: number
   qp_code?: string
   e_code_name?: string
-  duration_hours?: number
+  exam_duration?: number
   evaluation_type?: string
   result_type?: string
   self_study_course?: boolean
@@ -110,6 +113,20 @@ interface Course {
   is_active: boolean
   created_at: string
   updated_at: string
+  // Required fields for marks and hours
+  class_hours: number
+  theory_hours: number
+  practical_hours: number
+  internal_max_mark: number
+  internal_pass_mark: number
+  internal_converted_mark: number
+  external_max_mark: number
+  external_pass_mark: number
+  external_converted_mark: number
+  total_pass_mark: number
+  total_max_mark: number
+  annual_semester: boolean
+  registration_based: boolean
   programs?: {
     id: string
     program_name: string
@@ -132,6 +149,8 @@ export default function CoursesPage() {
   const [searchTerm, setSearchTerm] = useState("")
   const [statusFilter, setStatusFilter] = useState("all")
   const [typeFilter, setTypeFilter] = useState("all")
+  const [sortField, setSortField] = useState<'course_code' | 'course_title' | 'course_category' | 'credits' | 'exam_duration' | 'is_active' | null>(null)
+  const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc')
 
   const [currentPage, setCurrentPage] = useState(1)
   const [currentTime, setCurrentTime] = useState<Date | null>(null)
@@ -168,7 +187,7 @@ export default function CoursesPage() {
     practical_credit: "",
     qp_code: "",
     e_code_name: "",
-    duration_hours: "",
+    exam_duration: "",
     evaluation_type: "",
     result_type: "Mark",
     self_study_course: false,
@@ -184,6 +203,20 @@ export default function CoursesPage() {
     syllabus_pdf_url: "",
     description: "",
     is_active: true,
+    // Required fields for marks and hours
+    class_hours: "0",
+    theory_hours: "0",
+    practical_hours: "0",
+    internal_max_mark: "0",
+    internal_pass_mark: "0",
+    internal_converted_mark: "0",
+    external_max_mark: "0",
+    external_pass_mark: "0",
+    external_converted_mark: "0",
+    total_pass_mark: "0",
+    total_max_mark: "0",
+    annual_semester: false,
+    registration_based: false,
   })
 
   // Fetch courses from API
@@ -262,16 +295,58 @@ export default function CoursesPage() {
   }, [])
 
   // Filter courses based on search and filters
-  const filteredCourses = courses.filter((course) => {
-    const matchesSearch = course.course_code.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         course.course_title.toLowerCase().includes(searchTerm.toLowerCase())
-    const matchesStatus = statusFilter === "all" || 
-                         (statusFilter === "active" && course.is_active) ||
-                         (statusFilter === "inactive" && !course.is_active)
-    const matchesType = typeFilter === "all" || course.course_type === typeFilter
-   
-    return matchesSearch && matchesStatus && matchesType 
-  })
+  const handleSort = (field: 'course_code' | 'course_title' | 'course_category' | 'credits' | 'exam_duration' | 'is_active') => {
+    if (sortField === field) {
+      setSortDirection(sortDirection === 'asc' ? 'desc' : 'asc')
+    } else {
+      setSortField(field)
+      setSortDirection('asc')
+    }
+  }
+
+  const filteredCourses = courses
+    .filter((course) => {
+      const matchesSearch = course.course_code.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                           course.course_title.toLowerCase().includes(searchTerm.toLowerCase())
+      const matchesStatus = statusFilter === "all" ||
+                           (statusFilter === "active" && course.is_active) ||
+                           (statusFilter === "inactive" && !course.is_active)
+      const matchesType = typeFilter === "all" || course.course_type === typeFilter
+
+      return matchesSearch && matchesStatus && matchesType
+    })
+    .sort((a, b) => {
+      if (!sortField) return 0
+
+      let aValue: any = a[sortField]
+      let bValue: any = b[sortField]
+
+      // Handle null/undefined values
+      if (aValue === null || aValue === undefined) aValue = ''
+      if (bValue === null || bValue === undefined) bValue = ''
+
+      // Handle boolean for is_active
+      if (sortField === 'is_active') {
+        aValue = aValue ? 1 : 0
+        bValue = bValue ? 1 : 0
+      }
+
+      // Handle numeric values
+      if (sortField === 'credits' || sortField === 'exam_duration') {
+        aValue = Number(aValue) || 0
+        bValue = Number(bValue) || 0
+      }
+
+      // Handle string values
+      if (typeof aValue === 'string') {
+        aValue = aValue.toLowerCase()
+        bValue = bValue.toLowerCase()
+      }
+
+      if (aValue < bValue) return sortDirection === 'asc' ? -1 : 1
+      if (aValue > bValue) return sortDirection === 'asc' ? 1 : -1
+      return 0
+    })
 
   const getStatusBadgeVariant = (course: Course) => {
     return course.is_active ? "default" : "secondary"
@@ -281,7 +356,8 @@ export default function CoursesPage() {
     return course.is_active ? "Active" : "Inactive"
   }
 
-  const getTypeBadgeVariant = (courseType: string) => {
+  const getTypeBadgeVariant = (courseType: string | null | undefined) => {
+    if (!courseType) return "default"
     switch (courseType.toLowerCase()) {
       case 'core': return "default"
       case 'elective': return "secondary"
@@ -308,7 +384,7 @@ export default function CoursesPage() {
       practical_credit: "",
       qp_code: "",
       e_code_name: "",
-      duration_hours: "",
+      exam_duration: "",
       evaluation_type: "",
       result_type: "Mark",
       self_study_course: false,
@@ -324,6 +400,20 @@ export default function CoursesPage() {
       syllabus_pdf_url: "",
       description: "",
       is_active: true,
+      // Required fields for marks and hours
+      class_hours: "0",
+      theory_hours: "0",
+      practical_hours: "0",
+      internal_max_mark: "0",
+      internal_pass_mark: "0",
+      internal_converted_mark: "0",
+      external_max_mark: "0",
+      external_pass_mark: "0",
+      external_converted_mark: "0",
+      total_pass_mark: "0",
+      total_max_mark: "0",
+      annual_semester: false,
+      registration_based: false,
     })
     setErrors({})
     setEditing(null)
@@ -348,7 +438,7 @@ export default function CoursesPage() {
       practical_credit: String(row.practical_credit ?? '0'),
       qp_code: row.qp_code || "",
       e_code_name: row.e_code_name || "",
-      duration_hours: String(row.duration_hours ?? ''),
+      exam_duration: String(row.exam_duration ?? ''),
       evaluation_type: row.evaluation_type || "",
       result_type: row.result_type || "Mark",
       self_study_course: Boolean(row.self_study_course) || false,
@@ -364,6 +454,20 @@ export default function CoursesPage() {
       syllabus_pdf_url: row.syllabus_pdf_url || "",
       description: row.description || "",
       is_active: row.is_active,
+      // Required fields for marks and hours
+      class_hours: String(row.class_hours ?? 0),
+      theory_hours: String(row.theory_hours ?? 0),
+      practical_hours: String(row.practical_hours ?? 0),
+      internal_max_mark: String(row.internal_max_mark ?? 0),
+      internal_pass_mark: String(row.internal_pass_mark ?? 0),
+      internal_converted_mark: String(row.internal_converted_mark ?? 0),
+      external_max_mark: String(row.external_max_mark ?? 0),
+      external_pass_mark: String(row.external_pass_mark ?? 0),
+      external_converted_mark: String(row.external_converted_mark ?? 0),
+      total_pass_mark: String(row.total_pass_mark ?? 0),
+      total_max_mark: String(row.total_max_mark ?? 0),
+      annual_semester: Boolean(row.annual_semester),
+      registration_based: Boolean(row.registration_based),
     })
     setSheetOpen(true)
   }
@@ -409,11 +513,11 @@ export default function CoursesPage() {
       e.practical_credit = 'Practical credit cannot exceed 99'
     }
 
-    if (formData.duration_hours && Number(formData.duration_hours) < 0) {
-      e.duration_hours = 'Duration must be a positive number'
+    if (formData.exam_duration && Number(formData.exam_duration) < 0) {
+      e.exam_duration = 'Duration must be a positive number'
     }
-    if (formData.duration_hours && Number(formData.duration_hours) > 9999) {
-      e.duration_hours = 'Duration cannot exceed 9999 hours'
+    if (formData.exam_duration && Number(formData.exam_duration) > 150) {
+      e.exam_duration = 'Duration cannot exceed 9999 hours'
     }
 
     // Split credit validation
@@ -439,6 +543,34 @@ export default function CoursesPage() {
     if (formData.no_of_qp_setter && Number(formData.no_of_qp_setter) > 100) {
       e.no_of_qp_setter = 'Number of QP setter cannot exceed 100'
     }
+
+    // Validate required numeric fields for marks and hours
+    const requiredNumericFields = [
+      { field: 'class_hours', label: 'Class Hours', max: 999 },
+      { field: 'theory_hours', label: 'Theory Hours', max: 999 },
+      { field: 'practical_hours', label: 'Practical Hours', max: 999 },
+      { field: 'internal_max_mark', label: 'Internal Max Mark', max: 999 },
+      { field: 'internal_pass_mark', label: 'Internal Pass Mark', max: 999 },
+      { field: 'internal_converted_mark', label: 'Internal Converted Mark', max: 999 },
+      { field: 'external_max_mark', label: 'External Max Mark', max: 999 },
+      { field: 'external_pass_mark', label: 'External Pass Mark', max: 999 },
+      { field: 'external_converted_mark', label: 'External Converted Mark', max: 999 },
+      { field: 'total_pass_mark', label: 'Total Pass Mark', max: 999 },
+      { field: 'total_max_mark', label: 'Total Max Mark', max: 999 },
+    ]
+
+    requiredNumericFields.forEach(({ field, label, max }) => {
+      const value = (formData as any)[field]
+      if (!value || value.trim() === '') {
+        e[field] = `${label} is required`
+      } else if (isNaN(Number(value))) {
+        e[field] = `${label} must be a number`
+      } else if (Number(value) < 0) {
+        e[field] = `${label} must be positive or zero`
+      } else if (Number(value) > max) {
+        e[field] = `${label} cannot exceed ${max}`
+      }
+    })
 
     if (formData.no_of_scrutinizer && Number(formData.no_of_scrutinizer) < 0) {
       e.no_of_scrutinizer = 'Number of scrutinizer must be a positive number'
@@ -487,7 +619,7 @@ export default function CoursesPage() {
         practical_credit: formData.practical_credit ? Math.trunc(Number(formData.practical_credit)) : 0,
         qp_code: formData.qp_code || null,
         e_code_name: formData.e_code_name || null,
-        duration_hours: formData.duration_hours ? Math.trunc(Number(formData.duration_hours)) : 0,
+        exam_duration: formData.exam_duration ? Math.trunc(Number(formData.exam_duration)) : 0,
         evaluation_type: formData.evaluation_type,
         result_type: formData.result_type,
         self_study_course: Boolean(formData.self_study_course),
@@ -503,6 +635,20 @@ export default function CoursesPage() {
         syllabus_pdf_url: formData.syllabus_pdf_url || null,
         description: formData.description || null,
         is_active: Boolean(formData.is_active),
+        // Required fields - always send as numbers (0 if empty)
+        class_hours: Number(formData.class_hours) || 0,
+        theory_hours: Number(formData.theory_hours) || 0,
+        practical_hours: Number(formData.practical_hours) || 0,
+        internal_max_mark: Number(formData.internal_max_mark) || 0,
+        internal_pass_mark: Number(formData.internal_pass_mark) || 0,
+        internal_converted_mark: Number(formData.internal_converted_mark) || 0,
+        external_max_mark: Number(formData.external_max_mark) || 0,
+        external_pass_mark: Number(formData.external_pass_mark) || 0,
+        external_converted_mark: Number(formData.external_converted_mark) || 0,
+        total_pass_mark: Number(formData.total_pass_mark) || 0,
+        total_max_mark: Number(formData.total_max_mark) || 0,
+        annual_semester: Boolean(formData.annual_semester),
+        registration_based: Boolean(formData.registration_based),
       }
       let res: Response
       if (editing) {
@@ -526,7 +672,8 @@ export default function CoursesPage() {
       resetForm()
     } catch (e) {
       console.error('Save course error:', e)
-      toast({ title: '❌ Operation Failed', description: 'Failed to save record. Please try again.', variant: 'destructive', className: 'bg-red-50 border-red-200 text-red-800 dark:bg-red-900/20 dark:border-red-800 dark:text-red-200' })
+      const errorMessage = e instanceof Error ? e.message : 'Failed to save record. Please try again.'
+      toast({ title: '❌ Operation Failed', description: errorMessage, variant: 'destructive', className: 'bg-red-50 border-red-200 text-red-800 dark:bg-red-900/20 dark:border-red-800 dark:text-red-200' })
     }
   }
 
@@ -610,7 +757,7 @@ export default function CoursesPage() {
       'Practical Credit': c.practical_credit || 0,
       'QP Code': c.qp_code || '',
       'E-Code Name': c.e_code_name || '',
-      'Duration (hours)': c.duration_hours || 0,
+      'Exam Duration (hours)': c.exam_duration || 0,
       'Evaluation Type': c.evaluation_type || '',
       'Result Type': c.result_type || 'Mark',
       'Self Study Course': c.self_study_course ? 'TRUE' : 'FALSE',
@@ -625,7 +772,20 @@ export default function CoursesPage() {
       'Fee Exception': c.fee_exception ? 'TRUE' : 'FALSE',
       'Syllabus PDF URL': c.syllabus_pdf_url || '',
       'Description': c.description || '',
-      'Status': c.is_active ? 'TRUE' : 'FALSE'
+      'Class Hours': c.class_hours || '',
+      'Theory Hours': c.theory_hours || '',
+      'Practical Hours': c.practical_hours || '',
+      'Internal Max Mark': c.internal_max_mark || '',
+      'Internal Pass Mark': c.internal_pass_mark || '',
+      'Internal Converted Mark': c.internal_converted_mark || '',
+      'External Max Mark': c.external_max_mark || '',
+      'External Pass Mark': c.external_pass_mark || '',
+      'External Converted Mark': c.external_converted_mark || 0,
+      'Total Pass Mark': c.total_pass_mark || 0,
+      'Total Max Mark': c.total_max_mark || 0,
+      'Annual Semester': c.annual_semester ? 'TRUE' : 'FALSE',
+      'Registration Based': c.registration_based ? 'TRUE' : 'FALSE',
+      'Status': c.is_active ? 'TRUE' : 'FALSE',
     }))
 
     const ws = XLSX.utils.json_to_sheet(data)
@@ -657,7 +817,7 @@ export default function CoursesPage() {
       practical_credit: c.practical_credit || 0,
       qp_code: c.qp_code || '',
       e_code_name: c.e_code_name || '',
-      duration_hours: c.duration_hours || 0,
+      exam_duration: c.exam_duration || 0,
       evaluation_type: c.evaluation_type || '',
       result_type: c.result_type || 'Mark',
       self_study_course: c.self_study_course || false,
@@ -672,7 +832,18 @@ export default function CoursesPage() {
       fee_exception: c.fee_exception || false,
       syllabus_pdf_url: c.syllabus_pdf_url || '',
       description: c.description || '',
-      is_active: c.is_active
+      is_active: c.is_active,
+      class_hours: c.class_hours || null,
+      theory_hours: c.theory_hours || null,
+      practical_hours: c.practical_hours || null,
+      internal_max_mark: c.internal_max_mark || null,
+      internal_pass_mark: c.internal_pass_mark || null,
+      internal_converted_mark: c.internal_converted_mark || null,
+      external_max_mark: c.external_max_mark || null,
+      external_pass_mark: c.external_pass_mark || null,
+      external_converted_mark: c.external_converted_mark || null,
+      total_pass_mark: c.total_pass_mark || null,
+      total_max_mark: c.total_max_mark || null,
     }))
 
     const jsonStr = JSON.stringify(data, null, 2)
@@ -770,7 +941,7 @@ export default function CoursesPage() {
             practical_credit: Number(row['Practical Credit'] || row.practical_credit) || 0,
             qp_code: row['QP Code*'] || row['QP Code'] || row.qp_code,
             e_code_name: row['E Code Name'] || row['E-Code Name'] || row['E-Code Name (Tamil/English/French/Malayalam/Hindi)'] || row.e_code_name || null,
-            duration_hours: Number(row['Duration Hours'] || row['Duration (hours)'] || row['Duration'] || row.duration_hours) || 0,
+            exam_duration: Number(row['Exam Duration Hours'] || row['Exam Duration (hours)'] || row['Exam Duration'] || row.exam_duration) || 0,
             evaluation_type: row['Evaluation Type*'] || row['Evaluation Type'] || row['Evaluation Type* (CA/ESE/CA + ESE)'] || row.evaluation_type,
             result_type: row['Result Type*'] || row['Result Type'] || row['Result Type* (Mark/Status)'] || row.result_type || 'Mark',
             self_study_course: typeof row.self_study_course === 'boolean' ? row.self_study_course : String(row['Self Study Course'] || row['Self Study Course (TRUE/FALSE)'] || '').toUpperCase() === 'TRUE',
@@ -785,6 +956,19 @@ export default function CoursesPage() {
             fee_exception: typeof row.fee_exception === 'boolean' ? row.fee_exception : String(row['Fee Exception'] || row['Fee Exception (TRUE/FALSE)'] || '').toUpperCase() === 'TRUE',
             syllabus_pdf_url: row['Syllabus PDF URL'] || row.syllabus_pdf_url || null,
             description: row['Description'] || row.description || null,
+            class_hours: Number(row['Class Hours'] || row.class_hours) || 0,
+            theory_hours: Number(row['Theory Hours'] || row.theory_hours) || 0,
+            practical_hours: Number(row['Practical Hours'] || row.practical_hours) || 0,
+            internal_max_mark: Number(row['Internal Max Mark'] || row.internal_max_mark) || 0,
+            internal_pass_mark: Number(row['Internal Pass Mark'] || row.internal_pass_mark) || 0,
+            internal_converted_mark: Number(row['Internal Converted Mark'] || row.internal_converted_mark) || 0,
+            external_max_mark: Number(row['External Max Mark'] || row.external_max_mark) || 0,
+            external_pass_mark: Number(row['External Pass Mark'] || row.external_pass_mark) || 0,
+            external_converted_mark: Number(row['External Converted Mark'] || row.external_converted_mark) || 0,
+            total_pass_mark: Number(row['Total Pass Mark'] || row.total_pass_mark) || 0,
+            total_max_mark: Number(row['Total Max Mark'] || row.total_max_mark) || 0,
+            annual_semester: typeof row.annual_semester === 'boolean' ? row.annual_semester : String(row['Annual Semester'] || row['Annual Semester (TRUE/FALSE)'] || 'FALSE').toUpperCase() === 'TRUE',
+            registration_based: typeof row.registration_based === 'boolean' ? row.registration_based : String(row['Registration Based'] || row['Registration Based (TRUE/FALSE)'] || 'FALSE').toUpperCase() === 'TRUE',
             is_active: typeof row.is_active === 'boolean' ? row.is_active : String(row['Status'] || row['Status (TRUE/FALSE)'] || 'TRUE').toUpperCase() !== 'FALSE'
           }
 
@@ -1065,7 +1249,7 @@ export default function CoursesPage() {
                     </Button>
                     <Button variant="outline" size="sm" className="text-xs px-2 h-8" onClick={downloadCoursesExcel}>
                       <Download className="h-3 w-3 mr-1" />
-                      Excel
+                      Download
                     </Button>
                     <Button variant="outline" size="sm" className="text-xs px-2 h-8" onClick={downloadCoursesJSON}>
                       <FileJson className="h-3 w-3 mr-1" />
@@ -1073,7 +1257,7 @@ export default function CoursesPage() {
                     </Button>
                     <Button variant="outline" size="sm" className="text-xs px-2 h-8" onClick={() => document.getElementById('file-upload')?.click()}>
                       <Upload className="h-3 w-3 mr-1" />
-                      Import
+                      Upload
                     </Button>
                     <input
                       id="file-upload"
@@ -1101,13 +1285,83 @@ export default function CoursesPage() {
                     <Table>
                       <TableHeader className="sticky top-0 z-10 bg-slate-50 dark:bg-slate-900/50">
                         <TableRow>
-                          <TableHead className="w-[120px] text-[11px]">Course Code</TableHead>
-                          <TableHead className="text-[11px]">Course Title</TableHead>
-                          <TableHead className="w-[100px] text-[11px]">Type</TableHead>
-                          <TableHead className="w-[80px] text-[11px]">Credits</TableHead>
-                          
-                          <TableHead className="w-[100px] text-[11px]">Status</TableHead>
-                          <TableHead className="w-[120px] text-[11px]">Created At</TableHead>
+                          <TableHead
+                            className="w-[120px] text-[11px] cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-800"
+                            onClick={() => handleSort('course_code')}
+                          >
+                            <div className="flex items-center gap-1">
+                              Course Code
+                              {sortField === 'course_code' ? (
+                                sortDirection === 'asc' ? <ArrowUp className="h-3 w-3" /> : <ArrowDown className="h-3 w-3" />
+                              ) : <ArrowUpDown className="h-3 w-3 opacity-50" />}
+                            </div>
+                          </TableHead>
+                          <TableHead
+                            className="text-[11px] cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-800"
+                            onClick={() => handleSort('course_title')}
+                          >
+                            <div className="flex items-center gap-1">
+                              Course Name
+                              {sortField === 'course_title' ? (
+                                sortDirection === 'asc' ? <ArrowUp className="h-3 w-3" /> : <ArrowDown className="h-3 w-3" />
+                              ) : <ArrowUpDown className="h-3 w-3 opacity-50" />}
+                            </div>
+                          </TableHead>
+                          <TableHead
+                            className="w-[140px] text-[11px] cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-800"
+                            onClick={() => handleSort('course_category')}
+                          >
+                            <div className="flex items-center gap-1">
+                              Course Category
+                              {sortField === 'course_category' ? (
+                                sortDirection === 'asc' ? <ArrowUp className="h-3 w-3" /> : <ArrowDown className="h-3 w-3" />
+                              ) : <ArrowUpDown className="h-3 w-3 opacity-50" />}
+                            </div>
+                          </TableHead>
+                          <TableHead
+                            className="w-[80px] text-[11px] cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-800"
+                            onClick={() => handleSort('credits')}
+                          >
+                            <div className="flex items-center gap-1">
+                              Credit
+                              {sortField === 'credits' ? (
+                                sortDirection === 'asc' ? <ArrowUp className="h-3 w-3" /> : <ArrowDown className="h-3 w-3" />
+                              ) : <ArrowUpDown className="h-3 w-3 opacity-50" />}
+                            </div>
+                          </TableHead>
+                          <TableHead
+                            className="w-[120px] text-[11px] cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-800"
+                            onClick={() => handleSort('exam_duration')}
+                          >
+                            <div className="flex items-center gap-1">
+                              Exam Duration
+                              {sortField === 'exam_duration' ? (
+                                sortDirection === 'asc' ? <ArrowUp className="h-3 w-3" /> : <ArrowDown className="h-3 w-3" />
+                              ) : <ArrowUpDown className="h-3 w-3 opacity-50" />}
+                            </div>
+                          </TableHead>
+                          <TableHead
+                            className="w-[120px] text-[11px] cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-800"
+                            onClick={() => handleSort('qp_code')}
+                          >
+                            <div className="flex items-center gap-1">
+                              QP Code
+                              {sortField === 'qp_code' ? (
+                                sortDirection === 'asc' ? <ArrowUp className="h-3 w-3" /> : <ArrowDown className="h-3 w-3" />
+                              ) : <ArrowUpDown className="h-3 w-3 opacity-50" />}
+                            </div>
+                          </TableHead>
+                          <TableHead
+                            className="w-[100px] text-[11px] cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-800"
+                            onClick={() => handleSort('is_active')}
+                          >
+                            <div className="flex items-center gap-1">
+                              Status
+                              {sortField === 'is_active' ? (
+                                sortDirection === 'asc' ? <ArrowUp className="h-3 w-3" /> : <ArrowDown className="h-3 w-3" />
+                              ) : <ArrowUpDown className="h-3 w-3 opacity-50" />}
+                            </div>
+                          </TableHead>
                           <TableHead className="w-[120px] text-[11px] text-center">Actions</TableHead>
                         </TableRow>
                       </TableHeader>
@@ -1125,34 +1379,23 @@ export default function CoursesPage() {
                                 <TableCell className="font-medium text-[11px]">
                                   {course.course_code}
                                 </TableCell>
-                                <TableCell>
-                                  <div>
-                                    <div className="font-medium text-[11px]">{course.course_title}</div>
-                                    {course.programs && (
-                                      <div className="text-[10px] text-muted-foreground">
-                                        {course.programs.program_name} ({course.programs.program_code})
-                                      </div>
-                                    )}
-                                  </div>
+                                <TableCell className="font-medium text-[11px]">
+                                  {course.course_title}
                                 </TableCell>
-                                <TableCell>
-                                  <Badge variant={getTypeBadgeVariant(course.course_type)} className="text-[11px]">
-                                    {course.course_type}
-                                  </Badge>
+                                <TableCell className="text-[11px]">
+                                  {course.course_category || '-'}
                                 </TableCell>
                                 <TableCell className="text-[11px]">{course.credits}</TableCell>
-                                <TableCell>
-                                  <Badge variant="outline" className="text-[11px]">
-                                    {course.course_level}
-                                  </Badge>
+                                <TableCell className="text-[11px]">
+                                  {course.exam_duration ? `${course.exam_duration} hrs` : '-'}
+                                </TableCell>
+                                <TableCell className="text-[11px]">
+                                  {course.qp_code || '-'}
                                 </TableCell>
                                 <TableCell>
                                   <Badge variant={getStatusBadgeVariant(course)} className="text-[11px]">
                                     {getStatusText(course)}
                                   </Badge>
-                                </TableCell>
-                                <TableCell className="text-[11px] text-muted-foreground">
-                                  {formatDate(course.created_at)}
                                 </TableCell>
                                 <TableCell>
                                   <div className="flex items-center justify-center gap-1">
@@ -1429,7 +1672,7 @@ export default function CoursesPage() {
                   </Select>
                 </div>
                 <div className="space-y-2">
-                  <Label className="text-sm font-semibold">Credit</Label>
+                  <Label className="text-sm font-semibold">Credit <span className="text-red-500">*</span></Label>
                   <Input type="number" step="1" value={formData.credits} onChange={(e) => setFormData({ ...formData, credits: e.target.value })} className={`h-10 ${errors.credits ? 'border-destructive' : ''}`} placeholder="e.g., 3" />
                   {errors.credits && <p className="text-xs text-destructive">{errors.credits}</p>}
                 </div>
@@ -1485,9 +1728,9 @@ export default function CoursesPage() {
                   </Select>
                 </div>
                 <div className="space-y-2">
-                  <Label className="text-sm font-semibold">Duration (hours)</Label>
-                  <Input type="number" step="1" value={formData.duration_hours} onChange={(e) => setFormData({ ...formData, duration_hours: e.target.value })} className={`h-10 ${errors.duration_hours ? 'border-destructive' : ''}`} />
-                  {errors.duration_hours && <p className="text-xs text-destructive">{errors.duration_hours}</p>}
+                  <Label className="text-sm font-semibold">Duration (hours) <span className="text-red-500">*</span></Label>
+                  <Input type="number" step="1" value={formData.exam_duration} onChange={(e) => setFormData({ ...formData, exam_duration: e.target.value })} className={`h-10 ${errors.exam_duration ? 'border-destructive' : ''}`} />
+                  {errors.exam_duration && <p className="text-xs text-destructive">{errors.exam_duration}</p>}
                 </div>
                 <div className="space-y-2">
                   <Label className="text-sm font-semibold">Evaluation Type <span className="text-red-500">*</span></Label>
@@ -1527,7 +1770,73 @@ export default function CoursesPage() {
                 </div>
               </div>
             </div>
+{/* Marks and Hours Section */}
+<div className="space-y-4">
+  <div className="flex items-center gap-3 pb-3 border-b border-orange-200 dark:border-orange-800">
+    <div className="h-8 w-8 rounded-lg bg-gradient-to-r from-orange-500 to-red-600 flex items-center justify-center">
+      <BookText className="h-4 w-4 text-white" />
+    </div>
+    <h3 className="text-lg font-bold bg-gradient-to-r from-orange-600 to-red-600 bg-clip-text text-transparent">Marks & Hours</h3>
+  </div>
 
+  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+    <div className="space-y-2">
+      <Label className="text-sm font-semibold">Class Hours <span className="text-red-500">*</span></Label>
+      <Input type="number" step="1" value={formData.class_hours} onChange={(e) => setFormData({ ...formData, class_hours: e.target.value })} className={`h-10 ${errors.class_hours ? 'border-destructive' : ''}`} placeholder="0" />
+      {errors.class_hours && <p className="text-xs text-destructive">{errors.class_hours}</p>}
+    </div>
+    <div className="space-y-2">
+      <Label className="text-sm font-semibold">Theory Hours <span className="text-red-500">*</span></Label>
+      <Input type="number" step="1" value={formData.theory_hours} onChange={(e) => setFormData({ ...formData, theory_hours: e.target.value })} className={`h-10 ${errors.theory_hours ? 'border-destructive' : ''}`} placeholder="0" />
+      {errors.theory_hours && <p className="text-xs text-destructive">{errors.theory_hours}</p>}
+    </div>
+    <div className="space-y-2">
+      <Label className="text-sm font-semibold">Practical Hours <span className="text-red-500">*</span></Label>
+      <Input type="number" step="1" value={formData.practical_hours} onChange={(e) => setFormData({ ...formData, practical_hours: e.target.value })} className={`h-10 ${errors.practical_hours ? 'border-destructive' : ''}`} placeholder="0" />
+      {errors.practical_hours && <p className="text-xs text-destructive">{errors.practical_hours}</p>}
+    </div>
+    <div className="space-y-2">
+      <Label className="text-sm font-semibold">Internal Max Mark <span className="text-red-500">*</span></Label>
+      <Input type="number" step="1" value={formData.internal_max_mark} onChange={(e) => setFormData({ ...formData, internal_max_mark: e.target.value })} className={`h-10 ${errors.internal_max_mark ? 'border-destructive' : ''}`} placeholder="0" />
+      {errors.internal_max_mark && <p className="text-xs text-destructive">{errors.internal_max_mark}</p>}
+    </div>
+    <div className="space-y-2">
+      <Label className="text-sm font-semibold">Internal Pass Mark <span className="text-red-500">*</span></Label>
+      <Input type="number" step="1" value={formData.internal_pass_mark} onChange={(e) => setFormData({ ...formData, internal_pass_mark: e.target.value })} className={`h-10 ${errors.internal_pass_mark ? 'border-destructive' : ''}`} placeholder="0" />
+      {errors.internal_pass_mark && <p className="text-xs text-destructive">{errors.internal_pass_mark}</p>}
+    </div>
+    <div className="space-y-2">
+      <Label className="text-sm font-semibold">Internal Converted Mark <span className="text-red-500">*</span></Label>
+      <Input type="number" step="1" value={formData.internal_converted_mark} onChange={(e) => setFormData({ ...formData, internal_converted_mark: e.target.value })} className={`h-10 ${errors.internal_converted_mark ? 'border-destructive' : ''}`} placeholder="0" />
+      {errors.internal_converted_mark && <p className="text-xs text-destructive">{errors.internal_converted_mark}</p>}
+    </div>
+    <div className="space-y-2">
+      <Label className="text-sm font-semibold">External Max Mark <span className="text-red-500">*</span></Label>
+      <Input type="number" step="1" value={formData.external_max_mark} onChange={(e) => setFormData({ ...formData, external_max_mark: e.target.value })} className={`h-10 ${errors.external_max_mark ? 'border-destructive' : ''}`} placeholder="0" />
+      {errors.external_max_mark && <p className="text-xs text-destructive">{errors.external_max_mark}</p>}
+    </div>
+    <div className="space-y-2">
+      <Label className="text-sm font-semibold">External Pass Mark <span className="text-red-500">*</span></Label>
+      <Input type="number" step="1" value={formData.external_pass_mark} onChange={(e) => setFormData({ ...formData, external_pass_mark: e.target.value })} className={`h-10 ${errors.external_pass_mark ? 'border-destructive' : ''}`} placeholder="0" />
+      {errors.external_pass_mark && <p className="text-xs text-destructive">{errors.external_pass_mark}</p>}
+    </div>
+    <div className="space-y-2">
+      <Label className="text-sm font-semibold">External Converted Mark <span className="text-red-500">*</span></Label>
+      <Input type="number" step="1" value={formData.external_converted_mark} onChange={(e) => setFormData({ ...formData, external_converted_mark: e.target.value })} className={`h-10 ${errors.external_converted_mark ? 'border-destructive' : ''}`} placeholder="0" />
+      {errors.external_converted_mark && <p className="text-xs text-destructive">{errors.external_converted_mark}</p>}
+    </div>
+    <div className="space-y-2">
+      <Label className="text-sm font-semibold">Total Pass Mark <span className="text-red-500">*</span></Label>
+      <Input type="number" step="1" value={formData.total_pass_mark} onChange={(e) => setFormData({ ...formData, total_pass_mark: e.target.value })} className={`h-10 ${errors.total_pass_mark ? 'border-destructive' : ''}`} placeholder="0" />
+      {errors.total_pass_mark && <p className="text-xs text-destructive">{errors.total_pass_mark}</p>}
+    </div>
+    <div className="space-y-2">
+      <Label className="text-sm font-semibold">Total Max Mark <span className="text-red-500">*</span></Label>
+      <Input type="number" step="1" value={formData.total_max_mark} onChange={(e) => setFormData({ ...formData, total_max_mark: e.target.value })} className={`h-10 ${errors.total_max_mark ? 'border-destructive' : ''}`} placeholder="0" />
+      {errors.total_max_mark && <p className="text-xs text-destructive">{errors.total_max_mark}</p>}
+    </div>
+  </div>
+</div>
             <div className="space-y-4">
               <div className="flex items-center gap-3 pb-3 border-b border-purple-200 dark:border-purple-800">
                 <div className="h-8 w-8 rounded-lg bg-gradient-to-r from-purple-500 to-pink-600 flex items-center justify-center">
@@ -1601,6 +1910,20 @@ export default function CoursesPage() {
                   <div className="flex items-center gap-3">
                     <Switch checked={formData.fee_exception} onCheckedChange={(v) => setFormData({ ...formData, fee_exception: v })} />
                     <span className={`text-sm font-medium ${formData.fee_exception ? 'text-green-600' : 'text-gray-500'}`}>{formData.fee_exception ? 'Yes' : 'No'}</span>
+                  </div>
+                </div>
+                <div className="space-y-2">
+                  <Label className="text-sm font-semibold">Annual Semester *</Label>
+                  <div className="flex items-center gap-3">
+                    <Switch checked={formData.annual_semester} onCheckedChange={(v) => setFormData({ ...formData, annual_semester: v })} />
+                    <span className={`text-sm font-medium ${formData.annual_semester ? 'text-green-600' : 'text-gray-500'}`}>{formData.annual_semester ? 'Yes' : 'No'}</span>
+                  </div>
+                </div>
+                <div className="space-y-2">
+                  <Label className="text-sm font-semibold">Registration Based *</Label>
+                  <div className="flex items-center gap-3">
+                    <Switch checked={formData.registration_based} onCheckedChange={(v) => setFormData({ ...formData, registration_based: v })} />
+                    <span className={`text-sm font-medium ${formData.registration_based ? 'text-green-600' : 'text-gray-500'}`}>{formData.registration_based ? 'Yes' : 'No'}</span>
                   </div>
                 </div>
                 <div className="space-y-2 md:col-span-3">

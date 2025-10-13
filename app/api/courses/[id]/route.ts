@@ -27,7 +27,7 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
         practical_credit,
         qp_code,
         e_code_name,
-        duration_hours,
+        exam_duration,
         evaluation_type,
         result_type,
         self_study_course,
@@ -44,7 +44,20 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
         description,
         status,
         created_at,
-        updated_at
+        updated_at,
+        class_hours,
+        theory_hours,
+        practical_hours,
+        internal_max_mark,
+        internal_pass_mark,
+        internal_converted_mark,
+        external_max_mark,
+        external_pass_mark,
+        external_converted_mark,
+        total_pass_mark,
+        total_max_mark,
+        annual_semester,
+        registration_based
       `)
       .eq('id', id)
       .single()
@@ -70,14 +83,14 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
       practical_credit: data.practical_credit,
       qp_code: data.qp_code,
       e_code_name: data.e_code_name,
-      duration_hours: data.duration_hours,
+      exam_duration: data.exam_duration,
       evaluation_type: data.evaluation_type,
       result_type: data.result_type,
       self_study_course: data.self_study_course,
       outside_class_course: data.outside_class_course,
       open_book: data.open_book,
       online_course: data.online_course,
-      dummy_number_required: data.dummy_number_not_required,
+      dummy_number_required: !data.dummy_number_not_required,
       annual_course: data.annual_course,
       multiple_qp_set: data.multiple_qp_set,
       no_of_qp_setter: data.no_of_qp_setter,
@@ -88,6 +101,20 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
       is_active: data.status,
       created_at: data.created_at,
       updated_at: data.updated_at,
+      // Required fields for marks and hours
+      class_hours: data.class_hours ?? 0,
+      theory_hours: data.theory_hours ?? 0,
+      practical_hours: data.practical_hours ?? 0,
+      internal_max_mark: data.internal_max_mark ?? 0,
+      internal_pass_mark: data.internal_pass_mark ?? 0,
+      internal_converted_mark: data.internal_converted_mark ?? 0,
+      external_max_mark: data.external_max_mark ?? 0,
+      external_pass_mark: data.external_pass_mark ?? 0,
+      external_converted_mark: data.external_converted_mark ?? 0,
+      total_pass_mark: data.total_pass_mark ?? 0,
+      total_max_mark: data.total_max_mark ?? 0,
+      annual_semester: data.annual_semester ?? false,
+      registration_based: data.registration_based ?? false,
     } : null
     return NextResponse.json(mapped)
   } catch (err) {
@@ -162,23 +189,23 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
     if (input.course_code !== undefined) data.course_code = String(input.course_code)
     if (input.course_title !== undefined) data.course_name = String(input.course_title)
     if (input.display_code !== undefined) data.display_code = input.display_code ? String(input.display_code) : null
-    if (input.course_category !== undefined) data.course_category = String(input.course_category)
-    if (input.course_type !== undefined) data.course_type = String(input.course_type)
-    if (input.course_part_master !== undefined) data.course_part_master = String(input.course_part_master)
+    if (input.course_category !== undefined && input.course_category) data.course_category = String(input.course_category)
+    if (input.course_type !== undefined) data.course_type = input.course_type ? String(input.course_type) : null
+    if (input.course_part_master !== undefined && input.course_part_master) data.course_part_master = String(input.course_part_master)
     if (input.credits !== undefined) data.credit = Number(input.credits)
     if (input.split_credit !== undefined) data.split_credit = Boolean(input.split_credit)
     if (input.theory_credit !== undefined) data.theory_credit = Number(input.theory_credit)
     if (input.practical_credit !== undefined) data.practical_credit = Number(input.practical_credit)
     if (input.qp_code !== undefined) data.qp_code = String(input.qp_code)
-    if (input.e_code_name !== undefined) data.e_code_name = String(input.e_code_name)
-    if (input.duration_hours !== undefined) data.duration_hours = Number(input.duration_hours)
+    if (input.e_code_name !== undefined && input.e_code_name) data.e_code_name = String(input.e_code_name)
+    if (input.exam_duration !== undefined) data.exam_duration = Number(input.exam_duration)
     if (input.evaluation_type !== undefined) data.evaluation_type = String(input.evaluation_type)
     if (input.result_type !== undefined) data.result_type = String(input.result_type)
     if (input.self_study_course !== undefined) data.self_study_course = Boolean(input.self_study_course)
     if (input.outside_class_course !== undefined) data.outside_class_course = Boolean(input.outside_class_course)
     if (input.open_book !== undefined) data.open_book = Boolean(input.open_book)
     if (input.online_course !== undefined) data.online_course = Boolean(input.online_course)
-    if (input.dummy_number_required !== undefined) data.dummy_number_not_required = Boolean(input.dummy_number_required)
+    if (input.dummy_number_required !== undefined) data.dummy_number_not_required = !Boolean(input.dummy_number_required)
     if (input.annual_course !== undefined) data.annual_course = Boolean(input.annual_course)
     if (input.multiple_qp_set !== undefined) data.multiple_qp_set = Boolean(input.multiple_qp_set)
     if (input.no_of_qp_setter !== undefined) data.no_of_qp_setter = Number(input.no_of_qp_setter)
@@ -187,6 +214,20 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
     if (input.syllabus_pdf_url !== undefined) data.syllabus_pdf_url = String(input.syllabus_pdf_url)
     if (input.description !== undefined) data.description = String(input.description)
     if (input.is_active !== undefined) data.status = Boolean(input.is_active)
+    // Required fields for marks and hours
+    if (input.class_hours !== undefined) data.class_hours = Number(input.class_hours)
+    if (input.theory_hours !== undefined) data.theory_hours = Number(input.theory_hours)
+    if (input.practical_hours !== undefined) data.practical_hours = Number(input.practical_hours)
+    if (input.internal_max_mark !== undefined) data.internal_max_mark = Number(input.internal_max_mark)
+    if (input.internal_pass_mark !== undefined) data.internal_pass_mark = Number(input.internal_pass_mark)
+    if (input.internal_converted_mark !== undefined) data.internal_converted_mark = Number(input.internal_converted_mark)
+    if (input.external_max_mark !== undefined) data.external_max_mark = Number(input.external_max_mark)
+    if (input.external_pass_mark !== undefined) data.external_pass_mark = Number(input.external_pass_mark)
+    if (input.external_converted_mark !== undefined) data.external_converted_mark = Number(input.external_converted_mark)
+    if (input.total_pass_mark !== undefined) data.total_pass_mark = Number(input.total_pass_mark)
+    if (input.total_max_mark !== undefined) data.total_max_mark = Number(input.total_max_mark)
+    if (input.annual_semester !== undefined) data.annual_semester = Boolean(input.annual_semester)
+    if (input.registration_based !== undefined) data.registration_based = Boolean(input.registration_based)
 
     const { data: updated, error } = await supabase
       .from('courses')
@@ -202,6 +243,13 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
       if (error.code === '23503') {
         return NextResponse.json({
           error: 'Foreign key constraint failed. Ensure institution, regulation, and department exist.'
+        }, { status: 400 })
+      }
+
+      // Handle check constraint violation
+      if (error.code === '23514') {
+        return NextResponse.json({
+          error: 'Invalid value. Please check your input values and ensure they match the allowed options.'
         }, { status: 400 })
       }
 

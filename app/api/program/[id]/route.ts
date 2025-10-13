@@ -1,94 +1,44 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getSupabaseServer } from '@/lib/supabase-server'
 
-export async function GET(req: NextRequest) {
+export async function GET(
+  req: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
   try {
-    const { searchParams } = new URL(req.url)
-    const search = searchParams.get('search')
-    const is_active = searchParams.get('is_active')
-    const department_code = searchParams.get('department_code')
-    const institution_code = searchParams.get('institution_code')
-
+    const { id } = await params
     const supabase = getSupabaseServer()
-    let query = supabase
+
+    const { data, error } = await supabase
       .from('programs')
       .select('*')
-      .order('created_at', { ascending: false })
+      .eq('id', id)
+      .single()
 
-    if (search) {
-      query = query.or(`program_code.ilike.%${search}%,program_name.ilike.%${search}%,degree_code.ilike.%${search}%,institution_code.ilike.%${search}%`)
-    }
-    if (is_active !== null) {
-      query = query.eq('is_active', is_active === 'true')
-    }
-    if (department_code) {
-      query = query.eq('offering_department_code', department_code)
-    }
-    if (institution_code) {
-      query = query.eq('institution_code', institution_code)
-    }
-
-    const { data, error} = await query
     if (error) {
-      console.error('Program GET error:', {
-        code: error.code,
-        message: error.message,
-        details: error.details,
-        hint: error.hint
-      })
-
-      // Fallback table creation hint
-      if (error.message.includes('relation "program" does not exist') || error.message.includes('relation "public.program" does not exist')) {
-        return NextResponse.json({
-          error: 'Program table not found',
-          message: 'The program table needs to be created in your Supabase database',
-          instructions: {
-            sql: `
-create table if not exists public.programs (
-  id uuid primary key default gen_random_uuid(),
-  institution_code varchar(50) not null,
-  degree_code varchar(50) not null,
-  offering_department_code varchar(50),
-  program_code varchar(50) not null,
-  program_name varchar(200) not null,
-  display_name varchar(200),
-  program_duration_yrs integer not null default 3,
-  program_order integer not null,
-  pattern_type varchar(20) not null default 'Semester',
-  is_active boolean not null default true,
-  created_at timestamptz default now(),
-  updated_at timestamptz default now(),
-  constraint unique_program_code unique (institution_code, program_code)
-);
-            `
-          }
-        }, { status: 404 })
-      }
-
-      // Specific error for column not found
-      if (error.code === '42703') {
-        return NextResponse.json({
-          error: 'Database schema mismatch',
-          message: error.message,
-          hint: 'The programs table may be missing required columns. Check that the table schema matches the API expectations.'
-        }, { status: 500 })
-      }
-
-      return NextResponse.json({
-        error: 'Failed to fetch programs',
-        details: error.message
-      }, { status: 500 })
+      console.error('Program GET by ID error:', error)
+      return NextResponse.json(
+        { error: 'Program not found' },
+        { status: 404 }
+      )
     }
 
-    return NextResponse.json(data || [])
+    return NextResponse.json(data)
   } catch (err) {
-    console.error('Program GET error:', err)
-    return NextResponse.json({ error: 'Failed to fetch programs' }, { status: 500 })
+    console.error('Program GET by ID error:', err)
+    return NextResponse.json(
+      { error: 'Failed to fetch program' },
+      { status: 500 }
+    )
   }
 }
 
-export async function POST(req: NextRequest) {
+export async function PUT(
+  req: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
   try {
+    const { id } = await params
     const body = await req.json()
     const {
       institution_code,
@@ -101,11 +51,14 @@ export async function POST(req: NextRequest) {
       program_duration_yrs,
       program_order,
       pattern_type,
-      is_active = true,
+      is_active,
     } = body as Record<string, unknown>
 
     if (!institution_code || !degree_code || !program_code || !program_name) {
-      return NextResponse.json({ error: 'Missing required fields' }, { status: 400 })
+      return NextResponse.json(
+        { error: 'Missing required fields' },
+        { status: 400 }
+      )
     }
 
     const supabase = getSupabaseServer()
@@ -155,7 +108,7 @@ export async function POST(req: NextRequest) {
 
     const { data, error } = await supabase
       .from('programs')
-      .insert({
+      .update({
         institutions_id: institutionData.id,
         institution_code: String(institution_code),
         degree_id: degreeData.id,
@@ -170,19 +123,19 @@ export async function POST(req: NextRequest) {
         pattern_type: pattern_type ? String(pattern_type) : 'Semester',
         program_order: program_order ? Number(program_order) : 1,
         is_active: Boolean(is_active),
-        created_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
       })
+      .eq('id', id)
       .select('*')
       .single()
 
     if (error) {
-      console.error('Program insert error:', error)
+      console.error('Program update error:', error)
 
       // Handle duplicate program code error
       if (error.code === '23505') {
         return NextResponse.json({
-          error: `Program code "${program_code}" already exists for institution "${institution_code}". Please use a different program code or update the existing program.`
+          error: `Program code "${program_code}" already exists for institution "${institution_code}". Please use a different program code.`
         }, { status: 409 })
       }
 
@@ -193,13 +146,64 @@ export async function POST(req: NextRequest) {
         }, { status: 400 })
       }
 
-      throw error
+      // Handle check constraint violation
+      if (error.code === '23514') {
+        return NextResponse.json({
+          error: 'Invalid value. Please check your input.'
+        }, { status: 400 })
+      }
+
+      return NextResponse.json(
+        { error: 'Failed to update program' },
+        { status: 500 }
+      )
     }
-    return NextResponse.json(data, { status: 201 })
+
+    return NextResponse.json(data)
   } catch (err) {
-    console.error('Program POST error:', err)
-    return NextResponse.json({ error: 'Failed to create program' }, { status: 500 })
+    console.error('Program PUT error:', err)
+    return NextResponse.json(
+      { error: 'Failed to update program' },
+      { status: 500 }
+    )
   }
 }
 
+export async function DELETE(
+  req: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  try {
+    const { id } = await params
+    const supabase = getSupabaseServer()
 
+    const { error } = await supabase
+      .from('programs')
+      .delete()
+      .eq('id', id)
+
+    if (error) {
+      console.error('Program delete error:', error)
+
+      // Handle foreign key constraint (program is referenced elsewhere)
+      if (error.code === '23503') {
+        return NextResponse.json({
+          error: 'Cannot delete program. It is being referenced by other records (students, courses, etc.).'
+        }, { status: 409 })
+      }
+
+      return NextResponse.json(
+        { error: 'Failed to delete program' },
+        { status: 500 }
+      )
+    }
+
+    return NextResponse.json({ success: true }, { status: 200 })
+  } catch (err) {
+    console.error('Program DELETE error:', err)
+    return NextResponse.json(
+      { error: 'Failed to delete program' },
+      { status: 500 }
+    )
+  }
+}

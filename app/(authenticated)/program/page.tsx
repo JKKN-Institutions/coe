@@ -30,13 +30,14 @@ type Program = {
   program_name: string
   display_name?: string
   program_duration_yrs: number
+  program_order: number
   pattern_type: "Year" | "Semester"
   is_active: boolean
   created_at: string
 }
 
 const MOCK_PROGRAMS: Program[] = [
-  { id: "1", institution_code: "JKKN", degree_code: "BSC", offering_department_code: "SCI", program_code: "BSC-CS", program_name: "B.Sc Computer Science", display_name: "BSc CS", program_duration_yrs: 3, pattern_type: "Semester", is_active: true, created_at: new Date().toISOString() },
+  { id: "1", institution_code: "JKKN", degree_code: "BSC", offering_department_code: "SCI", program_code: "BSC-CS", program_name: "B.Sc Computer Science", display_name: "BSc CS", program_duration_yrs: 3, program_order: 1, pattern_type: "Semester", is_active: true, created_at: new Date().toISOString() },
 ]
 
 export default function ProgramPage() {
@@ -68,6 +69,7 @@ export default function ProgramPage() {
     program_name: "",
     display_name: "",
     program_duration_yrs: 3,
+    program_order: 1,
     pattern_type: "Semester" as "Year" | "Semester",
     is_active: true,
   })
@@ -99,6 +101,7 @@ export default function ProgramPage() {
       program_name: "",
       display_name: "",
       program_duration_yrs: 3,
+      program_order: 1,
       pattern_type: "Semester",
       is_active: true,
     })
@@ -146,6 +149,7 @@ export default function ProgramPage() {
       program_name: row.program_name,
       display_name: row.display_name || "",
       program_duration_yrs: row.program_duration_yrs,
+      program_order: row.program_order,
       pattern_type: row.pattern_type,
       is_active: row.is_active,
     })
@@ -159,6 +163,7 @@ export default function ProgramPage() {
     if (!formData.program_code.trim()) e.program_code = "Required"
     if (!formData.program_name.trim()) e.program_name = "Required"
     if (formData.program_duration_yrs < 1) e.program_duration_yrs = "Must be at least 1 year"
+    if (formData.program_order < 1) e.program_order = "Must be at least 1"
     setErrors(e)
     return Object.keys(e).length === 0
   }
@@ -237,6 +242,7 @@ export default function ProgramPage() {
       'Program Name': r.program_name,
       'Display Name': r.display_name || '',
       'Duration (Years)': r.program_duration_yrs,
+      'Program Order': r.program_order,
       'Pattern': r.pattern_type,
       'Status': r.is_active ? 'Active' : 'Inactive',
       'Created': new Date(r.created_at).toISOString().split('T')[0]
@@ -326,6 +332,7 @@ export default function ProgramPage() {
       'Program Name': 'B.Sc Computer Science',
       'Display Name': 'BSc CS',
       'Duration (Years)': 3,
+      'Program Order': 1,
       'Pattern': 'Semester',
       'Status': 'Active'
     }]
@@ -340,6 +347,7 @@ export default function ProgramPage() {
       { wch: 35 }, // Program Name
       { wch: 15 }, // Display Name
       { wch: 18 }, // Duration (Years)
+      { wch: 15 }, // Program Order
       { wch: 12 }, // Pattern
       { wch: 10 }  // Status
     ]
@@ -442,6 +450,7 @@ export default function ProgramPage() {
               program_name: String(j['Program Name'] || ''),
               display_name: String(j['Display Name'] || ''),
               program_duration_yrs: Number(j['Duration (Years)'] || 3),
+              program_order: Number(j['Program Order'] || 1),
               pattern_type: String(j['Pattern'] || 'Semester') as "Year" | "Semester",
               is_active: String(j['Status'] || '').toLowerCase() === 'active'
             }
@@ -480,6 +489,7 @@ export default function ProgramPage() {
             program_name: program.program_name,
             display_name: program.display_name,
             program_duration_yrs: program.program_duration_yrs || 3,
+            program_order: program.program_order || 1,
             pattern_type: program.pattern_type || "Semester",
             is_active: program.is_active ?? true
           }
@@ -761,6 +771,7 @@ export default function ProgramPage() {
                         <TableHead className="w-[120px] text-[11px]"><Button variant="ghost" size="sm" onClick={() => handleSort("program_code")} className="h-auto p-0 font-medium hover:bg-transparent">Program Code <span className="ml-1">{getSortIcon("program_code")}</span></Button></TableHead>
                         <TableHead className="text-[11px]"><Button variant="ghost" size="sm" onClick={() => handleSort("program_name")} className="h-auto p-0 font-medium hover:bg-transparent">Program Name <span className="ml-1">{getSortIcon("program_name")}</span></Button></TableHead>
                         <TableHead className="w-[80px] text-[11px]"><Button variant="ghost" size="sm" onClick={() => handleSort("program_duration_yrs")} className="h-auto p-0 font-medium hover:bg-transparent">Years <span className="ml-1">{getSortIcon("program_duration_yrs")}</span></Button></TableHead>
+                        <TableHead className="w-[110px] text-[11px]"><Button variant="ghost" size="sm" onClick={() => handleSort("program_order")} className="h-auto p-0 font-medium hover:bg-transparent">Order <span className="ml-1">{getSortIcon("program_order")}</span></Button></TableHead>
                         <TableHead className="w-[110px] text-[11px]"><Button variant="ghost" size="sm" onClick={() => handleSort("pattern_type")} className="h-auto p-0 font-medium hover:bg-transparent">Pattern <span className="ml-1">{getSortIcon("pattern_type")}</span></Button></TableHead>
                         <TableHead className="w-[100px] text-[11px]"><Button variant="ghost" size="sm" onClick={() => handleSort("is_active")} className="h-auto p-0 font-medium hover:bg-transparent">Status <span className="ml-1">{getSortIcon("is_active")}</span></Button></TableHead>
                         <TableHead className="w-[120px] text-[11px]"><Button variant="ghost" size="sm" onClick={() => handleSort("created_at")} className="h-auto p-0 font-medium hover:bg-transparent">Created <span className="ml-1">{getSortIcon("created_at")}</span></Button></TableHead>
@@ -781,6 +792,7 @@ export default function ProgramPage() {
                               <TableCell className="text-[11px]">{row.program_code}</TableCell>
                               <TableCell className="text-[11px]">{row.program_name}</TableCell>
                               <TableCell className="text-[11px]">{row.program_duration_yrs}</TableCell>
+                              <TableCell className="text-[11px]">{row.program_order}</TableCell>
                               <TableCell className="text-[11px]">{row.pattern_type}</TableCell>
                               <TableCell><Badge variant={row.is_active ? "default" : "secondary"} className="text-[11px]">{row.is_active ? "Active" : "Inactive"}</Badge></TableCell>
                               <TableCell className="text-[11px] text-muted-foreground">{formatDate(row.created_at)}</TableCell>
@@ -961,6 +973,11 @@ export default function ProgramPage() {
                   {errors.program_duration_yrs && <p className="text-xs text-destructive">{errors.program_duration_yrs}</p>}
                 </div>
                 <div className="space-y-2">
+                  <Label className="text-sm font-semibold">Program Order *</Label>
+                  <Input type="number" min="1" value={formData.program_order} onChange={(e) => setFormData({ ...formData, program_order: parseInt(e.target.value) || 1 })} className={`h-10 ${errors.program_order ? 'border-destructive' : ''}`} placeholder="e.g., 1" />
+                  {errors.program_order && <p className="text-xs text-destructive">{errors.program_order}</p>}
+                </div>
+                <div className="space-y-2">
                   <Label className="text-sm font-semibold">Pattern Type</Label>
                   <div className="flex gap-2">
                     <Button type="button" variant={formData.pattern_type === "Year" ? "default" : "outline"} size="sm" className="h-8 px-3 text-xs" onClick={() => setFormData({ ...formData, pattern_type: "Year" })}>Year</Button>
@@ -1135,6 +1152,7 @@ export default function ProgramPage() {
                     <li>• <strong>Offering Dept</strong> (optional): Department code if applicable</li>
                     <li>• <strong>Display Name</strong> (optional): Short display name</li>
                     <li>• <strong>Duration (Years)</strong> (optional): Program duration in years (default: 3)</li>
+                    <li>• <strong>Program Order</strong> (optional): Display order number (default: 1)</li>
                     <li>• <strong>Pattern</strong> (optional): "Year" or "Semester" (default: Semester)</li>
                     <li>• <strong>Status</strong> (optional): "Active" or "Inactive" (default: Active)</li>
                   </ul>

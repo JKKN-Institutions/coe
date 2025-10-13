@@ -38,7 +38,7 @@ export async function GET(req: NextRequest) {
         practical_credit,
         qp_code,
         e_code_name,
-        duration_hours,
+        exam_duration,
         evaluation_type,
         result_type,
         self_study_course,
@@ -55,7 +55,20 @@ export async function GET(req: NextRequest) {
         description,
         status,
         created_at,
-        updated_at
+        updated_at,
+        class_hours,
+        theory_hours,
+        practical_hours,
+        internal_max_mark,
+        internal_pass_mark,
+        internal_converted_mark,
+        external_max_mark,
+        external_pass_mark,
+        external_converted_mark,
+        total_pass_mark,
+        total_max_mark,
+        annual_semester,
+        registration_based
       `)
       .order('created_at', { ascending: false })
 
@@ -187,14 +200,14 @@ CREATE INDEX IF NOT EXISTS idx_courses_created_at ON courses(created_at);
       practical_credit: row.practical_credit,
       qp_code: row.qp_code,
       e_code_name: row.e_code_name,
-      duration_hours: row.duration_hours,
+      exam_duration: row.exam_duration,
       evaluation_type: row.evaluation_type,
       result_type: row.result_type,
       self_study_course: row.self_study_course,
       outside_class_course: row.outside_class_course,
       open_book: row.open_book,
       online_course: row.online_course,
-      dummy_number_required: row.dummy_number_not_required,
+      dummy_number_required: !row.dummy_number_not_required,
       annual_course: row.annual_course,
       multiple_qp_set: row.multiple_qp_set,
       no_of_qp_setter: row.no_of_qp_setter,
@@ -206,6 +219,20 @@ CREATE INDEX IF NOT EXISTS idx_courses_created_at ON courses(created_at);
       is_active: row.status ?? true,
       created_at: row.created_at,
       updated_at: row.updated_at,
+      // Required fields for marks and hours
+      class_hours: row.class_hours ?? 0,
+      theory_hours: row.theory_hours ?? 0,
+      practical_hours: row.practical_hours ?? 0,
+      internal_max_mark: row.internal_max_mark ?? 0,
+      internal_pass_mark: row.internal_pass_mark ?? 0,
+      internal_converted_mark: row.internal_converted_mark ?? 0,
+      external_max_mark: row.external_max_mark ?? 0,
+      external_pass_mark: row.external_pass_mark ?? 0,
+      external_converted_mark: row.external_converted_mark ?? 0,
+      total_pass_mark: row.total_pass_mark ?? 0,
+      total_max_mark: row.total_max_mark ?? 0,
+      annual_semester: row.annual_semester ?? false,
+      registration_based: row.registration_based ?? false,
     }))
 
     return NextResponse.json(mapped)
@@ -288,20 +315,20 @@ export async function POST(req: NextRequest) {
       course_category: input.course_category ? String(input.course_category) : null,
       course_type: input.course_type ? String(input.course_type) : null,
       course_part_master: input.course_part_master ? String(input.course_part_master) : null,
-      credit: input.credits !== undefined ? Number(input.credits) : null,
+      credit: input.credits !== undefined ? Number(input.credits) : 0,
       split_credit: input.split_credit !== undefined ? Boolean(input.split_credit) : false,
       theory_credit: input.theory_credit !== undefined ? Number(input.theory_credit) : null,
       practical_credit: input.practical_credit !== undefined ? Number(input.practical_credit) : null,
       qp_code: input.qp_code ? String(input.qp_code) : null,
       e_code_name: input.e_code_name ? String(input.e_code_name) : null,
-      duration_hours: input.duration_hours !== undefined ? Number(input.duration_hours) : null,
+      exam_duration: input.exam_duration !== undefined ? Number(input.exam_duration) : null,
       evaluation_type: input.evaluation_type ? String(input.evaluation_type) : null,
       result_type: input.result_type ? String(input.result_type) : 'Mark',
       self_study_course: input.self_study_course !== undefined ? Boolean(input.self_study_course) : false,
       outside_class_course: input.outside_class_course !== undefined ? Boolean(input.outside_class_course) : false,
       open_book: input.open_book !== undefined ? Boolean(input.open_book) : false,
       online_course: input.online_course !== undefined ? Boolean(input.online_course) : false,
-      dummy_number_not_required: input.dummy_number_required !== undefined ? Boolean(input.dummy_number_required) : true,
+      dummy_number_not_required: input.dummy_number_required !== undefined ? !Boolean(input.dummy_number_required) : false,
       annual_course: input.annual_course !== undefined ? Boolean(input.annual_course) : false,
       multiple_qp_set: input.multiple_qp_set !== undefined ? Boolean(input.multiple_qp_set) : false,
       no_of_qp_setter: input.no_of_qp_setter !== undefined ? Number(input.no_of_qp_setter) : null,
@@ -309,7 +336,21 @@ export async function POST(req: NextRequest) {
       fee_exception: input.fee_exception !== undefined ? Boolean(input.fee_exception) : false,
       syllabus_pdf_url: input.syllabus_pdf_url ? String(input.syllabus_pdf_url) : null,
       description: input.description ? String(input.description) : null,
-      status: input.is_active !== undefined ? Boolean(input.is_active) : true,
+      status: input.is_active !== undefined ? Boolean(input.is_active) : false,
+      // Required fields for marks and hours
+      class_hours: input.class_hours !== undefined ? Number(input.class_hours) : 0,
+      theory_hours: input.theory_hours !== undefined ? Number(input.theory_hours) : 0,
+      practical_hours: input.practical_hours !== undefined ? Number(input.practical_hours) : 0,
+      internal_max_mark: input.internal_max_mark !== undefined ? Number(input.internal_max_mark) : 0,
+      internal_pass_mark: input.internal_pass_mark !== undefined ? Number(input.internal_pass_mark) : 0,
+      internal_converted_mark: input.internal_converted_mark !== undefined ? Number(input.internal_converted_mark) : 0,
+      external_max_mark: input.external_max_mark !== undefined ? Number(input.external_max_mark) : 0,
+      external_pass_mark: input.external_pass_mark !== undefined ? Number(input.external_pass_mark) : 0,
+      external_converted_mark: input.external_converted_mark !== undefined ? Number(input.external_converted_mark) : 0,
+      total_pass_mark: input.total_pass_mark !== undefined ? Number(input.total_pass_mark) : 0,
+      total_max_mark: input.total_max_mark !== undefined ? Number(input.total_max_mark) : 0,
+      annual_semester: input.annual_semester !== undefined ? Boolean(input.annual_semester) : false,
+      registration_based: input.registration_based !== undefined ? Boolean(input.registration_based) : false,
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
     }).select('*').single()
@@ -328,6 +369,13 @@ export async function POST(req: NextRequest) {
       if (error.code === '23505') {
         return NextResponse.json({
           error: 'Course already exists. Please use different values.'
+        }, { status: 400 })
+      }
+
+      // Handle check constraint violation
+      if (error.code === '23514') {
+        return NextResponse.json({
+          error: 'Invalid value. Please check your input values and ensure they match the allowed options.'
         }, { status: 400 })
       }
 

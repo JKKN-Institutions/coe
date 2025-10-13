@@ -31,7 +31,7 @@ export function generateCourseTemplate(referenceData: CourseReferenceData): XLSX
 		'Practical Credit',
 		'QP Code*',
 		'E Code Name',
-		'Duration Hours',
+		'Exam Duration Hours',
 		'Evaluation Type*',
 		'Result Type*',
 		'Self Study Course',
@@ -46,6 +46,19 @@ export function generateCourseTemplate(referenceData: CourseReferenceData): XLSX
 		'Fee Exception',
 		'Syllabus PDF URL',
 		'Description',
+		'Class Hours*',
+		'Theory Hours*',
+		'Practical Hours*',
+		'Internal Max Mark*',
+		'Internal Pass Mark*',
+		'Internal Converted Mark*',
+		'External Max Mark*',
+		'External Pass Mark*',
+		'External Converted Mark*',
+		'Total Pass Mark*',
+		'Total Max Mark*',
+		'Annual Semester*',
+		'Registration Based*',
 		'Status'
 	]
 
@@ -66,7 +79,7 @@ export function generateCourseTemplate(referenceData: CourseReferenceData): XLSX
 		0.00,                            // Practical Credit
 		'QP-2025-CS101',                 // QP Code*
 		'English',                       // E Code Name (must be from CHECK constraint)
-		60,                              // Duration Hours
+		3,                              // Exam Duration Hours
 		'CA + ESE',                      // Evaluation Type* (must be: CA, ESE, or CA + ESE)
 		'Mark',                          // Result Type* (must be: Mark or Status)
 		'FALSE',                         // Self Study Course
@@ -81,6 +94,19 @@ export function generateCourseTemplate(referenceData: CourseReferenceData): XLSX
 		'FALSE',                         // Fee Exception
 		'https://example.com/syllabus.pdf', // Syllabus PDF URL
 		'Introductory C course for UG students', // Description
+		45,                              // Class Hours*
+		30,                              // Theory Hours*
+		15,                              // Practical Hours*
+		40,                              // Internal Max Mark*
+		16,                              // Internal Pass Mark*
+		25,                              // Internal Converted Mark*
+		60,                              // External Max Mark*
+		24,                              // External Pass Mark*
+		75,                              // External Converted Mark*
+		40,                              // Total Pass Mark*
+		100,                             // Total Max Mark*
+		'FALSE',                         // Annual Semester*
+		'FALSE',                         // Registration Based*
 		'TRUE'                           // Status
 	]
 
@@ -105,7 +131,7 @@ export function generateCourseTemplate(referenceData: CourseReferenceData): XLSX
 		{ wch: 17 },  // Practical Credit
 		{ wch: 18 },  // QP Code*
 		{ wch: 15 },  // E Code Name
-		{ wch: 15 },  // Duration Hours
+		{ wch: 15 },  // Exam Duration Hours
 		{ wch: 17 },  // Evaluation Type*
 		{ wch: 15 },  // Result Type*
 		{ wch: 18 },  // Self Study Course
@@ -120,6 +146,19 @@ export function generateCourseTemplate(referenceData: CourseReferenceData): XLSX
 		{ wch: 15 },  // Fee Exception
 		{ wch: 30 },  // Syllabus PDF URL
 		{ wch: 40 },  // Description
+		{ wch: 15 },  // Class Hours*
+		{ wch: 15 },  // Theory Hours*
+		{ wch: 17 },  // Practical Hours*
+		{ wch: 20 },  // Internal Max Mark*
+		{ wch: 20 },  // Internal Pass Mark*
+		{ wch: 25 },  // Internal Converted Mark*
+		{ wch: 20 },  // External Max Mark*
+		{ wch: 20 },  // External Pass Mark*
+		{ wch: 25 },  // External Converted Mark*
+		{ wch: 18 },  // Total Pass Mark*
+		{ wch: 18 },  // Total Max Mark*
+		{ wch: 18 },  // Annual Semester*
+		{ wch: 20 },  // Registration Based*
 		{ wch: 10 },  // Status
 	]
 

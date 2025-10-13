@@ -104,7 +104,7 @@ interface Course {
   practical_credit?: number
   qp_code?: string
   e_code_name?: string
-  duration_hours?: number
+  exam_duration?: number
   evaluation_type?: string
   result_type?: string
   self_study_course?: boolean
@@ -176,7 +176,7 @@ export default function CoursesPageRefactored() {
     practical_credit: "",
     qp_code: "",
     e_code_name: "",
-    duration_hours: "",
+    exam_duration: "",
     evaluation_type: "",
     result_type: "Mark",
     self_study_course: false,
@@ -342,7 +342,7 @@ export default function CoursesPageRefactored() {
           practical_credit: formData.practical_credit ? Math.trunc(Number(formData.practical_credit)) : 0,
           qp_code: formData.qp_code || null,
           e_code_name: formData.e_code_name || null,
-          duration_hours: formData.duration_hours ? Math.trunc(Number(formData.duration_hours)) : 0,
+          exam_duration: formData.exam_duration ? Math.trunc(Number(formData.exam_duration)) : 0,
           evaluation_type: formData.evaluation_type,
           result_type: formData.result_type,
           self_study_course: Boolean(formData.self_study_course),
@@ -479,7 +479,7 @@ export default function CoursesPageRefactored() {
             practical_credit: Number(row['Practical Credit'] || row.practical_credit) || 0,
             qp_code: row['QP Code*'] || row['QP Code'] || row.qp_code,
             e_code_name: row['E-Code Name (None/Tamil/English/French/Malayalam/Hindi)'] || row['E-Code Name'] || row.e_code_name || null,
-            duration_hours: Number(row['Duration (hours)'] || row['Duration'] || row.duration_hours) || 0,
+            exam_duration: Number(row['Exam Duration (hours)'] || row['Duration'] || row.exam_duration) || 0,
             evaluation_type: row['Evaluation Type* (CA/ESE/CA + ESE)'] || row['Evaluation Type'] || row.evaluation_type,
             result_type: row['Result Type* (Mark/Status)'] || row['Result Type'] || row.result_type || 'Mark',
             self_study_course: typeof row.self_study_course === 'boolean' ? row.self_study_course : String(row['Self Study Course (TRUE/FALSE)'] || row['Self Study Course'] || '').toUpperCase() === 'TRUE',
@@ -599,7 +599,7 @@ export default function CoursesPageRefactored() {
       practical_credit: c.practical_credit,
       qp_code: c.qp_code || '',
       e_code_name: c.e_code_name || '',
-      duration_hours: c.duration_hours,
+      exam_duration: c.exam_duration,
       evaluation_type: c.evaluation_type || '',
       result_type: c.result_type || '',
       self_study_course: c.self_study_course,
@@ -673,7 +673,7 @@ export default function CoursesPageRefactored() {
       practical_credit: "",
       qp_code: "",
       e_code_name: "",
-      duration_hours: "",
+      exam_duration: "",
       evaluation_type: "",
       result_type: "Mark",
       self_study_course: false,
@@ -717,7 +717,7 @@ export default function CoursesPageRefactored() {
       practical_credit: String(row.practical_credit ?? '0'),
       qp_code: row.qp_code || "",
       e_code_name: row.e_code_name || "",
-      duration_hours: String(row.duration_hours ?? ''),
+      exam_duration: String(row.exam_duration ?? ''),
       evaluation_type: row.evaluation_type || "",
       result_type: row.result_type || "Mark",
       self_study_course: Boolean(row.self_study_course) || false,
