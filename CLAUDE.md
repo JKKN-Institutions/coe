@@ -6,6 +6,51 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 JKKN COE (Controller of Examination) is a Next.js 15 application for managing examination systems with role-based access control (RBAC), built with TypeScript, Supabase, and Tailwind CSS.
 
+### Product Requirements Document (PRD)
+
+**Complete PRD:** See [CoE PRD.txt](CoE PRD.txt) for comprehensive product requirements, features, and implementation roadmap.
+
+**Key Information from PRD:**
+
+1. **Purpose**: Comprehensive digital examination management system for JKKN Arts Colleges as a child application within the MyJKKN platform
+2. **Development Timeline**: 90-day rapid development using AI-assisted tools (Cursor IDE & Claude Code)
+3. **Tech Stack**:
+   - Frontend: React.js with TypeScript (Next.js 15)
+   - Backend: Node.js with Express.js
+   - Database: PostgreSQL (Supabase)
+   - Cache: Redis for session management
+   - Storage: AWS S3 compatible storage
+
+**Core Modules** (as per PRD Section 3):
+- **Pre-Examination**: Calendar management, learner registration, hall ticket generation
+- **Question Paper Management**: Question bank system, paper setting, security & confidentiality
+- **Examination Conduct**: Day management, malpractice handling, special provisions
+- **Evaluation**: Answer script processing, evaluation portal, internal assessment integration
+- **Internal Examinations** (Arts College Specific): Internal tests, practical examinations (performance arts, visual arts, language arts), creative assessments
+- **Result Processing**: Compilation, declaration, post-result services (revaluation, transparency)
+- **Certification**: Certificate generation with blockchain verification, distribution
+- **Analytics & Reporting**: Operational, compliance, and predictive analytics
+
+**Development Acceleration** (PRD Section 6 & 7):
+- **Cursor IDE Integration**: AI-powered code generation, component templates, auto-complete
+- **Claude Code CLI**: Automated module scaffolding, testing, API documentation
+- **AI Development Velocity**: 70% faster UI, 80% faster API generation, 60% faster business logic
+- **Team Structure**: 7 members (2 full-stack, 1 backend, 1 UI/UX, 1 DevOps, 1 QA, 1 PM)
+
+**Success Metrics** (PRD Section 8):
+- 60% reduction in result processing time
+- 70% reduction in internal exam processing time
+- 80% reduction in paper consumption
+- 99.9% system uptime during critical periods
+- Same-day digital certificate generation
+
+**Important Considerations**:
+- All exam-related data must maintain highest security standards (AES-256 encryption)
+- Support for Arts College specific features: performance arts, visual arts practicals
+- Flexible assessment types: rubric-based, portfolio, competency mapping
+- Multi-language support (English, Tamil, regional languages)
+- WCAG 2.1 Level AA accessibility compliance
+
 ## Development Commands
 
 ### Essential Commands

@@ -1284,22 +1284,41 @@ export default function BatchPage() {
                     const method = editing ? 'PUT' : 'POST'
                     const url = editing ? `/api/batch/${editing.id}` : '/api/batch'
                     const res = await fetch(url, { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(formData) })
-                    if (!res.ok) throw new Error('Save failed')
+
+                    if (!res.ok) {
+                      const errorData = await res.json().catch(() => ({}))
+                      const errorMsg = errorData.error || errorData.details || 'Save failed'
+
+                      // Check for specific error types
+                      if (res.status === 401) {
+                        throw new Error('Unauthorized. Please login again.')
+                      } else if (res.status === 403) {
+                        throw new Error('Forbidden. You do not have permission to perform this action.')
+                      } else if (errorMsg.includes('duplicate') || errorMsg.includes('already exists')) {
+                        throw new Error('This batch already exists. Please use different values.')
+                      } else if (errorMsg.includes('Missing required fields')) {
+                        throw new Error(errorData.details || 'Missing required fields')
+                      }
+
+                      throw new Error(errorMsg)
+                    }
+
                     const saved = await res.json()
                     setBatches(prev => editing ? prev.map(b => (b.id === saved.id ? saved : b)) : [saved, ...prev])
                     toast({
-                      title: '✅ Success',
-                      description: `Batch ${editing ? 'updated' : 'created'} successfully!`,
+                      title: editing ? '✅ Batch Updated' : '✅ Batch Created',
+                      description: `${saved.batch_name} has been successfully ${editing ? 'updated' : 'created'}.`,
                       className: 'bg-green-50 border-green-200 text-green-800 dark:bg-green-900/20 dark:border-green-800 dark:text-green-200'
                     })
                     setSheetOpen(false)
                     setEditing(null)
                     resetForm()
                   } catch (e) {
-                    console.error(e)
+                    const errorMessage = e instanceof Error ? e.message : 'Failed to save batch. Please try again.'
+                    console.error('Save error:', e)
                     toast({
-                      title: '❌ Error',
-                      description: 'Failed to save batch. Please try again.',
+                      title: '❌ Save Failed',
+                      description: errorMessage,
                       variant: 'destructive',
                       className: 'bg-red-50 border-red-200 text-red-800 dark:bg-red-900/20 dark:border-red-800 dark:text-red-200'
                     })

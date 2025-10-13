@@ -54,8 +54,24 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
       updated_at: new Date().toISOString(),
     }
 
-    if (institutions_id !== undefined) updateData.institutions_id = institutions_id ? String(institutions_id) : null
-    if (institution_code !== undefined) updateData.institution_code = String(institution_code)
+    // Foreign Key Auto-Mapping: If institution_code is being updated, validate and fetch institutions_id
+    if (institution_code !== undefined) {
+      const { data: institutionData, error: institutionError } = await supabase
+        .from('institutions')
+        .select('id')
+        .eq('institution_code', String(institution_code))
+        .single()
+
+      if (institutionError || !institutionData) {
+        return NextResponse.json({
+          error: `Institution with code "${institution_code}" not found. Please ensure the institution exists.`
+        }, { status: 400 })
+      }
+
+      updateData.institutions_id = institutionData.id  // Auto-mapped FK reference
+      updateData.institution_code = String(institution_code)  // Human-readable code
+    }
+
     if (batch_year !== undefined) updateData.batch_year = Number(batch_year)
     if (batch_name !== undefined) updateData.batch_name = String(batch_name)
     if (batch_code !== undefined) updateData.batch_code = String(batch_code)
@@ -71,16 +87,50 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
       .single()
 
     if (error) {
+      console.error('Supabase error:', error)
+
       if (error.code === 'PGRST116') { // No rows found
         return NextResponse.json({ error: 'Batch not found' }, { status: 404 })
       }
+
+      // Handle duplicate key constraint violation (23505)
+      if (error.code === '23505') {
+        return NextResponse.json({
+          error: 'Batch already exists. Please use different values for batch code or institution.'
+        }, { status: 400 })
+      }
+
+      // Handle foreign key constraint violation (23503)
+      if (error.code === '23503') {
+        return NextResponse.json({
+          error: 'Invalid reference. Please ensure the institution exists.'
+        }, { status: 400 })
+      }
+
+      // Handle check constraint violation (23514)
+      if (error.code === '23514') {
+        return NextResponse.json({
+          error: 'Invalid value. Please check your input.'
+        }, { status: 400 })
+      }
+
+      // Handle not-null constraint violation (23502)
+      if (error.code === '23502') {
+        return NextResponse.json({
+          error: 'Missing required field. Please fill in all required fields.'
+        }, { status: 400 })
+      }
+
       throw error
     }
 
     return NextResponse.json(data)
   } catch (err) {
     console.error('Error updating batch:', err)
-    return NextResponse.json({ error: 'Failed to update batch' }, { status: 500 })
+    return NextResponse.json({
+      error: 'Failed to update batch',
+      details: err instanceof Error ? err.message : 'Unknown error'
+    }, { status: 500 })
   }
 }
 

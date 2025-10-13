@@ -113,10 +113,23 @@ export async function POST(req: NextRequest) {
       }, { status: 400 })
     }
 
+    // Foreign Key Auto-Mapping: Validate and fetch institutions_id from institution_code
     const supabase2 = getSupabaseServer()
+    const { data: institutionData, error: institutionError } = await supabase2
+      .from('institutions')
+      .select('id')
+      .eq('institution_code', String(institution_code))
+      .single()
+
+    if (institutionError || !institutionData) {
+      return NextResponse.json({
+        error: `Institution with code "${institution_code}" not found. Please ensure the institution exists.`
+      }, { status: 400 })
+    }
+
     const { data, error } = await supabase2.from('batch').insert({
-      institutions_id: institutions_id ? String(institutions_id) : null,
-      institution_code: String(institution_code),
+      institutions_id: institutionData.id,  // Auto-mapped FK reference
+      institution_code: String(institution_code),  // Human-readable code
       batch_year: Number(batch_year),
       batch_name: String(batch_name),
       batch_code: String(batch_code),
@@ -129,15 +142,44 @@ export async function POST(req: NextRequest) {
 
     if (error) {
       console.error('Supabase error:', error)
+
+      // Handle duplicate key constraint violation (23505)
+      if (error.code === '23505') {
+        return NextResponse.json({
+          error: 'Batch already exists. Please use different values for batch code or institution.'
+        }, { status: 400 })
+      }
+
+      // Handle foreign key constraint violation (23503)
+      if (error.code === '23503') {
+        return NextResponse.json({
+          error: 'Invalid reference. Please ensure the institution exists.'
+        }, { status: 400 })
+      }
+
+      // Handle check constraint violation (23514)
+      if (error.code === '23514') {
+        return NextResponse.json({
+          error: 'Invalid value. Please check your input.'
+        }, { status: 400 })
+      }
+
+      // Handle not-null constraint violation (23502)
+      if (error.code === '23502') {
+        return NextResponse.json({
+          error: 'Missing required field. Please fill in all required fields.'
+        }, { status: 400 })
+      }
+
       throw error
     }
-    
+
     return NextResponse.json(data, { status: 201 })
   } catch (err) {
     console.error('API Error:', err)
-    return NextResponse.json({ 
-      error: 'Failed to create batch', 
-      details: err instanceof Error ? err.message : 'Unknown error' 
+    return NextResponse.json({
+      error: 'Failed to create batch',
+      details: err instanceof Error ? err.message : 'Unknown error'
     }, { status: 500 })
   }
 }
