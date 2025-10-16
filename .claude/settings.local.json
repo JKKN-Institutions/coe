@@ -10,7 +10,9 @@
       "Bash(taskkill:*)",
       "Bash(ls:*)",
       "Bash(dir /b supabasemigrations)",
-      "Bash(dir:*)"
+      "Bash(dir:*)",
+      "Bash(wc:*)",
+      "Bash(mkdir:*)"
     ],
     "deny": [],
     "ask": []

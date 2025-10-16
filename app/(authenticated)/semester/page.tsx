@@ -38,7 +38,7 @@ type Semester = {
 }
 
 const MOCK_SEMESTERS: Semester[] = [
-  { id: "1", institution_code: "JKKN", program_code: "JKKN-BSC-CS", semester_code: "SEM1", semester_name: "Semester 1", display_name: "Sem I", semester_type: "Odd", semester_group: "UG", display_order: 1, initial_semester: true, terminal_semester: false, created_at: new Date().toISOString() },
+  { id: "1", institution_code: "JKKN", program_code: "JKKN-BSC-CS", semester_code: "SEM1", semester_name: "Semester 1", display_name: "1", semester_type: "Odd", semester_group: "UG", display_order: 1, initial_semester: true, terminal_semester: false, created_at: new Date().toISOString() },
 ]
 
 export default function SemesterPage() {
@@ -341,7 +341,7 @@ export default function SemesterPage() {
       'Program Code': 'JKKN-BSC-CS',
       'Semester Code': 'SEM1',
       'Semester Name': 'Semester 1',
-      'Display Name': 'Sem I',
+      'Display Name': '1',
       'Semester Type': 'Odd',
       'Semester Group': 'Year 1',
       'Order': 1,
@@ -875,7 +875,7 @@ export default function SemesterPage() {
               <div className="grid grid-cols-2 gap-3">
                 <div className="space-y-2">
                   <Label className="text-sm font-medium">Display Name</Label>
-                  <Input value={formData.display_name} onChange={(e) => setFormData({ ...formData, display_name: e.target.value })} className="h-9" placeholder="e.g., Sem I" />
+                  <Input value={formData.display_name} onChange={(e) => setFormData({ ...formData, display_name: e.target.value })} className="h-9" placeholder="e.g., 1" />
                 </div>
                 <div className="space-y-2">
                   <Label className="text-sm font-medium">Semester Group</Label>

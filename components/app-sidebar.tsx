@@ -115,9 +115,11 @@ const data = {
       url: "#",
       icon: ClipboardList,
       items: [
-        { title: "Pre-Examination", url: "#", icon: ClipboardList },
-        { title: "During-Examination", url: "#", icon: ClipboardCheck },
-        { title: "Post-Examination", url: "#", icon: Clipboard },
+        { title: "Course Offering", url: "/course-offering", icon: BookText },
+        { title: "Examination Sessions", url: "/examination-sessions", icon: CalendarDays },
+        { title: "Exam Registrations", url: "/exam-registrations", icon: UserPlus },
+        { title: "Exam Timetable", url: "/exam_timetable", icon: Calendar },
+        { title: "Exam Types", url: "/exam-types", icon: Tags },
       ],
     },
     {
