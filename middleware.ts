@@ -38,8 +38,19 @@ export async function middleware(request: NextRequest) {
     return res;
   }
 
-  // Create a Supabase client configured for server-side
-  const supabase = createMiddlewareClient({ req: request, res });
+  // Create a Supabase client configured for server-side with persistent cookies
+  const supabase = createMiddlewareClient(
+    { req: request, res },
+    {
+      cookieOptions: {
+        maxAge: 60 * 60 * 24 * 365, // 1 year in seconds
+        sameSite: 'lax',
+        secure: process.env.NODE_ENV === 'production',
+        httpOnly: false, // Allow client-side access
+        path: '/',
+      }
+    }
+  );
 
   // Check if we have a session
   const {

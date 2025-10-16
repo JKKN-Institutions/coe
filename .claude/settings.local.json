@@ -5,7 +5,12 @@
       "Bash(npm run dev)",
       "Bash(curl:*)",
       "Bash(npx tsc:*)",
-      "Bash(npx supabase db:*)"
+      "Bash(npx supabase db:*)",
+      "Bash(cat:*)",
+      "Bash(taskkill:*)",
+      "Bash(ls:*)",
+      "Bash(dir /b supabasemigrations)",
+      "Bash(dir:*)"
     ],
     "deny": [],
     "ask": []
