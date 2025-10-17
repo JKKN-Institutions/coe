@@ -78,34 +78,76 @@ export async function POST(request: Request) {
 			}, { status: 400 })
 		}
 
+		// Strategy: Insert as inactive first, then activate if needed
+		// This avoids the database trigger constraint that checks on INSERT
+		const wantsActive = body.is_active === true
+
 		const insertPayload: any = {
 			academic_year: body.academic_year,
 			start_date: body.start_date,
 			end_date: body.end_date,
 			remarks: body.remarks ?? null,
-		is_active: body.is_active ?? true,
+			is_active: false, // Always insert as inactive first
 			institutions_id: institutions_id,
 			institution_code: institution_code,
 		}
 
-		const { data, error } = await supabase
+		console.log('📝 Inserting academic year (inactive):', insertPayload)
+
+		const { data: insertedData, error: insertError } = await supabase
 			.from('academic_years')
 			.insert([insertPayload])
 			.select()
 			.single()
 
-		if (error) {
-			console.error('Error creating:', error)
-			if (error.code === '23505') {
+		if (insertError) {
+			console.error('❌ Error creating academic year:', insertError)
+			if (insertError.code === '23505') {
 				return NextResponse.json({ error: 'Academic year already exists' }, { status: 400 })
 			}
-			if (error.code === '23503') {
+			if (insertError.code === '23503') {
 				return NextResponse.json({ error: 'Invalid institution reference' }, { status: 400 })
 			}
-			return NextResponse.json({ error: error.message }, { status: 500 })
+			return NextResponse.json({ error: insertError.message }, { status: 500 })
 		}
 
-		return NextResponse.json(data, { status: 201 })
+		console.log('✅ Academic year created (inactive):', insertedData)
+
+		// If user wants it active, deactivate others then activate this one
+		if (wantsActive && insertedData) {
+			console.log(`🔄 Activating academic year for institution: ${institutions_id}`)
+
+			// Deactivate all other academic years for this institution
+			const { error: deactivateError } = await supabase
+				.from('academic_years')
+				.update({ is_active: false })
+				.eq('institutions_id', institutions_id)
+				.eq('is_active', true)
+				.neq('id', insertedData.id)
+
+			if (deactivateError) {
+				console.error('❌ Error deactivating other academic years:', deactivateError)
+			}
+
+			// Activate the newly created academic year
+			const { data: activatedData, error: activateError } = await supabase
+				.from('academic_years')
+				.update({ is_active: true })
+				.eq('id', insertedData.id)
+				.select()
+				.single()
+
+			if (activateError) {
+				console.error('❌ Error activating academic year:', activateError)
+				// Return the inactive record anyway
+				return NextResponse.json(insertedData, { status: 201 })
+			}
+
+			console.log('✅ Academic year activated successfully')
+			return NextResponse.json(activatedData, { status: 201 })
+		}
+
+		return NextResponse.json(insertedData, { status: 201 })
 	} catch (e) {
 		console.error('Creation error:', e)
 		return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
@@ -155,12 +197,27 @@ export async function PUT(request: Request) {
 			}
 		}
 
+		// If setting this academic year as active, deactivate all other academic years for this institution
+		if (body.is_active === true && institutions_id) {
+			const { error: deactivateError } = await supabase
+				.from('academic_years')
+				.update({ is_active: false })
+				.eq('institutions_id', institutions_id)
+				.eq('is_active', true)
+				.neq('id', body.id) // Don't deactivate the one we're updating
+
+			if (deactivateError) {
+				console.error('Error deactivating other academic years:', deactivateError)
+				// Continue anyway - the update might fail due to constraint
+			}
+		}
+
 		const updatePayload: any = {
 			academic_year: body.academic_year,
 			start_date: body.start_date,
 			end_date: body.end_date,
 			remarks: body.remarks ?? null,
-		is_active: body.is_active ?? true,
+			is_active: body.is_active ?? true,
 		}
 
 		if (institution_code) updatePayload.institution_code = institution_code

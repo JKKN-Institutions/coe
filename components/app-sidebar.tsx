@@ -32,7 +32,6 @@ import {
   Users,
   User,
   Shield,
-  ClipboardList,
   ClipboardCheck,
   Clipboard,
   UserPlus,
@@ -40,6 +39,10 @@ import {
   Home,
   Key,
   Crown,
+  Database,
+  CalendarClock,
+  Play,
+  CheckSquare,
 } from "lucide-react"
 
 import { NavMain } from "@/components/nav-main"
@@ -111,15 +114,42 @@ const data = {
       ],
     },
     {
-      title: "Examination",
+      title: "Exam Master",
       url: "#",
-      icon: ClipboardList,
+      icon: Database,
       items: [
-        { title: "Course Offering", url: "/course-offering", icon: BookText },
-        { title: "Examination Sessions", url: "/examination-sessions", icon: CalendarDays },
-        { title: "Exam Registrations", url: "/exam-registrations", icon: UserPlus },
-        { title: "Exam Timetable", url: "/exam_timetable", icon: Calendar },
+        { title: "Grades", url: "/grades", icon: BookText },
+        { title: "Grade System", url: "/grade-system", icon: CalendarDays },
+
+      ],
+    },
+    {
+      title: "Pre-Exam",
+      url: "#",
+      icon: CalendarClock,
+      items: [
         { title: "Exam Types", url: "/exam-types", icon: Tags },
+        { title: "Examination Sessions", url: "/examination-sessions", icon: CalendarDays },
+        { title: "Exam Course Offer", url: "/course-offering", icon: BookText },
+        { title: "Exam Registrations", url: "/exam-registrations", icon: UserPlus },
+        { title: "Exam Timetable", url: "/exam_timetables", icon: Calendar },
+
+      ],
+    },
+    {
+      title: "During-Exam",
+      url: "#",
+      icon: Play,
+      items: [
+        { title: "Exam Attendance", url: "/exam-attendance", icon: ClipboardCheck },
+      ],
+    },
+    {
+      title: "Post-Exam",
+      url: "#",
+      icon: CheckSquare,
+      items: [
+        { title: "Dummy Number", url: "/", icon: BookText },
       ],
     },
     {

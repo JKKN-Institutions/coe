@@ -8,7 +8,7 @@ import { AppHeader } from "@/components/app-header"
 import { AppFooter } from "@/components/app-footer"
 import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar"
 import { Breadcrumb, BreadcrumbItem, BreadcrumbLink, BreadcrumbList, BreadcrumbPage, BreadcrumbSeparator } from "@/components/ui/breadcrumb"
-import { Card, CardContent } from "@/components/ui/card"
+import { Card, CardContent, CardHeader } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
@@ -17,7 +17,7 @@ import { Badge } from "@/components/ui/badge"
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog"
 import { useToast } from "@/hooks/use-toast"
 import Link from "next/link"
-import { PlusCircle, Edit, Trash2, Search, ChevronLeft, ChevronRight, ArrowUpDown, ArrowUp, ArrowDown, Calendar, TrendingUp, CheckCircle, XCircle, FileSpreadsheet, Upload, AlertTriangle } from "lucide-react"
+import { PlusCircle, Edit, Trash2, Search, ChevronLeft, ChevronRight, ArrowUpDown, ArrowUp, ArrowDown, Calendar, TrendingUp, CheckCircle, XCircle, FileSpreadsheet, Upload, AlertTriangle, RefreshCw } from "lucide-react"
 
 interface ExamTimetable {
 	id: string
@@ -146,56 +146,34 @@ export default function ExamTimetablesListPage() {
 
 	// Filter, sort, and paginate
 	const filtered = useMemo(() => {
-		let result = [...items]
-
-		// Search filter
-		if (searchTerm.trim()) {
-			const term = searchTerm.toLowerCase()
-			result = result.filter((item) =>
-				item.course_code?.toLowerCase().includes(term) ||
-				item.course_title?.toLowerCase().includes(term) ||
-				item.session_name?.toLowerCase().includes(term) ||
-				item.institution_name?.toLowerCase().includes(term) ||
-				item.program_name?.toLowerCase().includes(term)
+		const q = searchTerm.toLowerCase()
+		const data = items
+			.filter((i) =>
+				[i.course_code, i.course_title, i.session_name, i.institution_name, i.program_name]
+					.filter(Boolean)
+					.some((v) => String(v).toLowerCase().includes(q))
 			)
-		}
+			.filter((i) => statusFilter === "all" || (statusFilter === "published" ? i.is_published : !i.is_published))
+			.filter((i) => sessionFilter === "all" || i.session === sessionFilter)
+			.filter((i) => modeFilter === "all" || i.exam_mode?.toLowerCase() === modeFilter.toLowerCase())
 
-		// Status filter
-		if (statusFilter !== "all") {
-			result = result.filter((item) =>
-				statusFilter === "published" ? item.is_published : !item.is_published
-			)
-		}
+		if (!sortColumn) return data
+		const sorted = [...data].sort((a, b) => {
+			const av = (a as any)[sortColumn]
+			const bv = (b as any)[sortColumn]
+			if (av === bv) return 0
+			if (sortDirection === "asc") return av > bv ? 1 : -1
+			return av < bv ? 1 : -1
+		})
+		return sorted
+	}, [items, searchTerm, sortColumn, sortDirection, statusFilter, sessionFilter, modeFilter])
 
-		// Session filter (FN/AN)
-		if (sessionFilter !== "all") {
-			result = result.filter((item) => item.session === sessionFilter)
-		}
+	const totalPages = Math.ceil(filtered.length / itemsPerPage) || 1
+	const startIndex = (currentPage - 1) * itemsPerPage
+	const endIndex = startIndex + itemsPerPage
+	const paginatedItems = filtered.slice(startIndex, endIndex)
 
-		// Mode filter
-		if (modeFilter !== "all") {
-			result = result.filter((item) => item.exam_mode?.toLowerCase() === modeFilter.toLowerCase())
-		}
-
-		// Sort
-		if (sortColumn) {
-			result.sort((a, b) => {
-				const aVal = (a as any)[sortColumn] ?? ''
-				const bVal = (b as any)[sortColumn] ?? ''
-				if (aVal < bVal) return sortDirection === "asc" ? -1 : 1
-				if (aVal > bVal) return sortDirection === "asc" ? 1 : -1
-				return 0
-			})
-		}
-
-		return result
-	}, [items, searchTerm, statusFilter, sessionFilter, modeFilter, sortColumn, sortDirection])
-
-	const totalPages = Math.ceil(filtered.length / itemsPerPage)
-	const paginatedItems = filtered.slice(
-		(currentPage - 1) * itemsPerPage,
-		currentPage * itemsPerPage
-	)
+	useEffect(() => setCurrentPage(1), [searchTerm, sortColumn, sortDirection])
 
 	const handleSort = (column: string) => {
 		if (sortColumn === column) {
@@ -683,237 +661,237 @@ export default function ExamTimetablesListPage() {
 					</div>
 
 					{/* Main Content */}
-					<Card className="flex-1 flex flex-col">
-						<CardContent className="p-6 flex-1 flex flex-col">
-							{/* Header */}
-							<div className="flex items-center justify-between mb-6">
-								<div>
-									<h2 className="text-2xl font-bold">Exam Timetables</h2>
-									<p className="text-sm text-muted-foreground">Manage examination schedules and timetables</p>
+					<Card className="flex-1 flex flex-col min-h-0">
+						<CardHeader className="flex-shrink-0 p-3">
+							<div className="flex items-center justify-between mb-2">
+								<div className="flex items-center gap-2">
+									<div className="h-7 w-7 rounded-lg bg-primary/10 flex items-center justify-center">
+										<Calendar className="h-3 w-3 text-primary" />
+									</div>
+									<div>
+										<h2 className="text-sm font-semibold">Exam Timetables</h2>
+										<p className="text-[11px] text-muted-foreground">Manage examination schedules and timetables</p>
+									</div>
 								</div>
-								<div className="flex gap-2">
-									<Button onClick={handleTemplateExport} variant="outline" size="sm">
-										<FileSpreadsheet className="mr-2 h-4 w-4" />
+								<div className="hidden" />
+							</div>
+
+							<div className="flex flex-col lg:flex-row gap-2 items-start lg:items-center justify-between">
+								<div className="flex flex-col sm:flex-row gap-2 w-full lg:w-auto">
+									<Select value={statusFilter} onValueChange={setStatusFilter}>
+										<SelectTrigger className="w-[140px] h-8">
+											<SelectValue placeholder="All Status" />
+										</SelectTrigger>
+										<SelectContent>
+											<SelectItem value="all">All Status</SelectItem>
+											<SelectItem value="published">Published</SelectItem>
+											<SelectItem value="draft">Draft</SelectItem>
+										</SelectContent>
+									</Select>
+
+									<Select value={sessionFilter} onValueChange={setSessionFilter}>
+										<SelectTrigger className="w-[140px] h-8">
+											<SelectValue placeholder="All Sessions" />
+										</SelectTrigger>
+										<SelectContent>
+											<SelectItem value="all">All Sessions</SelectItem>
+											<SelectItem value="FN">Forenoon (FN)</SelectItem>
+											<SelectItem value="AN">Afternoon (AN)</SelectItem>
+										</SelectContent>
+									</Select>
+
+									<Select value={modeFilter} onValueChange={setModeFilter}>
+										<SelectTrigger className="w-[140px] h-8">
+											<SelectValue placeholder="All Modes" />
+										</SelectTrigger>
+										<SelectContent>
+											<SelectItem value="all">All Modes</SelectItem>
+											<SelectItem value="offline">Offline</SelectItem>
+											<SelectItem value="online">Online</SelectItem>
+										</SelectContent>
+									</Select>
+
+									<div className="relative w-full sm:w-[220px]">
+										<Search className="absolute left-2 top-1/2 h-3 w-3 -translate-y-1/2 text-muted-foreground" />
+										<Input
+											value={searchTerm}
+											onChange={(e) => setSearchTerm(e.target.value)}
+											placeholder="Search…"
+											className="pl-8 h-8 text-xs"
+										/>
+									</div>
+								</div>
+
+								<div className="flex gap-1 flex-wrap">
+									<Button variant="outline" size="sm" className="text-xs px-2 h-8" onClick={fetchExamTimetables} disabled={loading}>
+										<RefreshCw className={`h-3 w-3 mr-1 ${loading ? 'animate-spin' : ''}`} />
+										Refresh
+									</Button>
+									<Button variant="outline" size="sm" className="text-xs px-2 h-8" onClick={handleTemplateExport}>
+										<FileSpreadsheet className="h-3 w-3 mr-1" />
 										Template
 									</Button>
-									<Button onClick={handleImport} variant="outline" size="sm" disabled={loading}>
-										<Upload className="mr-2 h-4 w-4" />
+									<Button variant="outline" size="sm" className="text-xs px-2 h-8" onClick={handleImport} disabled={loading}>
+										<Upload className="h-3 w-3 mr-1" />
 										Upload
 									</Button>
-									<Button onClick={() => router.push('/exam_timetable')} size="sm">
-										<PlusCircle className="mr-2 h-4 w-4" />
-										Create Timetable
+									<Button size="sm" className="text-xs px-2 h-8" onClick={() => router.push('/exam_timetable')} disabled={loading}>
+										<PlusCircle className="h-3 w-3 mr-1" />
+										Add
 									</Button>
 								</div>
 							</div>
+						</CardHeader>
+						<CardContent className="p-3 pt-0 flex-1 flex flex-col min-h-0">
 
-							{/* Filters */}
-							<div className="flex flex-col sm:flex-row gap-3 mb-6">
-								<div className="relative flex-1">
-									<Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground h-4 w-4" />
-									<Input
-										placeholder="Search by course, session, or institution..."
-										value={searchTerm}
-										onChange={(e) => setSearchTerm(e.target.value)}
-										className="pl-10"
-									/>
-								</div>
-								<Select value={statusFilter} onValueChange={setStatusFilter}>
-									<SelectTrigger className="w-full sm:w-[180px]">
-										<SelectValue placeholder="Filter by status" />
-									</SelectTrigger>
-									<SelectContent>
-										<SelectItem value="all">All Status</SelectItem>
-										<SelectItem value="published">Published</SelectItem>
-										<SelectItem value="draft">Draft</SelectItem>
-									</SelectContent>
-								</Select>
-								<Select value={sessionFilter} onValueChange={setSessionFilter}>
-									<SelectTrigger className="w-full sm:w-[180px]">
-										<SelectValue placeholder="Filter by session" />
-									</SelectTrigger>
-									<SelectContent>
-										<SelectItem value="all">All Sessions</SelectItem>
-										<SelectItem value="FN">Forenoon (FN)</SelectItem>
-										<SelectItem value="AN">Afternoon (AN)</SelectItem>
-									</SelectContent>
-								</Select>
-								<Select value={modeFilter} onValueChange={setModeFilter}>
-									<SelectTrigger className="w-full sm:w-[180px]">
-										<SelectValue placeholder="Filter by mode" />
-									</SelectTrigger>
-									<SelectContent>
-										<SelectItem value="all">All Modes</SelectItem>
-										<SelectItem value="offline">Offline</SelectItem>
-										<SelectItem value="online">Online</SelectItem>
-									</SelectContent>
-								</Select>
-							</div>
-
-							{/* Table */}
-							<div className="flex-1 border rounded-lg overflow-hidden">
-								<div className="overflow-x-auto h-full">
+							<div className="rounded-md border overflow-hidden" style={{ height: "440px" }}>
+								<div className="h-full overflow-auto">
 									<Table>
-										<TableHeader>
+										<TableHeader className="sticky top-0 z-10 bg-slate-50 dark:bg-slate-900/50">
 											<TableRow>
-												<TableHead className="cursor-pointer" onClick={() => handleSort('exam_date')}>
-													<div className="flex items-center">
+												<TableHead className="w-[100px] text-[11px]">
+													<Button variant="ghost" size="sm" onClick={() => handleSort("exam_date")} className="h-auto p-0 font-medium hover:bg-transparent">
 														Exam Date
-														{getSortIcon('exam_date')}
-													</div>
+														<span className="ml-1">{getSortIcon("exam_date")}</span>
+													</Button>
 												</TableHead>
-												<TableHead className="cursor-pointer" onClick={() => handleSort('session')}>
-													<div className="flex items-center">
+												<TableHead className="w-[80px] text-[11px]">
+													<Button variant="ghost" size="sm" onClick={() => handleSort("session")} className="h-auto p-0 font-medium hover:bg-transparent">
 														Session
-														{getSortIcon('session')}
-													</div>
+														<span className="ml-1">{getSortIcon("session")}</span>
+													</Button>
 												</TableHead>
-												<TableHead className="cursor-pointer" onClick={() => handleSort('course_title')}>
-													<div className="flex items-center">
+												<TableHead className="text-[11px]">
+													<Button variant="ghost" size="sm" onClick={() => handleSort("course_code")} className="h-auto p-0 font-medium hover:bg-transparent">
 														Course
-														{getSortIcon('course_title')}
-													</div>
+														<span className="ml-1">{getSortIcon("course_code")}</span>
+													</Button>
 												</TableHead>
-												<TableHead className="cursor-pointer" onClick={() => handleSort('program_name')}>
-													<div className="flex items-center">
+												<TableHead className="text-[11px]">
+													<Button variant="ghost" size="sm" onClick={() => handleSort("program_name")} className="h-auto p-0 font-medium hover:bg-transparent">
 														Program
-														{getSortIcon('program_name')}
-													</div>
+														<span className="ml-1">{getSortIcon("program_name")}</span>
+													</Button>
 												</TableHead>
-												<TableHead className="cursor-pointer" onClick={() => handleSort('session_name')}>
-													<div className="flex items-center">
+												<TableHead className="w-[140px] text-[11px]">
+													<Button variant="ghost" size="sm" onClick={() => handleSort("session_name")} className="h-auto p-0 font-medium hover:bg-transparent">
 														Exam Session
-														{getSortIcon('session_name')}
-													</div>
+														<span className="ml-1">{getSortIcon("session_name")}</span>
+													</Button>
 												</TableHead>
-												<TableHead className="cursor-pointer" onClick={() => handleSort('exam_mode')}>
-													<div className="flex items-center">
+												<TableHead className="w-[80px] text-[11px]">
+													<Button variant="ghost" size="sm" onClick={() => handleSort("exam_mode")} className="h-auto p-0 font-medium hover:bg-transparent">
 														Mode
-														{getSortIcon('exam_mode')}
-													</div>
+														<span className="ml-1">{getSortIcon("exam_mode")}</span>
+													</Button>
 												</TableHead>
-												<TableHead className="cursor-pointer" onClick={() => handleSort('is_published')}>
-													<div className="flex items-center">
+												<TableHead className="w-[90px] text-[11px]">
+													<Button variant="ghost" size="sm" onClick={() => handleSort("is_published")} className="h-auto p-0 font-medium hover:bg-transparent">
 														Status
-														{getSortIcon('is_published')}
-													</div>
+														<span className="ml-1">{getSortIcon("is_published")}</span>
+													</Button>
 												</TableHead>
-												<TableHead className="text-right">Actions</TableHead>
+												<TableHead className="w-[120px] text-[11px] text-center">Actions</TableHead>
 											</TableRow>
 										</TableHeader>
 										<TableBody>
 											{loading ? (
 												<TableRow>
-													<TableCell colSpan={8} className="text-center py-8">
-														Loading...
-													</TableCell>
+													<TableCell colSpan={8} className="h-24 text-center text-[11px]">Loading…</TableCell>
 												</TableRow>
-											) : paginatedItems.length === 0 ? (
-												<TableRow>
-													<TableCell colSpan={8} className="text-center py-8">
-														No exam timetables found
-													</TableCell>
-												</TableRow>
-											) : (
-												paginatedItems.map((item) => (
-													<TableRow key={item.id}>
-														<TableCell className="font-medium">
-															{formatDate(item.exam_date)}
-														</TableCell>
-														<TableCell>
-															<Badge variant="outline">
-																{item.session}
-															</Badge>
-														</TableCell>
-														<TableCell>
-															<div className="flex flex-col">
-																<span className="font-medium">{item.course_code}</span>
-																<span className="text-xs text-muted-foreground">{item.course_title}</span>
-															</div>
-														</TableCell>
-														<TableCell className="text-sm">{item.program_name}</TableCell>
-														<TableCell className="text-sm">{item.session_name}</TableCell>
-														<TableCell>
-															<Badge variant={item.exam_mode?.toLowerCase() === 'online' ? 'default' : 'secondary'}>
-																{item.exam_mode || 'Offline'}
-															</Badge>
-														</TableCell>
-														<TableCell>
-															<Badge variant={item.is_published ? 'default' : 'secondary'}>
-																{item.is_published ? 'Published' : 'Draft'}
-															</Badge>
-														</TableCell>
-														<TableCell className="text-right">
-															<div className="flex justify-end gap-2">
-																<Button
-																	variant="ghost"
-																	size="icon"
-																	onClick={() => router.push(`/exam_timetable?id=${item.id}`)}
+											) : paginatedItems.length ? (
+												<>
+													{paginatedItems.map((item) => (
+														<TableRow key={item.id}>
+															<TableCell className="text-[11px] font-medium">
+																{formatDate(item.exam_date)}
+															</TableCell>
+															<TableCell className="text-[11px]">
+																<Badge variant="outline" className="text-[11px]">
+																	{item.session}
+																</Badge>
+															</TableCell>
+															<TableCell className="text-[11px]">
+																<div className="flex flex-col">
+																	<span className="font-medium">{item.course_code}</span>
+																	<span className="text-[10px] text-muted-foreground">{item.course_title}</span>
+																</div>
+															</TableCell>
+															<TableCell className="text-[11px]">{item.program_name}</TableCell>
+															<TableCell className="text-[11px]">{item.session_name}</TableCell>
+															<TableCell>
+																<Badge
+																	variant={item.exam_mode?.toLowerCase() === 'online' ? 'default' : 'secondary'}
+																	className="text-[11px]"
 																>
-																	<Edit className="h-4 w-4" />
-																</Button>
-																<AlertDialog>
-																	<AlertDialogTrigger asChild>
-																		<Button variant="ghost" size="icon">
-																			<Trash2 className="h-4 w-4" />
-																		</Button>
-																	</AlertDialogTrigger>
-																	<AlertDialogContent>
-																		<AlertDialogHeader>
-																			<AlertDialogTitle>Delete Exam Timetable</AlertDialogTitle>
-																			<AlertDialogDescription>
-																				Are you sure you want to delete this exam timetable? This action cannot be undone.
-																			</AlertDialogDescription>
-																		</AlertDialogHeader>
-																		<AlertDialogFooter>
-																			<AlertDialogCancel>Cancel</AlertDialogCancel>
-																			<AlertDialogAction onClick={() => remove(item.id)}>
-																				Delete
-																			</AlertDialogAction>
-																		</AlertDialogFooter>
-																	</AlertDialogContent>
-																</AlertDialog>
-															</div>
-														</TableCell>
-													</TableRow>
-												))
+																	{item.exam_mode || 'Offline'}
+																</Badge>
+															</TableCell>
+															<TableCell>
+																<Badge
+																	variant={item.is_published ? "default" : "secondary"}
+																	className={`text-[11px] ${
+																		item.is_published
+																			? 'bg-green-100 text-green-800 hover:bg-green-200 dark:bg-green-900 dark:text-green-200'
+																			: 'bg-red-100 text-red-800 hover:bg-red-200 dark:bg-red-900 dark:text-red-200'
+																	}`}
+																>
+																	{item.is_published ? 'Published' : 'Draft'}
+																</Badge>
+															</TableCell>
+															<TableCell>
+																<div className="flex items-center justify-center gap-1">
+																	<Button variant="outline" size="sm" className="h-7 w-7 p-0" onClick={() => router.push(`/exam_timetable?id=${item.id}`)}>
+																		<Edit className="h-3 w-3" />
+																	</Button>
+																	<AlertDialog>
+																		<AlertDialogTrigger asChild>
+																			<Button variant="outline" size="sm" className="h-7 w-7 p-0 text-red-600 hover:text-red-700 hover:bg-red-50">
+																				<Trash2 className="h-3 w-3" />
+																			</Button>
+																		</AlertDialogTrigger>
+																		<AlertDialogContent>
+																			<AlertDialogHeader>
+																				<AlertDialogTitle>Delete Exam Timetable</AlertDialogTitle>
+																				<AlertDialogDescription>
+																					Are you sure you want to delete this exam timetable? This action cannot be undone.
+																				</AlertDialogDescription>
+																			</AlertDialogHeader>
+																			<AlertDialogFooter>
+																				<AlertDialogCancel>Cancel</AlertDialogCancel>
+																				<AlertDialogAction onClick={() => remove(item.id)} className="bg-red-600 hover:bg-red-700">Delete</AlertDialogAction>
+																			</AlertDialogFooter>
+																		</AlertDialogContent>
+																	</AlertDialog>
+																</div>
+															</TableCell>
+														</TableRow>
+													))}
+												</>
+											) : (
+												<TableRow>
+													<TableCell colSpan={8} className="h-24 text-center text-[11px]">No data</TableCell>
+												</TableRow>
 											)}
 										</TableBody>
 									</Table>
 								</div>
 							</div>
 
-							{/* Pagination */}
-							{totalPages > 1 && (
-								<div className="flex items-center justify-between mt-4">
-									<p className="text-sm text-muted-foreground">
-										Showing {((currentPage - 1) * itemsPerPage) + 1} to {Math.min(currentPage * itemsPerPage, filtered.length)} of {filtered.length} results
-									</p>
-									<div className="flex items-center gap-2">
-										<Button
-											variant="outline"
-											size="sm"
-											onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
-											disabled={currentPage === 1}
-										>
-											<ChevronLeft className="h-4 w-4" />
-											Previous
-										</Button>
-										<span className="text-sm">
-											Page {currentPage} of {totalPages}
-										</span>
-										<Button
-											variant="outline"
-											size="sm"
-											onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
-											disabled={currentPage === totalPages}
-										>
-											Next
-											<ChevronRight className="h-4 w-4" />
-										</Button>
-									</div>
+							<div className="flex items-center justify-between space-x-2 py-2 mt-2">
+								<div className="text-xs text-muted-foreground">
+									Showing {filtered.length === 0 ? 0 : ((currentPage - 1) * itemsPerPage) + 1}-{Math.min(currentPage * itemsPerPage, filtered.length)} of {filtered.length}
 								</div>
-							)}
+								<div className="flex items-center gap-2">
+									<Button variant="outline" size="sm" onClick={() => setCurrentPage((p) => Math.max(1, p - 1))} disabled={currentPage === 1} className="h-7 px-2 text-xs">
+										<ChevronLeft className="h-3 w-3 mr-1" /> Previous
+									</Button>
+									<div className="text-xs text-muted-foreground px-2">Page {currentPage} of {totalPages}</div>
+									<Button variant="outline" size="sm" onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))} disabled={currentPage >= totalPages} className="h-7 px-2 text-xs">
+										Next <ChevronRight className="h-3 w-3 ml-1" />
+									</Button>
+								</div>
+							</div>
 						</CardContent>
 					</Card>
 				</div>

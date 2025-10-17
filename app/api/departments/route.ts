@@ -104,6 +104,7 @@ export async function POST(request: Request) {
       display_name: body.display_name ?? null,
       description: body.description ?? null,
       stream: body.stream ?? null,
+      department_order: body.department_order ?? null,
       status: body.is_active ?? true,
     }
 
@@ -195,6 +196,7 @@ export async function PUT(request: Request) {
       display_name: body.display_name ?? null,
       description: body.description ?? null,
       stream: body.stream ?? null,
+      department_order: body.department_order ?? null,
       status: body.is_active,
     }
     if (institution_code) updatePayload.institution_code = institution_code

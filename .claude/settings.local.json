@@ -12,7 +12,8 @@
       "Bash(dir /b supabasemigrations)",
       "Bash(dir:*)",
       "Bash(wc:*)",
-      "Bash(mkdir:*)"
+      "Bash(mkdir:*)",
+      "Bash(supabase status:*)"
     ],
     "deny": [],
     "ask": []

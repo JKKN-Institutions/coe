@@ -28,6 +28,7 @@ type Department = {
   department_name: string
   display_name?: string
   stream?: string
+  department_order?: number
   is_active: boolean
   created_at: string
 }
@@ -50,7 +51,7 @@ export default function DepartmentPage() {
   const [statusFilter, setStatusFilter] = useState("all")
   // Removed year filter
 
-  const [formData, setFormData] = useState({ institution_code: "", department_code: "", department_name: "", display_name: "", description: "", stream: "", is_active: true })
+  const [formData, setFormData] = useState({ institution_code: "", department_code: "", department_name: "", display_name: "", description: "", stream: "", department_order: "", is_active: true })
   const [errors, setErrors] = useState<Record<string, string>>({})
 
   // Upload summary state
@@ -117,7 +118,7 @@ export default function DepartmentPage() {
     fetchInstitutions()
   }, [])
 
-  const resetForm = () => { setFormData({ institution_code: "", department_code: "", department_name: "", display_name: "", description: "", stream: "", is_active: true }); setErrors({}); setEditing(null) }
+  const resetForm = () => { setFormData({ institution_code: "", department_code: "", department_name: "", display_name: "", description: "", stream: "", department_order: "", is_active: true }); setErrors({}); setEditing(null) }
 
   const handleSort = (c: string) => { if (sortColumn === c) setSortDirection(sortDirection === "asc" ? "desc" : "asc"); else { setSortColumn(c); setSortDirection("asc") } }
   const getSortIcon = (c: string) => sortColumn !== c ? <ArrowUpDown className="h-3 w-3 text-muted-foreground" /> : (sortDirection === "asc" ? <ArrowUp className="h-3 w-3" /> : <ArrowDown className="h-3 w-3" />)
@@ -144,7 +145,7 @@ export default function DepartmentPage() {
   useEffect(() => setCurrentPage(1), [searchTerm, sortColumn, sortDirection, statusFilter])
 
   const openAdd = () => { resetForm(); setSheetOpen(true) }
-  const openEdit = (row: Department) => { setEditing(row); setFormData({ institution_code: row.institution_code, department_code: row.department_code, department_name: row.department_name, display_name: row.display_name || "", description: (row as any).description || "", stream: row.stream || "", is_active: row.is_active }); setSheetOpen(true) }
+  const openEdit = (row: Department) => { setEditing(row); setFormData({ institution_code: row.institution_code, department_code: row.department_code, department_name: row.department_name, display_name: row.display_name || "", description: (row as any).description || "", stream: row.stream || "", department_order: row.department_order ? String(row.department_order) : "", is_active: row.is_active }); setSheetOpen(true) }
 
   const validate = () => {
     const e: Record<string, string> = {}
@@ -173,7 +174,15 @@ export default function DepartmentPage() {
     if (formData.stream && !allowed.includes(formData.stream)) {
       e.stream = "Invalid stream. Must be one of: " + allowed.join(', ')
     }
-    
+
+    // Department Order validation - if provided, must be a positive integer
+    if (formData.department_order) {
+      const orderNum = Number(formData.department_order)
+      if (isNaN(orderNum) || orderNum < 0 || !Number.isInteger(orderNum)) {
+        e.department_order = "Department order must be a positive whole number"
+      }
+    }
+
     setErrors(e)
     return Object.keys(e).length === 0
   }
@@ -295,6 +304,7 @@ export default function DepartmentPage() {
       'Display Name': r.display_name || '',
       'Description': (r as any).description || '',
       'Stream': r.stream || '',
+      'Department Order': r.department_order ?? '',
       'Status': r.is_active ? 'Active' : 'Inactive',
       'Created': new Date(r.created_at).toISOString().split('T')[0]
     }))
@@ -307,14 +317,15 @@ export default function DepartmentPage() {
     // Create workbook
     const wb = XLSX.utils.book_new()
 
-    // Sheet 1: Template with EMPTY row (no sample data to avoid confusion)
+    // Sheet 1: Template with sample data in row 2
     const sample = [{
-      'Institution Code': '',
-      'Department Code': '',
-      'Department Name': '',
-      'Display Name': '',
-      'Description': '',
-      'Stream': '',
+      'Institution Code': 'JKKN',
+      'Department Code': 'CSE',
+      'Department Name': 'Computer Science and Engineering',
+      'Display Name': 'CSE',
+      'Description': 'Dept of Computer Science',
+      'Stream': 'Engineering',
+      'Department Order': '1',
       'Status': 'Active'
     }]
 
@@ -328,6 +339,7 @@ export default function DepartmentPage() {
       { wch: 15 }, // Display Name
       { wch: 30 }, // Description
       { wch: 15 }, // Stream
+      { wch: 15 }, // Department Order
       { wch: 10 }  // Status
     ]
     ws['!cols'] = colWidths
@@ -361,25 +373,7 @@ export default function DepartmentPage() {
 
     XLSX.utils.book_append_sheet(wb, ws, 'Template')
 
-    // Sheet 2: Instructions
-    const instructions = [
-      { '📋 HOW TO USE THIS TEMPLATE': '' },
-      { '📋 HOW TO USE THIS TEMPLATE': '1. Fill in the Template sheet with your department data' },
-      { '📋 HOW TO USE THIS TEMPLATE': '2. Required fields are marked with * (Institution Code, Department Code, Department Name)' },
-      { '📋 HOW TO USE THIS TEMPLATE': '3. Use the Institution Codes sheet to find valid institution codes' },
-      { '📋 HOW TO USE THIS TEMPLATE': '4. Stream must be one of: Arts, Science, Management, Commerce, Engineering, Medical, Law' },
-      { '📋 HOW TO USE THIS TEMPLATE': '5. Status should be "Active" or "Inactive"' },
-      { '📋 HOW TO USE THIS TEMPLATE': '6. Delete the empty row in Template sheet before uploading' },
-      { '📋 HOW TO USE THIS TEMPLATE': '7. Save the file and upload via the Upload button' },
-      { '📋 HOW TO USE THIS TEMPLATE': '' },
-      { '📋 HOW TO USE THIS TEMPLATE': '⚠️ IMPORTANT: Make sure the departments table exists in your database first!' },
-      { '📋 HOW TO USE THIS TEMPLATE': '⚠️ IMPORTANT: Institution codes must already exist in the institutions table!' },
-    ]
-    const wsInst = XLSX.utils.json_to_sheet(instructions)
-    wsInst['!cols'] = [{ wch: 80 }]
-    XLSX.utils.book_append_sheet(wb, wsInst, 'Instructions')
-
-    // Sheet 3: Institution Code References
+    // Sheet 2: Institution Code References
     const institutionReference = institutions.map(inst => ({
       'Institution Code': inst.institution_code,
       'Institution Name': inst.name || 'N/A',
@@ -493,6 +487,7 @@ export default function DepartmentPage() {
 
           rows = json.map(j => {
             const statusStr = getColumnValue(j, ['Status', 'status', 'is_active']).toLowerCase()
+            const orderStr = getColumnValue(j, ['Department Order', 'department_order', 'DepartmentOrder', 'Order', 'order'])
             return {
               institution_code: getColumnValue(j, ['Institution Code', 'institution_code', 'InstitutionCode', 'Inst Code', 'inst_code']),
               department_code: getColumnValue(j, ['Department Code', 'department_code', 'DepartmentCode', 'Dept Code', 'dept_code']),
@@ -500,6 +495,7 @@ export default function DepartmentPage() {
               display_name: getColumnValue(j, ['Display Name', 'display_name', 'DisplayName']),
               description: getColumnValue(j, ['Description', 'description']),
               stream: getColumnValue(j, ['Stream', 'stream']),
+              department_order: orderStr ? Number(orderStr) : undefined,
               is_active: statusStr === 'active' || statusStr === 'true' || statusStr === '1' || statusStr === ''
             }
           }).filter(r => {
@@ -567,6 +563,15 @@ export default function DepartmentPage() {
               errors.push(`Stream must be one of: ${allowed.join(', ')}`)
             }
 
+            // Department Order validation
+            const deptOrder = (r as any).department_order
+            if (deptOrder !== undefined && deptOrder !== null && deptOrder !== '') {
+              const orderNum = Number(deptOrder)
+              if (isNaN(orderNum) || orderNum < 0 || !Number.isInteger(orderNum)) {
+                errors.push('Department Order must be a positive whole number')
+              }
+            }
+
             if (errors.length > 0) {
               validationErrors.push({
                 row: rowNumber,
@@ -584,6 +589,7 @@ export default function DepartmentPage() {
               display_name: String((r as any).display_name || '').trim(),
               description: String((r as any).description || '').trim(),
               stream: streamVal && allowed.includes(streamVal) ? streamVal : '',
+              department_order: deptOrder !== undefined && deptOrder !== null && deptOrder !== '' ? Number(deptOrder) : undefined,
               is_active: (r as any).is_active ?? true,
             }
           })
@@ -877,13 +883,14 @@ export default function DepartmentPage() {
                         <TableHead className="text-[11px]"><Button variant="ghost" size="sm" onClick={() => handleSort("department_name")} className="h-auto p-0 font-medium hover:bg-transparent">Department Name <span className="ml-1">{getSortIcon("department_name")}</span></Button></TableHead>
                         <TableHead className="w-[160px] text-[11px]">Display</TableHead>
                         <TableHead className="w-[120px] text-[11px]"><Button variant="ghost" size="sm" onClick={() => handleSort("stream")} className="h-auto p-0 font-medium hover:bg-transparent">Stream <span className="ml-1">{getSortIcon("stream")}</span></Button></TableHead>
+                        <TableHead className="w-[80px] text-[11px]"><Button variant="ghost" size="sm" onClick={() => handleSort("department_order")} className="h-auto p-0 font-medium hover:bg-transparent">Order <span className="ml-1">{getSortIcon("department_order")}</span></Button></TableHead>
                         <TableHead className="w-[100px] text-[11px]"><Button variant="ghost" size="sm" onClick={() => handleSort("is_active")} className="h-auto p-0 font-medium hover:bg-transparent">Status <span className="ml-1">{getSortIcon("is_active")}</span></Button></TableHead>
                         <TableHead className="w-[120px] text-[11px] text-center">Actions</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
                       {loading ? (
-                        <TableRow><TableCell colSpan={7} className="h-24 text-center text-[11px]">Loading…</TableCell></TableRow>
+                        <TableRow><TableCell colSpan={8} className="h-24 text-center text-[11px]">Loading…</TableCell></TableRow>
                       ) : pageItems.length ? (
                         <>
                           {pageItems.map((row) => (
@@ -893,6 +900,7 @@ export default function DepartmentPage() {
                               <TableCell className="text-[11px]">{row.department_name}</TableCell>
                               <TableCell className="text-[11px] text-muted-foreground">{row.display_name}</TableCell>
                               <TableCell className="text-[11px]">{row.stream}</TableCell>
+                              <TableCell className="text-[11px] text-center">{row.department_order ?? '-'}</TableCell>
                               <TableCell><Badge variant={row.is_active ? "default" : "secondary"} className="text-[11px]">{row.is_active ? "Active" : "Inactive"}</Badge></TableCell>
                               <TableCell>
                                 <div className="flex items-center justify-center gap-1">
@@ -918,7 +926,7 @@ export default function DepartmentPage() {
                           ))}
                         </>
                       ) : (
-                        <TableRow><TableCell colSpan={7} className="h-24 text-center text-[11px]">No data</TableCell></TableRow>
+                        <TableRow><TableCell colSpan={8} className="h-24 text-center text-[11px]">No data</TableCell></TableRow>
                       )}
                     </TableBody>
                   </Table>
@@ -1089,15 +1097,15 @@ export default function DepartmentPage() {
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="space-y-2">
                   <Label htmlFor="display_name" className="text-sm font-semibold">Display Name</Label>
-                  <Input 
-                    id="display_name" 
-                    value={formData.display_name} 
-                    onChange={(e) => setFormData({ ...formData, display_name: e.target.value })} 
+                  <Input
+                    id="display_name"
+                    value={formData.display_name}
+                    onChange={(e) => setFormData({ ...formData, display_name: e.target.value })}
                     className="h-10"
                     placeholder="e.g., CSE, Computer Science"
                   />
                 </div>
-                
+
                 <div className="space-y-2">
                   <Label htmlFor="stream" className="text-sm font-semibold">Stream</Label>
                   <Select value={formData.stream} onValueChange={(v)=> setFormData({ ...formData, stream: v })}>
@@ -1119,6 +1127,28 @@ export default function DepartmentPage() {
                       <span className="text-xs text-destructive font-medium">⚠️ {errors.stream}</span>
                     </div>
                   )}
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="department_order" className="text-sm font-semibold">Department Order</Label>
+                  <Input
+                    id="department_order"
+                    type="number"
+                    min="0"
+                    step="1"
+                    value={formData.department_order}
+                    onChange={(e) => setFormData({ ...formData, department_order: e.target.value })}
+                    className={`h-10 ${errors.department_order ? 'border-destructive' : ''}`}
+                    placeholder="e.g., 1, 2, 3"
+                  />
+                  {errors.department_order && (
+                    <div className="flex items-center gap-1 mt-1">
+                      <span className="text-xs text-destructive font-medium">⚠️ {errors.department_order}</span>
+                    </div>
+                  )}
+                  <p className="text-xs text-muted-foreground">Display order for department listing (optional)</p>
                 </div>
               </div>
               
