@@ -15,11 +15,10 @@ export async function GET(request: Request) {
 			.from('exam_registrations')
 			.select(`
 				*,
-				institution:institutions(id, institution_code, institution_name),
+				institution:institutions(id, institution_code, name),
 				student:students(id, roll_number, first_name, last_name),
 				examination_session:examination_sessions(id, session_name, session_code, exam_start_date, exam_end_date),
-				course_offering:course_offerings(id, course_code, course_name),
-				approved_by_faculty:faculty_coe(id, faculty_name, faculty_code)
+				course_offering:course_offerings(id, course_code)
 			`)
 			.order('created_at', { ascending: false })
 
@@ -43,7 +42,31 @@ export async function GET(request: Request) {
 			return NextResponse.json({ error: 'Failed to fetch exam registrations' }, { status: 500 })
 		}
 
-		return NextResponse.json(data || [])
+		// Fetch course names from courses table to enrich course_offering data
+		const { data: courses, error: coursesError } = await supabase
+			.from('courses')
+			.select('course_code, course_title')
+
+		if (coursesError) {
+			console.error('Courses fetch error:', coursesError)
+			// Continue without course names rather than failing completely
+		}
+
+		// Create a map for quick lookup
+		const courseMap = new Map(
+			(courses || []).map((c: any) => [c.course_code, c.course_title])
+		)
+
+		// Transform the data to include course_title in course_offering
+		const transformedData = (data || []).map((item: any) => ({
+			...item,
+			course_offering: item.course_offering ? {
+				...item.course_offering,
+				course_name: courseMap.get(item.course_offering.course_code) || null
+			} : null
+		}))
+
+		return NextResponse.json(transformedData)
 	} catch (e) {
 		console.error('Exam registrations API error:', e)
 		return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
@@ -83,6 +106,8 @@ export async function POST(request: Request) {
 			student_id: body.student_id,
 			examination_session_id: body.examination_session_id,
 			course_offering_id: body.course_offering_id,
+			stu_register_no: body.stu_register_no ?? null,
+			student_name: body.student_name ?? null,
 			registration_date: body.registration_date || new Date().toISOString(),
 			registration_status: body.registration_status || 'Pending',
 			is_regular: body.is_regular ?? true,
@@ -101,11 +126,10 @@ export async function POST(request: Request) {
 			.insert([insertPayload])
 			.select(`
 				*,
-				institution:institutions(id, institution_code, institution_name),
+				institution:institutions(id, institution_code, name),
 				student:students(id, roll_number, first_name, last_name),
 				examination_session:examination_sessions(id, session_name, session_code, exam_start_date, exam_end_date),
-				course_offering:course_offerings(id, course_code, course_name),
-				approved_by_faculty:faculty_coe(id, faculty_name, faculty_code)
+				course_offering:course_offerings(id, course_code)
 			`)
 			.single()
 
@@ -127,6 +151,19 @@ export async function POST(request: Request) {
 			}
 
 			return NextResponse.json({ error: 'Failed to create exam registration' }, { status: 500 })
+		}
+
+		// Enrich with course_name
+		if (data && data.course_offering && data.course_offering.course_code) {
+			const { data: course } = await supabase
+				.from('courses')
+				.select('course_title')
+				.eq('course_code', data.course_offering.course_code)
+				.single()
+
+			if (course) {
+				data.course_offering.course_name = course.course_title
+			}
 		}
 
 		return NextResponse.json(data, { status: 201 })
@@ -153,6 +190,8 @@ export async function PUT(request: Request) {
 			student_id: body.student_id,
 			examination_session_id: body.examination_session_id,
 			course_offering_id: body.course_offering_id,
+			stu_register_no: body.stu_register_no ?? null,
+			student_name: body.student_name ?? null,
 			registration_date: body.registration_date,
 			registration_status: body.registration_status,
 			is_regular: body.is_regular,
@@ -173,11 +212,10 @@ export async function PUT(request: Request) {
 			.eq('id', body.id)
 			.select(`
 				*,
-				institution:institutions(id, institution_code, institution_name),
+				institution:institutions(id, institution_code, name),
 				student:students(id, roll_number, first_name, last_name),
 				examination_session:examination_sessions(id, session_name, session_code, exam_start_date, exam_end_date),
-				course_offering:course_offerings(id, course_code, course_name),
-				approved_by_faculty:faculty_coe(id, faculty_name, faculty_code)
+				course_offering:course_offerings(id, course_code)
 			`)
 			.single()
 
@@ -199,6 +237,19 @@ export async function PUT(request: Request) {
 			}
 
 			return NextResponse.json({ error: 'Failed to update exam registration' }, { status: 500 })
+		}
+
+		// Enrich with course_name
+		if (data && data.course_offering && data.course_offering.course_code) {
+			const { data: course } = await supabase
+				.from('courses')
+				.select('course_title')
+				.eq('course_code', data.course_offering.course_code)
+				.single()
+
+			if (course) {
+				data.course_offering.course_name = course.course_title
+			}
 		}
 
 		return NextResponse.json(data)

@@ -8,6 +8,7 @@ export async function GET(req: NextRequest) {
     const is_active = searchParams.get('is_active')
     const department_code = searchParams.get('department_code')
     const institution_code = searchParams.get('institution_code')
+    const program_code = searchParams.get('program_code')
 
     const supabase = getSupabaseServer()
     let query = supabase
@@ -26,6 +27,9 @@ export async function GET(req: NextRequest) {
     }
     if (institution_code) {
       query = query.eq('institution_code', institution_code)
+    }
+    if (program_code) {
+      query = query.eq('program_code', program_code)
     }
 
     const { data, error} = await query

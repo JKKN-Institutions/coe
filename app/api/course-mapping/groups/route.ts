@@ -12,7 +12,6 @@ export async function GET(request: NextRequest) {
 				institution_code,
 				program_code,
 				regulation_code,
-				batch_code,
 				created_at
 			`)
 			.eq('is_active', true)
@@ -23,18 +22,17 @@ export async function GET(request: NextRequest) {
 			return NextResponse.json({ error: 'Failed to fetch course mappings' }, { status: 500 })
 		}
 
-		// Group by institution_code, program_code, regulation_code, batch_code
+		// Group by institution_code, program_code, regulation_code only (no batch)
 		const groupsMap = new Map<string, {
 			institution_code: string
 			program_code: string
 			regulation_code: string
-			batch_code: string
 			total_courses: number
 			created_at: string
 		}>()
 
 		mappings?.forEach((mapping: any) => {
-			const key = `${mapping.institution_code}|${mapping.program_code}|${mapping.regulation_code}|${mapping.batch_code}`
+			const key = `${mapping.institution_code}|${mapping.program_code}|${mapping.regulation_code}`
 
 			if (groupsMap.has(key)) {
 				const existing = groupsMap.get(key)!
@@ -44,7 +42,6 @@ export async function GET(request: NextRequest) {
 					institution_code: mapping.institution_code,
 					program_code: mapping.program_code,
 					regulation_code: mapping.regulation_code,
-					batch_code: mapping.batch_code,
 					total_courses: 1,
 					created_at: mapping.created_at
 				})
@@ -77,20 +74,11 @@ export async function GET(request: NextRequest) {
 					.eq('regulation_code', group.regulation_code)
 					.single()
 
-				// Fetch batch name and year
-				const { data: batch } = await supabase
-					.from('batch')
-					.select('batch_name, batch_year')
-					.eq('batch_code', group.batch_code)
-					.single()
-
 				return {
 					...group,
 					institution_name: institution?.name,
 					program_name: program?.program_name,
-					regulation_name: regulation?.regulation_name,
-					batch_name: batch?.batch_name,
-					batch_year: batch?.batch_year
+					regulation_name: regulation?.regulation_name
 				}
 			})
 		)

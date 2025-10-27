@@ -10,16 +10,15 @@ export async function GET(request: NextRequest) {
 
 		const institutionCode = searchParams.get('institution_code')
 		const programCode = searchParams.get('program_code')
-		const batchCode = searchParams.get('batch_code')
 		const regulationCode = searchParams.get('regulation_code')
 
 		// Handle null string as actual null
 		const actualRegulationCode = regulationCode === 'null' || regulationCode === 'undefined' ? null : regulationCode
 
-		// Validate required parameters
-		if (!institutionCode || !programCode || !batchCode) {
+		// Validate required parameters (NO BATCH)
+		if (!institutionCode || !programCode || !regulationCode) {
 			return NextResponse.json(
-				{ error: 'Missing required parameters: institution_code, program_code, batch_code' },
+				{ error: 'Missing required parameters: institution_code, program_code, regulation_code' },
 				{ status: 400 }
 			)
 		}
@@ -61,26 +60,18 @@ export async function GET(request: NextRequest) {
 			return NextResponse.json({ error: 'Program not found' }, { status: 404 })
 		}
 
-		// Fetch batch details
-		const { data: batch, error: batchError } = await supabase
-			.from('batch')
-			.select('id, batch_code, batch_name, batch_year')
-			.eq('batch_code', batchCode)
-			.single()
-
-		if (batchError || !batch) {
-			return NextResponse.json({ error: 'Batch not found' }, { status: 404 })
-		}
-
-		// Fetch regulation details (optional)
+		// Fetch regulation details
 		let regulation = null
 		if (actualRegulationCode) {
-			const { data: regData } = await supabase
+			const { data: regData, error: regError } = await supabase
 				.from('regulations')
 				.select('id, regulation_code, regulation_name')
 				.eq('regulation_code', actualRegulationCode)
 				.single()
 
+			if (regError) {
+				console.warn('Regulation not found:', actualRegulationCode, regError)
+			}
 			regulation = regData
 		}
 
@@ -97,19 +88,14 @@ export async function GET(request: NextRequest) {
 					course_type,
 					course_part_master,
 					credit,
-					duration_hours,
-					evaluation_type
+					evaluation_type,
+					regulation_code
 				)
 			`)
 			.eq('institution_code', institutionCode)
 			.eq('program_code', programCode)
-			.eq('batch_code', batchCode)
+			.eq('regulation_code', actualRegulationCode)
 			.eq('is_active', true)
-
-		// Add regulation filter if provided
-		if (actualRegulationCode) {
-			query = query.eq('regulation_code', actualRegulationCode)
-		}
 
 		const { data: mappings, error: mappingsError } = await query
 			.order('semester_code', { ascending: true })
@@ -206,6 +192,12 @@ export async function GET(request: NextRequest) {
 			logoImage = undefined
 		}
 
+		// Get regulation code from multiple sources (fallback chain)
+		const finalRegulationCode = regulation?.regulation_code ||
+			actualRegulationCode ||
+			mappings[0]?.regulation_code ||
+			mappings[0]?.courses?.regulation_code
+
 		// Prepare response data
 		const reportData = {
 			institutionName: institution.name,
@@ -213,11 +205,8 @@ export async function GET(request: NextRequest) {
 			programName: program.program_name,
 			programCode: program.program_code,
 			degreeName: (program.degrees as any)?.degree_name || program.degree_code || 'Degree',
-			batchName: batch.batch_name || batch.batch_code,
-			batchCode: batch.batch_code,
-			batchYear: batch.batch_year,
-			regulationName: regulation?.regulation_name || undefined,
-			regulationCode: regulation?.regulation_code || undefined,
+			regulationName: regulation?.regulation_name || finalRegulationCode,
+			regulationCode: finalRegulationCode,
 			logoImage,
 			mappings: transformedMappings
 		}

@@ -4,6 +4,7 @@ import { getSupabaseServer } from '@/lib/supabase-server'
 export async function GET(req: NextRequest) {
   try {
     const { searchParams } = new URL(req.url)
+    const id = searchParams.get('id')
     const search = searchParams.get('search')
     const program_id = searchParams.get('program_id')
     const institution_code = searchParams.get('institution_code')
@@ -73,6 +74,9 @@ export async function GET(req: NextRequest) {
       .order('created_at', { ascending: false })
 
     // Apply filters against the real column names
+    if (id) {
+      query = query.eq('id', id)
+    }
     if (search) {
       query = query.or(`course_code.ilike.%${search}%,course_name.ilike.%${search}%`)
     }

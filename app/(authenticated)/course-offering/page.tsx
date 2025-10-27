@@ -25,9 +25,14 @@ import { PlusCircle, Edit, Trash2, Search, ChevronLeft, ChevronRight, ArrowUpDow
 interface CourseOffering {
 	id: string
 	institutions_id: string
+	institution_code: string
 	course_id: string
+	course_code: string
+	course_title?: string | null  // Added from JOIN with courses table via course_mapping_detailed_view
 	examination_session_id: string
+	session_code: string
 	program_id: string
+	program_code: string
 	semester: number
 	section: string | null
 	faculty_id: string | null
@@ -42,24 +47,28 @@ interface Institution {
 	id: string
 	institution_code: string
 	institution_name: string
+	is_active?: boolean
 }
 
 interface Course {
 	id: string
 	course_code: string
 	course_title: string
+	is_active?: boolean
 }
 
 interface ExaminationSession {
 	id: string
 	session_code: string
 	session_name: string
+	is_active?: boolean
 }
 
 interface Program {
 	id: string
 	program_code: string
 	program_name: string
+	is_active?: boolean
 }
 
 export default function CourseOfferingPage() {
@@ -541,19 +550,22 @@ export default function CourseOfferingPage() {
 	const handleExport = () => {
 		const excelData = filtered.map((r) => {
 			const institution = institutions.find(i => i.id === r.institutions_id)
-			const course = courses.find(c => c.id === r.course_id)
 			const session = examinationSessions.find(s => s.id === r.examination_session_id)
 			const program = programs.find(p => p.id === r.program_id)
 
 			return {
-				'Institution': institution?.institution_name || 'N/A',
-				'Course': `${course?.course_code || 'N/A'} - ${course?.course_title || 'N/A'}`,
-				'Session': session?.session_name || 'N/A',
-				'Program': program?.program_name || 'N/A',
+				'Institution Code': r.institution_code || institution?.institution_code || 'N/A',
+				'Institution Name': institution?.institution_name || 'N/A',
+				'Course Code': r.course_code || 'N/A',
+				'Course Title': r.course_title || 'N/A',  // Use joined course_title from API
+				'Session Code': r.session_code || session?.session_code || 'N/A',
+				'Session Name': session?.session_name || 'N/A',
+				'Program Code': r.program_code || program?.program_code || 'N/A',
+				'Program Name': program?.program_name || 'N/A',
 				'Semester': r.semester,
 				'Section': r.section || '-',
-				'Max Enrollment': r.max_enrollment || '-',
-				'Enrolled': r.enrolled_count,
+				'Max Enrollment': r.max_enrollment ?? '-',
+				'Enrolled Count': r.enrolled_count,
 				'Status': r.is_active ? 'Active' : 'Inactive',
 				'Created': new Date(r.created_at).toISOString().split('T')[0],
 			}
@@ -563,26 +575,29 @@ export default function CourseOfferingPage() {
 
 		// Set column widths
 		const colWidths = [
-			{ wch: 20 }, // Institution
-			{ wch: 40 }, // Course
-			{ wch: 30 }, // Session
-			{ wch: 30 }, // Program
+			{ wch: 18 }, // Institution Code
+			{ wch: 25 }, // Institution Name
+			{ wch: 15 }, // Course Code
+			{ wch: 35 }, // Course Title
+			{ wch: 20 }, // Session Code
+			{ wch: 25 }, // Session Name
+			{ wch: 20 }, // Program Code
+			{ wch: 30 }, // Program Name
 			{ wch: 10 }, // Semester
 			{ wch: 10 }, // Section
 			{ wch: 15 }, // Max Enrollment
-			{ wch: 10 }, // Enrolled
+			{ wch: 15 }, // Enrolled Count
 			{ wch: 10 }, // Status
 			{ wch: 12 }  // Created
 		]
 		ws['!cols'] = colWidths
 
 		const wb = XLSX.utils.book_new()
-		XLSX.utils.book_append_sheet(wb, ws, 'Course Offers')
+		XLSX.utils.book_append_sheet(wb, ws, 'Course Offerings')
 		XLSX.writeFile(wb, `course_offerings_export_${new Date().toISOString().split('T')[0]}.xlsx`)
 	}
 
 	const handleTemplateExport = () => {
-		// Create workbook
 		const wb = XLSX.utils.book_new()
 
 		// Sheet 1: Template with sample row
@@ -600,7 +615,7 @@ export default function CourseOfferingPage() {
 
 		const ws = XLSX.utils.json_to_sheet(sample)
 
-		// Set column widths for template sheet
+		// Set column widths
 		const colWidths = [
 			{ wch: 18 }, // Institution Code
 			{ wch: 15 }, // Course Code
@@ -614,9 +629,110 @@ export default function CourseOfferingPage() {
 		]
 		ws['!cols'] = colWidths
 
+		// Style mandatory field headers with red and asterisk
+		const range = XLSX.utils.decode_range(ws['!ref'] || 'A1')
+		const mandatoryFields = ['Institution Code', 'Course Code', 'Session Code', 'Program Code', 'Semester']
+
+		for (let col = range.s.c; col <= range.e.c; col++) {
+			const cellAddress = XLSX.utils.encode_cell({ r: 0, c: col })
+			if (!ws[cellAddress]) continue
+
+			const cell = ws[cellAddress]
+			const isMandatory = mandatoryFields.includes(cell.v as string)
+
+			if (isMandatory) {
+				cell.v = cell.v + ' *'
+				cell.s = {
+					font: { color: { rgb: 'FF0000' }, bold: true },
+					fill: { fgColor: { rgb: 'FFE6E6' } }
+				}
+			} else {
+				cell.s = {
+					font: { bold: true },
+					fill: { fgColor: { rgb: 'F0F0F0' } }
+				}
+			}
+		}
+
 		XLSX.utils.book_append_sheet(wb, ws, 'Template')
 
+		// Sheet 2: Combined Reference Data (Single Sheet)
+		const referenceData: any[] = []
+
+		// Add Institution Codes
+		const activeInstitutions = institutions.filter(i => i.is_active !== false)
+		if (activeInstitutions.length > 0) {
+			referenceData.push({ 'Type': 'INSTITUTION CODES', 'Code': '', 'Name': '' })
+			activeInstitutions.forEach(item => {
+				referenceData.push({
+					'Type': 'Institution',
+					'Code': item.institution_code,
+					'Name': item.institution_name || 'N/A'
+				})
+			})
+			referenceData.push({ 'Type': '', 'Code': '', 'Name': '' }) // Empty row separator
+		}
+
+		// Add Course Codes (Code only, no title)
+		const activeCourses = courses.filter(c => c.is_active !== false)
+		if (activeCourses.length > 0) {
+			referenceData.push({ 'Type': 'COURSE CODES', 'Code': '', 'Name': '' })
+			activeCourses.forEach(item => {
+				referenceData.push({
+					'Type': 'Course',
+					'Code': item.course_code,
+					'Name': '' // Empty name for courses as requested
+				})
+			})
+			referenceData.push({ 'Type': '', 'Code': '', 'Name': '' }) // Empty row separator
+		}
+
+		// Add Session Codes
+		const activeSessions = examinationSessions.filter(s => s.is_active !== false)
+		if (activeSessions.length > 0) {
+			referenceData.push({ 'Type': 'SESSION CODES', 'Code': '', 'Name': '' })
+			activeSessions.forEach(item => {
+				referenceData.push({
+					'Type': 'Session',
+					'Code': item.session_code,
+					'Name': item.session_name || 'N/A'
+				})
+			})
+			referenceData.push({ 'Type': '', 'Code': '', 'Name': '' }) // Empty row separator
+		}
+
+		// Add Program Codes
+		const activePrograms = programs.filter(p => p.is_active !== false)
+		if (activePrograms.length > 0) {
+			referenceData.push({ 'Type': 'PROGRAM CODES', 'Code': '', 'Name': '' })
+			activePrograms.forEach(item => {
+				referenceData.push({
+					'Type': 'Program',
+					'Code': item.program_code,
+					'Name': item.program_name || 'N/A'
+				})
+			})
+		}
+
+		// Create reference sheet if we have data
+		if (referenceData.length > 0) {
+			const wsRef = XLSX.utils.json_to_sheet(referenceData)
+			const refColWidths = [
+				{ wch: 20 }, // Type
+				{ wch: 25 }, // Code
+				{ wch: 40 }  // Name
+			]
+			wsRef['!cols'] = refColWidths
+			XLSX.utils.book_append_sheet(wb, wsRef, 'Reference Codes')
+		}
+
 		XLSX.writeFile(wb, `course_offerings_template_${new Date().toISOString().split('T')[0]}.xlsx`)
+
+		toast({
+			title: "✅ Template Downloaded",
+			description: "Course offering template with reference sheets has been downloaded.",
+			className: "bg-green-50 border-green-200 text-green-800 dark:bg-green-900/20 dark:border-green-800 dark:text-green-200",
+		})
 	}
 
 	const handleImport = () => {
@@ -626,11 +742,38 @@ export default function CourseOfferingPage() {
 		input.onchange = async (e) => {
 			const file = (e.target as HTMLInputElement).files?.[0]
 			if (!file) return
+
 			try {
 				let rows: any[] = []
+
+				// Parse file based on type
 				if (file.name.endsWith('.json')) {
 					const text = await file.text()
 					rows = JSON.parse(text)
+				} else if (file.name.endsWith('.csv')) {
+					// CSV parsing logic
+					const text = await file.text()
+					const lines = text.split('\n').filter(line => line.trim())
+					if (lines.length < 2) {
+						toast({
+							title: "❌ Invalid CSV File",
+							description: "CSV file must have at least a header row and one data row",
+							variant: "destructive",
+						})
+						return
+					}
+
+					const headers = lines[0].split(',').map(h => h.trim().replace(/"/g, ''))
+					const dataRows = lines.slice(1).map(line => {
+						const values = line.split(',').map(v => v.trim().replace(/"/g, ''))
+						const row: Record<string, string> = {}
+						headers.forEach((header, index) => {
+							row[header] = values[index] || ''
+						})
+						return row
+					})
+
+					rows = dataRows
 				} else if (file.name.endsWith('.xlsx') || file.name.endsWith('.xls')) {
 					const data = new Uint8Array(await file.arrayBuffer())
 					const wb = XLSX.read(data, { type: 'array' })
@@ -641,7 +784,30 @@ export default function CourseOfferingPage() {
 				if (rows.length === 0) {
 					toast({
 						title: "❌ No Valid Data",
-						description: "No valid data found in the file.",
+						description: "No valid data found in the file. Please check required fields.",
+						variant: "destructive",
+						className: "bg-red-50 border-red-200 text-red-800 dark:bg-red-900/20 dark:border-red-800 dark:text-red-200",
+					})
+					return
+				}
+
+				// Map and validate rows
+				const mapped = rows.map((j) => ({
+					institution_code: String(j['Institution Code *'] || j['Institution Code'] || j['institution_code'] || '').trim(),
+					course_code: String(j['Course Code *'] || j['Course Code'] || j['course_code'] || '').trim(),
+					session_code: String(j['Session Code *'] || j['Session Code'] || j['session_code'] || '').trim(),
+					program_code: String(j['Program Code *'] || j['Program Code'] || j['program_code'] || '').trim(),
+					semester: parseInt(String(j['Semester *'] || j['Semester'] || j['semester'] || '0')),
+					section: String(j['Section'] || j['section'] || '').trim() || null,
+					max_enrollment: j['Max Enrollment'] || j['max_enrollment'] ? parseInt(String(j['Max Enrollment'] || j['max_enrollment'])) : null,
+					enrolled_count: parseInt(String(j['Enrolled Count'] || j['enrolled_count'] || '0')),
+					is_active: String(j['Status'] || j['is_active'] || 'active').toLowerCase() === 'active'
+				})).filter(r => r.institution_code && r.course_code && r.session_code && r.program_code && r.semester)
+
+				if (mapped.length === 0) {
+					toast({
+						title: "❌ No Valid Data",
+						description: "No valid data found. Please ensure all required fields (Institution Code, Course Code, Session Code, Program Code, Semester) are provided.",
 						variant: "destructive",
 						className: "bg-red-50 border-red-200 text-red-800 dark:bg-red-900/20 dark:border-red-800 dark:text-red-200",
 					})
@@ -659,8 +825,8 @@ export default function CourseOfferingPage() {
 					errors: string[]
 				}> = []
 
-				for (let i = 0; i < rows.length; i++) {
-					const row = rows[i]
+				for (let i = 0; i < mapped.length; i++) {
+					const item = mapped[i]
 					const rowNumber = i + 2 // +2 for header row in Excel
 
 					try {
@@ -669,7 +835,7 @@ export default function CourseOfferingPage() {
 							headers: {
 								'Content-Type': 'application/json',
 							},
-							body: JSON.stringify(row),
+							body: JSON.stringify(item),
 						})
 
 						if (response.ok) {
@@ -681,8 +847,8 @@ export default function CourseOfferingPage() {
 							errorCount++
 							uploadErrors.push({
 								row: rowNumber,
-								semester: row.semester || 'N/A',
-								section: row.section || 'N/A',
+								semester: String(item.semester || 'N/A'),
+								section: item.section || 'N/A',
 								errors: [errorData.error || 'Failed to save Course Offer']
 							})
 						}
@@ -690,16 +856,15 @@ export default function CourseOfferingPage() {
 						errorCount++
 						uploadErrors.push({
 							row: rowNumber,
-							semester: row.semester || 'N/A',
-							section: row.section || 'N/A',
+							semester: String(item.semester || 'N/A'),
+							section: item.section || 'N/A',
 							errors: [error instanceof Error ? error.message : 'Network error']
 						})
 					}
 				}
 
 				setLoading(false)
-
-				const totalRows = rows.length
+				const totalRows = mapped.length
 
 				// Update upload summary
 				setUploadSummary({
@@ -714,10 +879,11 @@ export default function CourseOfferingPage() {
 					setErrorPopupOpen(true)
 				}
 
+				// Show appropriate toast messages
 				if (successCount > 0 && errorCount === 0) {
 					toast({
 						title: "✅ Upload Complete",
-						description: `Successfully uploaded all ${successCount} row${successCount > 1 ? 's' : ''} (${successCount} Course Offer${successCount > 1 ? 's' : ''}) to the database.`,
+						description: `Successfully uploaded all ${successCount} row${successCount > 1 ? 's' : ''} (${successCount} course offering${successCount > 1 ? 's' : ''}) to the database.`,
 						className: "bg-green-50 border-green-200 text-green-800 dark:bg-green-900/20 dark:border-green-800 dark:text-green-200",
 						duration: 5000,
 					})
@@ -892,16 +1058,31 @@ export default function CourseOfferingPage() {
 									<Table>
 										<TableHeader className="sticky top-0 z-10 bg-slate-50 dark:bg-slate-900/50">
 											<TableRow>
+
+												<TableHead className="w-[100px] text-[11px]">
+													<Button variant="ghost" size="sm" onClick={() => handleSort("institution_code")} className="h-auto p-0 font-medium hover:bg-transparent">
+														Institution Code
+														<span className="ml-1">{getSortIcon("institution_code")}</span>
+													</Button>
+												</TableHead>
+												<TableHead className="text-[11px]">
+													<Button variant="ghost" size="sm" onClick={() => handleSort("course_code")} className="h-auto p-0 font-medium hover:bg-transparent">
+														Course Code
+														<span className="ml-1">{getSortIcon("course_code")}</span>
+													</Button>
+												</TableHead>
+												<TableHead className="text-[11px]">
+													<Button variant="ghost" size="sm" onClick={() => handleSort("program_code")} className="h-auto p-0 font-medium hover:bg-transparent">
+														Program
+														<span className="ml-1">{getSortIcon("program_code")}</span>
+													</Button>
+												</TableHead>
 												<TableHead className="w-[120px] text-[11px]">
 													<Button variant="ghost" size="sm" onClick={() => handleSort("semester")} className="h-auto p-0 font-medium hover:bg-transparent">
 														Semester
 														<span className="ml-1">{getSortIcon("semester")}</span>
 													</Button>
 												</TableHead>
-												<TableHead className="w-[100px] text-[11px]">Section</TableHead>
-												<TableHead className="text-[11px]">Course</TableHead>
-												<TableHead className="text-[11px]">Program</TableHead>
-												<TableHead className="w-[140px] text-[11px]">Enrollment</TableHead>
 												<TableHead className="w-[100px] text-[11px]">
 													<Button variant="ghost" size="sm" onClick={() => handleSort("is_active")} className="h-auto p-0 font-medium hover:bg-transparent">
 														Status
@@ -923,13 +1104,11 @@ export default function CourseOfferingPage() {
 														const program = programs.find(p => p.id === row.program_id)
 														return (
 															<TableRow key={row.id}>
-																<TableCell className="text-[11px] font-medium">{row.semester}</TableCell>
-																<TableCell className="text-[11px]">{row.section || '-'}</TableCell>
-																<TableCell className="text-[11px]">{course?.course_title || 'N/A'}</TableCell>
+																
+																<TableCell className="text-[11px]">{row.institution_code || '-'}</TableCell>
+																<TableCell className="text-[11px]">{row.course_code || 'N/A'}</TableCell>
 																<TableCell className="text-[11px]">{program?.program_name || 'N/A'}</TableCell>
-																<TableCell className="text-[11px]">
-																	{row.enrolled_count}{row.max_enrollment ? ` / ${row.max_enrollment}` : ''}
-																</TableCell>
+																<TableCell className="text-[11px] font-medium">{row.semester}</TableCell>
 																<TableCell>
 																	<Badge
 																		variant={row.is_active ? "default" : "secondary"}

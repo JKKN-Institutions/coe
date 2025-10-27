@@ -16,9 +16,9 @@ export async function GET(request: Request) {
 		if (type === 'institutions') {
 			const { data, error } = await supabase
 				.from('institutions')
-				.select('id, institution_code, institution_name')
+				.select('id, institution_code, name')
 				.eq('is_active', true)
-				.order('institution_name', { ascending: true })
+				.order('name', { ascending: true })
 
 			if (error) {
 				console.error('Error fetching institutions:', error)

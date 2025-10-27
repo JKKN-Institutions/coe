@@ -14,9 +14,9 @@ export async function GET(request: Request) {
 		const status = searchParams.get('status')
 
 		if (includeDetails) {
-			// Use the detailed view for comprehensive data
+			// Fetch students with basic data (view doesn't exist yet)
 			let query = supabase
-				.from('students_detailed_view')
+				.from('students')
 				.select('*')
 				.order('created_at', { ascending: false })
 
@@ -29,25 +29,16 @@ export async function GET(request: Request) {
 			const { data, error } = await query
 
 			if (error) {
-				console.error('Error fetching students (detailed):', error)
+				console.error('Error fetching students:', error)
 				return NextResponse.json({ error: error.message }, { status: 500 })
 			}
 
 			return NextResponse.json(data || [])
 		} else {
-			// Use basic query with manual joins for better control
+			// Use basic query without joins (FK constraints may not exist for all relationships)
 			let query = supabase
 				.from('students')
-				.select(`
-					*,
-					institution:institutions(id, institution_code, institution_name, institution_short_name),
-					degree:degrees(id, degree_code, degree_name, degree_short_name),
-					department:departments(id, department_code, department_name, department_short_name),
-					program:programs(id, program_code, program_name, program_short_name, duration_years),
-					semester:semesters(id, semester_code, semester_name, semester_number),
-					section:sections(id, section_code, section_name),
-					academic_year:academic_year(id, year_code, year_name, start_date, end_date)
-				`)
+				.select('*')
 				.order('created_at', { ascending: false })
 
 			if (institutionId) query = query.eq('institution_id', institutionId)
@@ -135,7 +126,7 @@ export async function POST(request: Request) {
 			.insert([body])
 			.select(`
 				*,
-				institution:institutions(id, institution_code, institution_name),
+				institution:institutions(id, institution_code, name),
 				degree:degrees(id, degree_code, degree_name),
 				department:departments(id, department_code, department_name),
 				program:programs(id, program_code, program_name),
@@ -212,7 +203,7 @@ export async function PUT(request: Request) {
 			.eq('id', id)
 			.select(`
 				*,
-				institution:institutions(id, institution_code, institution_name),
+				institution:institutions(id, institution_code, name),
 				degree:degrees(id, degree_code, degree_name),
 				department:departments(id, department_code, department_name),
 				program:programs(id, program_code, program_name),

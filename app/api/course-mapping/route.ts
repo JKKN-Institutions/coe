@@ -9,41 +9,56 @@ export async function GET(request: Request) {
 		const includeDetails = searchParams.get('details') === 'true'
 		const institutionCode = searchParams.get('institution_code')
 		const programCode = searchParams.get('program_code')
-		const batchCode = searchParams.get('batch_code')
+		const regulationCode = searchParams.get('regulation_code')
 		const semesterCode = searchParams.get('semester_code')
 		const isActive = searchParams.get('is_active')
 
 		if (includeDetails) {
-			// Use the detailed view for comprehensive data
+			// Fetch course mappings with course details joined
 			let query = supabase
-				.from('course_mapping_detailed_view')
-				.select('*')
+				.from('course_mapping')
+				.select(`
+					*,
+					course:courses!course_mapping_course_id_fkey (
+						id,
+						course_code,
+						course_title
+					)
+				`)
 				.order('created_at', { ascending: false })
 
 			if (institutionCode) query = query.eq('institution_code', institutionCode)
 			if (programCode) query = query.eq('program_code', programCode)
-			if (batchCode) query = query.eq('batch_code', batchCode)
+			if (regulationCode) query = query.eq('regulation_code', regulationCode)
 			if (semesterCode) query = query.eq('semester_code', semesterCode)
 			if (isActive !== null) query = query.eq('is_active', isActive === 'true')
 
 			const { data, error } = await query
 
 			if (error) {
-				console.error('Error fetching course mappings (detailed):', error)
+				console.error('Course mapping view error:', error)
 				return NextResponse.json({ error: error.message }, { status: 500 })
 			}
 
 			return NextResponse.json(data || [])
 		} else {
-			// Use basic query without joins - will fetch course data separately if needed
+			// Fetch course mappings with course details joined
 			let query = supabase
 				.from('course_mapping')
-				.select('*')
+				.select(`
+					*,
+					course:courses!course_mapping_course_id_fkey (
+						id,
+						course_code,
+						course_title
+					)
+				`)
+				.order('course_order', { ascending: true })
 				.order('created_at', { ascending: false })
 
 			if (institutionCode) query = query.eq('institution_code', institutionCode)
 			if (programCode) query = query.eq('program_code', programCode)
-			if (batchCode) query = query.eq('batch_code', batchCode)
+			if (regulationCode) query = query.eq('regulation_code', regulationCode)
 			if (semesterCode) query = query.eq('semester_code', semesterCode)
 			if (isActive !== null) query = query.eq('is_active', isActive === 'true')
 
@@ -73,8 +88,8 @@ export async function POST(request: Request) {
 			const errors = []
 
 			for (const mapping of body.mappings) {
-				// Validate required fields
-				if (!mapping.course_id || !mapping.institution_code || !mapping.program_code || !mapping.batch_code) {
+				// Validate required fields (NO BATCH)
+				if (!mapping.course_id || !mapping.institution_code || !mapping.program_code || !mapping.regulation_code) {
 					errors.push({
 						semester_code: mapping.semester_code,
 						course_id: mapping.course_id,
@@ -144,23 +159,6 @@ export async function POST(request: Request) {
 					continue
 				}
 
-				// Fetch batch_id from batch table based on batch_code
-				const { data: batchData, error: batchError } = await supabase
-					.from('batch')
-					.select('id')
-					.eq('batch_code', mapping.batch_code)
-					.eq('institution_code', mapping.institution_code)
-					.single()
-
-				if (batchError || !batchData) {
-					errors.push({
-						semester_code: mapping.semester_code,
-						course_id: mapping.course_id,
-						error: `Batch not found: ${mapping.batch_code}`
-					})
-					continue
-				}
-
 				// Fetch regulation_id from regulations table based on regulation_code (if provided)
 				let regulationId = null
 				if (mapping.regulation_code) {
@@ -182,14 +180,14 @@ export async function POST(request: Request) {
 					regulationId = regulationData.id
 				}
 
-				// Check for duplicate mapping
+				// Check for duplicate mapping (NO BATCH)
 				const { data: existing } = await supabase
 					.from('course_mapping')
 					.select('id')
 					.eq('course_id', mapping.course_id)
 					.eq('institution_code', mapping.institution_code)
 					.eq('program_code', mapping.program_code)
-					.eq('batch_code', mapping.batch_code)
+					.eq('regulation_code', mapping.regulation_code)
 					.eq('semester_code', mapping.semester_code || '')
 					.eq('is_active', true)
 					.single()
@@ -210,12 +208,18 @@ export async function POST(request: Request) {
 						course_code: courseData.course_code,
 						institutions_id: institutionData.id,  // Add institution ID
 						program_id: programData.id,           // Add program ID
-						batch_id: batchData.id,               // Add batch ID
 						regulation_id: regulationId,          // Add regulation ID if provided
 						created_at: new Date().toISOString(),
 						updated_at: new Date().toISOString()
 					}])
-					.select('*')
+					.select(`
+						*,
+						course:courses!course_mapping_course_id_fkey (
+							id,
+							course_code,
+							course_title
+						)
+					`)
 					.single()
 
 				if (error) {
@@ -260,9 +264,9 @@ export async function POST(request: Request) {
 			)
 		}
 
-		if (!body.batch_code) {
+		if (!body.regulation_code) {
 			return NextResponse.json(
-				{ error: 'batch_code is required' },
+				{ error: 'regulation_code is required' },
 				{ status: 400 }
 			)
 		}
@@ -355,22 +359,7 @@ export async function POST(request: Request) {
 			)
 		}
 
-		// Fetch batch_id from batch table based on batch_code
-		const { data: batchData, error: batchError } = await supabase
-			.from('batch')
-			.select('id')
-			.eq('batch_code', body.batch_code)
-			.eq('institution_code', body.institution_code)
-			.single()
-
-		if (batchError || !batchData) {
-			return NextResponse.json(
-				{ error: `Batch not found: ${body.batch_code}` },
-				{ status: 404 }
-			)
-		}
-
-		// Fetch regulation_id from regulations table based on regulation_code (if provided)
+		// Fetch regulation_id from regulations table based on regulation_code
 		let regulationId = null
 		if (body.regulation_code) {
 			const { data: regulationData, error: regulationError } = await supabase
@@ -389,14 +378,14 @@ export async function POST(request: Request) {
 			regulationId = regulationData.id
 		}
 
-		// Check for duplicate mapping
+		// Check for duplicate mapping (NO BATCH)
 		const { data: existing } = await supabase
 			.from('course_mapping')
 			.select('id')
 			.eq('course_id', courseId)
 			.eq('institution_code', body.institution_code)
 			.eq('program_code', body.program_code)
-			.eq('batch_code', body.batch_code)
+			.eq('regulation_code', body.regulation_code)
 			.eq('semester_code', body.semester_code || '')
 			.eq('is_active', true)
 			.single()
@@ -416,10 +405,16 @@ export async function POST(request: Request) {
 				course_code: courseCode,              // Ensure course_code is set
 				institutions_id: institutionData.id,  // Add institution ID
 				program_id: programData.id,           // Add program ID
-				batch_id: batchData.id,               // Add batch ID
-				regulation_id: regulationId           // Add regulation ID if provided
+				regulation_id: regulationId           // Add regulation ID
 			}])
-			.select('*')
+			.select(`
+				*,
+				course:courses!course_mapping_course_id_fkey (
+					id,
+					course_code,
+					course_title
+				)
+			`)
 			.single()
 
 		if (error) {
@@ -492,7 +487,14 @@ export async function PUT(request: Request) {
 			.from('course_mapping')
 			.update(updateData)
 			.eq('id', id)
-			.select('*')
+			.select(`
+				*,
+				course:courses!course_mapping_course_id_fkey (
+					id,
+					course_code,
+					course_title
+				)
+			`)
 			.single()
 
 		if (error) {

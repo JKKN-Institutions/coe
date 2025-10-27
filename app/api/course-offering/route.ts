@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server'
 import { getSupabaseServer } from '@/lib/supabase-server'
 
-// GET - Fetch all course offer
+// GET - Fetch all course offer with course title from course_mapping
 export async function GET(request: Request) {
 	try {
 		const supabase = getSupabaseServer()
@@ -13,6 +13,7 @@ export async function GET(request: Request) {
 		const semester = searchParams.get('semester')
 		const isActive = searchParams.get('is_active')
 
+		// First fetch course_offerings
 		let query = supabase
 			.from('course_offerings')
 			.select('*')
@@ -37,14 +38,35 @@ export async function GET(request: Request) {
 			query = query.eq('is_active', isActive === 'true')
 		}
 
-		const { data, error } = await query
+		const { data: offerings, error: offeringsError } = await query
 
-		if (error) {
-			console.error('Course offer table error:', error)
+		if (offeringsError) {
+			console.error('Course offer table error:', offeringsError)
 			return NextResponse.json({ error: 'Failed to fetch course offer' }, { status: 500 })
 		}
 
-		return NextResponse.json(data || [])
+		// Fetch course data from courses table using course_code
+		const { data: courses, error: coursesError } = await supabase
+			.from('courses')
+			.select('course_code, course_title')
+
+		if (coursesError) {
+			console.error('Courses fetch error:', coursesError)
+			// Continue without course names rather than failing completely
+		}
+
+		// Create a map for quick lookup
+		const courseMap = new Map(
+			(courses || []).map((c: any) => [c.course_code, c.course_title])
+		)
+
+		// Transform the data to include course_title by matching course_code
+		const transformedData = (offerings || []).map((item: any) => ({
+			...item,
+			course_title: courseMap.get(item.course_code) || null
+		}))
+
+		return NextResponse.json(transformedData)
 	} catch (e) {
 		console.error('Course offer API error:', e)
 		return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
@@ -96,10 +118,10 @@ export async function POST(request: Request) {
 			}, { status: 400 })
 		}
 
-		// Validate foreign key - institutions
+		// Validate foreign key - institutions and get institution_code
 		const { data: institutionData, error: institutionError } = await supabase
 			.from('institutions')
-			.select('id')
+			.select('id, institution_code')
 			.eq('id', body.institutions_id)
 			.maybeSingle()
 
@@ -109,10 +131,10 @@ export async function POST(request: Request) {
 			}, { status: 400 })
 		}
 
-		// Validate foreign key - examination_sessions
+		// Validate foreign key - examination_sessions and get session_code
 		const { data: examSessionData, error: examSessionError } = await supabase
 			.from('examination_sessions')
-			.select('id')
+			.select('id, session_code')
 			.eq('id', body.examination_session_id)
 			.maybeSingle()
 
@@ -122,10 +144,10 @@ export async function POST(request: Request) {
 			}, { status: 400 })
 		}
 
-		// Validate foreign key - course_mapping
+		// Validate foreign key - course_mapping and get course_code
 		const { data: courseData, error: courseError } = await supabase
 			.from('course_mapping')
-			.select('id')
+			.select('id, course_code')
 			.eq('id', body.course_id)
 			.maybeSingle()
 
@@ -135,10 +157,10 @@ export async function POST(request: Request) {
 			}, { status: 400 })
 		}
 
-		// Validate foreign key - programs
+		// Validate foreign key - programs and get program_code
 		const { data: programData, error: programError } = await supabase
 			.from('programs')
-			.select('id')
+			.select('id, program_code')
 			.eq('id', body.program_id)
 			.maybeSingle()
 
@@ -172,9 +194,13 @@ export async function POST(request: Request) {
 
 		const insertPayload: any = {
 			institutions_id: body.institutions_id,
+			institution_code: institutionData.institution_code,
 			course_id: body.course_id,
+			course_code: courseData.course_code,
 			examination_session_id: body.examination_session_id,
+			session_code: examSessionData.session_code,
 			program_id: body.program_id,
+			program_code: programData.program_code,
 			semester: semester,
 			section: body.section || null,
 			faculty_id: body.faculty_id || null,
@@ -196,7 +222,7 @@ export async function POST(request: Request) {
 			// Handle duplicate key constraint violation
 			if (error.code === '23505') {
 				return NextResponse.json({
-					error: 'Course offer already exists for this combination of institution, course, examination session, program, and semester.'
+					error: `Course offer already exists for this combination: ${institutionData.institution_code}, ${courseData.course_code}, ${programData.program_code}, ${examSessionData.session_code}, Semester ${semester}.`
 				}, { status: 400 })
 			}
 
@@ -244,11 +270,17 @@ export async function PUT(request: Request) {
 			}
 		}
 
+		// Variables to store code values
+		let institutionCode: string | undefined
+		let sessionCode: string | undefined
+		let courseCode: string | undefined
+		let programCode: string | undefined
+
 		// Validate foreign key - institutions (if provided)
 		if (body.institutions_id) {
 			const { data: institutionData, error: institutionError } = await supabase
 				.from('institutions')
-				.select('id')
+				.select('id, institution_code')
 				.eq('id', body.institutions_id)
 				.maybeSingle()
 
@@ -257,13 +289,14 @@ export async function PUT(request: Request) {
 					error: `Institution not found. Please select a valid institution.`
 				}, { status: 400 })
 			}
+			institutionCode = institutionData.institution_code
 		}
 
 		// Validate foreign key - examination_sessions (if provided)
 		if (body.examination_session_id) {
 			const { data: examSessionData, error: examSessionError } = await supabase
 				.from('examination_sessions')
-				.select('id')
+				.select('id, session_code')
 				.eq('id', body.examination_session_id)
 				.maybeSingle()
 
@@ -272,13 +305,14 @@ export async function PUT(request: Request) {
 					error: `Examination session not found. Please select a valid examination session.`
 				}, { status: 400 })
 			}
+			sessionCode = examSessionData.session_code
 		}
 
 		// Validate foreign key - course_mapping (if provided)
 		if (body.course_id) {
 			const { data: courseData, error: courseError } = await supabase
 				.from('course_mapping')
-				.select('id')
+				.select('id, course_code')
 				.eq('id', body.course_id)
 				.maybeSingle()
 
@@ -287,13 +321,14 @@ export async function PUT(request: Request) {
 					error: `Course not found. Please select a valid course.`
 				}, { status: 400 })
 			}
+			courseCode = courseData.course_code
 		}
 
 		// Validate foreign key - programs (if provided)
 		if (body.program_id) {
 			const { data: programData, error: programError } = await supabase
 				.from('programs')
-				.select('id')
+				.select('id, program_code')
 				.eq('id', body.program_id)
 				.maybeSingle()
 
@@ -302,6 +337,7 @@ export async function PUT(request: Request) {
 					error: `Program not found. Please select a valid program.`
 				}, { status: 400 })
 			}
+			programCode = programData.program_code
 		}
 
 		// Validate numeric fields if provided
@@ -325,9 +361,13 @@ export async function PUT(request: Request) {
 
 		const updatePayload: any = {
 			institutions_id: body.institutions_id,
+			institution_code: institutionCode,
 			course_id: body.course_id,
+			course_code: courseCode,
 			examination_session_id: body.examination_session_id,
+			session_code: sessionCode,
 			program_id: body.program_id,
+			program_code: programCode,
 			semester: body.semester ? parseInt(body.semester) : undefined,
 			section: body.section,
 			faculty_id: body.faculty_id,

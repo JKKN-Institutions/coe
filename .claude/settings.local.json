@@ -13,7 +13,15 @@
       "Bash(dir:*)",
       "Bash(wc:*)",
       "Bash(mkdir:*)",
-      "Bash(supabase status:*)"
+      "Bash(supabase status:*)",
+      "Bash(npx supabase:*)",
+      "Bash(timeout 10 bash:*)",
+      "Bash(awk:*)",
+      "Bash(npx next@latest build)",
+      "Bash(timeout:*)",
+      "Bash(findstr:*)",
+      "Bash(find:*)",
+      "Bash(node:*)"
     ],
     "deny": [],
     "ask": []

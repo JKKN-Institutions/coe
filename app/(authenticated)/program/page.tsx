@@ -36,10 +36,6 @@ type Program = {
   created_at: string
 }
 
-const MOCK_PROGRAMS: Program[] = [
-  { id: "1", institution_code: "JKKN", degree_code: "BSC", offering_department_code: "SCI", program_code: "BSC-CS", program_name: "B.Sc Computer Science", display_name: "BSc CS", program_duration_yrs: 3, program_order: 1, pattern_type: "Semester", is_active: true, created_at: new Date().toISOString() },
-]
-
 export default function ProgramPage() {
   const { toast } = useToast()
   const [items, setItems] = useState<Program[]>([])
@@ -423,6 +419,79 @@ export default function ProgramPage() {
     })
   }
 
+  // Field validation function
+  const validateProgramData = (data: any, rowIndex: number) => {
+    const errors: string[] = []
+
+    // Required field validations
+    if (!data.institution_code || data.institution_code.trim() === '') {
+      errors.push('Institution Code is required')
+    }
+
+    if (!data.degree_code || data.degree_code.trim() === '') {
+      errors.push('Degree Code is required')
+    }
+
+    if (!data.program_code || data.program_code.trim() === '') {
+      errors.push('Program Code is required')
+    } else if (data.program_code.length > 50) {
+      errors.push('Program Code must be 50 characters or less')
+    }
+
+    if (!data.program_name || data.program_name.trim() === '') {
+      errors.push('Program Name is required')
+    } else if (data.program_name.length > 200) {
+      errors.push('Program Name must be 200 characters or less')
+    }
+
+    // Optional field validations
+    if (data.display_name && data.display_name.length > 200) {
+      errors.push('Display Name must be 200 characters or less')
+    }
+
+    if (data.offering_department_code && data.offering_department_code.length > 50) {
+      errors.push('Offering Department Code must be 50 characters or less')
+    }
+
+    // Program Type validation
+    if (data.program_type && !['UG', 'PG', 'M.Phil', 'Ph.D'].includes(data.program_type)) {
+      errors.push('Program Type must be one of: UG, PG, M.Phil, Ph.D')
+    }
+
+    // Duration validation
+    if (data.program_duration_yrs !== undefined && data.program_duration_yrs !== null) {
+      const duration = Number(data.program_duration_yrs)
+      if (isNaN(duration) || duration < 1 || duration > 10) {
+        errors.push('Duration must be between 1 and 10 years')
+      }
+    }
+
+    // Order validation
+    if (data.program_order !== undefined && data.program_order !== null) {
+      const order = Number(data.program_order)
+      if (isNaN(order) || order < 1) {
+        errors.push('Program Order must be a positive number')
+      }
+    }
+
+    // Pattern Type validation
+    if (data.pattern_type && !['Year', 'Semester'].includes(data.pattern_type)) {
+      errors.push('Pattern Type must be either Year or Semester')
+    }
+
+    // Status validation
+    if (data.is_active !== undefined && data.is_active !== null) {
+      if (typeof data.is_active !== 'boolean') {
+        const statusValue = String(data.is_active).toLowerCase()
+        if (statusValue !== 'true' && statusValue !== 'false' && statusValue !== 'active' && statusValue !== 'inactive') {
+          errors.push('Status must be true/false or Active/Inactive')
+        }
+      }
+    }
+
+    return errors
+  }
+
   const handleImport = () => {
     const input = document.createElement('input')
     input.type = 'file'
@@ -441,31 +510,26 @@ export default function ProgramPage() {
           const json = XLSX.utils.sheet_to_json(ws) as Record<string, unknown>[]
           rows = json.map(j => {
             const programType = String(j['Program Type'] || '').trim()
+            const statusValue = String(j['Status'] || '').toLowerCase()
+            const isActive = statusValue === 'active' || statusValue === 'true'
+
             return {
-              institution_code: String(j['Institution Code'] || ''),
-              degree_code: String(j['Degree Code'] || ''),
+              institution_code: String(j['Institution Code'] || '').trim(),
+              degree_code: String(j['Degree Code'] || '').trim(),
               program_type: programType === '' ? undefined : programType as "UG" | "PG" | "M.Phil" | "Ph.D",
-              offering_department_code: String(j['Offering Dept'] || ''),
-              program_code: String(j['Program Code'] || ''),
-              program_name: String(j['Program Name'] || ''),
-              display_name: String(j['Display Name'] || ''),
+              offering_department_code: String(j['Offering Dept'] || '').trim() || undefined,
+              program_code: String(j['Program Code'] || '').trim(),
+              program_name: String(j['Program Name'] || '').trim(),
+              display_name: String(j['Display Name'] || '').trim() || undefined,
               program_duration_yrs: Number(j['Duration (Years)'] || 3),
               program_order: Number(j['Program Order'] || 1),
-              pattern_type: String(j['Pattern'] || 'Semester') as "Year" | "Semester",
-              is_active: String(j['Status'] || '').toLowerCase() === 'active'
+              pattern_type: String(j['Pattern'] || 'Semester').trim() as "Year" | "Semester",
+              is_active: isActive
             }
           })
         }
 
-        // Filter out rows with missing required fields
-        const mapped = rows.filter(r => r.institution_code && r.degree_code && r.program_code && r.program_name)
-
-        if (mapped.length === 0) {
-          alert('No valid rows found. Ensure all required fields are provided.')
-          return
-        }
-
-        // Upload with row tracking
+        // Upload with row tracking and validation
         setLoading(true)
         let successCount = 0
         let errorCount = 0
@@ -476,18 +540,31 @@ export default function ProgramPage() {
           errors: string[]
         }> = []
 
-        for (let i = 0; i < mapped.length; i++) {
-          const program = mapped[i]
+        for (let i = 0; i < rows.length; i++) {
+          const program = rows[i]
           const rowNumber = i + 2 // +2 for header row in Excel
+
+          // Validate row data
+          const validationErrors = validateProgramData(program, rowNumber)
+          if (validationErrors.length > 0) {
+            errorCount++
+            uploadErrors.push({
+              row: rowNumber,
+              program_code: program.program_code || 'N/A',
+              program_name: program.program_name || 'N/A',
+              errors: validationErrors
+            })
+            continue
+          }
 
           const payload = {
             institution_code: program.institution_code,
             degree_code: program.degree_code,
             program_type: program.program_type || undefined,
-            offering_department_code: program.offering_department_code,
+            offering_department_code: program.offering_department_code || undefined,
             program_code: program.program_code,
             program_name: program.program_name,
-            display_name: program.display_name,
+            display_name: program.display_name || undefined,
             program_duration_yrs: program.program_duration_yrs || 3,
             program_order: program.program_order || 1,
             pattern_type: program.pattern_type || "Semester",
@@ -527,7 +604,7 @@ export default function ProgramPage() {
         }
 
         setLoading(false)
-        const totalRows = mapped.length
+        const totalRows = rows.length
 
         // Update upload summary
         setUploadSummary({
@@ -536,12 +613,44 @@ export default function ProgramPage() {
           failed: errorCount
         })
 
-        // Always show error dialog with upload summary
+        // Set import errors and show dialog
         setImportErrors(uploadErrors)
         setErrorPopupOpen(true)
+
+        // Show appropriate toast message
+        if (successCount > 0 && errorCount === 0) {
+          toast({
+            title: "✅ Upload Complete",
+            description: `Successfully uploaded all ${successCount} row${successCount > 1 ? 's' : ''} (${successCount} program${successCount > 1 ? 's' : ''}) to the database.`,
+            className: "bg-green-50 border-green-200 text-green-800 dark:bg-green-900/20 dark:border-green-800 dark:text-green-200",
+            duration: 5000,
+          })
+        } else if (successCount > 0 && errorCount > 0) {
+          toast({
+            title: "⚠️ Partial Upload Success",
+            description: `Processed ${totalRows} row${totalRows > 1 ? 's' : ''}: ${successCount} successful, ${errorCount} failed. View error details below.`,
+            className: "bg-yellow-50 border-yellow-200 text-yellow-800 dark:bg-yellow-900/20 dark:border-yellow-800 dark:text-yellow-200",
+            duration: 6000,
+          })
+        } else if (errorCount > 0) {
+          toast({
+            title: "❌ Upload Failed",
+            description: `Processed ${totalRows} row${totalRows > 1 ? 's' : ''}: 0 successful, ${errorCount} failed. View error details below.`,
+            variant: "destructive",
+            className: "bg-red-50 border-red-200 text-red-800 dark:bg-red-900/20 dark:border-red-800 dark:text-red-200",
+            duration: 6000,
+          })
+        }
       } catch (err) {
         console.error(err)
-        alert('Import failed. Please check your file format.')
+        toast({
+          title: "❌ Import Failed",
+          description: "Failed to parse file. Please check your file format and try again.",
+          variant: "destructive",
+          className: "bg-red-50 border-red-200 text-red-800 dark:bg-red-900/20 dark:border-red-800 dark:text-red-200",
+        })
+      } finally {
+        setLoading(false)
       }
     }
     input.click()
@@ -1142,20 +1251,29 @@ export default function ProgramPage() {
                   <span className="text-xs font-bold text-blue-600 dark:text-blue-400">i</span>
                 </div>
                 <div>
-                  <h4 className="font-semibold text-blue-800 dark:text-blue-200 text-sm mb-1">Required Excel Format:</h4>
+                  <h4 className="font-semibold text-blue-800 dark:text-blue-200 text-sm mb-1">Required Excel Format & Tips:</h4>
                   <ul className="text-xs text-blue-700 dark:text-blue-300 space-y-1">
-                    <li>• <strong>Institution Code</strong> (required): Must match existing institution code (e.g., JKKN)</li>
-                    <li>• <strong>Degree Code</strong> (required): Must match existing degree code (e.g., BSC, BE)</li>
+                    <li>• <strong>Institution Code</strong> (required): Must match existing institution (e.g., JKKN)</li>
+                    <li>• <strong>Degree Code</strong> (required): Must match existing degree (e.g., BSC, BE)</li>
+                    <li>• <strong>Program Code</strong> (required): Unique identifier, max 50 chars (e.g., BSC-CS)</li>
+                    <li>• <strong>Program Name</strong> (required): Full name, max 200 chars</li>
                     <li>• <strong>Program Type</strong> (optional): UG, PG, M.Phil, or Ph.D</li>
-                    <li>• <strong>Program Code</strong> (required): Unique program identifier (e.g., BSC-CS)</li>
-                    <li>• <strong>Program Name</strong> (required): Full program name</li>
-                    <li>• <strong>Offering Dept</strong> (optional): Department code if applicable</li>
-                    <li>• <strong>Display Name</strong> (optional): Short display name</li>
-                    <li>• <strong>Duration (Years)</strong> (optional): Program duration in years (default: 3)</li>
-                    <li>• <strong>Program Order</strong> (optional): Display order number (default: 1)</li>
+                    <li>• <strong>Offering Dept</strong> (optional): Department code (must exist if provided)</li>
+                    <li>• <strong>Display Name</strong> (optional): Short name, max 200 chars</li>
+                    <li>• <strong>Duration (Years)</strong> (optional): 1-10 years (default: 3)</li>
+                    <li>• <strong>Program Order</strong> (optional): Positive number (default: 1)</li>
                     <li>• <strong>Pattern</strong> (optional): "Year" or "Semester" (default: Semester)</li>
                     <li>• <strong>Status</strong> (optional): "Active" or "Inactive" (default: Active)</li>
                   </ul>
+                  <div className="mt-2 pt-2 border-t border-blue-200 dark:border-blue-800">
+                    <p className="text-xs text-blue-700 dark:text-blue-300 font-medium">Common Fixes:</p>
+                    <ul className="text-xs text-blue-700 dark:text-blue-300 space-y-1 mt-1">
+                      <li>• Foreign keys must reference existing records (institution, degree, department)</li>
+                      <li>• Ensure no empty required fields</li>
+                      <li>• Check field length constraints</li>
+                      <li>• Verify data format matches expected patterns</li>
+                    </ul>
+                  </div>
                 </div>
               </div>
             </div>

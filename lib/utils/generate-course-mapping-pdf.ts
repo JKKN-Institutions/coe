@@ -34,9 +34,6 @@ interface ReportData {
 	programName: string
 	programCode?: string
 	degreeName: string
-	batchName: string
-	batchCode?: string
-	batchYear?: number
 	regulationName?: string
 	regulationCode?: string
 	logoImage?: string
@@ -44,68 +41,110 @@ interface ReportData {
 }
 
 export function generateCourseMappingPDF(data: ReportData) {
-	const doc = new jsPDF('landscape', 'mm', 'a4')
+	// Debug: Log the data structure
+	console.log('PDF Generation Data:', {
+		institutionName: data.institutionName,
+		programName: data.programName,
+		regulationCode: data.regulationCode,
+		regulationName: data.regulationName,
+		mappingsCount: data.mappings?.length || 0,
+		sampleMapping: data.mappings?.[0]
+	})
+
+	// Legal size Landscape with 0.5 inch (12.7mm) margins
+	const doc = new jsPDF('landscape', 'mm', 'legal')
 	const pageWidth = doc.internal.pageSize.getWidth()
 	const pageHeight = doc.internal.pageSize.getHeight()
+	const margin = 12.7 // 0.5 inch in mm
+	const contentWidth = pageWidth - (2 * margin)
 
 	// Helper function to add header to each page
 	const addHeader = () => {
-		// College Logo (left) - using actual image
+		let currentY = margin
+
+		// College Logo (left side)
 		if (data.logoImage) {
 			try {
-				doc.addImage(data.logoImage, 'PNG', 10, 10, 20, 20)
+				const logoSize = 20
+				doc.addImage(data.logoImage, 'PNG', margin, currentY, logoSize, logoSize)
 			} catch (e) {
 				console.warn('Failed to add logo to PDF:', e)
-				// Fallback to placeholder
-				doc.setFillColor(240, 240, 240)
-				doc.rect(10, 10, 20, 20, 'F')
 			}
-		} else {
-			// Fallback to placeholder if image not loaded
-			doc.setFillColor(240, 240, 240)
-			doc.rect(10, 10, 20, 20, 'F')
 		}
 
 		// College name and details (centered)
+		doc.setFont('times', 'bold')
 		doc.setFontSize(16)
-		doc.setFont('helvetica', 'bold')
 		doc.setTextColor(0, 0, 0)
-		doc.text(data.institutionName.toUpperCase(), pageWidth / 2, 16, { align: 'center' })
+		doc.text(data.institutionName.toUpperCase(), pageWidth / 2, currentY + 5, { align: 'center' })
 
 		if (data.institutionAddress) {
-			doc.setFontSize(8)
-			doc.setFont('helvetica', 'normal')
-			doc.text(data.institutionAddress, pageWidth / 2, 21, { align: 'center' })
+			// Remove institution name from address if it's already included
+			let cleanAddress = data.institutionAddress
+			// Remove the institution name if it appears at the start of the address
+			const nameVariations = [
+				data.institutionName.toUpperCase(),
+				data.institutionName,
+				'J.K.K NATARAJA COLLEGE OF ARTS & SCIENCE,',
+				'JKKN COLLEGE OF ARTS AND SCIENCE,'
+			]
+
+			for (const name of nameVariations) {
+				if (cleanAddress.startsWith(name)) {
+					cleanAddress = cleanAddress.substring(name.length).trim()
+					// Remove leading comma if present
+					if (cleanAddress.startsWith(',')) {
+						cleanAddress = cleanAddress.substring(1).trim()
+					}
+					break
+				}
+			}
+
+			doc.setFont('times', 'normal')
+			doc.setFontSize(10)
+			doc.text(cleanAddress, pageWidth / 2, currentY + 11, { align: 'center' })
 		}
 
-		doc.setFontSize(9)
-		doc.setFont('helvetica', 'italic')
-		doc.text('(An Autonomous Institution)', pageWidth / 2, 26, { align: 'center' })
+		doc.setFont('times', 'italic')
+		doc.setFontSize(10)
+		doc.text('(An Autonomous Institution)', pageWidth / 2, currentY + 16, { align: 'center' })
 
-		// Title
-		doc.setFontSize(11)
-		doc.setFont('helvetica', 'bold')
-		doc.text('DEGREE BRANCH : ', 15, 32)
+		currentY += 22
 
-		doc.setFont('helvetica', 'normal')
+		// Program and Regulation info (horizontal layout)
+		doc.setFont('times', 'bold')
+		doc.setFontSize(12)
+		doc.text('DEGREE BRANCH:', margin + 10, currentY)
+
+		doc.setFont('times', 'normal')
+		doc.setFontSize(12)
 		const degreeText = `${data.programName} - (Aided)`
-		doc.text(degreeText, 60, 32)
+		doc.text(degreeText, margin + 55, currentY)
 
-		// Batch info on right side
-		doc.setFont('helvetica', 'bold')
-		doc.text('BATCH : ', pageWidth - 80, 32)
+		// Regulation on the right side
+		doc.setFont('times', 'bold')
+		doc.setFontSize(12)
+		const regulationLabel = 'REGULATION:'
+		const regulationLabelWidth = doc.getTextWidth(regulationLabel)
+		doc.text(regulationLabel, pageWidth - margin - 70, currentY)
 
-		doc.setFont('helvetica', 'normal')
-		const batchYear = data.batchYear || data.batchCode?.substring(1) || ''
-		doc.text(`${batchYear}`, pageWidth - 40, 32)
+		doc.setFont('times', 'normal')
+		doc.setFontSize(12)
+		const regulationText = data.regulationCode || data.regulationName || 'N/A'
+		doc.text(regulationText, pageWidth - margin - 70 + regulationLabelWidth + 5, currentY)
+
+		currentY += 5
 
 		// Horizontal line
 		doc.setLineWidth(0.5)
-		doc.line(10, 35, pageWidth - 10, 35)
+		doc.setDrawColor(0, 0, 0)
+		doc.line(margin, currentY, pageWidth - margin, currentY)
+
+		return currentY + 5
 	}
 
 	// Add initial header
-	addHeader()
+	let startY = addHeader()
 
 	// Group mappings by semester
 	const semesterGroups = data.mappings.reduce((acc, mapping) => {
@@ -128,8 +167,6 @@ export function generateCourseMappingPDF(data: ReportData) {
 		return semA - semB
 	})
 
-	let startY = 38
-
 	// Generate table for each semester
 	sortedSemesters.forEach((semKey, index) => {
 		const semester = semesterGroups[semKey]
@@ -142,15 +179,19 @@ export function generateCourseMappingPDF(data: ReportData) {
 		})
 
 		// Prepare table data
-		const tableData = sortedCourses.map((course, index) => {
+		const tableData = sortedCourses.map((course, courseIndex) => {
 			// Use part_name from course (already fetched from courses table)
 			const part = course.part_name || '-'
 
-			// Use display_order from semesters table
-			const semValue = course.display_order || '-'
+			// Use semester_name for display in SEM column with multiple fallbacks
+			const semValue = course.semester_name ||
+							 semester.semesterName ||
+							 course.semester_code ||
+							 `Sem ${semester.semesterNumber || ''}` ||
+							 '-'
 
 			return [
-				semValue, // Semester number (display_order from semesters table)
+				semValue, // Semester name (e.g., "Semester I", "Part I")
 				part, // Part (from courses.course_part_master)
 				course.course_code || '-',
 				course.course_title || '-',
@@ -173,27 +214,27 @@ export function generateCourseMappingPDF(data: ReportData) {
 			]
 		})
 
-		// Add semester heading
+		// Add spacing between semesters
 		if (index > 0) {
-			startY += 10 // Add spacing between semesters
+			startY += 8
 		}
 
 		autoTable(doc, {
 			startY: startY,
 			head: [
 				[
-					{ content: 'SEM', rowSpan: 2 },
-					{ content: 'PART', rowSpan: 2 },
-					{ content: 'COURSE\nCODE', rowSpan: 2 },
-					{ content: 'COURSE TITLE', rowSpan: 2 },
-					{ content: 'COURSE\nTYPE', rowSpan: 2 },
-					{ content: 'EVALUATION\nPATTERN', rowSpan: 2 },
-					{ content: 'CREDIT', rowSpan: 2 },
-					{ content: 'EXAM\nHRS', rowSpan: 2 },
-					{ content: 'SORT\nORDER', rowSpan: 2 },
-					{ content: 'INTERNAL MARKS', colSpan: 3 },
-					{ content: 'ESE MARKS', colSpan: 3 },
-					{ content: 'TOTAL', colSpan: 2 }
+					{ content: 'SEM', rowSpan: 2, styles: { halign: 'center', valign: 'middle' } },
+					{ content: 'PART', rowSpan: 2, styles: { halign: 'center', valign: 'middle' } },
+					{ content: 'COURSE\nCODE', rowSpan: 2, styles: { halign: 'center', valign: 'middle' } },
+					{ content: 'COURSE TITLE', rowSpan: 2, styles: { halign: 'center', valign: 'middle' } },
+					{ content: 'COURSE\nTYPE', rowSpan: 2, styles: { halign: 'center', valign: 'middle' } },
+					{ content: 'EVALUATION\nPATTERN', rowSpan: 2, styles: { halign: 'center', valign: 'middle' } },
+					{ content: 'CREDIT', rowSpan: 2, styles: { halign: 'center', valign: 'middle' } },
+					{ content: 'EXAM\nHRS', rowSpan: 2, styles: { halign: 'center', valign: 'middle' } },
+					{ content: 'SORT\nORDER', rowSpan: 2, styles: { halign: 'center', valign: 'middle' } },
+					{ content: 'INTERNAL MARKS', colSpan: 3, styles: { halign: 'center', valign: 'middle' } },
+					{ content: 'ESE MARKS', colSpan: 3, styles: { halign: 'center', valign: 'middle' } },
+					{ content: 'TOTAL', colSpan: 2, styles: { halign: 'center', valign: 'middle' } }
 				],
 				[
 					'MAX', 'PASS', 'CONV', // Internal
@@ -203,68 +244,88 @@ export function generateCourseMappingPDF(data: ReportData) {
 			],
 			body: tableData,
 			theme: 'grid',
-			headStyles: {
-				fillColor: [240, 240, 240],
+			styles: {
+				font: 'times',
+				fontStyle: 'normal',
 				textColor: [0, 0, 0],
-				fontSize: 7,
+				lineColor: [0, 0, 0],
+				lineWidth: 0.3
+			},
+			headStyles: {
+				font: 'times',
 				fontStyle: 'bold',
+				fontSize: 12,
+				textColor: [0, 0, 0],
+				fillColor: [255, 255, 255],
 				halign: 'center',
 				valign: 'middle',
-				lineWidth: 0.5,
-				lineColor: [0, 0, 0]
+				lineWidth: 0.3,
+				lineColor: [0, 0, 0],
+				cellPadding: 1.5
 			},
 			bodyStyles: {
-				fontSize: 7,
-				cellPadding: 2,
+				font: 'times',
+				fontStyle: 'normal',
+				fontSize: 11,
+				textColor: [0, 0, 0],
+				fillColor: [255, 255, 255],
 				valign: 'middle',
-				lineWidth: 0.5,
-				lineColor: [0, 0, 0]
+				lineWidth: 0.3,
+				lineColor: [0, 0, 0],
+				cellPadding: 1.5
 			},
 			columnStyles: {
-				0: { halign: 'center', cellWidth: 10 }, // SEM
+				0: { halign: 'center', cellWidth: 18 }, // SEM
 				1: { halign: 'center', cellWidth: 18 }, // PART
-				2: { halign: 'center', cellWidth: 22 }, // COURSE CODE
-				3: { halign: 'left', cellWidth: 55 }, // COURSE TITLE
-				4: { halign: 'center', cellWidth: 20 }, // COURSE TYPE
-				5: { halign: 'center', cellWidth: 22 }, // EVALUATION PATTERN
+				2: { halign: 'center', cellWidth: 20 }, // COURSE CODE
+				3: { halign: 'left', cellWidth: 90 }, // COURSE TITLE
+				4: { halign: 'center', cellWidth: 18 }, // COURSE TYPE
+				5: { halign: 'center', cellWidth: 20 }, // EVALUATION PATTERN
 				6: { halign: 'center', cellWidth: 12 }, // CREDIT
 				7: { halign: 'center', cellWidth: 12 }, // EXAM HRS
 				8: { halign: 'center', cellWidth: 12 }, // SORT ORDER
-				9: { halign: 'center', cellWidth: 12 }, // INT MAX
-				10: { halign: 'center', cellWidth: 12 }, // INT PASS
-				11: { halign: 'center', cellWidth: 12 }, // INT CONV
-				12: { halign: 'center', cellWidth: 12 }, // ESE MAX
-				13: { halign: 'center', cellWidth: 12 }, // ESE PASS
-				14: { halign: 'center', cellWidth: 12 }, // ESE CONV
-				15: { halign: 'center', cellWidth: 12 }, // TOTAL MAX
-				16: { halign: 'center', cellWidth: 12 } // TOTAL MIN
+				9: { halign: 'center', cellWidth: 13 }, // INT MAX
+				10: { halign: 'center', cellWidth: 13 }, // INT PASS
+				11: { halign: 'center', cellWidth: 13 }, // INT CONV
+				12: { halign: 'center', cellWidth: 13 }, // ESE MAX
+				13: { halign: 'center', cellWidth: 13 }, // ESE PASS
+				14: { halign: 'center', cellWidth: 13 }, // ESE CONV
+				15: { halign: 'center', cellWidth: 13 }, // TOTAL MAX
+				16: { halign: 'center', cellWidth: 13 } // TOTAL MIN
 			},
-			margin: { left: 10, right: 10 },
+			margin: { left: margin, right: margin, top: margin, bottom: margin },
+			tableWidth: 'wrap',
 			didDrawPage: (data) => {
-				// Add header on each new page
-				if (data.pageNumber > 1) {
-					addHeader()
-				}
+				// Add footer with page number and timestamp on all pages
+				const currentPageNumber = doc.internal.pages.length - 1 // Get actual page number
 
-				// Add footer with page number
-				doc.setFontSize(8)
-				doc.setTextColor(100)
-				const footerText = `Page ${data.pageNumber}`
-				doc.text(footerText, pageWidth / 2, pageHeight - 10, { align: 'center' })
+				// Page number (centered)
+				doc.setFont('times', 'normal')
+				doc.setFontSize(10)
+				doc.setTextColor(0, 0, 0)
+				const footerText = `Page ${currentPageNumber}`
+				doc.text(footerText, pageWidth / 2, pageHeight - margin + 10, { align: 'center' })
+
+				// Date & time (right-aligned)
+				doc.setFont('times', 'italic')
+				doc.setFontSize(9)
+				doc.setTextColor(80, 80, 80)
+				const timestamp = new Date().toLocaleString()
+				doc.text(`Generated on: ${timestamp}`, pageWidth - margin, pageHeight - margin + 10, { align: 'right' })
 			}
 		})
 
 		// Update startY for next table
-		startY = (doc as any).lastAutoTable.finalY + 5
+		startY = (doc as any).lastAutoTable.finalY + 8
+
+		// Add page break after each semester (except the last one)
+		if (index < sortedSemesters.length - 1) {
+			doc.addPage()
+			startY = margin + 5
+		}
 	})
 
-	// Add generation timestamp footer
-	doc.setFontSize(7)
-	doc.setTextColor(100)
-	const timestamp = new Date().toLocaleString()
-	doc.text(`Generated on: ${timestamp}`, pageWidth - 10, pageHeight - 10, { align: 'right' })
-
 	// Save the PDF
-	const fileName = `Course_Mapping_${data.programName.replace(/\s+/g, '_')}_${data.batchName.replace(/\s+/g, '_')}.pdf`
+	const fileName = `Course_Mapping_${data.programName.replace(/\s+/g, '_')}_${data.regulationCode || 'Regulation'}.pdf`
 	doc.save(fileName)
 }
