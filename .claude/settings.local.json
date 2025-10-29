@@ -21,7 +21,9 @@
       "Bash(timeout:*)",
       "Bash(findstr:*)",
       "Bash(find:*)",
-      "Bash(node:*)"
+      "Bash(node:*)",
+      "Bash(netstat:*)",
+      "Bash(tail:*)"
     ],
     "deny": [],
     "ask": []

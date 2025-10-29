@@ -1,6 +1,6 @@
 "use client"
 
-import { useMemo, useState, useEffect } from "react"
+import React, { useMemo, useState, useEffect } from "react"
 import { useRouter } from "next/navigation"
 import * as XLSX from "xlsx"
 import { AppSidebar } from "@/components/app-sidebar"
@@ -17,7 +17,9 @@ import { Badge } from "@/components/ui/badge"
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog"
 import { useToast } from "@/hooks/use-toast"
 import Link from "next/link"
-import { PlusCircle, Edit, Trash2, Search, ChevronLeft, ChevronRight, ArrowUpDown, ArrowUp, ArrowDown, Calendar, TrendingUp, CheckCircle, XCircle, FileSpreadsheet, Upload, AlertTriangle, RefreshCw } from "lucide-react"
+import { PlusCircle, Edit, Trash2, Search, ChevronLeft, ChevronRight, ArrowUpDown, ArrowUp, ArrowDown, Calendar, TrendingUp, CheckCircle, XCircle, FileSpreadsheet, Upload, AlertTriangle, RefreshCw, ChevronDown, ChevronUp, DoorOpen, Users, MapPin } from "lucide-react"
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
+import { Label } from "@/components/ui/label"
 
 interface ExamTimetable {
 	id: string
@@ -31,11 +33,45 @@ interface ExamTimetable {
 	instructions?: string
 	created_at: string
 	// Joined data
+	institution_code?: string
 	institution_name?: string
+	session_code?: string
 	session_name?: string
 	course_code?: string
-	course_title?: string
+	course_name?: string
+	program_code?: string
 	program_name?: string
+	student_count?: number
+	course_count?: number
+	seat_alloc_count?: number
+}
+
+interface CourseDetail {
+	exam_timetable_id: string
+	course_code: string
+	course_name: string
+	program_code: string
+	program_name: string
+	student_count: number
+}
+
+interface ExamRoom {
+	id: string
+	room_code: string
+	room_name: string
+	building?: string
+	floor?: string
+	room_order: number
+	seating_capacity: number
+	exam_capacity: number
+	rows: number
+	columns: number
+}
+
+interface RoomAllocation {
+	room: ExamRoom
+	column_start: string
+	student_count: number
 }
 
 export default function ExamTimetablesListPage() {
@@ -69,6 +105,17 @@ export default function ExamTimetablesListPage() {
 	}>>([])
 
 	const [showErrorDialog, setShowErrorDialog] = useState(false)
+
+	// Hall allocation state
+	const [showHallAllocation, setShowHallAllocation] = useState(false)
+	const [selectedTimetable, setSelectedTimetable] = useState<ExamTimetable | null>(null)
+	const [availableRooms, setAvailableRooms] = useState<ExamRoom[]>([])
+	const [roomAllocations, setRoomAllocations] = useState<RoomAllocation[]>([])
+	const [allocating, setAllocating] = useState(false)
+
+	// Expanded row state for course details
+	const [expandedRows, setExpandedRows] = useState<Set<string>>(new Set())
+	const [courseDetails, setCourseDetails] = useState<Map<string, CourseDetail[]>>(new Map())
 
 	// Fetch exam timetables
 	const fetchExamTimetables = async () => {
@@ -749,16 +796,29 @@ export default function ExamTimetablesListPage() {
 									<Table>
 										<TableHeader className="sticky top-0 z-10 bg-slate-50 dark:bg-slate-900/50">
 											<TableRow>
+												<TableHead className="w-[40px] text-[11px]"></TableHead>
 												<TableHead className="w-[100px] text-[11px]">
 													<Button variant="ghost" size="sm" onClick={() => handleSort("exam_date")} className="h-auto p-0 font-medium hover:bg-transparent">
-														Exam Date
+														Date
 														<span className="ml-1">{getSortIcon("exam_date")}</span>
 													</Button>
 												</TableHead>
-												<TableHead className="w-[80px] text-[11px]">
+												<TableHead className="w-[60px] text-[11px]">
 													<Button variant="ghost" size="sm" onClick={() => handleSort("session")} className="h-auto p-0 font-medium hover:bg-transparent">
 														Session
 														<span className="ml-1">{getSortIcon("session")}</span>
+													</Button>
+												</TableHead>
+												<TableHead className="w-[90px] text-[11px]">
+													<Button variant="ghost" size="sm" onClick={() => handleSort("institution_code")} className="h-auto p-0 font-medium hover:bg-transparent">
+														Inst.
+														<span className="ml-1">{getSortIcon("institution_code")}</span>
+													</Button>
+												</TableHead>
+												<TableHead className="w-[110px] text-[11px]">
+													<Button variant="ghost" size="sm" onClick={() => handleSort("session_code")} className="h-auto p-0 font-medium hover:bg-transparent">
+														Exam Session
+														<span className="ml-1">{getSortIcon("session_code")}</span>
 													</Button>
 												</TableHead>
 												<TableHead className="text-[11px]">
@@ -767,110 +827,160 @@ export default function ExamTimetablesListPage() {
 														<span className="ml-1">{getSortIcon("course_code")}</span>
 													</Button>
 												</TableHead>
-												<TableHead className="text-[11px]">
-													<Button variant="ghost" size="sm" onClick={() => handleSort("program_name")} className="h-auto p-0 font-medium hover:bg-transparent">
-														Program
-														<span className="ml-1">{getSortIcon("program_name")}</span>
+												<TableHead className="w-[60px] text-[11px] text-center">
+													<Button variant="ghost" size="sm" onClick={() => handleSort("course_count")} className="h-auto p-0 font-medium hover:bg-transparent">
+														Crs
+														<span className="ml-1">{getSortIcon("course_count")}</span>
 													</Button>
 												</TableHead>
-												<TableHead className="w-[140px] text-[11px]">
-													<Button variant="ghost" size="sm" onClick={() => handleSort("session_name")} className="h-auto p-0 font-medium hover:bg-transparent">
-														Exam Session
-														<span className="ml-1">{getSortIcon("session_name")}</span>
+												<TableHead className="w-[60px] text-[11px] text-center">
+													<Button variant="ghost" size="sm" onClick={() => handleSort("student_count")} className="h-auto p-0 font-medium hover:bg-transparent">
+														Stds
+														<span className="ml-1">{getSortIcon("student_count")}</span>
 													</Button>
 												</TableHead>
-												<TableHead className="w-[80px] text-[11px]">
+												<TableHead className="w-[60px] text-[11px] text-center">
+													<Button variant="ghost" size="sm" onClick={() => handleSort("seat_alloc_count")} className="h-auto p-0 font-medium hover:bg-transparent">
+														Seats
+														<span className="ml-1">{getSortIcon("seat_alloc_count")}</span>
+													</Button>
+												</TableHead>
+												<TableHead className="w-[60px] text-[11px]">
 													<Button variant="ghost" size="sm" onClick={() => handleSort("exam_mode")} className="h-auto p-0 font-medium hover:bg-transparent">
 														Mode
 														<span className="ml-1">{getSortIcon("exam_mode")}</span>
 													</Button>
 												</TableHead>
-												<TableHead className="w-[90px] text-[11px]">
+												<TableHead className="w-[70px] text-[11px]">
 													<Button variant="ghost" size="sm" onClick={() => handleSort("is_published")} className="h-auto p-0 font-medium hover:bg-transparent">
 														Status
 														<span className="ml-1">{getSortIcon("is_published")}</span>
 													</Button>
 												</TableHead>
-												<TableHead className="w-[120px] text-[11px] text-center">Actions</TableHead>
+												<TableHead className="w-[150px] text-[11px] text-center">Actions</TableHead>
 											</TableRow>
 										</TableHeader>
 										<TableBody>
 											{loading ? (
 												<TableRow>
-													<TableCell colSpan={8} className="h-24 text-center text-[11px]">Loading…</TableCell>
+													<TableCell colSpan={12} className="h-24 text-center text-[11px]">Loading…</TableCell>
 												</TableRow>
 											) : paginatedItems.length ? (
 												<>
-													{paginatedItems.map((item) => (
-														<TableRow key={item.id}>
-															<TableCell className="text-[11px] font-medium">
-																{formatDate(item.exam_date)}
-															</TableCell>
-															<TableCell className="text-[11px]">
-																<Badge variant="outline" className="text-[11px]">
-																	{item.session}
-																</Badge>
-															</TableCell>
-															<TableCell className="text-[11px]">
-																<div className="flex flex-col">
-																	<span className="font-medium">{item.course_code}</span>
-																	<span className="text-[10px] text-muted-foreground">{item.course_title}</span>
-																</div>
-															</TableCell>
-															<TableCell className="text-[11px]">{item.program_name}</TableCell>
-															<TableCell className="text-[11px]">{item.session_name}</TableCell>
-															<TableCell>
-																<Badge
-																	variant={item.exam_mode?.toLowerCase() === 'online' ? 'default' : 'secondary'}
-																	className="text-[11px]"
-																>
-																	{item.exam_mode || 'Offline'}
-																</Badge>
-															</TableCell>
-															<TableCell>
-																<Badge
-																	variant={item.is_published ? "default" : "secondary"}
-																	className={`text-[11px] ${
-																		item.is_published
-																			? 'bg-green-100 text-green-800 hover:bg-green-200 dark:bg-green-900 dark:text-green-200'
-																			: 'bg-red-100 text-red-800 hover:bg-red-200 dark:bg-red-900 dark:text-red-200'
-																	}`}
-																>
-																	{item.is_published ? 'Published' : 'Draft'}
-																</Badge>
-															</TableCell>
-															<TableCell>
-																<div className="flex items-center justify-center gap-1">
-																	<Button variant="outline" size="sm" className="h-7 w-7 p-0" onClick={() => router.push(`/exam_timetable?id=${item.id}`)}>
-																		<Edit className="h-3 w-3" />
-																	</Button>
-																	<AlertDialog>
-																		<AlertDialogTrigger asChild>
-																			<Button variant="outline" size="sm" className="h-7 w-7 p-0 text-red-600 hover:text-red-700 hover:bg-red-50">
-																				<Trash2 className="h-3 w-3" />
+													{paginatedItems.map((item) => {
+														const dateKey = `${item.exam_date}-${item.session}`
+														const isExpanded = expandedRows.has(dateKey)
+														return (
+															<React.Fragment key={item.id}>
+																<TableRow>
+																	<TableCell className="text-[11px]">
+																		<Button
+																			variant="ghost"
+																			size="sm"
+																			className="h-6 w-6 p-0"
+																			onClick={() => {
+																				const newExpanded = new Set(expandedRows)
+																				if (isExpanded) {
+																					newExpanded.delete(dateKey)
+																				} else {
+																					newExpanded.add(dateKey)
+																				}
+																				setExpandedRows(newExpanded)
+																			}}
+																		>
+																			{isExpanded ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
+																		</Button>
+																	</TableCell>
+																	<TableCell className="text-[11px] font-medium">
+																		{formatDate(item.exam_date)}
+																	</TableCell>
+																	<TableCell className="text-[11px]">
+																		<Badge variant="outline" className="text-[11px]">
+																			{item.session}
+																		</Badge>
+																	</TableCell>
+																	<TableCell className="text-[11px]">{item.institution_code}</TableCell>
+																	<TableCell className="text-[11px]">{item.session_code}</TableCell>
+																	<TableCell className="text-[11px]">
+																		<div className="flex flex-col">
+																			<span className="font-medium">{item.course_code}</span>
+																			<span className="text-[10px] text-muted-foreground">{item.course_name}</span>
+																		</div>
+																	</TableCell>
+																	<TableCell className="text-[11px] text-center">
+																		<Badge variant="secondary" className="text-[11px]">{item.course_count || 0}</Badge>
+																	</TableCell>
+																	<TableCell className="text-[11px] text-center">
+																		<Badge variant="secondary" className="text-[11px]">{item.student_count || 0}</Badge>
+																	</TableCell>
+																	<TableCell className="text-[11px] text-center">
+																		<Badge variant="secondary" className="text-[11px]">{item.seat_alloc_count || 0}</Badge>
+																	</TableCell>
+																	<TableCell>
+																		<Badge
+																			variant={item.exam_mode?.toLowerCase() === 'online' ? 'default' : 'secondary'}
+																			className="text-[11px]"
+																		>
+																			{item.exam_mode || 'Offline'}
+																		</Badge>
+																	</TableCell>
+																	<TableCell>
+																		<Badge
+																			variant={item.is_published ? "default" : "secondary"}
+																			className={`text-[11px] ${
+																				item.is_published
+																					? 'bg-green-100 text-green-800 hover:bg-green-200 dark:bg-green-900 dark:text-green-200'
+																					: 'bg-red-100 text-red-800 hover:bg-red-200 dark:bg-red-900 dark:text-red-200'
+																			}`}
+																		>
+																			{item.is_published ? 'Published' : 'Draft'}
+																		</Badge>
+																	</TableCell>
+																	<TableCell>
+																		<div className="flex items-center justify-center gap-1">
+																			<Button variant="outline" size="sm" className="h-7 w-7 p-0" onClick={() => router.push(`/exam_timetable?id=${item.id}`)}>
+																				<Edit className="h-3 w-3" />
 																			</Button>
-																		</AlertDialogTrigger>
-																		<AlertDialogContent>
-																			<AlertDialogHeader>
-																				<AlertDialogTitle>Delete Exam Timetable</AlertDialogTitle>
-																				<AlertDialogDescription>
-																					Are you sure you want to delete this exam timetable? This action cannot be undone.
-																				</AlertDialogDescription>
-																			</AlertDialogHeader>
-																			<AlertDialogFooter>
-																				<AlertDialogCancel>Cancel</AlertDialogCancel>
-																				<AlertDialogAction onClick={() => remove(item.id)} className="bg-red-600 hover:bg-red-700">Delete</AlertDialogAction>
-																			</AlertDialogFooter>
-																		</AlertDialogContent>
-																	</AlertDialog>
-																</div>
-															</TableCell>
-														</TableRow>
-													))}
+																			<Button
+																				variant="outline"
+																				size="sm"
+																				className="h-7 w-7 p-0"
+																				onClick={() => {
+																					setSelectedTimetable(item)
+																					setShowHallAllocation(true)
+																				}}
+																			>
+																				<DoorOpen className="h-3 w-3" />
+																			</Button>
+																			<AlertDialog>
+																				<AlertDialogTrigger asChild>
+																					<Button variant="outline" size="sm" className="h-7 w-7 p-0 text-red-600 hover:text-red-700 hover:bg-red-50">
+																						<Trash2 className="h-3 w-3" />
+																					</Button>
+																				</AlertDialogTrigger>
+																				<AlertDialogContent>
+																					<AlertDialogHeader>
+																						<AlertDialogTitle>Delete Exam Timetable</AlertDialogTitle>
+																						<AlertDialogDescription>
+																							Are you sure you want to delete this exam timetable? This action cannot be undone.
+																						</AlertDialogDescription>
+																					</AlertDialogHeader>
+																					<AlertDialogFooter>
+																						<AlertDialogCancel>Cancel</AlertDialogCancel>
+																						<AlertDialogAction onClick={() => remove(item.id)} className="bg-red-600 hover:bg-red-700">Delete</AlertDialogAction>
+																					</AlertDialogFooter>
+																				</AlertDialogContent>
+																			</AlertDialog>
+																		</div>
+																	</TableCell>
+																</TableRow>
+															</React.Fragment>
+														)
+													})}
 												</>
 											) : (
 												<TableRow>
-													<TableCell colSpan={8} className="h-24 text-center text-[11px]">No data</TableCell>
+													<TableCell colSpan={12} className="h-24 text-center text-[11px]">No data</TableCell>
 												</TableRow>
 											)}
 										</TableBody>
@@ -1003,6 +1113,75 @@ export default function ExamTimetablesListPage() {
 						</AlertDialogFooter>
 					</AlertDialogContent>
 				</AlertDialog>
+
+				{/* Hall Allocation Dialog */}
+				<Dialog open={showHallAllocation} onOpenChange={setShowHallAllocation}>
+					<DialogContent className="max-w-5xl max-h-[90vh] overflow-y-auto">
+						<DialogHeader>
+							<DialogTitle className="flex items-center gap-2">
+								<DoorOpen className="h-5 w-5" />
+								Hall Allocation - {selectedTimetable?.course_code}
+							</DialogTitle>
+							<DialogDescription>
+								Allocate students to examination halls for {selectedTimetable?.course_name} on {selectedTimetable?.exam_date} ({selectedTimetable?.session})
+							</DialogDescription>
+						</DialogHeader>
+
+						<div className="space-y-4">
+							{/* Summary */}
+							<div className="grid grid-cols-3 gap-3">
+								<div className="bg-blue-50 dark:bg-blue-900/10 border border-blue-200 rounded-lg p-3">
+									<div className="text-xs text-blue-600 font-medium mb-1">Total Students</div>
+									<div className="text-2xl font-bold text-blue-700">{selectedTimetable?.student_count || 0}</div>
+								</div>
+								<div className="bg-green-50 dark:bg-green-900/10 border border-green-200 rounded-lg p-3">
+									<div className="text-xs text-green-600 font-medium mb-1">Seats Allocated</div>
+									<div className="text-2xl font-bold text-green-700">{selectedTimetable?.seat_alloc_count || 0}</div>
+								</div>
+								<div className="bg-orange-50 dark:bg-orange-900/10 border border-orange-200 rounded-lg p-3">
+									<div className="text-xs text-orange-600 font-medium mb-1">Remaining</div>
+									<div className="text-2xl font-bold text-orange-700">
+										{(selectedTimetable?.student_count || 0) - (selectedTimetable?.seat_alloc_count || 0)}
+									</div>
+								</div>
+							</div>
+
+							{/* Room Selection - Placeholder for future implementation */}
+							<div className="border rounded-lg p-4">
+								<h3 className="font-semibold mb-2 flex items-center gap-2">
+									<MapPin className="h-4 w-4" />
+									Room Allocation
+								</h3>
+								<p className="text-sm text-muted-foreground">
+									Room selection and seat allocation interface will be implemented here.
+									This will include:
+								</p>
+								<ul className="text-sm text-muted-foreground mt-2 space-y-1 ml-4">
+									<li>• Select rooms sorted by room_order</li>
+									<li>• Enter column start (C1, C2, etc.)</li>
+									<li>• Enter student count (validated against room capacity)</li>
+									<li>• Auto-populate students by program_code, attempt_number, student_reg_no</li>
+									<li>• Display room capacity, balance, rows, and columns</li>
+								</ul>
+							</div>
+						</div>
+
+						<DialogFooter>
+							<Button variant="outline" onClick={() => setShowHallAllocation(false)}>
+								Close
+							</Button>
+							<Button onClick={() => {
+								toast({
+									title: "Feature Coming Soon",
+									description: "Complete hall allocation implementation is in progress.",
+								})
+							}}>
+								<Users className="h-4 w-4 mr-2" />
+								Allocate Seats
+							</Button>
+						</DialogFooter>
+					</DialogContent>
+				</Dialog>
 
 				<AppFooter />
 			</SidebarInset>

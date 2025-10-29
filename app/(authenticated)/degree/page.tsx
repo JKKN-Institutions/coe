@@ -18,6 +18,7 @@ import { Label } from "@/components/ui/label"
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet"
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog"
 import { useToast } from "@/hooks/use-toast"
+import { useFormValidation, ValidationPresets } from "@/hooks/use-form-validation"
 import Link from "next/link"
 import { PlusCircle, Edit, Trash2, Search, ChevronLeft, ChevronRight, ArrowUpDown, ArrowUp, ArrowDown, GraduationCap, TrendingUp, FileSpreadsheet, RefreshCw, CheckCircle, XCircle, AlertTriangle } from "lucide-react"
 
@@ -76,7 +77,13 @@ export default function DegreePage() {
     description: "",
         is_active: true,
   })
-  const [errors, setErrors] = useState<Record<string, string>>({})
+
+  // Use the custom validation hook
+  const { errors, validate, clearErrors } = useFormValidation({
+    institution_code: [ValidationPresets.required('Institution code is required')],
+    degree_code: [ValidationPresets.required('Degree code is required')],
+    degree_name: [ValidationPresets.required('Degree name is required')],
+  })
 
   // Fetch data from API
   const fetchDegrees = async () => {
@@ -133,7 +140,7 @@ export default function DegreePage() {
       description: "",
       is_active: true,
     })
-    setErrors({})
+    clearErrors()
     setEditing(null)
   }
 
@@ -197,17 +204,16 @@ export default function DegreePage() {
     setSheetOpen(true)
   }
 
-  const validate = () => {
-    const e: Record<string, string> = {}
-    if (!formData.institution_code.trim()) e.institution_code = "Required"
-    if (!formData.degree_code.trim()) e.degree_code = "Required"
-    if (!formData.degree_name.trim()) e.degree_name = "Required"
-    setErrors(e)
-    return Object.keys(e).length === 0
-  }
-
   const save = async () => {
-    if (!validate()) return
+    if (!validate(formData)) {
+      toast({
+        title: "⚠️ Validation Error",
+        description: "Please fix all validation errors before submitting.",
+        variant: "destructive",
+        className: "bg-red-50 border-red-200 text-red-800 dark:bg-red-900/20 dark:border-red-800 dark:text-red-200",
+      })
+      return
+    }
 
     try {
       setLoading(true)

@@ -17,7 +17,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Switch } from "@/components/ui/switch"
 import { useToast } from "@/hooks/use-toast"
 import Link from "next/link"
-import { PlusCircle, Edit, Trash2, Save, RefreshCw, Link2, BookText, School, Calendar, Plus, X, ChevronDown, ChevronRight, CheckCircle2, Info } from "lucide-react"
+import { PlusCircle, Edit, Trash2, Save, RefreshCw, Link2, BookText, School, Calendar, Plus, X, ChevronDown, ChevronRight, CheckCircle2, Info, FileSpreadsheet, Download, Upload, XCircle, AlertTriangle } from "lucide-react"
+import * as XLSX from "xlsx"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
 import { Badge } from "@/components/ui/badge"
@@ -106,6 +107,20 @@ export default function CourseMappingAddPage() {
 
 	// Popover open state for course selection (track by semesterIndex_rowIndex)
 	const [openPopovers, setOpenPopovers] = useState<{ [key: string]: boolean }>({})
+
+	// Upload summary and error tracking
+	const [errorPopupOpen, setErrorPopupOpen] = useState(false)
+	const [importErrors, setImportErrors] = useState<Array<{
+		row: number
+		semester_code: string
+		course_code: string
+		errors: string[]
+	}>>([])
+	const [uploadSummary, setUploadSummary] = useState<{
+		total: number
+		success: number
+		failed: number
+	}>({ total: 0, success: 0, failed: 0 })
 
 	// Fetch institutions on mount and handle URL parameters
 	useEffect(() => {
@@ -698,6 +713,381 @@ export default function CourseMappingAddPage() {
 		}
 	}
 
+	// Export current mappings to Excel
+	const handleExport = () => {
+		// Flatten all semester mappings into a single array
+		const allMappings = semesterTables.flatMap(table =>
+			table.mappings.map(mapping => {
+				const course = courses.find(c => c.id === mapping.course_id)
+				return {
+					'Institution Code': mapping.institution_code,
+					'Program Code': mapping.program_code,
+					'Regulation Code': mapping.regulation_code,
+					'Semester Code': mapping.semester_code,
+					'Semester Name': table.semester.semester_name,
+					'Course Code': course?.course_code || '',
+					'Course Title': course?.course_title || course?.course_name || '',
+					'Course Category': mapping.course_category || '',
+					'Course Group': mapping.course_group || 'General',
+					'Course Order': mapping.course_order || 0,
+					'Internal Pass Mark': mapping.internal_pass_mark || 0,
+					'Internal Max Mark': mapping.internal_max_mark || 0,
+					'Internal Converted Mark': mapping.internal_converted_mark || 0,
+					'External Pass Mark': mapping.external_pass_mark || 0,
+					'External Max Mark': mapping.external_max_mark || 0,
+					'External Converted Mark': mapping.external_converted_mark || 0,
+					'Total Pass Mark': mapping.total_pass_mark || 0,
+					'Total Max Mark': mapping.total_max_mark || 0,
+					'Annual Semester': mapping.annual_semester ? 'Yes' : 'No',
+					'Registration Based': mapping.registration_based ? 'Yes' : 'No',
+					'Status': mapping.is_active ? 'Active' : 'Inactive',
+				}
+			})
+		)
+
+		if (allMappings.length === 0) {
+			toast({
+				title: '⚠️ No Data',
+				description: 'No course mappings available to export.',
+				variant: 'destructive',
+				className: 'bg-yellow-50 border-yellow-200 text-yellow-800 dark:bg-yellow-900/20 dark:border-yellow-800 dark:text-yellow-200'
+			})
+			return
+		}
+
+		const ws = XLSX.utils.json_to_sheet(allMappings)
+
+		// Set column widths
+		const colWidths = [
+			{ wch: 18 }, { wch: 15 }, { wch: 18 }, { wch: 15 }, { wch: 20 },
+			{ wch: 15 }, { wch: 35 }, { wch: 18 }, { wch: 18 }, { wch: 12 },
+			{ wch: 15 }, { wch: 15 }, { wch: 20 }, { wch: 15 }, { wch: 15 },
+			{ wch: 20 }, { wch: 15 }, { wch: 15 }, { wch: 15 }, { wch: 18 }, { wch: 10 }
+		]
+		ws['!cols'] = colWidths
+
+		const wb = XLSX.utils.book_new()
+		XLSX.utils.book_append_sheet(wb, ws, 'Course Mappings')
+		XLSX.writeFile(wb, `course_mappings_export_${new Date().toISOString().split('T')[0]}.xlsx`)
+
+		toast({
+			title: '✅ Export Complete',
+			description: `Exported ${allMappings.length} course mapping${allMappings.length > 1 ? 's' : ''} to Excel.`,
+			className: 'bg-green-50 border-green-200 text-green-800 dark:bg-green-900/20 dark:border-green-800 dark:text-green-200'
+		})
+	}
+
+	// Export template with instructions
+	const handleTemplateExport = () => {
+		const wb = XLSX.utils.book_new()
+
+		// Sheet 1: Template with sample data
+		const sample = [{
+			'Institution Code *': selectedInstitution || 'JKKN',
+			'Program Code *': selectedProgram || 'BCA',
+			'Regulation Code *': selectedRegulation || 'R2021',
+			'Semester Code *': 'SEM1',
+			'Course Code *': 'BCA101',
+			'Course Group': 'General',
+			'Course Order': 1,
+			'Internal Pass Mark': 14,
+			'Internal Max Mark': 40,
+			'Internal Converted Mark': 25,
+			'External Pass Mark': 26,
+			'External Max Mark': 60,
+			'External Converted Mark': 75,
+			'Total Pass Mark': 40,
+			'Total Max Mark': 100,
+			'Annual Semester': 'No',
+			'Registration Based': 'No',
+			'Status': 'Active'
+		}]
+
+		const ws = XLSX.utils.json_to_sheet(sample)
+
+		// Set column widths
+		const colWidths = [
+			{ wch: 20 }, { wch: 18 }, { wch: 20 }, { wch: 18 }, { wch: 18 },
+			{ wch: 18 }, { wch: 12 }, { wch: 18 }, { wch: 18 }, { wch: 22 },
+			{ wch: 18 }, { wch: 18 }, { wch: 22 }, { wch: 18 }, { wch: 18 },
+			{ wch: 18 }, { wch: 20 }, { wch: 10 }
+		]
+		ws['!cols'] = colWidths
+
+		// Style headers
+		const range = XLSX.utils.decode_range(ws['!ref'] || 'A1')
+		const mandatoryFields = ['Institution Code *', 'Program Code *', 'Regulation Code *', 'Semester Code *', 'Course Code *']
+
+		for (let col = range.s.c; col <= range.e.c; col++) {
+			const cellAddress = XLSX.utils.encode_cell({ r: 0, c: col })
+			if (!ws[cellAddress]) continue
+
+			const cell = ws[cellAddress]
+			const isMandatory = mandatoryFields.includes(cell.v as string)
+
+			if (isMandatory) {
+				cell.s = {
+					font: { color: { rgb: 'FF0000' }, bold: true },
+					fill: { fgColor: { rgb: 'FFE6E6' } }
+				}
+			} else {
+				cell.s = {
+					font: { bold: true },
+					fill: { fgColor: { rgb: 'F0F0F0' } }
+				}
+			}
+		}
+
+		XLSX.utils.book_append_sheet(wb, ws, 'Template')
+
+		// Sheet 2: Available Courses Reference
+		const courseReference = courses.map(course => ({
+			'Course Code': course.course_code,
+			'Course Title': course.course_title || course.course_name,
+			'Course Category': course.course_category || course.course_type || '',
+			'Credits': course.credits || 0,
+			'Institution Code': course.institution_code,
+			'Regulation Code': course.regulation_code
+		}))
+
+		if (courseReference.length > 0) {
+			const wsRef = XLSX.utils.json_to_sheet(courseReference)
+			wsRef['!cols'] = [
+				{ wch: 18 }, { wch: 40 }, { wch: 20 }, { wch: 10 }, { wch: 18 }, { wch: 18 }
+			]
+
+			// Style reference sheet header
+			const refRange = XLSX.utils.decode_range(wsRef['!ref'] || 'A1')
+			for (let col = refRange.s.c; col <= refRange.e.c; col++) {
+				const cellAddress = XLSX.utils.encode_cell({ r: 0, c: col })
+				if (wsRef[cellAddress]) {
+					wsRef[cellAddress].s = {
+						font: { bold: true, color: { rgb: '1F2937' } },
+						fill: { fgColor: { rgb: 'DBEAFE' } }
+					}
+				}
+			}
+
+			XLSX.utils.book_append_sheet(wb, wsRef, 'Available Courses')
+		}
+
+		// Sheet 3: Semesters Reference
+		const semesterReference = semesters.map(sem => ({
+			'Semester Code': sem.semester_code,
+			'Semester Name': sem.semester_name,
+			'Semester Number': sem.semester_number
+		}))
+
+		if (semesterReference.length > 0) {
+			const wsSem = XLSX.utils.json_to_sheet(semesterReference)
+			wsSem['!cols'] = [{ wch: 18 }, { wch: 25 }, { wch: 18 }]
+
+			const semRange = XLSX.utils.decode_range(wsSem['!ref'] || 'A1')
+			for (let col = semRange.s.c; col <= semRange.e.c; col++) {
+				const cellAddress = XLSX.utils.encode_cell({ r: 0, c: col })
+				if (wsSem[cellAddress]) {
+					wsSem[cellAddress].s = {
+						font: { bold: true, color: { rgb: '1F2937' } },
+						fill: { fgColor: { rgb: 'DBEAFE' } }
+					}
+				}
+			}
+
+			XLSX.utils.book_append_sheet(wb, wsSem, 'Semesters')
+		}
+
+		XLSX.writeFile(wb, `course_mapping_template_${new Date().toISOString().split('T')[0]}.xlsx`)
+
+		toast({
+			title: '✅ Template Downloaded',
+			description: 'Course mapping template has been downloaded successfully.',
+			className: 'bg-green-50 border-green-200 text-green-800 dark:bg-green-900/20 dark:border-green-800 dark:text-green-200'
+		})
+	}
+
+	// Import course mappings from Excel
+	const handleImport = () => {
+		const input = document.createElement('input')
+		input.type = 'file'
+		input.accept = '.xlsx,.xls'
+		input.onchange = async (e) => {
+			const file = (e.target as HTMLInputElement).files?.[0]
+			if (!file) return
+
+			try {
+				setLoading(true)
+				const data = new Uint8Array(await file.arrayBuffer())
+				const wb = XLSX.read(data, { type: 'array' })
+				const ws = wb.Sheets[wb.SheetNames[0]]
+				const jsonData = XLSX.utils.sheet_to_json(ws) as Record<string, unknown>[]
+
+				if (jsonData.length === 0) {
+					toast({
+						title: '❌ Empty File',
+						description: 'The uploaded file contains no data.',
+						variant: 'destructive',
+						className: 'bg-red-50 border-red-200 text-red-800 dark:bg-red-900/20 dark:border-red-800 dark:text-red-200'
+					})
+					setLoading(false)
+					return
+				}
+
+				const validationErrors: Array<{
+					row: number
+					semester_code: string
+					course_code: string
+					errors: string[]
+				}> = []
+
+				let successCount = 0
+				let errorCount = 0
+
+				for (let i = 0; i < jsonData.length; i++) {
+					const row = jsonData[i]
+					const rowNumber = i + 2 // +2 for header row
+					const errors: string[] = []
+
+					// Extract and validate required fields
+					const institutionCode = String(row['Institution Code *'] || row['Institution Code'] || '')
+					const programCode = String(row['Program Code *'] || row['Program Code'] || '')
+					const regulationCode = String(row['Regulation Code *'] || row['Regulation Code'] || '')
+					const semesterCode = String(row['Semester Code *'] || row['Semester Code'] || '')
+					const courseCode = String(row['Course Code *'] || row['Course Code'] || '')
+
+					if (!institutionCode.trim()) errors.push('Institution Code is required')
+					if (!programCode.trim()) errors.push('Program Code is required')
+					if (!regulationCode.trim()) errors.push('Regulation Code is required')
+					if (!semesterCode.trim()) errors.push('Semester Code is required')
+					if (!courseCode.trim()) errors.push('Course Code is required')
+
+					// Find the course by course_code
+					const course = courses.find(c => c.course_code === courseCode)
+					if (!course && courseCode.trim()) {
+						errors.push(`Course "${courseCode}" not found in available courses`)
+					}
+
+					if (errors.length > 0) {
+						errorCount++
+						validationErrors.push({
+							row: rowNumber,
+							semester_code: semesterCode || 'N/A',
+							course_code: courseCode || 'N/A',
+							errors
+						})
+						continue
+					}
+
+					// Build mapping payload
+					const mapping = {
+						institution_code: institutionCode,
+						program_code: programCode,
+						regulation_code: regulationCode,
+						semester_code: semesterCode,
+						course_id: course!.id,
+						course_group: String(row['Course Group'] || 'General'),
+						course_order: Number(row['Course Order'] || 0),
+						internal_pass_mark: Number(row['Internal Pass Mark'] || 0),
+						internal_max_mark: Number(row['Internal Max Mark'] || 0),
+						internal_converted_mark: Number(row['Internal Converted Mark'] || 0),
+						external_pass_mark: Number(row['External Pass Mark'] || 0),
+						external_max_mark: Number(row['External Max Mark'] || 0),
+						external_converted_mark: Number(row['External Converted Mark'] || 0),
+						total_pass_mark: Number(row['Total Pass Mark'] || 0),
+						total_max_mark: Number(row['Total Max Mark'] || 0),
+						annual_semester: String(row['Annual Semester'] || 'No').toLowerCase() === 'yes',
+						registration_based: String(row['Registration Based'] || 'No').toLowerCase() === 'yes',
+						is_active: String(row['Status'] || 'Active').toLowerCase() === 'active'
+					}
+
+					// Save to database
+					try {
+						const response = await fetch('/api/course-mapping', {
+							method: 'POST',
+							headers: { 'Content-Type': 'application/json' },
+							body: JSON.stringify(mapping)
+						})
+
+						if (response.ok) {
+							successCount++
+						} else {
+							const errorData = await response.json()
+							errorCount++
+							validationErrors.push({
+								row: rowNumber,
+								semester_code: semesterCode,
+								course_code: courseCode,
+								errors: [errorData.error || 'Failed to save mapping']
+							})
+						}
+					} catch (error) {
+						errorCount++
+						validationErrors.push({
+							row: rowNumber,
+							semester_code: semesterCode,
+							course_code: courseCode,
+							errors: [error instanceof Error ? error.message : 'Network error']
+						})
+					}
+				}
+
+				setLoading(false)
+
+				// Update upload summary
+				setUploadSummary({
+					total: jsonData.length,
+					success: successCount,
+					failed: errorCount
+				})
+
+				// Show error dialog if needed
+				if (validationErrors.length > 0) {
+					setImportErrors(validationErrors)
+					setErrorPopupOpen(true)
+				}
+
+				// Reload mappings
+				if (successCount > 0) {
+					await loadExistingMappings()
+				}
+
+				// Show appropriate toast
+				if (successCount > 0 && errorCount === 0) {
+					toast({
+						title: '✅ Upload Complete',
+						description: `Successfully uploaded all ${successCount} row${successCount > 1 ? 's' : ''} (${successCount} mapping${successCount > 1 ? 's' : ''}) to the database.`,
+						className: 'bg-green-50 border-green-200 text-green-800 dark:bg-green-900/20 dark:border-green-800 dark:text-green-200',
+						duration: 5000
+					})
+				} else if (successCount > 0 && errorCount > 0) {
+					toast({
+						title: '⚠️ Partial Upload Success',
+						description: `Processed ${jsonData.length} row${jsonData.length > 1 ? 's' : ''}: ${successCount} successful, ${errorCount} failed. View error details below.`,
+						className: 'bg-yellow-50 border-yellow-200 text-yellow-800 dark:bg-yellow-900/20 dark:border-yellow-800 dark:text-yellow-200',
+						duration: 6000
+					})
+				} else if (errorCount > 0) {
+					toast({
+						title: '❌ Upload Failed',
+						description: `Processed ${jsonData.length} row${jsonData.length > 1 ? 's' : ''}: 0 successful, ${errorCount} failed. View error details below.`,
+						variant: 'destructive',
+						className: 'bg-red-50 border-red-200 text-red-800 dark:bg-red-900/20 dark:border-red-800 dark:text-red-200',
+						duration: 6000
+					})
+				}
+			} catch (err) {
+				console.error('Import error:', err)
+				setLoading(false)
+				toast({
+					title: '❌ Import Error',
+					description: 'Import failed. Please check your file format and try again.',
+					variant: 'destructive',
+					className: 'bg-red-50 border-red-200 text-red-800 dark:bg-red-900/20 dark:border-red-800 dark:text-red-200'
+				})
+			}
+		}
+		input.click()
+	}
+
 	return (
 		<SidebarProvider>
 			<AppSidebar />
@@ -737,6 +1127,18 @@ export default function CourseMappingAddPage() {
 									<Button variant="outline" size="sm" className="h-8 text-[11px] px-2" onClick={handleRefresh} disabled={loading || !selectedRegulation}>
 										<RefreshCw className={`h-3 w-3 mr-1 ${loading ? 'animate-spin' : ''}`} />
 										Refresh
+									</Button>
+									<Button variant="outline" size="sm" className="h-8 text-[11px] px-2" onClick={handleTemplateExport}>
+										<FileSpreadsheet className="h-3 w-3 mr-1" />
+										Template
+									</Button>
+									<Button variant="outline" size="sm" className="h-8 text-[11px] px-2" onClick={handleExport} disabled={semesterTables.length === 0}>
+										<Download className="h-3 w-3 mr-1" />
+										Download
+									</Button>
+									<Button variant="outline" size="sm" className="h-8 text-[11px] px-2" onClick={handleImport} disabled={!selectedInstitution || !selectedProgram || !selectedRegulation}>
+										<Upload className="h-3 w-3 mr-1" />
+										Upload
 									</Button>
 									<Button variant="outline" size="sm" className="h-8 text-[11px] px-2" onClick={resetForm}>
 										Reset
@@ -1159,6 +1561,119 @@ export default function CourseMappingAddPage() {
 				</div>
 				<AppFooter />
 			</SidebarInset>
+
+			{/* Error Popup Dialog */}
+			<AlertDialog open={errorPopupOpen} onOpenChange={setErrorPopupOpen}>
+				<AlertDialogContent className="max-w-4xl max-h-[80vh] overflow-y-auto">
+					<AlertDialogHeader>
+						<div className="flex items-center gap-3">
+							<div className="h-10 w-10 rounded-full bg-red-100 dark:bg-red-900/20 flex items-center justify-center">
+								<XCircle className="h-5 w-5 text-red-600 dark:text-red-400" />
+							</div>
+							<div>
+								<AlertDialogTitle className="text-xl font-bold text-red-600 dark:text-red-400">
+									Data Validation Errors
+								</AlertDialogTitle>
+								<AlertDialogDescription className="text-sm text-muted-foreground mt-1">
+									Please fix the following errors before importing the data
+								</AlertDialogDescription>
+							</div>
+						</div>
+					</AlertDialogHeader>
+
+					<div className="space-y-4">
+						{/* Upload Summary */}
+						{uploadSummary.total > 0 && (
+							<div className="grid grid-cols-3 gap-3">
+								<div className="bg-blue-50 dark:bg-blue-900/10 border border-blue-200 dark:border-blue-800 rounded-lg p-3">
+									<div className="text-xs text-blue-600 dark:text-blue-400 font-medium mb-1">Total Rows</div>
+									<div className="text-2xl font-bold text-blue-700 dark:text-blue-300">{uploadSummary.total}</div>
+								</div>
+								<div className="bg-green-50 dark:bg-green-900/10 border border-green-200 dark:border-green-800 rounded-lg p-3">
+									<div className="text-xs text-green-600 dark:text-green-400 font-medium mb-1">Successful</div>
+									<div className="text-2xl font-bold text-green-700 dark:text-green-300">{uploadSummary.success}</div>
+								</div>
+								<div className="bg-red-50 dark:bg-red-900/10 border border-red-200 dark:border-red-800 rounded-lg p-3">
+									<div className="text-xs text-red-600 dark:text-red-400 font-medium mb-1">Failed</div>
+									<div className="text-2xl font-bold text-red-700 dark:text-red-300">{uploadSummary.failed}</div>
+								</div>
+							</div>
+						)}
+
+						<div className="bg-red-50 dark:bg-red-900/10 border border-red-200 dark:border-red-800 rounded-lg p-4">
+							<div className="flex items-center gap-2 mb-2">
+								<AlertTriangle className="h-4 w-4 text-red-600 dark:text-red-400" />
+								<span className="font-semibold text-red-800 dark:text-red-200">
+									{importErrors.length} row{importErrors.length > 1 ? 's' : ''} failed validation
+								</span>
+							</div>
+							<p className="text-sm text-red-700 dark:text-red-300">
+								Please correct these errors in your Excel file and try uploading again. Row numbers correspond to your Excel file (including header row).
+							</p>
+						</div>
+
+						<div className="space-y-3">
+							{importErrors.map((error, index) => (
+								<div key={index} className="border border-red-200 dark:border-red-800 rounded-lg p-4 bg-red-50/50 dark:bg-red-900/5">
+									<div className="flex items-start justify-between mb-2">
+										<div className="flex items-center gap-2">
+											<Badge variant="outline" className="text-xs bg-red-100 text-red-800 border-red-300 dark:bg-red-900/20 dark:text-red-200 dark:border-red-700">
+												Row {error.row}
+											</Badge>
+											<span className="font-medium text-sm">
+												{error.semester_code} - {error.course_code}
+											</span>
+										</div>
+									</div>
+
+									<div className="space-y-1">
+										{error.errors.map((err, errIndex) => (
+											<div key={errIndex} className="flex items-start gap-2 text-sm">
+												<XCircle className="h-3 w-3 text-red-500 mt-0.5 flex-shrink-0" />
+												<span className="text-red-700 dark:text-red-300">{err}</span>
+											</div>
+										))}
+									</div>
+								</div>
+							))}
+						</div>
+
+						<div className="bg-blue-50 dark:bg-blue-900/10 border border-blue-200 dark:border-blue-800 rounded-lg p-4">
+							<div className="flex items-start gap-2">
+								<div className="h-5 w-5 rounded-full bg-blue-100 dark:bg-blue-900/20 flex items-center justify-center mt-0.5">
+									<span className="text-xs font-bold text-blue-600 dark:text-blue-400">i</span>
+								</div>
+								<div>
+									<h4 className="font-semibold text-blue-800 dark:text-blue-200 text-sm mb-1">Common Fixes:</h4>
+									<ul className="text-xs text-blue-700 dark:text-blue-300 space-y-1">
+										<li>• Ensure Institution Code, Program Code, Regulation Code, Semester Code, and Course Code are provided</li>
+										<li>• Course Code must exist in the available courses for the selected institution and regulation</li>
+										<li>• Semester Code must match one of the available semesters for the selected program</li>
+										<li>• Mark values should be numeric and within valid ranges</li>
+										<li>• Annual Semester and Registration Based: Yes/No</li>
+										<li>• Status: Active/Inactive</li>
+									</ul>
+								</div>
+							</div>
+						</div>
+					</div>
+
+					<AlertDialogFooter>
+						<AlertDialogCancel className="bg-gray-100 hover:bg-gray-200 dark:bg-gray-800 dark:hover:bg-gray-700">
+							Close
+						</AlertDialogCancel>
+						<Button
+							onClick={() => {
+								setErrorPopupOpen(false)
+								setImportErrors([])
+							}}
+							className="bg-blue-600 hover:bg-blue-700 text-white"
+						>
+							Try Again
+						</Button>
+					</AlertDialogFooter>
+				</AlertDialogContent>
+			</AlertDialog>
 		</SidebarProvider>
 	)
 }

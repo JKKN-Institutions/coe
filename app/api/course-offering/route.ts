@@ -45,26 +45,99 @@ export async function GET(request: Request) {
 			return NextResponse.json({ error: 'Failed to fetch course offer' }, { status: 500 })
 		}
 
-		// Fetch course data from courses table using course_code
-		const { data: courses, error: coursesError } = await supabase
-			.from('courses')
-			.select('course_code, course_title')
+		// Fetch course_mapping data with courses and semesters relationships
+		// course_offerings.course_id -> course_mapping.id
+		// course_mapping.course_id -> courses.id
+		// course_mapping.semester_code -> semesters.semester_code
+		const courseMappingIds = (offerings || []).map((o: any) => o.course_id).filter(Boolean)
 
-		if (coursesError) {
-			console.error('Courses fetch error:', coursesError)
-			// Continue without course names rather than failing completely
+		let courseMappingData: any[] = []
+		if (courseMappingIds.length > 0) {
+			const { data: mappingData, error: mappingError } = await supabase
+				.from('course_mapping')
+				.select(`
+					id,
+					course_id,
+					semester_code,
+					program_code,
+					courses (
+						id,
+						course_code,
+						course_name,
+						institution_code,
+						regulation_code
+					)
+				`)
+				.in('id', courseMappingIds)
+
+			if (mappingError) {
+				console.error('Course mapping fetch error:', mappingError)
+				console.error('Error details:', JSON.stringify(mappingError, null, 2))
+				// Continue without course details rather than failing completely
+			} else {
+				courseMappingData = mappingData || []
+			}
 		}
 
-		// Create a map for quick lookup
-		const courseMap = new Map(
-			(courses || []).map((c: any) => [c.course_code, c.course_title])
+		// Fetch semesters data to get semester_name from semester_code
+		const semesterCodes = courseMappingData
+			.map((cm: any) => cm.semester_code)
+			.filter(Boolean)
+
+		let semestersData: any[] = []
+		if (semesterCodes.length > 0) {
+			const { data: semData, error: semError } = await supabase
+				.from('semesters')
+				.select('semester_code, semester_name, semester_number')
+				.in('semester_code', semesterCodes)
+
+			if (semError) {
+				console.error('Semesters fetch error:', semError)
+				// Continue without semester names
+			} else {
+				semestersData = semData || []
+			}
+		}
+
+		// Create a map for semester lookups: semester_code -> semester_name
+		const semesterMap = new Map(
+			semestersData.map((sem: any) => [sem.semester_code, sem])
 		)
 
-		// Transform the data to include course_title by matching course_code
-		const transformedData = (offerings || []).map((item: any) => ({
-			...item,
-			course_title: courseMap.get(item.course_code) || null
-		}))
+		// Create a map for quick lookup: course_mapping_id -> course details
+		const courseMappingMap = new Map(
+			courseMappingData.map((cm: any) => {
+				const semesterInfo = semesterMap.get(cm.semester_code)
+				return [
+					cm.id,
+					{
+						course_code: cm.courses?.course_code || null,
+						course_name: cm.courses?.course_name || null,
+						program_code: cm.program_code || null,
+						semester_code: cm.semester_code || null,
+						semester_name: semesterInfo?.semester_name || null,
+						semester_number: semesterInfo?.semester_number || null,
+						institution_code: cm.courses?.institution_code || null,
+						regulation_code: cm.courses?.regulation_code || null
+					}
+				]
+			})
+		)
+
+		// Transform the data to include course details from courses table and semester info
+		const transformedData = (offerings || []).map((item: any) => {
+			const courseDetails = courseMappingMap.get(item.course_id) || {}
+			return {
+				...item,
+				course_title: courseDetails.course_name || item.course_code || null,
+				course_program_code: courseDetails.program_code || null,
+				course_semester_code: courseDetails.semester_code || null,
+				course_semester_name: courseDetails.semester_name || null,
+				course_semester_number: courseDetails.semester_number || null,
+				course_institution_code: courseDetails.institution_code || null,
+				course_regulation_code: courseDetails.regulation_code || null
+			}
+		})
 
 		return NextResponse.json(transformedData)
 	} catch (e) {

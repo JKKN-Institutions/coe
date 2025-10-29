@@ -14,8 +14,12 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Checkbox } from "@/components/ui/checkbox"
 import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog"
+import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command"
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { useToast } from "@/hooks/use-toast"
-import { Loader2, ClipboardCheck, Calendar, BookOpen, Clock, Users, CheckCircle, XCircle, AlertTriangle } from "lucide-react"
+import { Loader2, ClipboardCheck, Calendar, BookOpen, Clock, Users, CheckCircle, XCircle, AlertTriangle, Check, ChevronsUpDown } from "lucide-react"
+import { cn } from "@/lib/utils"
 import Link from "next/link"
 
 interface Institution {
@@ -33,11 +37,15 @@ interface ExaminationSession {
 	end_date: string
 }
 
+interface Program {
+	id: string
+	program_code: string
+	program_name: string
+}
+
 interface CourseOffering {
-	course_offering_id: string
 	course_code: string
 	course_title: string
-	course_id: string
 }
 
 interface ExamDate {
@@ -53,13 +61,19 @@ interface StudentRegistration {
 	stu_register_no: string
 	student_name: string
 	student_id: string
+	attempt_number?: number
+	is_regular?: boolean
 }
 
 interface AttendanceRecord {
 	exam_registration_id: string
+	student_id: string
 	stu_register_no: string
 	student_name: string
+	attempt_number?: number
+	is_regular?: boolean
 	is_present: boolean
+	is_absent: boolean
 	attendance_status: string
 	remarks: string
 }
@@ -70,16 +84,17 @@ export default function ExamAttendancePage() {
 	// Dropdown data
 	const [institutions, setInstitutions] = useState<Institution[]>([])
 	const [sessions, setSessions] = useState<ExaminationSession[]>([])
-	const [courses, setCourses] = useState<CourseOffering[]>([])
-	const [examDates, setExamDates] = useState<ExamDate[]>([])
+	const [programs, setPrograms] = useState<Program[]>([])
 	const [sessionTypes, setSessionTypes] = useState<ExamDate[]>([])
+	const [courses, setCourses] = useState<CourseOffering[]>([])
 
 	// Selected values
 	const [selectedInstitutionId, setSelectedInstitutionId] = useState<string>("")
 	const [selectedSessionId, setSelectedSessionId] = useState<string>("")
-	const [selectedCourseOfferingId, setSelectedCourseOfferingId] = useState<string>("")
+	const [selectedProgramCode, setSelectedProgramCode] = useState<string>("")
 	const [selectedExamDate, setSelectedExamDate] = useState<string>("")
 	const [selectedSessionType, setSelectedSessionType] = useState<string>("")
+	const [selectedCourseCode, setSelectedCourseCode] = useState<string>("")
 
 	// Student list and attendance
 	const [students, setStudents] = useState<StudentRegistration[]>([])
@@ -91,6 +106,12 @@ export default function ExamAttendancePage() {
 	const [saving, setSaving] = useState(false)
 	const [isViewMode, setIsViewMode] = useState(false)
 	const [showStudentList, setShowStudentList] = useState(false)
+
+	// Combobox open state
+	const [institutionOpen, setInstitutionOpen] = useState(false)
+	const [sessionOpen, setSessionOpen] = useState(false)
+	const [programOpen, setProgramOpen] = useState(false)
+	const [courseOpen, setCourseOpen] = useState(false)
 
 	// Load institutions on mount
 	useEffect(() => {
@@ -112,19 +133,37 @@ export default function ExamAttendancePage() {
 	// Cascade 1: Institution → Sessions
 	useEffect(() => {
 		if (selectedInstitutionId) {
-			fetchSessions(selectedInstitutionId)
-			// Reset dependent fields
+			// Reset dependent fields first
 			setSelectedSessionId("")
-			setSelectedCourseOfferingId("")
+			setSelectedProgramCode("")
 			setSelectedExamDate("")
 			setSelectedSessionType("")
+			setSelectedCourseCode("")
 			setSessions([])
-			setCourses([])
-			setExamDates([])
+			setPrograms([])
 			setSessionTypes([])
+			setCourses([])
 			setStudents([])
 			setAttendanceRecords([])
 			setShowStudentList(false)
+			setIsViewMode(false)
+			// Then fetch new data
+			fetchSessions(selectedInstitutionId)
+		} else {
+			// Clear everything if institution is deselected
+			setSelectedSessionId("")
+			setSelectedProgramCode("")
+			setSelectedExamDate("")
+			setSelectedSessionType("")
+			setSelectedCourseCode("")
+			setSessions([])
+			setPrograms([])
+			setSessionTypes([])
+			setCourses([])
+			setStudents([])
+			setAttendanceRecords([])
+			setShowStudentList(false)
+			setIsViewMode(false)
 		}
 	}, [selectedInstitutionId])
 
@@ -143,120 +182,240 @@ export default function ExamAttendancePage() {
 		}
 	}
 
-	// Cascade 2: Session → Courses
+	// Cascade 2: Session → Programs
 	useEffect(() => {
-		if (selectedInstitutionId && selectedSessionId) {
-			fetchCourses(selectedInstitutionId, selectedSessionId)
-			// Reset dependent fields
-			setSelectedCourseOfferingId("")
+		if (selectedSessionId && selectedInstitutionId) {
+			// Reset dependent fields first
+			setSelectedProgramCode("")
 			setSelectedExamDate("")
 			setSelectedSessionType("")
-			setCourses([])
-			setExamDates([])
+			setSelectedCourseCode("")
+			setPrograms([])
 			setSessionTypes([])
+			setCourses([])
 			setStudents([])
 			setAttendanceRecords([])
 			setShowStudentList(false)
+			setIsViewMode(false)
+			// Then fetch new data
+			fetchPrograms(selectedInstitutionId, selectedSessionId)
+		} else if (!selectedSessionId) {
+			// Clear everything if session is deselected
+			setSelectedProgramCode("")
+			setSelectedExamDate("")
+			setSelectedSessionType("")
+			setSelectedCourseCode("")
+			setPrograms([])
+			setSessionTypes([])
+			setCourses([])
+			setStudents([])
+			setAttendanceRecords([])
+			setShowStudentList(false)
+			setIsViewMode(false)
 		}
 	}, [selectedSessionId])
 
-	const fetchCourses = async (institutionId: string, sessionId: string) => {
+	const fetchPrograms = async (institutionId: string, sessionId: string) => {
 		try {
 			setLoading(true)
-			const res = await fetch(`/api/exam-attendance/dropdowns?type=courses&institution_id=${institutionId}&session_id=${sessionId}`)
+			const res = await fetch(`/api/exam-attendance/dropdowns?type=programs&institution_id=${institutionId}&session_id=${sessionId}`)
 			if (res.ok) {
 				const data = await res.json()
-				setCourses(data)
+				setPrograms(data)
 			}
 		} catch (error) {
-			console.error('Error fetching courses:', error)
+			console.error('Error fetching programs:', error)
 		} finally {
 			setLoading(false)
 		}
 	}
 
-	// Cascade 3: Course → Exam Dates (current date only)
+	// Cascade 3: Program → Set today's date automatically
 	useEffect(() => {
-		if (selectedInstitutionId && selectedSessionId && selectedCourseOfferingId) {
-			fetchExamDates(selectedInstitutionId, selectedSessionId, selectedCourseOfferingId)
-			// Reset dependent fields
-			setSelectedExamDate("")
+		if (selectedInstitutionId && selectedSessionId && selectedProgramCode) {
+			// Reset dependent fields first
 			setSelectedSessionType("")
-			setExamDates([])
+			setSelectedCourseCode("")
 			setSessionTypes([])
+			setCourses([])
 			setStudents([])
 			setAttendanceRecords([])
 			setShowStudentList(false)
+			setIsViewMode(false)
+			// Set today's date
+			const today = new Date().toISOString().split('T')[0]
+			setSelectedExamDate(today)
+		} else if (!selectedProgramCode) {
+			// Clear everything if program is deselected
+			setSelectedExamDate("")
+			setSelectedSessionType("")
+			setSelectedCourseCode("")
+			setSessionTypes([])
+			setCourses([])
+			setStudents([])
+			setAttendanceRecords([])
+			setShowStudentList(false)
+			setIsViewMode(false)
 		}
-	}, [selectedCourseOfferingId])
-
-	const fetchExamDates = async (institutionId: string, sessionId: string, courseOfferingId: string) => {
-		try {
-			setLoading(true)
-			const res = await fetch(`/api/exam-attendance/dropdowns?type=exam_dates&institution_id=${institutionId}&session_id=${sessionId}&course_offering_id=${courseOfferingId}`)
-			if (res.ok) {
-				const data = await res.json()
-				setExamDates(data)
-				if (data.length === 0) {
-					toast({
-						title: "ℹ️ No Exams Today",
-						description: "No exam is scheduled for today for this course.",
-						className: "bg-blue-50 border-blue-200 text-blue-800",
-					})
-				}
-			}
-		} catch (error) {
-			console.error('Error fetching exam dates:', error)
-		} finally {
-			setLoading(false)
-		}
-	}
+	}, [selectedProgramCode])
 
 	// Cascade 4: Exam Date → Session Types (FN/AN)
 	useEffect(() => {
-		if (selectedInstitutionId && selectedSessionId && selectedCourseOfferingId && selectedExamDate) {
-			fetchSessionTypes(selectedInstitutionId, selectedSessionId, selectedCourseOfferingId, selectedExamDate)
-			// Reset dependent fields
+		if (selectedInstitutionId && selectedSessionId && selectedProgramCode && selectedExamDate) {
+			// Reset dependent fields first
 			setSelectedSessionType("")
+			setSelectedCourseCode("")
 			setSessionTypes([])
+			setCourses([])
 			setStudents([])
 			setAttendanceRecords([])
 			setShowStudentList(false)
+			setIsViewMode(false)
+			// Then fetch new data
+			fetchSessionTypes(selectedInstitutionId, selectedSessionId, selectedProgramCode, selectedExamDate)
+		} else if (!selectedExamDate) {
+			// Clear everything if date is cleared
+			setSelectedSessionType("")
+			setSelectedCourseCode("")
+			setSessionTypes([])
+			setCourses([])
+			setStudents([])
+			setAttendanceRecords([])
+			setShowStudentList(false)
+			setIsViewMode(false)
 		}
 	}, [selectedExamDate])
 
-	const fetchSessionTypes = async (institutionId: string, sessionId: string, courseOfferingId: string, examDate: string) => {
+	const fetchSessionTypes = async (institutionId: string, sessionId: string, programCode: string, examDate: string) => {
 		try {
 			setLoading(true)
-			const res = await fetch(`/api/exam-attendance/dropdowns?type=session_types&institution_id=${institutionId}&session_id=${sessionId}&course_offering_id=${courseOfferingId}&exam_date=${examDate}`)
+			console.log('Frontend: Fetching session types with params:', { institutionId, sessionId, programCode, examDate })
+			const res = await fetch(`/api/exam-attendance/dropdowns?type=session_types&institution_id=${institutionId}&session_id=${sessionId}&program_code=${programCode}&exam_date=${examDate}`)
+			console.log('Frontend: Session types API response status:', res.status)
 			if (res.ok) {
 				const data = await res.json()
+				console.log('Frontend: Received session types:', data)
 				setSessionTypes(data)
+
+				if (data.length === 0) {
+					toast({
+						title: "ℹ️ No Sessions Found",
+						description: "No exam available for today.",
+						className: "bg-blue-50 border-blue-200 text-blue-800",
+					})
+				}
+			} else {
+				const errorData = await res.json().catch(() => ({ error: 'Unknown error' }))
+				console.error('Frontend: Session types API error:', errorData)
+				toast({
+					title: "❌ Error",
+					description: errorData.error || 'Failed to fetch session types',
+					variant: "destructive",
+				})
 			}
 		} catch (error) {
 			console.error('Error fetching session types:', error)
+			toast({
+				title: "❌ Network Error",
+				description: 'Failed to connect to the server',
+				variant: "destructive",
+			})
 		} finally {
 			setLoading(false)
 		}
 	}
 
-	// Load student list after all parent selections are complete
-	const handleLoadStudents = async () => {
-		if (!selectedInstitutionId || !selectedSessionId || !selectedCourseOfferingId || !selectedExamDate || !selectedSessionType) {
+	// Cascade 5: Session Type → Courses
+	useEffect(() => {
+		if (selectedInstitutionId && selectedSessionId && selectedProgramCode && selectedExamDate && selectedSessionType) {
+			// Reset dependent fields first
+			setSelectedCourseCode("")
+			setCourses([])
+			setStudents([])
+			setAttendanceRecords([])
+			setShowStudentList(false)
+			setIsViewMode(false)
+			// Then fetch new data
+			fetchCourses(selectedInstitutionId, selectedSessionId, selectedProgramCode, selectedExamDate, selectedSessionType)
+		} else if (!selectedSessionType) {
+			// Clear everything if session type is deselected
+			setSelectedCourseCode("")
+			setCourses([])
+			setStudents([])
+			setAttendanceRecords([])
+			setShowStudentList(false)
+			setIsViewMode(false)
+		}
+	}, [selectedSessionType])
+
+	const fetchCourses = async (institutionId: string, sessionId: string, programCode: string, examDate: string, sessionType: string) => {
+		try {
+			setLoading(true)
+			console.log('Frontend: Fetching courses with params:', { institutionId, sessionId, programCode, examDate, sessionType })
+			const res = await fetch(`/api/exam-attendance/dropdowns?type=courses&institution_id=${institutionId}&session_id=${sessionId}&program_code=${programCode}&exam_date=${examDate}&session_type=${sessionType}`)
+			console.log('Frontend: Courses API response status:', res.status)
+			if (res.ok) {
+				const data = await res.json()
+				console.log('Frontend: Received courses:', data)
+				setCourses(data)
+
+				if (data.length === 0) {
+					toast({
+						title: "ℹ️ No Courses Found",
+						description: "No courses available for this session.",
+						className: "bg-blue-50 border-blue-200 text-blue-800",
+					})
+				}
+			} else {
+				const errorData = await res.json().catch(() => ({ error: 'Unknown error' }))
+				console.error('Frontend: Courses API error:', errorData)
+				toast({
+					title: "❌ Error",
+					description: errorData.error || 'Failed to fetch courses',
+					variant: "destructive",
+				})
+			}
+		} catch (error) {
+			console.error('Error fetching courses:', error)
 			toast({
-				title: "⚠️ Incomplete Selection",
-				description: "Please select all required fields before loading students.",
+				title: "❌ Network Error",
+				description: 'Failed to connect to the server',
 				variant: "destructive",
 			})
-			return
+		} finally {
+			setLoading(false)
+		}
+	}
+
+	// Cascade 6: Course → Auto-load Students
+	useEffect(() => {
+		if (selectedInstitutionId && selectedSessionId && selectedProgramCode && selectedExamDate && selectedSessionType && selectedCourseCode) {
+			// Reset state before loading
+			setAttendanceRecords([])
+			setShowStudentList(false)
+			setIsViewMode(false)
+			// Load students
+			handleLoadStudents()
+		} else if (!selectedCourseCode) {
+			// Clear student list if course is deselected
+			setAttendanceRecords([])
+			setShowStudentList(false)
+			setIsViewMode(false)
+		}
+	}, [selectedCourseCode])
+
+	// Load student list after all parent selections are complete
+	const handleLoadStudents = async () => {
+		if (!selectedInstitutionId || !selectedSessionId || !selectedProgramCode || !selectedExamDate || !selectedSessionType || !selectedCourseCode) {
+			return // Silently return if not all fields selected
 		}
 
 		try {
 			setLoadingStudents(true)
 
-			// First, check if attendance already exists
+			// First, check if attendance already exists (using parent-child pattern)
 			const checkRes = await fetch(
-				`/api/exam-attendance?mode=check&institution_id=${selectedInstitutionId}&examination_session_id=${selectedSessionId}&course_offering_id=${selectedCourseOfferingId}&exam_date=${selectedExamDate}`
+				`/api/exam-attendance?mode=check&institution_id=${selectedInstitutionId}&examination_session_id=${selectedSessionId}&course_code=${selectedCourseCode}&exam_date=${selectedExamDate}&session=${selectedSessionType}&program_code=${selectedProgramCode}`
 			)
 
 			if (checkRes.ok) {
@@ -266,17 +425,36 @@ export default function ExamAttendancePage() {
 					// Attendance already exists - load in view mode
 					setIsViewMode(true)
 
-					// Map existing attendance to display format
+					// Map existing attendance records to display format
 					const existingRecords: AttendanceRecord[] = checkData.data.map((att: any) => ({
-						exam_registration_id: att.exam_registrations.id,
-						stu_register_no: att.exam_registrations.stu_register_no,
-						student_name: att.exam_registrations.student_name,
-						is_present: att.attendance_status === 'Present',
+						exam_registration_id: att.exam_registration_id,
+						student_id: att.student_id,
+						stu_register_no: att.stu_register_no,
+						student_name: att.student_name,
+						attempt_number: att.attempt_number,
+						is_regular: att.is_regular,
+						is_present: !att.is_absent,
+						is_absent: att.is_absent,
 						attendance_status: att.attendance_status,
 						remarks: att.remarks || ''
 					}))
 
-					setAttendanceRecords(existingRecords)
+					// Sort by is_regular (TRUE first), then register number, then attempt number
+					const sortedExistingRecords = existingRecords.sort((a, b) => {
+						// First sort by is_regular (TRUE students first, FALSE students second)
+						const aRegular = a.is_regular === true ? 0 : 1
+						const bRegular = b.is_regular === true ? 0 : 1
+						if (aRegular !== bRegular) return aRegular - bRegular
+
+						// Then sort by register number
+						const regNoCompare = a.stu_register_no.localeCompare(b.stu_register_no)
+						if (regNoCompare !== 0) return regNoCompare
+
+						// Finally sort by attempt number
+						return (a.attempt_number || 1) - (b.attempt_number || 1)
+					})
+
+					setAttendanceRecords(sortedExistingRecords)
 					setShowStudentList(true)
 
 					toast({
@@ -292,7 +470,7 @@ export default function ExamAttendancePage() {
 			// Load fresh student list for new attendance
 			setIsViewMode(false)
 			const res = await fetch(
-				`/api/exam-attendance?mode=list&institution_id=${selectedInstitutionId}&examination_session_id=${selectedSessionId}&course_offering_id=${selectedCourseOfferingId}`
+				`/api/exam-attendance?mode=list&institution_id=${selectedInstitutionId}&examination_session_id=${selectedSessionId}&course_code=${selectedCourseCode}&exam_date=${selectedExamDate}&session=${selectedSessionType}&program_code=${selectedProgramCode}`
 			)
 
 			if (!res.ok) {
@@ -311,14 +489,33 @@ export default function ExamAttendancePage() {
 				return
 			}
 
-			setStudents(studentData)
+			// Sort student data by is_regular (TRUE first), then register number, then attempt number
+			const sortedStudentData = studentData.sort((a, b) => {
+				// First sort by is_regular (TRUE students first, FALSE students second)
+				const aRegular = a.is_regular === true ? 0 : 1
+				const bRegular = b.is_regular === true ? 0 : 1
+				if (aRegular !== bRegular) return aRegular - bRegular
+
+				// Then sort by register number
+				const regNoCompare = a.stu_register_no.localeCompare(b.stu_register_no)
+				if (regNoCompare !== 0) return regNoCompare
+
+				// Finally sort by attempt number (if same register number)
+				return (a.attempt_number || 1) - (b.attempt_number || 1)
+			})
+
+			setStudents(sortedStudentData)
 
 			// Initialize attendance records
-			const initialRecords: AttendanceRecord[] = studentData.map((student: StudentRegistration) => ({
+			const initialRecords: AttendanceRecord[] = sortedStudentData.map((student: StudentRegistration) => ({
 				exam_registration_id: student.id,
+				student_id: student.student_id,
 				stu_register_no: student.stu_register_no,
 				student_name: student.student_name,
+				attempt_number: student.attempt_number,
+				is_regular: student.is_regular,
 				is_present: false,
+				is_absent: true,
 				attendance_status: 'Absent',
 				remarks: ''
 			}))
@@ -349,6 +546,7 @@ export default function ExamAttendancePage() {
 
 		const updated = [...attendanceRecords]
 		updated[index].is_present = !updated[index].is_present
+		updated[index].is_absent = !updated[index].is_present // Set is_absent as opposite of is_present
 		updated[index].attendance_status = updated[index].is_present ? 'Present' : 'Absent'
 		setAttendanceRecords(updated)
 	}
@@ -360,6 +558,7 @@ export default function ExamAttendancePage() {
 		const updated = attendanceRecords.map(record => ({
 			...record,
 			is_present: true,
+			is_absent: false,
 			attendance_status: 'Present'
 		}))
 		setAttendanceRecords(updated)
@@ -380,6 +579,9 @@ export default function ExamAttendancePage() {
 		setAttendanceRecords(updated)
 	}
 
+	// State for confirmation dialog
+	const [showConfirmDialog, setShowConfirmDialog] = useState(false)
+
 	// Save attendance
 	const handleSaveAttendance = async () => {
 		if (isViewMode) {
@@ -391,16 +593,25 @@ export default function ExamAttendancePage() {
 			return
 		}
 
+		// Show confirmation dialog instead of saving directly
+		setShowConfirmDialog(true)
+	}
+
+	// Actual save function after confirmation
+	const confirmSaveAttendance = async () => {
+		setShowConfirmDialog(false)
+
 		try {
 			setSaving(true)
 
 			const payload = {
 				institutions_id: selectedInstitutionId,
-				examination_session_id: selectedSessionId,
-				course_offering_id: selectedCourseOfferingId,
-				exam_date: selectedExamDate,
+				exam_session_code: selectedSessionId, // Changed from examination_session_id
+				course_code: selectedCourseCode,
+				program_code: selectedProgramCode, // Added program_code
+				session_code: selectedSessionType, // Added session_code (FN/AN)
 				attendance_records: attendanceRecords,
-				verified_by: null // Replace with logged-in user ID if available
+				submitted_by: null // Changed from verified_by, replace with logged-in user ID if available
 			}
 
 			const res = await fetch('/api/exam-attendance', {
@@ -440,8 +651,7 @@ export default function ExamAttendancePage() {
 	// Get display values for header
 	const selectedInstitution = institutions.find(i => i.id === selectedInstitutionId)
 	const selectedSession = sessions.find(s => s.id === selectedSessionId)
-	const selectedCourse = courses.find(c => c.course_offering_id === selectedCourseOfferingId)
-	const selectedExamDateObj = examDates.find(d => d.id === selectedSessionType)
+	const selectedCourse = courses.find(c => c.course_code === selectedCourseCode)
 
 	// Count present/absent
 	const presentCount = attendanceRecords.filter(r => r.is_present).length
@@ -450,234 +660,379 @@ export default function ExamAttendancePage() {
 	return (
 		<SidebarProvider>
 			<AppSidebar />
-			<SidebarInset>
-				<AppHeader>
-					<Breadcrumb>
-						<BreadcrumbList>
-							<BreadcrumbItem>
-								<BreadcrumbLink asChild>
-									<Link href="/">Home</Link>
-								</BreadcrumbLink>
-							</BreadcrumbItem>
-							<BreadcrumbSeparator />
-							<BreadcrumbItem>
-								<BreadcrumbPage>Exam Attendance</BreadcrumbPage>
-							</BreadcrumbItem>
-						</BreadcrumbList>
-					</Breadcrumb>
-				</AppHeader>
+			<SidebarInset className="flex flex-col min-h-screen">
+				<AppHeader />
 
-				<div className="flex-1 overflow-y-auto p-4 md:p-6 space-y-6">
-					{/* Page Header */}
-					<div className="flex items-center justify-between">
-						<div>
-							<h1 className="text-xl font-bold tracking-tight">Exam Attendance Entry</h1>
-							<p className="text-[11px] text-muted-foreground mt-1">Mark attendance for today's examinations</p>
-						</div>
-						<ClipboardCheck className="h-7 w-7 text-primary" />
+				<div className="flex flex-1 flex-col gap-4 p-4 pt-0 overflow-y-auto">
+					<div className="flex items-center gap-2">
+						<Breadcrumb>
+							<BreadcrumbList>
+								<BreadcrumbItem>
+									<BreadcrumbLink asChild>
+										<Link href="/dashboard">Dashboard</Link>
+									</BreadcrumbLink>
+								</BreadcrumbItem>
+								<BreadcrumbSeparator />
+								<BreadcrumbItem>
+									<BreadcrumbPage>Exam Attendance</BreadcrumbPage>
+								</BreadcrumbItem>
+							</BreadcrumbList>
+						</Breadcrumb>
 					</div>
 
-					{/* Parent Form - Cascading Dropdowns */}
-					<Card>
-						<CardHeader className="bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-blue-950/20 dark:to-indigo-950/20 border-b p-3">
-							<div className="flex items-center gap-3">
-								<div className="h-7 w-7 rounded-full bg-gradient-to-r from-blue-500 to-indigo-600 flex items-center justify-center">
-									<Calendar className="h-3 w-3 text-white" />
-								</div>
-								<div>
-									<h2 className="text-sm font-bold">Exam Selection</h2>
-									<p className="text-[11px] text-muted-foreground">Select exam details to load student list</p>
-								</div>
-							</div>
-						</CardHeader>
-						<CardContent className="pt-4 p-3">
-							<div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-								{/* Institution */}
-								<div className="space-y-2">
-									<Label htmlFor="institution" className="text-xs font-semibold">
+					<div className="space-y-3">
+					{/* Compact Form - Cascading Dropdowns */}
+					<Card className="shadow-sm">
+						<CardContent className="p-3">
+							<div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-2">
+								{/* 1. Institution */}
+								<div className="space-y-1">
+									<Label htmlFor="institution" className="text-[10px] font-medium">
 										Institution <span className="text-red-500">*</span>
 									</Label>
-									<Select value={selectedInstitutionId} onValueChange={setSelectedInstitutionId} disabled={loading}>
-										<SelectTrigger id="institution" className="h-8 text-xs">
-											<SelectValue placeholder="Select institution" />
-										</SelectTrigger>
-										<SelectContent>
-											{institutions.map((inst) => (
-												<SelectItem key={inst.id} value={inst.id}>
-													{inst.institution_code} - {inst.institution_name}
-												</SelectItem>
-											))}
-										</SelectContent>
-									</Select>
+									<Popover open={institutionOpen} onOpenChange={setInstitutionOpen}>
+										<PopoverTrigger asChild>
+											<Button
+												variant="outline"
+												role="combobox"
+												aria-expanded={institutionOpen}
+												className="h-auto min-h-[28px] text-[11px] justify-start w-full font-normal px-2 py-1.5"
+												disabled={loading}
+											>
+												<span className="flex-1 text-left whitespace-normal break-words leading-tight">
+													{selectedInstitutionId
+														? institutions.find((inst) => inst.id === selectedInstitutionId)
+															? `${institutions.find((inst) => inst.id === selectedInstitutionId)?.institution_code} - ${institutions.find((inst) => inst.id === selectedInstitutionId)?.institution_name}`
+															: "Select institution"
+														: "Select institution"}
+												</span>
+												<ChevronsUpDown className="ml-1 h-3 w-3 shrink-0 opacity-50" />
+											</Button>
+										</PopoverTrigger>
+										<PopoverContent className="w-[500px] max-w-[90vw] p-0" align="start">
+											<Command>
+												<CommandInput placeholder="Search institution..." className="h-9 text-xs" />
+												<CommandList className="max-h-[300px]">
+													<CommandEmpty className="py-6 text-center text-xs text-muted-foreground">No institution found.</CommandEmpty>
+													<CommandGroup>
+														{institutions.map((inst) => (
+															<CommandItem
+																key={inst.id}
+																value={`${inst.institution_code} ${inst.institution_name}`}
+																onSelect={() => {
+																	setSelectedInstitutionId(inst.id)
+																	setInstitutionOpen(false)
+																}}
+																className="flex items-start gap-3 py-3 px-3 cursor-pointer hover:bg-accent"
+															>
+																<Check
+																	className={cn(
+																		"mt-1 h-4 w-4 shrink-0 text-primary",
+																		selectedInstitutionId === inst.id ? "opacity-100" : "opacity-0"
+																	)}
+																/>
+																<div className="flex-1 min-w-0 space-y-1">
+																	<div className="text-sm font-semibold text-foreground">{inst.institution_code}</div>
+																	<div className="text-xs text-muted-foreground break-words whitespace-normal leading-relaxed">
+																		{inst.institution_name}
+																	</div>
+																</div>
+															</CommandItem>
+														))}
+													</CommandGroup>
+												</CommandList>
+											</Command>
+										</PopoverContent>
+									</Popover>
 								</div>
 
-								{/* Examination Session */}
-								<div className="space-y-2">
-									<Label htmlFor="session" className="text-xs font-semibold">
+								{/* 2. Examination Session */}
+								<div className="space-y-1">
+									<Label htmlFor="session" className="text-[10px] font-medium">
 										Examination Session <span className="text-red-500">*</span>
 									</Label>
-									<Select
-										value={selectedSessionId}
-										onValueChange={setSelectedSessionId}
-										disabled={!selectedInstitutionId || loading || sessions.length === 0}
-									>
-										<SelectTrigger id="session" className="h-8 text-xs">
-											<SelectValue placeholder="Select session" />
-										</SelectTrigger>
-										<SelectContent>
-											{sessions.map((session) => (
-												<SelectItem key={session.id} value={session.id}>
-													{session.session_name} ({session.session_type})
-												</SelectItem>
-											))}
-										</SelectContent>
-									</Select>
+									<Popover open={sessionOpen} onOpenChange={setSessionOpen}>
+										<PopoverTrigger asChild>
+											<Button
+												variant="outline"
+												role="combobox"
+												aria-expanded={sessionOpen}
+												className="h-auto min-h-[28px] text-[11px] justify-start w-full font-normal px-2 py-1.5"
+												disabled={!selectedInstitutionId || loading || sessions.length === 0}
+											>
+												<span className="flex-1 text-left whitespace-normal break-words leading-tight">
+													{selectedSessionId
+														? sessions.find((s) => s.id === selectedSessionId)
+															? `${sessions.find((s) => s.id === selectedSessionId)?.session_name} (${sessions.find((s) => s.id === selectedSessionId)?.session_type})`
+															: "Select session"
+														: "Select session"}
+												</span>
+												<ChevronsUpDown className="ml-1 h-3 w-3 shrink-0 opacity-50" />
+											</Button>
+										</PopoverTrigger>
+										<PopoverContent className="w-[500px] max-w-[90vw] p-0" align="start">
+											<Command>
+												<CommandInput placeholder="Search session..." className="h-9 text-xs" />
+												<CommandList className="max-h-[300px]">
+													<CommandEmpty className="py-6 text-center text-xs text-muted-foreground">No session found.</CommandEmpty>
+													<CommandGroup>
+														{sessions.map((session) => (
+															<CommandItem
+																key={session.id}
+																value={`${session.session_name} ${session.session_type}`}
+																onSelect={() => {
+																	setSelectedSessionId(session.id)
+																	setSessionOpen(false)
+																}}
+																className="flex items-start gap-3 py-3 px-3 cursor-pointer hover:bg-accent"
+															>
+																<Check
+																	className={cn(
+																		"mt-1 h-4 w-4 shrink-0 text-primary",
+																		selectedSessionId === session.id ? "opacity-100" : "opacity-0"
+																	)}
+																/>
+																<div className="flex-1 min-w-0 space-y-1">
+																	<div className="text-sm font-semibold text-foreground break-words whitespace-normal leading-relaxed">
+																		{session.session_name}
+																	</div>
+																	<div className="text-xs text-muted-foreground">
+																		<Badge variant="outline" className="text-[10px] font-normal">
+																			{session.session_type}
+																		</Badge>
+																	</div>
+																</div>
+															</CommandItem>
+														))}
+													</CommandGroup>
+												</CommandList>
+											</Command>
+										</PopoverContent>
+									</Popover>
 								</div>
 
-								{/* Course */}
-								<div className="space-y-2">
-									<Label htmlFor="course" className="text-xs font-semibold">
-										Course Code <span className="text-red-500">*</span>
+								{/* 3. Program Code */}
+								<div className="space-y-1">
+									<Label htmlFor="program" className="text-[10px] font-medium">
+										Program Code <span className="text-red-500">*</span>
 									</Label>
-									<Select
-										value={selectedCourseOfferingId}
-										onValueChange={setSelectedCourseOfferingId}
-										disabled={!selectedSessionId || loading || courses.length === 0}
-									>
-										<SelectTrigger id="course" className="h-8 text-xs">
-											<SelectValue placeholder="Select course" />
-										</SelectTrigger>
-										<SelectContent>
-											{courses.map((course) => (
-												<SelectItem key={course.course_offering_id} value={course.course_offering_id}>
-													{course.course_code} - {course.course_title}
-												</SelectItem>
-											))}
-										</SelectContent>
-									</Select>
+									<Popover open={programOpen} onOpenChange={setProgramOpen}>
+										<PopoverTrigger asChild>
+											<Button
+												variant="outline"
+												role="combobox"
+												aria-expanded={programOpen}
+												className="h-auto min-h-[28px] text-[11px] justify-start w-full font-normal px-2 py-1.5"
+												disabled={!selectedSessionId || loading || programs.length === 0}
+											>
+												<span className="flex-1 text-left whitespace-normal break-words leading-tight">
+													{selectedProgramCode
+														? programs.find((p) => p.program_code === selectedProgramCode)
+															? `${programs.find((p) => p.program_code === selectedProgramCode)?.program_code} - ${programs.find((p) => p.program_code === selectedProgramCode)?.program_name}`
+															: "Select program"
+														: "Select program"}
+												</span>
+												<ChevronsUpDown className="ml-1 h-3 w-3 shrink-0 opacity-50" />
+											</Button>
+										</PopoverTrigger>
+										<PopoverContent className="w-[500px] max-w-[90vw] p-0" align="start">
+											<Command>
+												<CommandInput placeholder="Search program..." className="h-9 text-xs" />
+												<CommandList className="max-h-[300px]">
+													<CommandEmpty className="py-6 text-center text-xs text-muted-foreground">No program found.</CommandEmpty>
+													<CommandGroup>
+														{programs.map((program) => (
+															<CommandItem
+																key={program.id}
+																value={`${program.program_code} ${program.program_name}`}
+																onSelect={() => {
+																	setSelectedProgramCode(program.program_code)
+																	setProgramOpen(false)
+																}}
+																className="flex items-start gap-3 py-3 px-3 cursor-pointer hover:bg-accent"
+															>
+																<Check
+																	className={cn(
+																		"mt-1 h-4 w-4 shrink-0 text-primary",
+																		selectedProgramCode === program.program_code ? "opacity-100" : "opacity-0"
+																	)}
+																/>
+																<div className="flex-1 min-w-0 space-y-1">
+																	<div className="text-sm font-semibold text-foreground">{program.program_code}</div>
+																	<div className="text-xs text-muted-foreground break-words whitespace-normal leading-relaxed">
+																		{program.program_name}
+																	</div>
+																</div>
+															</CommandItem>
+														))}
+													</CommandGroup>
+												</CommandList>
+											</Command>
+										</PopoverContent>
+									</Popover>
 								</div>
 
-								{/* Exam Date */}
-								<div className="space-y-2">
-									<Label htmlFor="exam_date" className="text-xs font-semibold">
-										Exam Date (Today) <span className="text-red-500">*</span>
-									</Label>
-									<Select
-										value={selectedExamDate}
-										onValueChange={setSelectedExamDate}
-										disabled={!selectedCourseOfferingId || loading || examDates.length === 0}
-									>
-										<SelectTrigger id="exam_date" className="h-8 text-xs">
-											<SelectValue placeholder="Select exam date" />
-										</SelectTrigger>
-										<SelectContent>
-											{examDates.map((date) => (
-												<SelectItem key={date.id} value={date.exam_date}>
-													{new Date(date.exam_date).toLocaleDateString('en-IN', {
-														day: '2-digit',
-														month: 'short',
-														year: 'numeric'
-													})} - {date.exam_time}
-												</SelectItem>
-											))}
-										</SelectContent>
-									</Select>
-								</div>
+								{/* 4. Exam Date */}
+								{selectedProgramCode && (
+									<div className="space-y-1">
+										<Label htmlFor="exam_date" className="text-[10px] font-medium">
+											Exam Date <span className="text-red-500">*</span>
+										</Label>
+										<Input
+											id="exam_date"
+											type="text"
+											value={selectedExamDate ? new Date(selectedExamDate).toLocaleDateString('en-GB', { day: '2-digit', month: '2-digit', year: 'numeric' }).split('/').join('-') : ''}
+											disabled
+											className="h-7 text-[11px] bg-muted"
+										/>
+									</div>
+								)}
 
-								{/* Session Type */}
-								<div className="space-y-2">
-									<Label htmlFor="session_type" className="text-xs font-semibold">
-										Session (FN/AN) <span className="text-red-500">*</span>
-									</Label>
-									<Select
-										value={selectedSessionType}
-										onValueChange={setSelectedSessionType}
-										disabled={!selectedExamDate || loading || sessionTypes.length === 0}
-									>
-										<SelectTrigger id="session_type" className="h-8 text-xs">
-											<SelectValue placeholder="Select session" />
-										</SelectTrigger>
-										<SelectContent>
-											{sessionTypes.map((st) => (
-												<SelectItem key={st.id} value={st.id}>
-													{st.session} - {st.exam_time}
-												</SelectItem>
-											))}
-										</SelectContent>
-									</Select>
-								</div>
+								{/* 5. Session Type (FN/AN) - Only visible after program selection */}
+								{selectedProgramCode && (
+									<div className="space-y-1">
+										<Label htmlFor="session_type" className="text-[10px] font-medium">
+											Session (FN/AN) <span className="text-red-500">*</span>
+										</Label>
+										<Select
+											value={selectedSessionType}
+											onValueChange={setSelectedSessionType}
+											disabled={loading}
+										>
+											<SelectTrigger id="session_type" className="h-7 text-[11px]">
+												<SelectValue placeholder="Select session" />
+											</SelectTrigger>
+											<SelectContent>
+												<SelectItem value="FN">FN</SelectItem>
+												<SelectItem value="AN">AN</SelectItem>
+											</SelectContent>
+										</Select>
+									</div>
+								)}
 
-								{/* Load Button */}
-								<div className="flex items-end">
-									<Button
-										onClick={handleLoadStudents}
-										disabled={
-											!selectedInstitutionId ||
-											!selectedSessionId ||
-											!selectedCourseOfferingId ||
-											!selectedExamDate ||
-											!selectedSessionType ||
-											loadingStudents
-										}
-										className="w-full h-8 text-xs"
-										size="sm"
-									>
-										{loadingStudents ? (
-											<>
-												<Loader2 className="h-3 w-3 mr-1 animate-spin" />
-												Loading...
-											</>
-										) : (
-											<>
-												<Users className="h-3 w-3 mr-1" />
-												Load Students
-											</>
-										)}
-									</Button>
-								</div>
+								{/* 6. Course Code - Only visible after session type selection */}
+								{selectedSessionType && (
+									<div className="space-y-1">
+										<Label htmlFor="course" className="text-[10px] font-medium">
+											Course Code <span className="text-red-500">*</span>
+										</Label>
+										<Popover open={courseOpen} onOpenChange={setCourseOpen}>
+											<PopoverTrigger asChild>
+												<Button
+													variant="outline"
+													role="combobox"
+													aria-expanded={courseOpen}
+													className="h-auto min-h-[28px] text-[11px] justify-start w-full font-normal px-2 py-1.5"
+													disabled={loading || courses.length === 0}
+												>
+													<span className="flex-1 text-left whitespace-normal break-words leading-tight">
+														{selectedCourseCode
+															? courses.find((c) => c.course_code === selectedCourseCode)
+																? `${courses.find((c) => c.course_code === selectedCourseCode)?.course_code} - ${courses.find((c) => c.course_code === selectedCourseCode)?.course_title}`
+																: "Select course"
+															: loading
+																? "Loading courses..."
+																: courses.length === 0
+																	? "No courses available"
+																	: "Select course"}
+													</span>
+													<ChevronsUpDown className="ml-1 h-3 w-3 shrink-0 opacity-50" />
+												</Button>
+											</PopoverTrigger>
+											<PopoverContent className="w-[500px] max-w-[90vw] p-0" align="start">
+												<Command>
+													<CommandInput placeholder="Search course..." className="h-9 text-xs" />
+													<CommandList className="max-h-[300px]">
+														<CommandEmpty className="py-6 text-center text-xs text-muted-foreground">No course found.</CommandEmpty>
+														<CommandGroup>
+															{courses.map((course) => (
+																<CommandItem
+																	key={course.course_code}
+																	value={`${course.course_code} ${course.course_title}`}
+																	onSelect={() => {
+																		setSelectedCourseCode(course.course_code)
+																		setCourseOpen(false)
+																	}}
+																	className="flex items-start gap-3 py-3 px-3 cursor-pointer hover:bg-accent"
+																>
+																	<Check
+																		className={cn(
+																			"mt-1 h-4 w-4 shrink-0 text-primary",
+																			selectedCourseCode === course.course_code ? "opacity-100" : "opacity-0"
+																		)}
+																	/>
+																	<div className="flex-1 min-w-0 space-y-1">
+																		<div className="text-sm font-semibold text-foreground">{course.course_code}</div>
+																		<div className="text-xs text-muted-foreground break-words whitespace-normal leading-relaxed">
+																			{course.course_title}
+																		</div>
+																	</div>
+																</CommandItem>
+															))}
+														</CommandGroup>
+													</CommandList>
+												</Command>
+											</PopoverContent>
+										</Popover>
+									</div>
+								)}
+
+								{/* Loading indicator - shown when auto-loading students */}
+								{loadingStudents && selectedCourseCode && (
+									<div className="flex items-center justify-center col-span-full h-7">
+										<div className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
+											<Loader2 className="h-3 w-3 animate-spin" />
+											<span>Loading students...</span>
+										</div>
+									</div>
+								)}
 							</div>
 						</CardContent>
 					</Card>
 
 					{/* Summary Header (visible when students are loaded) */}
 					{showStudentList && (
-						<Card className="bg-gradient-to-r from-indigo-50 to-purple-50 dark:from-indigo-950/20 dark:to-purple-950/20 border-indigo-200 dark:border-indigo-800">
-							<CardContent className="pt-4 p-3">
-								<div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-6 gap-3">
+						<Card className="bg-gradient-to-r from-indigo-50 to-purple-50 dark:from-indigo-950/20 dark:to-purple-950/20 border-indigo-200 dark:border-indigo-800 shadow-sm">
+							<CardContent className="p-2">
+								<div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-2">
 									<div>
-										<p className="text-[11px] font-medium text-muted-foreground">Institution</p>
-										<p className="text-xs font-semibold">{selectedInstitution?.institution_code}</p>
+										<p className="text-[9px] font-medium text-muted-foreground">Institution</p>
+										<p className="text-[11px] font-semibold">{selectedInstitution?.institution_code}</p>
 									</div>
 									<div>
-										<p className="text-[11px] font-medium text-muted-foreground">Session</p>
-										<p className="text-xs font-semibold">{selectedSession?.session_name}</p>
+										<p className="text-[9px] font-medium text-muted-foreground">Session</p>
+										<p className="text-[11px] font-semibold">{selectedSession?.session_name}</p>
 									</div>
 									<div>
-										<p className="text-[11px] font-medium text-muted-foreground">Course</p>
-										<p className="text-xs font-semibold">{selectedCourse?.course_code}</p>
+										<p className="text-[9px] font-medium text-muted-foreground">Course</p>
+										<p className="text-[11px] font-semibold">{selectedCourse?.course_code}</p>
 									</div>
 									<div>
-										<p className="text-[11px] font-medium text-muted-foreground">Exam Date</p>
-										<p className="text-xs font-semibold">
-											{selectedExamDate ? new Date(selectedExamDate).toLocaleDateString('en-IN') : '-'}
+										<p className="text-[9px] font-medium text-muted-foreground">Exam Date</p>
+										<p className="text-[11px] font-semibold">
+											{selectedExamDate ? new Date(selectedExamDate).toLocaleDateString('en-IN', {
+												day: '2-digit',
+												month: 'short',
+												year: 'numeric'
+											}) : '-'}
 										</p>
 									</div>
 									<div>
-										<p className="text-[11px] font-medium text-muted-foreground">Session</p>
-										<p className="text-xs font-semibold">{selectedExamDateObj?.session || '-'}</p>
+										<p className="text-[9px] font-medium text-muted-foreground">Session</p>
+										<p className="text-[11px] font-semibold">{selectedSessionType || '-'}</p>
 									</div>
 									<div>
-										<p className="text-[11px] font-medium text-muted-foreground">Total Students</p>
-										<p className="text-xs font-semibold">{attendanceRecords.length}</p>
+										<p className="text-[9px] font-medium text-muted-foreground">Total Students</p>
+										<p className="text-[11px] font-semibold">{attendanceRecords.length}</p>
 									</div>
 								</div>
 
 								{isViewMode && (
-									<div className="mt-3 p-2 bg-blue-100 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg">
-										<div className="flex items-center gap-2">
-											<AlertTriangle className="h-3 w-3 text-blue-600 dark:text-blue-400" />
-											<span className="text-xs font-medium text-blue-800 dark:text-blue-200">
-												Read-Only Mode: Attendance has already been recorded for this exam
+									<div className="mt-2 p-1.5 bg-blue-100 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded">
+										<div className="flex items-center gap-1.5">
+											<AlertTriangle className="h-3 w-3 text-red-600 dark:text-blue-400" />
+											<span className="text-[10px] font-medium text-red-800 dark:text-red-200">
+												Attendance has already been recorded for this exam
 											</span>
 										</div>
 									</div>
@@ -686,52 +1041,6 @@ export default function ExamAttendancePage() {
 						</Card>
 					)}
 
-					{/* Attendance Statistics */}
-					{showStudentList && (
-						<div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-							<Card>
-								<CardContent className="p-3">
-									<div className="flex items-center justify-between">
-										<div>
-											<p className="text-[11px] font-medium text-muted-foreground">Total Students</p>
-											<p className="text-xl font-bold">{attendanceRecords.length}</p>
-										</div>
-										<div className="h-7 w-7 rounded-full bg-blue-100 dark:bg-blue-900/20 flex items-center justify-center">
-											<Users className="h-3 w-3 text-blue-600 dark:text-blue-400" />
-										</div>
-									</div>
-								</CardContent>
-							</Card>
-
-							<Card>
-								<CardContent className="p-3">
-									<div className="flex items-center justify-between">
-										<div>
-											<p className="text-[11px] font-medium text-muted-foreground">Present</p>
-											<p className="text-xl font-bold text-green-600">{presentCount}</p>
-										</div>
-										<div className="h-7 w-7 rounded-full bg-green-100 dark:bg-green-900/20 flex items-center justify-center">
-											<CheckCircle className="h-3 w-3 text-green-600 dark:text-green-400" />
-										</div>
-									</div>
-								</CardContent>
-							</Card>
-
-							<Card>
-								<CardContent className="p-3">
-									<div className="flex items-center justify-between">
-										<div>
-											<p className="text-[11px] font-medium text-muted-foreground">Absent</p>
-											<p className="text-xl font-bold text-red-600">{absentCount}</p>
-										</div>
-										<div className="h-7 w-7 rounded-full bg-red-100 dark:bg-red-900/20 flex items-center justify-center">
-											<XCircle className="h-3 w-3 text-red-600 dark:text-red-400" />
-										</div>
-									</div>
-								</CardContent>
-							</Card>
-						</div>
-					)}
 
 					{/* Attendance Marking Grid */}
 					{showStudentList && (
@@ -743,7 +1052,7 @@ export default function ExamAttendancePage() {
 											<ClipboardCheck className="h-3 w-3 text-white" />
 										</div>
 										<div>
-											<h2 className="text-sm font-bold">Mark Attendance</h2>
+											<h2 className="text-sm font-bold"><a className="text-x font-bold text-blue-600">Mark Attendance</a>  | Total Students: {attendanceRecords.length} | Present : <a className="text-x font-bold text-green-600">{presentCount}</a> | Absent: <a className="text-x font-bold text-red-600">{absentCount}</a> </h2>
 											<p className="text-[11px] text-muted-foreground">
 												{isViewMode ? 'Viewing recorded attendance' : 'Check the box to mark student as present'}
 											</p>
@@ -774,9 +1083,9 @@ export default function ExamAttendancePage() {
 											<TableBody>
 												{attendanceRecords.map((record, index) => (
 													<TableRow key={record.exam_registration_id}>
-														<TableCell className="text-[11px] font-medium">{index + 1}</TableCell>
-														<TableCell className="text-[11px] font-mono">{record.stu_register_no}</TableCell>
-														<TableCell className="text-[11px]">{record.student_name}</TableCell>
+														<TableCell className="text-[14px] font-medium">{index + 1}</TableCell>
+														<TableCell className="text-[14px] font-mono">{record.stu_register_no}</TableCell>
+														<TableCell className="text-[14px]">{record.student_name}</TableCell>
 														<TableCell className="text-center">
 															<div className="flex justify-center">
 																<Checkbox
@@ -825,7 +1134,7 @@ export default function ExamAttendancePage() {
 											) : (
 												<>
 													<CheckCircle className="h-3 w-3 mr-1" />
-													Save Attendance
+													Save
 												</>
 											)}
 										</Button>
@@ -834,10 +1143,73 @@ export default function ExamAttendancePage() {
 							</CardContent>
 						</Card>
 					)}
+					</div>
 				</div>
 
 				<AppFooter />
 			</SidebarInset>
+
+			{/* Confirmation Dialog */}
+			<AlertDialog open={showConfirmDialog} onOpenChange={setShowConfirmDialog}>
+				<AlertDialogContent className="max-w-md">
+					<AlertDialogHeader>
+						<AlertDialogTitle className="flex items-center gap-2">
+							<CheckCircle className="h-5 w-5 text-blue-600" />
+							Confirm Attendance Submission
+						</AlertDialogTitle>
+						<AlertDialogDescription>
+							Please review the attendance summary before submitting:
+						</AlertDialogDescription>
+					</AlertDialogHeader>
+
+					<div className="space-y-3 py-4">
+						{/* Total Students */}
+						<div className="flex items-center justify-between p-3 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg">
+							<div className="flex items-center gap-2">
+								<Users className="h-4 w-4 text-blue-600 dark:text-blue-400" />
+								<span className="text-sm font-medium text-blue-900 dark:text-blue-100">Total Students</span>
+							</div>
+							<span className="text-lg font-bold text-blue-700 dark:text-blue-300">{attendanceRecords.length}</span>
+						</div>
+
+						{/* Present Count */}
+						<div className="flex items-center justify-between p-3 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-lg">
+							<div className="flex items-center gap-2">
+								<CheckCircle className="h-4 w-4 text-green-600 dark:text-green-400" />
+								<span className="text-sm font-medium text-green-900 dark:text-green-100">Present</span>
+							</div>
+							<span className="text-lg font-bold text-green-700 dark:text-green-300">{presentCount}</span>
+						</div>
+
+						{/* Absent Count */}
+						<div className="flex items-center justify-between p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg">
+							<div className="flex items-center gap-2">
+								<XCircle className="h-4 w-4 text-red-600 dark:text-red-400" />
+								<span className="text-sm font-medium text-red-900 dark:text-red-100">Absent</span>
+							</div>
+							<span className="text-lg font-bold text-red-700 dark:text-red-300">{absentCount}</span>
+						</div>
+
+						{/* Warning */}
+						<div className="flex items-start gap-2 p-3 bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-lg mt-4">
+							<AlertTriangle className="h-4 w-4 text-yellow-600 dark:text-yellow-400 mt-0.5 flex-shrink-0" />
+							<p className="text-xs text-yellow-800 dark:text-yellow-200">
+								Once submitted, attendance records cannot be modified. Please ensure all information is correct.
+							</p>
+						</div>
+					</div>
+
+					<AlertDialogFooter>
+						<AlertDialogCancel>Cancel</AlertDialogCancel>
+						<AlertDialogAction
+							onClick={confirmSaveAttendance}
+							className="bg-green-600 hover:bg-green-700"
+						>
+							Confirm & Submit
+						</AlertDialogAction>
+					</AlertDialogFooter>
+				</AlertDialogContent>
+			</AlertDialog>
 		</SidebarProvider>
 	)
 }

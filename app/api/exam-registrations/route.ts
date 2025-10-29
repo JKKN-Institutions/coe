@@ -45,7 +45,7 @@ export async function GET(request: Request) {
 		// Fetch course names from courses table to enrich course_offering data
 		const { data: courses, error: coursesError } = await supabase
 			.from('courses')
-			.select('course_code, course_title')
+			.select('course_code, course_name')
 
 		if (coursesError) {
 			console.error('Courses fetch error:', coursesError)
@@ -54,10 +54,10 @@ export async function GET(request: Request) {
 
 		// Create a map for quick lookup
 		const courseMap = new Map(
-			(courses || []).map((c: any) => [c.course_code, c.course_title])
+			(courses || []).map((c: any) => [c.course_code, c.course_name])
 		)
 
-		// Transform the data to include course_title in course_offering
+		// Transform the data to include course_name in course_offering
 		const transformedData = (data || []).map((item: any) => ({
 			...item,
 			course_offering: item.course_offering ? {

@@ -11,7 +11,6 @@ import {
   GalleryVerticalEnd,
   Map,
   PieChart,
-  Settings2,
   SquareTerminal,
   BookText,
   Calendar,
@@ -43,6 +42,7 @@ import {
   CalendarClock,
   Play,
   CheckSquare,
+  Edit,
 } from "lucide-react"
 
 import { NavMain } from "@/components/nav-main"
@@ -68,6 +68,45 @@ const adminSection = {
     { title: "Role Permission", url: "/role-permissions", icon: LibraryBig },
   ],
 }
+
+// Master section - only for super_admin
+const masterSection = {
+  title: "Master",
+  url: "#",
+  icon: Database,
+  isActive: false,
+  items: [
+    { title: "Institutions", url: "/institutions", icon: School },
+    { title: "Degree", url: "/degree", icon: GraduationCap },
+    { title: "Department", url: "/department", icon: Grid2X2 },
+    { title: "Program", url: "/program", icon: GraduationCap },
+    { title: "Semester", url: "/semester", icon: CalendarCheck2 },
+    { title: "Academic Year", url: "/academic-years", icon: Calendar },
+    { title: "Batch", url: "/batch", icon: SquareStack },
+    { title: "Regulations", url: "/regulations", icon: LibraryBig },
+    { title: "Section", url: "/section", icon: Shapes },
+    { title: "Grade Card Report", url: "#", icon: FileText },
+    { title: "Hall", url: "#", icon: Shapes },
+    { title: "QP Template", url: "#", icon: NotepadText },
+    { title: "COE Calender", url: "#", icon: CalendarDays },
+    { title: "Fee Details", url: "#", icon: Tags },
+    { title: "Fee Structure", url: "#", icon: CreditCard },
+    { title: "Moderation Mark Setup", url: "#", icon: ListChecks },
+  ],
+}
+
+// Courses section - for super_admin, coe, deputy_coe
+const coursesSection = {
+  title: "Courses",
+  url: "#",
+  icon: BookText,
+  isActive: false,
+  items: [
+    { title: "Courses", url: "/courses", icon: BookText },
+    { title: "Course Mapping", url: "/course-mapping-index", icon: TableProperties },
+  ],
+}
+
 const data = {
   navMain: [
     {
@@ -75,33 +114,6 @@ const data = {
       url: "/dashboard",
       icon: Home,
       isActive: true,
-    },
-    // Admin group is rendered separately under a guard
-    {
-      title: "Master",
-      url: "#",
-      icon: Settings2,
-      isActive: false,
-      items: [
-        { title: "Institutions", url: "/institutions", icon: School },
-        { title: "Degree", url: "/degree", icon: GraduationCap },
-        { title: "Department", url: "/department", icon: Grid2X2 },
-        { title: "Program", url: "/program", icon: GraduationCap },
-        { title: "Semester", url: "/semester", icon: CalendarCheck2 },
-        { title: "Academic Year", url: "/academic-years", icon: Calendar },
-        { title: "Batch", url: "/batch", icon: SquareStack },
-        { title: "Regulations", url: "/regulations", icon: LibraryBig },
-        { title: "Section", url: "/section", icon: Shapes },
-        { title: "Courses", url: "/courses", icon: BookText },
-        { title: "Course Mapping", url: "/course-mapping-index", icon: TableProperties },
-        { title: "Grade Card Report", url: "#", icon: FileText },
-        { title: "Hall", url: "#", icon: Shapes },
-        { title: "QP Template", url: "#", icon: NotepadText },
-        { title: "COE Calender", url: "#", icon: CalendarDays },
-        { title: "Fee Details", url: "#", icon: Tags },
-        { title: "Fee Structure", url: "#", icon: CreditCard },
-        { title: "Moderation Mark Setup", url: "#", icon: ListChecks },
-      ],
     },
     
     {
@@ -132,7 +144,7 @@ const data = {
         { title: "Examination Sessions", url: "/examination-sessions", icon: CalendarDays },
         { title: "Exam Course Offer", url: "/course-offering", icon: BookText },
         { title: "Exam Registrations", url: "/exam-registrations", icon: UserPlus },
-        { title: "Exam Timetable", url: "/exam_timetables", icon: Calendar },
+        { title: "Exam Timetable", url: "/exam-timetables", icon: Calendar },
 
       ],
     },
@@ -142,6 +154,7 @@ const data = {
       icon: Play,
       items: [
         { title: "Exam Attendance", url: "/exam-attendance", icon: ClipboardCheck },
+        { title: "Attendance Correction", url: "/attendance-correction", icon: Edit },
       ],
     },
     {
@@ -212,9 +225,29 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
       <br></br>
 
       <SidebarContent>
-        <NavMain 
-          items={data.navMain} 
+        <NavMain
+          items={data.navMain}
         />
+
+        {/* Master section - only super_admin */}
+        <ProtectedRoute
+          requiredRoles={["super_admin"]}
+          requireAnyRole={true}
+          fallback={<></>}
+        >
+          <NavMain items={[masterSection]} />
+        </ProtectedRoute>
+
+        {/* Courses section - super_admin, coe, deputy_coe */}
+        <ProtectedRoute
+          requiredRoles={["super_admin", "coe", "deputy_coe"]}
+          requireAnyRole={true}
+          fallback={<></>}
+        >
+          <NavMain items={[coursesSection]} />
+        </ProtectedRoute>
+
+        {/* Admin section - admin and super_admin */}
         <ProtectedRoute
           requiredRoles={["admin", "super_admin"]}
           requireAnyRole={true}

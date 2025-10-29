@@ -20,6 +20,7 @@ import Link from "next/link"
 import { PlusCircle, Edit, Trash2, Search, ChevronLeft, ChevronRight, ArrowUpDown, ArrowUp, ArrowDown, Building2, TrendingUp, FileSpreadsheet, RefreshCw, XCircle, AlertTriangle } from "lucide-react"
 import { Switch } from "@/components/ui/switch"
 import { useToast } from "@/hooks/use-toast"
+import { useFormValidation, ValidationPresets } from "@/hooks/use-form-validation"
 
 type Department = {
   id: string
@@ -52,7 +53,19 @@ export default function DepartmentPage() {
   // Removed year filter
 
   const [formData, setFormData] = useState({ institution_code: "", department_code: "", department_name: "", display_name: "", description: "", stream: "", department_order: "", is_active: true })
-  const [errors, setErrors] = useState<Record<string, string>>({})
+
+  // Validation hook
+  const { errors, validate, clearErrors } = useFormValidation({
+    institution_code: [ValidationPresets.required('Institution code is required')],
+    department_code: [
+      ValidationPresets.required('Department code is required'),
+      ValidationPresets.custom(
+        (value) => !value || value.length <= 50,
+        'Department code must be 50 characters or less'
+      )
+    ],
+    department_name: [ValidationPresets.required('Department name is required')],
+  })
 
   // Upload summary state
   const [uploadSummary, setUploadSummary] = useState<{
@@ -118,7 +131,7 @@ export default function DepartmentPage() {
     fetchInstitutions()
   }, [])
 
-  const resetForm = () => { setFormData({ institution_code: "", department_code: "", department_name: "", display_name: "", description: "", stream: "", department_order: "", is_active: true }); setErrors({}); setEditing(null) }
+  const resetForm = () => { setFormData({ institution_code: "", department_code: "", department_name: "", display_name: "", description: "", stream: "", department_order: "", is_active: true }); clearErrors(); setEditing(null) }
 
   const handleSort = (c: string) => { if (sortColumn === c) setSortDirection(sortDirection === "asc" ? "desc" : "asc"); else { setSortColumn(c); setSortDirection("asc") } }
   const getSortIcon = (c: string) => sortColumn !== c ? <ArrowUpDown className="h-3 w-3 text-muted-foreground" /> : (sortDirection === "asc" ? <ArrowUp className="h-3 w-3" /> : <ArrowDown className="h-3 w-3" />)
@@ -147,51 +160,11 @@ export default function DepartmentPage() {
   const openAdd = () => { resetForm(); setSheetOpen(true) }
   const openEdit = (row: Department) => { setEditing(row); setFormData({ institution_code: row.institution_code, department_code: row.department_code, department_name: row.department_name, display_name: row.display_name || "", description: (row as any).description || "", stream: row.stream || "", department_order: row.department_order ? String(row.department_order) : "", is_active: row.is_active }); setSheetOpen(true) }
 
-  const validate = () => {
-    const e: Record<string, string> = {}
-    
-    // Required fields
-    if (!formData.institution_code || !formData.institution_code.trim()) {
-      e.institution_code = "Institution code is required"
-    } else if (institutions.length > 0 && !institutions.some(inst => inst.institution_code === formData.institution_code)) {
-      e.institution_code = "Please select a valid institution"
-    }
-    
-    if (!formData.department_code || !formData.department_code.trim()) {
-      e.department_code = "Department code is required"
-    } else if (formData.department_code.length > 50) {
-      e.department_code = "Department code must be 50 characters or less"
-    }
-    
-    if (!formData.department_name || !formData.department_name.trim()) {
-      e.department_name = "Department name is required"
-    } else if (formData.department_name.length > 255) {
-      e.department_name = "Department name must be 255 characters or less"
-    }
-    
-    // Stream validation - if provided, must be one of allowed values
-    const allowed = ['Arts','Science','Management','Commerce','Engineering','Medical','Law']
-    if (formData.stream && !allowed.includes(formData.stream)) {
-      e.stream = "Invalid stream. Must be one of: " + allowed.join(', ')
-    }
-
-    // Department Order validation - if provided, must be a positive integer
-    if (formData.department_order) {
-      const orderNum = Number(formData.department_order)
-      if (isNaN(orderNum) || orderNum < 0 || !Number.isInteger(orderNum)) {
-        e.department_order = "Department order must be a positive whole number"
-      }
-    }
-
-    setErrors(e)
-    return Object.keys(e).length === 0
-  }
-
   const save = async () => {
-    if (!validate()) {
+    if (!validate(formData)) {
       toast({
-        title: '❌ Validation Failed',
-        description: 'Please correct the errors in the form before submitting.',
+        title: '⚠️ Validation Error',
+        description: 'Please fix all validation errors before submitting.',
         variant: 'destructive',
         className: 'bg-red-50 border-red-200 text-red-800 dark:bg-red-900/20 dark:border-red-800 dark:text-red-200'
       })

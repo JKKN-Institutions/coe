@@ -2,14 +2,28 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getSupabaseServer } from '@/lib/supabase-server'
 
 // GET /api/exam-rooms - Fetch all exam rooms
-export async function GET() {
+export async function GET(request: NextRequest) {
 	try {
 		const supabase = getSupabaseServer()
+		const { searchParams } = new URL(request.url)
+		const institutions_id = searchParams.get('institutions_id')
+		const is_active = searchParams.get('is_active')
 
-		const { data, error } = await supabase
+		let query = supabase
 			.from('exam_rooms')
 			.select('*')
-			.order('created_at', { ascending: false })
+			.order('room_order', { ascending: true })
+			.order('room_code', { ascending: true })
+
+		if (institutions_id) {
+			query = query.eq('institutions_id', institutions_id)
+		}
+
+		if (is_active !== null && is_active !== undefined) {
+			query = query.eq('is_active', is_active === 'true')
+		}
+
+		const { data, error } = await query
 
 		if (error) {
 			console.error('Error fetching exam rooms:', error)

@@ -11,34 +11,20 @@ export async function GET(request: Request) {
     const semester_id = searchParams.get('semester_id')
     const is_published = searchParams.get('is_published')
 
+    // Fetch exam timetables with joins
     let query = supabase
       .from('exam_timetables')
       .select(`
         *,
-        institutions!inner(
+        institutions(id, institution_code, name),
+        examination_sessions(id, session_code, session_name),
+        course_offerings(
           id,
-          institution_code,
-          institution_name
-        ),
-        examination_sessions!inner(
-          id,
-          session_name,
-          session_code
-        ),
-        course_offerings!inner(
-          id,
+          course_id,
+          program_id,
           semester,
-          courses!inner(
-            id,
-            course_code,
-            course_title
-          ),
-          programs!inner(
-            id,
-            program_code,
-            program_name,
-            program_type
-          )
+          course_mapping:course_id(id, course_code, course_title),
+          programs(id, program_code, program_name)
         )
       `)
       .order('exam_date', { ascending: true })
@@ -50,25 +36,96 @@ export async function GET(request: Request) {
     }
 
     if (program_id) {
-      query = query.eq('course_offerings.programs.id', program_id)
+      query = query.eq('course_offerings.program_id', program_id)
     }
 
     if (semester_id) {
-      query = query.eq('course_offerings.semester_id', semester_id)
+      query = query.eq('course_offerings.semester', parseInt(semester_id))
     }
 
     if (is_published !== null && is_published !== undefined) {
       query = query.eq('is_published', is_published === 'true')
     }
 
-    const { data, error } = await query
+    const { data: timetables, error } = await query
 
     if (error) {
       console.error('Exam timetables fetch error:', error)
       return NextResponse.json({ error: 'Failed to fetch exam timetables' }, { status: 500 })
     }
 
-    return NextResponse.json(data || [])
+    // For each timetable, fetch student count and course count
+    const enrichedData = await Promise.all((timetables || []).map(async (timetable) => {
+      try {
+        // Get student count for this exam (by date and session)
+        const { count: studentCount, error: studentError } = await supabase
+          .from('exam_registrations')
+          .select('id', { count: 'exact', head: true })
+          .eq('exam_timetable_id', timetable.id)
+
+        if (studentError) {
+          console.warn('Error fetching student count:', studentError)
+        }
+
+        // Get course count for this date and session
+        const { count: courseCount, error: courseError } = await supabase
+          .from('exam_timetables')
+          .select('id', { count: 'exact', head: true })
+          .eq('institutions_id', timetable.institutions_id)
+          .eq('exam_date', timetable.exam_date)
+          .eq('session', timetable.session)
+
+        if (courseError) {
+          console.warn('Error fetching course count:', courseError)
+        }
+
+        // Get seat allocation count from room_allocations
+        const { data: allocations, error: seatError } = await supabase
+          .from('room_allocations')
+          .select('seats_allocated')
+          .eq('exam_timetable_id', timetable.id)
+
+        if (seatError) {
+          console.warn('Error fetching seat allocation count:', seatError)
+        }
+
+        // Sum up all allocated seats
+        const totalSeatsAllocated = allocations?.reduce((sum, alloc) => sum + (alloc.seats_allocated || 0), 0) || 0
+
+        return {
+          ...timetable,
+          student_count: studentCount || 0,
+          course_count: courseCount || 0,
+          seat_alloc_count: totalSeatsAllocated,
+          institution_code: timetable.institutions?.institution_code || 'N/A',
+          institution_name: timetable.institutions?.name || 'N/A',
+          session_code: timetable.examination_sessions?.session_code || 'N/A',
+          session_name: timetable.examination_sessions?.session_name || 'N/A',
+          course_code: timetable.course_offerings?.course_mapping?.course_code || 'N/A',
+          course_name: timetable.course_offerings?.course_mapping?.course_title || 'N/A',
+          program_code: timetable.course_offerings?.programs?.program_code || 'N/A',
+          program_name: timetable.course_offerings?.programs?.program_name || 'N/A',
+        }
+      } catch (err) {
+        console.error('Error enriching timetable data:', err)
+        return {
+          ...timetable,
+          student_count: 0,
+          course_count: 0,
+          seat_alloc_count: 0,
+          institution_code: (timetable as any).institutions?.institution_code || 'N/A',
+          institution_name: (timetable as any).institutions?.name || 'N/A',
+          session_code: (timetable as any).examination_sessions?.session_code || 'N/A',
+          session_name: (timetable as any).examination_sessions?.session_name || 'N/A',
+          course_code: (timetable as any).course_offerings?.course_mapping?.course_code || 'N/A',
+          course_name: (timetable as any).course_offerings?.course_mapping?.course_title || 'N/A',
+          program_code: (timetable as any).course_offerings?.programs?.program_code || 'N/A',
+          program_name: (timetable as any).course_offerings?.programs?.program_name || 'N/A',
+        }
+      }
+    }))
+
+    return NextResponse.json(enrichedData)
   } catch (e) {
     console.error('Exam timetables API error:', e)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
@@ -113,34 +170,7 @@ export async function POST(request: Request) {
     const { data, error } = await supabase
       .from('exam_timetables')
       .insert([insertPayload])
-      .select(`
-        *,
-        institutions!inner(
-          id,
-          institution_code,
-          institution_name
-        ),
-        examination_sessions!inner(
-          id,
-          session_name,
-          session_code
-        ),
-        course_offerings!inner(
-          id,
-          semester,
-          courses!inner(
-            id,
-            course_code,
-            course_title
-          ),
-          programs!inner(
-            id,
-            program_code,
-            program_name,
-            program_type
-          )
-        )
-      `)
+      .select('*')
       .single()
 
     if (error) {
@@ -195,34 +225,7 @@ export async function PUT(request: Request) {
       .from('exam_timetables')
       .update(updatePayload)
       .eq('id', body.id)
-      .select(`
-        *,
-        institutions!inner(
-          id,
-          institution_code,
-          institution_name
-        ),
-        examination_sessions!inner(
-          id,
-          session_name,
-          session_code
-        ),
-        course_offerings!inner(
-          id,
-          semester,
-          courses!inner(
-            id,
-            course_code,
-            course_title
-          ),
-          programs!inner(
-            id,
-            program_code,
-            program_name,
-            program_type
-          )
-        )
-      `)
+      .select('*')
       .single()
 
     if (error) {

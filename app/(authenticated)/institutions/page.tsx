@@ -17,6 +17,7 @@ import { Label } from "@/components/ui/label"
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet"
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog"
 import { useToast } from "@/hooks/use-toast"
+import { useFormValidation, ValidationPresets } from "@/hooks/use-form-validation"
 import { Switch } from "@/components/ui/switch"
 import Link from "next/link"
 import { PlusCircle, Edit, Trash2, Search, ChevronLeft, ChevronRight, ArrowUpDown, ArrowUp, ArrowDown, Building2, TrendingUp, FileSpreadsheet, RefreshCw, CheckCircle, XCircle, AlertTriangle } from "lucide-react"
@@ -149,7 +150,13 @@ export default function InstitutionsPage() {
     anti_ragging_dept: {} as DepartmentInfo,
     is_active: true,
   })
-  const [errors, setErrors] = useState<Record<string, string>>({})
+
+  // Validation hook
+  const { errors, validate, clearErrors } = useFormValidation({
+    institution_code: [ValidationPresets.required('Institution code is required')],
+    name: [ValidationPresets.required('Institution name is required')],
+    email: [ValidationPresets.email('Invalid email address')],
+  })
 
   // Fetch data from API
   const fetchInstitutions = async () => {
@@ -202,7 +209,7 @@ export default function InstitutionsPage() {
       anti_ragging_dept: {} as DepartmentInfo,
       is_active: true,
     })
-    setErrors({})
+    clearErrors()
     setEditing(null)
   }
 
@@ -279,17 +286,16 @@ export default function InstitutionsPage() {
     setSheetOpen(true)
   }
 
-  const validate = () => {
-    const e: Record<string, string> = {}
-    if (!formData.institution_code.trim()) e.institution_code = "Required"
-    if (!formData.name.trim()) e.name = "Required"
-    if (formData.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.email)) e.email = "Invalid email"
-    setErrors(e)
-    return Object.keys(e).length === 0
-  }
-
   const save = async () => {
-    if (!validate()) return
+    if (!validate(formData)) {
+      toast({
+        title: "⚠️ Validation Error",
+        description: "Please fix all validation errors before submitting.",
+        variant: "destructive",
+        className: "bg-red-50 border-red-200 text-red-800 dark:bg-red-900/20 dark:border-red-800 dark:text-red-200",
+      })
+      return
+    }
     
     try {
       setLoading(true)

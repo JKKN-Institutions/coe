@@ -48,8 +48,15 @@ interface GeneratedCourseData {
   course_code: string
   course_title: string
   program_name: string
+  program_code?: string
   program_order?: number | string
   semester?: number
+  course_semester_code?: string
+  course_semester_name?: string
+  course_semester_number?: number
+  course_program_code?: string
+  course_institution_code?: string
+  course_regulation_code?: string
   regular_count: number
   arrear_count: number
   exam_date: string
@@ -245,13 +252,35 @@ export default function ExamTimetablePage() {
       }
     })
 
-    // Convert back to array and sort by semester_code or semester_name
-    return Array.from(uniqueSemesters.values()).sort((a, b) => {
+    let semesterList = Array.from(uniqueSemesters.values())
+
+    // Filter semesters based on selected program's duration
+    if (selectedProgramId) {
+      const selectedProgram = programs.find(p => p.id === selectedProgramId)
+      if (selectedProgram && selectedProgram.duration_years) {
+        // Calculate max semesters based on program duration
+        const maxSemesters = selectedProgram.duration_years * 2 // 2 semesters per year
+
+        // Filter semesters to show only those within the program's duration
+        semesterList = semesterList.filter(semester => {
+          // Extract semester number from semester_name (e.g., "Semester 1" -> 1)
+          const semesterMatch = semester.semester_name.match(/\d+/)
+          if (semesterMatch) {
+            const semesterNumber = parseInt(semesterMatch[0])
+            return semesterNumber <= maxSemesters
+          }
+          return true // If no number found, include it
+        })
+      }
+    }
+
+    // Sort by semester_code or semester_name
+    return semesterList.sort((a, b) => {
       const aValue = a.semester_code || a.semester_name
       const bValue = b.semester_code || b.semester_name
       return aValue.localeCompare(bValue)
     })
-  }, [semesters])
+  }, [semesters, selectedProgramId, programs])
 
   // Handle institution code change - reset all dependent selections
   const handleInstitutionChange = (value: string) => {
@@ -299,13 +328,26 @@ export default function ExamTimetablePage() {
 
       // Build query parameters dynamically based on selected filters
       const params = new URLSearchParams()
-      params.append('institution_code', selectedInstitutionCode)
+
+      // Get institution ID from institution code
+      const selectedInstitution = institutions.find(inst => inst.institution_code === selectedInstitutionCode)
+      if (!selectedInstitution) {
+        toast({
+          title: "❌ Error",
+          description: "Invalid institution selected.",
+          variant: "destructive",
+        })
+        setGeneratedLoading(false)
+        return
+      }
+      params.append('institutions_id', selectedInstitution.id)
 
       // Add optional filters if selected
       if (selectedSessionId) params.append('examination_session_id', selectedSessionId)
-      if (selectedProgramType) params.append('program_type', selectedProgramType)
       if (selectedProgramId) params.append('program_id', selectedProgramId)
-      if (selectedSemesterId) params.append('semester_id', selectedSemesterId)
+
+      // Note: Semester filtering is done client-side using course_semester_name
+      // from the joined course_mapping + semesters data
 
       // Determine filter combination for user feedback
       let filterCombination = 'Institution Code'
@@ -319,7 +361,34 @@ export default function ExamTimetablePage() {
       if (!courseOfferingsResponse.ok) {
         throw new Error('Failed to fetch course offerings')
       }
-      const courseOfferings = await courseOfferingsResponse.json()
+      let courseOfferings = await courseOfferingsResponse.json()
+
+      // Client-side filter by program_type if selected (API doesn't support this filter)
+      if (selectedProgramType) {
+        courseOfferings = courseOfferings.filter((offering: any) => {
+          const program = programs.find(p => p.id === offering.program_id)
+          return program && program.program_type === selectedProgramType
+        })
+      }
+
+      // Client-side filter by semester_name if specific semester is selected
+      // This uses the course_semester_name from course_mapping joined with semesters table
+      if (selectedSemesterId) {
+        const selectedSemester = semesters.find(s => s.id === selectedSemesterId)
+        if (selectedSemester) {
+          courseOfferings = courseOfferings.filter((offering: any) => {
+            // Match against course_semester_name from the joined data
+            return offering.course_semester_name === selectedSemester.semester_name
+          })
+        }
+      } else {
+        // When "All Semesters" is selected, filter to show only "Semester 1" courses
+        courseOfferings = courseOfferings.filter((offering: any) => {
+          return offering.course_semester_name === 'Semester 1' ||
+                 offering.course_semester_name === 'SEMESTER 1' ||
+                 offering.course_semester_name?.toLowerCase() === 'semester 1'
+        })
+      }
 
       // Fetch exam registrations for student counts (only if session is selected)
       let registrations: any[] = []
@@ -345,7 +414,7 @@ export default function ExamTimetablePage() {
         timetableMap.set(tt.course_offering_id, tt)
       })
 
-      // Map course offerings to generated data
+      // Map course offerings to generated data (filtering is done by API)
       const generatedData: GeneratedCourseData[] = courseOfferings.map((offering: any) => {
         // Count regular and arrear students for this course
         const regularCount = registrations.filter((reg: any) =>
@@ -364,8 +433,15 @@ export default function ExamTimetablePage() {
           course_code: offering.course_code || 'N/A',
           course_title: offering.course_title || 'N/A',
           program_name: offering.programs?.program_name || 'N/A',
+          program_code: offering.programs?.program_code || offering.program_code || 'N/A',
           program_order: offering.programs?.display_order || offering.programs?.program_code || 999,
           semester: offering.semester || 0,
+          course_semester_code: offering.course_semester_code || null,
+          course_semester_name: offering.course_semester_name || null,
+          course_semester_number: offering.course_semester_number || null,
+          course_program_code: offering.course_program_code || null,
+          course_institution_code: offering.course_institution_code || null,
+          course_regulation_code: offering.course_regulation_code || null,
           regular_count: regularCount,
           arrear_count: arrearCount,
           exam_date: existingTimetable?.exam_date || '',
@@ -400,9 +476,18 @@ export default function ExamTimetablePage() {
 
       setGeneratedCourses(sortedData)
 
+      // Build filter description for toast
+      const selectedSemesterName = selectedSemesterId
+        ? semesters.find(s => s.id === selectedSemesterId)?.semester_name
+        : null
+
+      const filterDescription = selectedSemesterName
+        ? `${filterCombination} - ${selectedSemesterName}`
+        : filterCombination
+
       toast({
         title: "✅ Courses Generated",
-        description: `Successfully loaded ${sortedData.length} course${sortedData.length > 1 ? 's' : ''} (${filterCombination}).`,
+        description: `Successfully loaded ${sortedData.length} course${sortedData.length > 1 ? 's' : ''} (${filterDescription}).`,
         className: "bg-green-50 border-green-200 text-green-800 dark:bg-green-900/20 dark:border-green-800 dark:text-green-200",
         duration: 5000,
       })
@@ -1188,9 +1273,16 @@ export default function ExamTimetablePage() {
                     </Select>
                   </div>
 
-                  {/* Semester - Optional */}
+                  {/* Semester - Optional (filtered by program duration) */}
                   <div className="space-y-1">
-                    <Label htmlFor="semester" className="text-xs font-medium">Semester</Label>
+                    <Label htmlFor="semester" className="text-xs font-medium">
+                      Semester
+                      {selectedProgramId && (
+                        <span className="text-[10px] text-muted-foreground ml-1">
+                          (filtered by program)
+                        </span>
+                      )}
+                    </Label>
                     <Select
                       value={selectedSemesterId || "ALL"}
                       onValueChange={(value) => setSelectedSemesterId(value === "ALL" ? "" : value)}
