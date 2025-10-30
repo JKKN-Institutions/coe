@@ -23,7 +23,8 @@
       "Bash(find:*)",
       "Bash(node:*)",
       "Bash(netstat:*)",
-      "Bash(tail:*)"
+      "Bash(tail:*)",
+      "Bash(npx claude-code-templates@latest --skill=development/skill-creator --yes)"
     ],
     "deny": [],
     "ask": []
