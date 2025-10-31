@@ -145,9 +145,10 @@ export default function UsersPage() {
     email: "",
     phone_number: "",
     is_active: true,
-    role: "user",
+    roles: [] as string[], // Changed from single role to multiple roles
   })
   const [errors, setErrors] = useState<Record<string, string>>({})
+  const [roleSearchTerm, setRoleSearchTerm] = useState("")
 
   const fetchUsers = async (showLoader = true) => {
     try {
@@ -273,10 +274,11 @@ export default function UsersPage() {
       email: "",
       phone_number: "",
       is_active: true,
-      role: "user",
+      roles: [], // Reset to empty array for multiple roles
     })
     setErrors({})
     setEditing(null)
+    setRoleSearchTerm("")
   }
 
   const openAdd = () => {
@@ -284,17 +286,45 @@ export default function UsersPage() {
     setSheetOpen(true)
   }
 
-  const openEdit = (user: User) => {
+  const openEdit = async (user: User) => {
     setEditing(user)
-    setFormData({
-      institution_code: user.institution_code || "",
-      institution_id: user.institution_id || "",
-      full_name: user.full_name || "",
-      email: user.email || "",
-      phone_number: user.phone_number || user.phone || "",
-      is_active: user.is_active ?? true,
-      role: user.role || "user",
-    })
+
+    // Fetch user's roles from user_roles table
+    try {
+      const response = await fetch(`/api/users/${user.id}/roles`)
+      let userRoles: string[] = []
+
+      if (response.ok) {
+        const rolesData = await response.json()
+        userRoles = rolesData.roles || []
+      } else {
+        // Fallback to legacy role field if user_roles fetch fails
+        userRoles = user.role ? [user.role] : []
+      }
+
+      setFormData({
+        institution_code: user.institution_code || "",
+        institution_id: user.institution_id || "",
+        full_name: user.full_name || "",
+        email: user.email || "",
+        phone_number: user.phone_number || user.phone || "",
+        is_active: user.is_active ?? true,
+        roles: userRoles, // Load multiple roles from user_roles table
+      })
+    } catch (error) {
+      console.error('Error fetching user roles:', error)
+      // Fallback to legacy role field
+      setFormData({
+        institution_code: user.institution_code || "",
+        institution_id: user.institution_id || "",
+        full_name: user.full_name || "",
+        email: user.email || "",
+        phone_number: user.phone_number || user.phone || "",
+        is_active: user.is_active ?? true,
+        roles: user.role ? [user.role] : [],
+      })
+    }
+
     setSheetOpen(true)
   }
 
@@ -371,6 +401,12 @@ export default function UsersPage() {
       setLoading(false)
     }
   }
+
+  const filteredRoles = useMemo(() => {
+    if (!roleSearchTerm.trim()) return roles
+    const search = roleSearchTerm.toLowerCase()
+    return roles.filter(role => role.name.toLowerCase().includes(search))
+  }, [roles, roleSearchTerm])
 
   const filteredUsers = useMemo(() => {
     const q = searchTerm.toLowerCase()
@@ -800,12 +836,12 @@ export default function UsersPage() {
 
           <div className="flex items-center justify-between flex-shrink-0">
             <div>
-              <h1 className="text-2xl font-bold tracking-tight">Users Management</h1>
-              <p className="text-sm text-muted-foreground">
+              <h1 className="text-xl font-bold tracking-tight">Users Management</h1>
+              <p className="text-xs text-muted-foreground">
                 Manage user accounts, roles, and permissions
               </p>
             </div>
-           
+
           </div>
 
           {/* Scorecard Section */}
@@ -886,67 +922,50 @@ export default function UsersPage() {
                       placeholder="Search by name or email..."
                       value={searchTerm}
                       onChange={(e) => setSearchTerm(e.target.value)}
-                      className="pl-9"
+                      className="pl-9 h-8 text-xs"
                     />
                   </div>
 
                   <Select value={statusFilter} onValueChange={setStatusFilter}>
-                    <SelectTrigger className="w-full sm:w-[140px]">
+                    <SelectTrigger className="w-full sm:w-[140px] h-8 text-xs">
                       <Filter className="h-4 w-4 mr-2" />
                       <SelectValue placeholder="Status" />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="all">All Status</SelectItem>
-                      <SelectItem value="active">Active</SelectItem>
-                      <SelectItem value="inactive">Inactive</SelectItem>
-                      <SelectItem value="verified">Verified</SelectItem>
-                      <SelectItem value="unverified">Unverified</SelectItem>
+                      <SelectItem value="all" className="text-xs">All Status</SelectItem>
+                      <SelectItem value="active" className="text-xs">Active</SelectItem>
+                      <SelectItem value="inactive" className="text-xs">Inactive</SelectItem>
+                      <SelectItem value="verified" className="text-xs">Verified</SelectItem>
+                      <SelectItem value="unverified" className="text-xs">Unverified</SelectItem>
                     </SelectContent>
                   </Select>
 
-                  <Select value={roleFilter} onValueChange={setRoleFilter}>
-                    <SelectTrigger className="w-full sm:w-[140px]">
-                      <Shield className="h-4 w-4 mr-2" />
-                      <SelectValue placeholder="Role" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="all">All Roles</SelectItem>
-                      {roles.map((role) => (
-                        <SelectItem key={role.id} value={role.name}>
-                          {role.name.charAt(0).toUpperCase() + role.name.slice(1)}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                 
                 </div>
 
                 <div className="flex gap-2 flex-wrap">
-                <Button onClick={handleRefresh} variant="outline" size="sm" disabled={refreshing}>
-              <RefreshCcw className={`h-4 w-4 mr-2 ${refreshing ? 'animate-spin' : ''}`} />
+                <Button onClick={handleRefresh} variant="outline" size="sm" disabled={refreshing} className="text-xs h-8">
+              <RefreshCcw className={`h-3 w-3 mr-1 ${refreshing ? 'animate-spin' : ''}`} />
               Refresh
             </Button>
                   <Button
                     variant="outline"
                     size="sm"
                     onClick={handleTemplateExport}
+                    className="text-xs h-8"
                   >
-                    <FileSpreadsheet className="h-4 w-4 mr-2" />
+                    <FileSpreadsheet className="h-3 w-3 mr-1" />
                     Template
                   </Button>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={handleDownloadJson}
-                  >
-                    JSON
-                  </Button>
+
                   {selectedUsers.size > 0 && (
                     <Button
                       variant="destructive"
                       size="sm"
                       onClick={handleBulkDelete}
+                      className="text-xs h-8"
                     >
-                      <Trash2 className="h-4 w-4 mr-2" />
+                      <Trash2 className="h-3 w-3 mr-1" />
                       Delete ({selectedUsers.size})
                     </Button>
                   )}
@@ -956,15 +975,17 @@ export default function UsersPage() {
                     size="sm"
                     onClick={exportUsers}
                     disabled={filteredUsers.length === 0}
+                    className="text-xs h-8"
                   >
-                    <Download className="h-4 w-4 mr-2" />
+                    <Download className="h-3 w-3 mr-1" />
                     Download
                   </Button>
-                  
+
                   <Button
                     variant="outline"
                     size="sm"
                     onClick={handleImport}
+                    className="text-xs h-8"
                   >
                     Upload
                   </Button>
@@ -973,8 +994,9 @@ export default function UsersPage() {
                     size="sm"
                     onClick={openAdd}
                     disabled={loading}
+                    className="text-xs h-8"
                   >
-                    <PlusCircle className="h-4 w-4 mr-2" />
+                    <PlusCircle className="h-3 w-3 mr-1" />
                     Add
                   </Button>
                 </div>
@@ -994,51 +1016,46 @@ export default function UsersPage() {
                           className="rounded border-gray-300"
                         />
                       </TableHead>
-                      <TableHead className="w-12"></TableHead>
-                      <TableHead>
-                        <Button variant="ghost" size="sm" onClick={() => handleSort('institution_code')} className="h-auto p-0 font-medium hover:bg-transparent">
+                      <TableHead className="w-12 text-[11px]"></TableHead>
+                      <TableHead className="text-[11px]">
+                        <Button variant="ghost" size="sm" onClick={() => handleSort('institution_code')} className="h-auto p-0 font-medium hover:bg-transparent text-[11px]">
                           Institution Code
                           <span className="ml-1">{getSortIcon('institution_code')}</span>
                         </Button>
                       </TableHead>
-                      <TableHead>
-                        <Button variant="ghost" size="sm" onClick={() => handleSort('full_name')} className="h-auto p-0 font-medium hover:bg-transparent">
+                      <TableHead className="text-[11px]">
+                        <Button variant="ghost" size="sm" onClick={() => handleSort('full_name')} className="h-auto p-0 font-medium hover:bg-transparent text-[11px]">
                           Full Name
                           <span className="ml-1">{getSortIcon('full_name')}</span>
                         </Button>
                       </TableHead>
-                      <TableHead>
-                        <Button variant="ghost" size="sm" onClick={() => handleSort('email')} className="h-auto p-0 font-medium hover:bg-transparent">
+                      <TableHead className="text-[11px]">
+                        <Button variant="ghost" size="sm" onClick={() => handleSort('email')} className="h-auto p-0 font-medium hover:bg-transparent text-[11px]">
                           Email
                           <span className="ml-1">{getSortIcon('email')}</span>
                         </Button>
                       </TableHead>
-                      <TableHead>
-                        <Button variant="ghost" size="sm" onClick={() => handleSort('phone_number')} className="h-auto p-0 font-medium hover:bg-transparent">
+                      <TableHead className="text-[11px]">
+                        <Button variant="ghost" size="sm" onClick={() => handleSort('phone_number')} className="h-auto p-0 font-medium hover:bg-transparent text-[11px]">
                           Phone Number
                           <span className="ml-1">{getSortIcon('phone_number')}</span>
                         </Button>
                       </TableHead>
-                      <TableHead>
-                        <Button variant="ghost" size="sm" onClick={() => handleSort('role')} className="h-auto p-0 font-medium hover:bg-transparent">
-                          Role
-                          <span className="ml-1">{getSortIcon('role')}</span>
-                        </Button>
-                      </TableHead>
-                      <TableHead>
-                        <Button variant="ghost" size="sm" onClick={() => handleSort('is_active')} className="h-auto p-0 font-medium hover:bg-transparent">
+
+                      <TableHead className="text-[11px]">
+                        <Button variant="ghost" size="sm" onClick={() => handleSort('is_active')} className="h-auto p-0 font-medium hover:bg-transparent text-[11px]">
                           Status
                           <span className="ml-1">{getSortIcon('is_active')}</span>
                         </Button>
                       </TableHead>
-                      <TableHead className="text-right">Actions</TableHead>
+                      <TableHead className="text-right text-[11px]">Actions</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
                     {loading ? (
                       <TableRow>
                         <TableCell colSpan={8} className="h-32 text-center">
-                          <div className="flex items-center justify-center gap-2">
+                          <div className="flex items-center justify-center gap-2 text-xs">
                             <RefreshCcw className="h-4 w-4 animate-spin" />
                             Loading users...
                           </div>
@@ -1057,25 +1074,21 @@ export default function UsersPage() {
                           </TableCell>
                           <TableCell>{getStatusIcon(user)}</TableCell>
                           <TableCell>
-                            <div className="font-medium">{user.institution_code || '-'}</div>
+                            <div className="font-medium text-[11px]">{user.institution_code || '-'}</div>
                           </TableCell>
                           <TableCell>
-                            <div className="font-medium">{user.full_name}</div>
+                            <div className="font-medium text-[11px]">{user.full_name}</div>
                           </TableCell>
-                          <TableCell className="text-sm text-muted-foreground">{user.email}</TableCell>
-                          <TableCell className="text-sm text-muted-foreground">{user.phone_number || user.phone || '-'}</TableCell>
-                          <TableCell>
-                            <Badge variant={getRoleBadgeVariant(user.role)}>
-                              {user.role || 'User'}
-                            </Badge>
-                          </TableCell>
+                          <TableCell className="text-[11px] text-muted-foreground">{user.email}</TableCell>
+                          <TableCell className="text-[11px] text-muted-foreground">{user.phone_number || user.phone || '-'}</TableCell>
+
                           <TableCell>
                             <div className="space-y-1">
-                              <Badge variant={user.is_active ? "default" : "secondary"}>
+                              <Badge variant={user.is_active ? "default" : "secondary"} className="text-[11px]">
                                 {user.is_active ? 'Active' : 'Inactive'}
                               </Badge>
                               {user.is_verified && (
-                                <Badge variant="outline" className="ml-1">
+                                <Badge variant="outline" className="ml-1 text-[11px]">
                                   Verified
                                 </Badge>
                               )}
@@ -1114,7 +1127,7 @@ export default function UsersPage() {
                         <TableCell colSpan={8} className="h-32 text-center">
                           <div className="flex flex-col items-center justify-center gap-2">
                             <Users className="h-8 w-8 text-muted-foreground" />
-                            <p className="text-muted-foreground">
+                            <p className="text-xs text-muted-foreground">
                               {searchTerm ? 'No users found matching your search' : 'No users found'}
                             </p>
                           </div>
@@ -1127,7 +1140,7 @@ export default function UsersPage() {
 
               {totalPages > 1 && (
                 <div className="flex items-center justify-between space-x-2 py-4">
-                  <div className="text-sm text-muted-foreground">
+                  <div className="text-xs text-muted-foreground">
                     Showing {((currentPage - 1) * itemsPerPage) + 1}-
                     {Math.min(currentPage * itemsPerPage, filteredUsers.length)} of {filteredUsers.length} users
                   </div>
@@ -1137,8 +1150,9 @@ export default function UsersPage() {
                       size="sm"
                       onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
                       disabled={currentPage === 1}
+                      className="h-7 px-2 text-xs"
                     >
-                      <ChevronLeft className="h-4 w-4 mr-1" />
+                      <ChevronLeft className="h-3 w-3 mr-1" />
                       Previous
                     </Button>
                     <div className="flex items-center gap-1">
@@ -1160,7 +1174,7 @@ export default function UsersPage() {
                             variant={currentPage === pageNum ? "default" : "outline"}
                             size="sm"
                             onClick={() => setCurrentPage(pageNum)}
-                            className="h-8 w-8 p-0"
+                            className="h-7 w-7 p-0 text-xs"
                           >
                             {pageNum}
                           </Button>
@@ -1172,9 +1186,10 @@ export default function UsersPage() {
                       size="sm"
                       onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
                       disabled={currentPage >= totalPages}
+                      className="h-7 px-2 text-xs"
                     >
                       Next
-                      <ChevronRight className="h-4 w-4 ml-1" />
+                      <ChevronRight className="h-3 w-3 ml-1" />
                     </Button>
                   </div>
                 </div>
@@ -1228,93 +1243,172 @@ export default function UsersPage() {
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 {/* Institution Code */}
                 <div className="space-y-2">
-                  <Label htmlFor="institution_code" className="text-sm font-semibold">
+                  <Label htmlFor="institution_code" className="text-xs font-semibold">
                     Institution Code <span className="text-red-500">*</span>
                   </Label>
                   <Select value={formData.institution_code} onValueChange={(value) => setFormData({ ...formData, institution_code: value })}>
-                    <SelectTrigger className={`h-10 ${errors.institution_code ? 'border-destructive' : ''}`}>
+                    <SelectTrigger className={`h-8 text-xs ${errors.institution_code ? 'border-destructive' : ''}`}>
                       <SelectValue placeholder="Select institution" />
                     </SelectTrigger>
                     <SelectContent>
                       {institutions.map((institution) => (
-                        <SelectItem key={institution.id} value={institution.institution_code}>
+                        <SelectItem key={institution.id} value={institution.institution_code} className="text-xs">
                           {institution.institution_code} - {institution.name}
                         </SelectItem>
                       ))}
                     </SelectContent>
                   </Select>
-                  {errors.institution_code && <p className="text-xs text-destructive">{errors.institution_code}</p>}
+                  {errors.institution_code && <p className="text-[10px] text-destructive">{errors.institution_code}</p>}
                 </div>
 
                 {/* Full Name */}
                 <div className="space-y-2">
-                  <Label htmlFor="full_name" className="text-sm font-semibold">
+                  <Label htmlFor="full_name" className="text-xs font-semibold">
                     Full Name <span className="text-red-500">*</span>
                   </Label>
-                  <Input 
-                    id="full_name" 
-                    value={formData.full_name} 
-                    onChange={(e) => setFormData({ ...formData, full_name: e.target.value })} 
-                    className={`h-10 ${errors.full_name ? 'border-destructive' : ''}`} 
+                  <Input
+                    id="full_name"
+                    value={formData.full_name}
+                    onChange={(e) => setFormData({ ...formData, full_name: e.target.value })}
+                    className={`h-8 text-xs ${errors.full_name ? 'border-destructive' : ''}`}
                     placeholder="Enter full name"
                   />
-                  {errors.full_name && <p className="text-xs text-destructive">{errors.full_name}</p>}
+                  {errors.full_name && <p className="text-[10px] text-destructive">{errors.full_name}</p>}
                 </div>
 
                 {/* Email */}
                 <div className="space-y-2">
-                  <Label htmlFor="email" className="text-sm font-semibold">
+                  <Label htmlFor="email" className="text-xs font-semibold">
                     Email <span className="text-red-500">*</span>
                   </Label>
-                  <Input 
-                    id="email" 
-                    type="email" 
-                    value={formData.email} 
-                    onChange={(e) => setFormData({ ...formData, email: e.target.value })} 
-                    className={`h-10 ${errors.email ? 'border-destructive' : ''}`} 
+                  <Input
+                    id="email"
+                    type="email"
+                    value={formData.email}
+                    onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+                    className={`h-8 text-xs ${errors.email ? 'border-destructive' : ''}`}
                     placeholder="Enter email address"
                   />
-                  {errors.email && <p className="text-xs text-destructive">{errors.email}</p>}
+                  {errors.email && <p className="text-[10px] text-destructive">{errors.email}</p>}
                 </div>
 
                 {/* Phone Number */}
                 <div className="space-y-2">
-                  <Label htmlFor="phone_number" className="text-sm font-medium">Phone Number</Label>
-                  <Input 
-                    id="phone_number" 
-                    type="tel" 
-                    value={formData.phone_number} 
-                    onChange={(e) => setFormData({ ...formData, phone_number: e.target.value })} 
-                    className="h-10" 
+                  <Label htmlFor="phone_number" className="text-xs font-medium">Phone Number</Label>
+                  <Input
+                    id="phone_number"
+                    type="tel"
+                    value={formData.phone_number}
+                    onChange={(e) => setFormData({ ...formData, phone_number: e.target.value })}
+                    className="h-8 text-xs"
                     placeholder="Enter phone number"
                   />
                 </div>
 
-                {/* Role */}
-                <div className="space-y-2">
-                  <Label htmlFor="role" className="text-sm font-medium">Role</Label>
-                  <Select value={formData.role} onValueChange={(value) => setFormData({ ...formData, role: value })}>
-                    <SelectTrigger className="h-10">
-                      <SelectValue placeholder="Select role" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {roles.map((r) => (
-                        <SelectItem key={r.id} value={r.name}>{r.name}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                {/* Roles (Multi-Select) */}
+                <div className="space-y-3 md:col-span-2">
+                  <div className="flex items-center justify-between">
+                    <Label htmlFor="roles" className="text-sm font-semibold">
+                      Assign Roles
+                    </Label>
+                    {formData.roles.length > 0 && (
+                      <Badge variant="secondary" className="text-xs">
+                        {formData.roles.length} selected
+                      </Badge>
+                    )}
+                  </div>
+
+                  {/* Search Input */}
+                  <div className="relative">
+                    <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                    <Input
+                      placeholder="Search roles..."
+                      value={roleSearchTerm}
+                      onChange={(e) => setRoleSearchTerm(e.target.value)}
+                      className="pl-9 h-9"
+                    />
+                  </div>
+
+                  {/* Roles Checkbox List */}
+                  <div className="border rounded-lg p-3 space-y-2 min-h-[120px] max-h-[180px] overflow-y-auto bg-muted/20">
+                    {roles.length === 0 ? (
+                      <div className="flex items-center justify-center h-20 text-muted-foreground">
+                        <p className="text-sm">No roles available</p>
+                      </div>
+                    ) : filteredRoles.length === 0 ? (
+                      <div className="flex items-center justify-center h-20 text-muted-foreground">
+                        <p className="text-sm">No roles match "{roleSearchTerm}"</p>
+                      </div>
+                    ) : (
+                      filteredRoles.map((r) => (
+                        <div
+                          key={r.id}
+                          className="flex items-center space-x-3 p-2 rounded-md hover:bg-muted/50 transition-colors"
+                        >
+                          <input
+                            type="checkbox"
+                            id={`role-${r.id}`}
+                            checked={formData.roles.includes(r.name)}
+                            onChange={(e) => {
+                              const isChecked = e.target.checked
+                              const updatedRoles = isChecked
+                                ? [...formData.roles, r.name]
+                                : formData.roles.filter(role => role !== r.name)
+                              setFormData({ ...formData, roles: updatedRoles })
+                            }}
+                            className="h-4 w-4 rounded border-gray-300 text-primary focus:ring-primary focus:ring-offset-0"
+                          />
+                          <Label
+                            htmlFor={`role-${r.id}`}
+                            className="text-sm font-normal cursor-pointer flex-1"
+                          >
+                            {r.name.charAt(0).toUpperCase() + r.name.slice(1)}
+                          </Label>
+                          {formData.roles.includes(r.name) && (
+                            <CheckCircle2 className="h-4 w-4 text-primary" />
+                          )}
+                        </div>
+                      ))
+                    )}
+                  </div>
+
+                  {/* Selected Roles - Horizontal Scroll */}
+                  {formData.roles.length > 0 && (
+                    <div className="space-y-2">
+                      <Label className="text-xs text-muted-foreground">Selected Roles:</Label>
+                      <div className="flex gap-2 overflow-x-auto pb-2 scrollbar-thin scrollbar-thumb-gray-300 scrollbar-track-gray-100">
+                        {formData.roles.map((role) => (
+                          <Badge
+                            key={role}
+                            variant="secondary"
+                            className="text-xs whitespace-nowrap flex items-center gap-1 px-3 py-1"
+                          >
+                            <Shield className="h-3 w-3" />
+                            {role}
+                            <button
+                              type="button"
+                              onClick={() => setFormData({ ...formData, roles: formData.roles.filter(r => r !== role) })}
+                              className="ml-1 hover:text-destructive transition-colors"
+                            >
+                              <X className="h-3 w-3" />
+                            </button>
+                          </Badge>
+                        ))}
+                      </div>
+                    </div>
+                  )}
                 </div>
 
                 {/* Status */}
                 <div className="space-y-2">
-                  <Label htmlFor="status" className="text-sm font-medium">Status</Label>
+                  <Label htmlFor="status" className="text-xs font-medium">Status</Label>
                   <Select value={formData.is_active ? 'active' : 'inactive'} onValueChange={(value) => setFormData({ ...formData, is_active: value === 'active' })}>
-                    <SelectTrigger className="h-10">
+                    <SelectTrigger className="h-8 text-xs">
                       <SelectValue placeholder="Select status" />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="active">Active</SelectItem>
-                      <SelectItem value="inactive">Inactive</SelectItem>
+                      <SelectItem value="active" className="text-xs">Active</SelectItem>
+                      <SelectItem value="inactive" className="text-xs">Inactive</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
@@ -1323,17 +1417,17 @@ export default function UsersPage() {
 
             {/* Action Buttons */}
             <div className="flex justify-end gap-3 pt-6 border-t">
-              <Button 
-                variant="outline" 
-                size="sm" 
-                className="h-10 px-6" 
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-8 px-6 text-xs"
                 onClick={() => { setSheetOpen(false); resetForm() }}
               >
                 Cancel
               </Button>
-              <Button 
-                size="sm" 
-                className="h-10 px-6" 
+              <Button
+                size="sm"
+                className="h-8 px-6 text-xs"
                 onClick={save}
                 disabled={loading}
               >

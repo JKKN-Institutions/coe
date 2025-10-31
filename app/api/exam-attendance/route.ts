@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { getSupabaseServer } from '@/lib/supabase-server'
+import { getISTDate } from '@/lib/utils/date-utils'
 
 // GET: Fetch exam attendance records or student list
 export async function GET(request: Request) {
@@ -314,7 +315,7 @@ export async function POST(request: Request) {
 		const programId = programData.id
 
 		// Step 3: Get exam_timetable_id
-		const examDate = new Date().toISOString().split('T')[0] // Today's date
+		const examDate = getISTDate() // Today's date in IST
 		const { data: timetableData, error: timetableError } = await supabase
 			.from('exam_timetables')
 			.select('id')
@@ -361,12 +362,12 @@ export async function POST(request: Request) {
 			course_id: courseId,
 			exam_timetable_id: timetableId,
 			exam_registration_id: record.exam_registration_id,
-			
-			status: record.is_absent || true,
+			student_id: record.student_id, // Include student_id from attendance records
+									
+			status: !record.is_absent, // Status is true when present, false when absent
 			attendance_status: record.is_absent ? 'Absent' : 'Present',
 			remarks: record.remarks || null,
 			verified_by: body.submitted_by || null,
-			
 		}))
 
 		// Step 6: Insert all attendance records

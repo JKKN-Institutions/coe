@@ -466,12 +466,16 @@ class SupabaseAuthService {
         return cached;
       }
 
+      // Get cached user to preserve roles array
+      const cachedUser = this.getUser();
+
       const user: SupabaseUser = {
         id: profile.id,
         email: profile.email,
         full_name: profile.full_name,
         phone_number: profile.phone_number ?? profile.phone,
         role: profile.role ?? profile.role1 ?? 'user',
+        roles: cachedUser?.roles || [], // Preserve roles from cache or initialize to empty
         institution_id: profile.institution_id,
         is_super_admin: profile.is_super_admin,
         is_active: profile.is_active ?? true,
@@ -654,10 +658,12 @@ class SupabaseAuthService {
    * Compute and cache effective permissions
    * For super admins: Uses JSONB field directly
    * For regular users: Computes from RBAC and caches in JSONB
+   * @param force - If true, bypasses cache and forces recomputation from database
    */
-  async computeAndCachePermissions(): Promise<void> {
+  async computeAndCachePermissions(force: boolean = false): Promise<void> {
     try {
-      const response = await fetch('/api/auth/permissions/current');
+      const url = force ? '/api/auth/permissions/current?force=true' : '/api/auth/permissions/current';
+      const response = await fetch(url);
       if (response.ok) {
         const data = await response.json();
         const user = this.getUser();
@@ -674,6 +680,10 @@ class SupabaseAuthService {
             timestamp: Date.now(),
             ttl: this.PERMISSION_CACHE_TTL
           };
+
+          if (force) {
+            console.log('✅ Permissions force refreshed:', data.roles);
+          }
         }
       }
     } catch (error) {

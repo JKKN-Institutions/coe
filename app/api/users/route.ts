@@ -74,7 +74,8 @@ export async function POST(req: NextRequest) {
     const {
       full_name,
       email,
-      role,             // varchar role name
+      role,             // varchar role name (legacy field)
+      roles,            // array of role names (new multi-role system)
       is_active = true,
       is_verified = true,
       phone,
@@ -96,15 +97,18 @@ export async function POST(req: NextRequest) {
     }
 
     const id = randomUUID()
-
     const supabase2 = getSupabaseServer()
+
+    // Handle multiple roles
+    const rolesArray = Array.isArray(roles) ? roles : []
+    const primaryRole = rolesArray.length > 0 ? rolesArray[0] : (role ? String(role) : 'user')
 
     const insertPayload: any = {
       id,
       full_name: String(full_name),
       email: String(email),
       username: String(email),
-      role: role ? String(role) : 'user',
+      role: primaryRole, // Use first role from array or fallback to legacy role
       is_active: Boolean(is_active),
       is_verified: Boolean(is_verified),
       phone: phone ? String(phone) : null,
@@ -125,6 +129,35 @@ export async function POST(req: NextRequest) {
     if (error) {
       console.error('Supabase error:', error)
       throw error
+    }
+
+    // Insert user_roles if roles array provided
+    if (rolesArray.length > 0) {
+      // Get role IDs for the provided role names
+      const { data: roleRecords, error: roleError } = await supabase2
+        .from('roles')
+        .select('id, name')
+        .in('name', rolesArray.map(r => String(r)))
+
+      if (!roleError && roleRecords && roleRecords.length > 0) {
+        // Insert new user_roles
+        const userRolesInserts = roleRecords.map(roleRecord => ({
+          user_id: id,
+          role_id: roleRecord.id,
+          assigned_at: new Date().toISOString(),
+          is_active: true,
+          expires_at: null
+        }))
+
+        const { error: insertError } = await supabase2
+          .from('user_roles')
+          .insert(userRolesInserts)
+
+        if (insertError) {
+          console.error('Error inserting user_roles:', insertError)
+          // Don't fail the request if user_roles insert fails
+        }
+      }
     }
 
     // Send welcome email to the new user

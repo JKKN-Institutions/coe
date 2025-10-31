@@ -14,10 +14,14 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Badge } from "@/components/ui/badge"
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog"
+import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command"
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { useToast } from "@/hooks/use-toast"
-import { Loader2, Search, Edit, AlertTriangle, CheckCircle } from "lucide-react"
+import { Loader2, Search, Edit, AlertTriangle, CheckCircle, Check, ChevronsUpDown } from "lucide-react"
 import Link from "next/link"
+import { useRouter } from "next/navigation"
 import { useAuth } from "@/lib/auth/auth-context"
+import { cn } from "@/lib/utils"
 
 interface Course {
 	id: string
@@ -43,11 +47,13 @@ interface AttendanceRecord {
 export default function AttendanceCorrectionPage() {
 	const { toast } = useToast()
 	const { user } = useAuth()
+	const router = useRouter()
 
 	// Parent: Course selection
 	const [courses, setCourses] = useState<Course[]>([])
 	const [selectedCourseCode, setSelectedCourseCode] = useState<string>("")
 	const [loadingCourses, setLoadingCourses] = useState(false)
+	const [courseComboboxOpen, setCourseComboboxOpen] = useState(false)
 
 	// Child: Register number search
 	const [registerNo, setRegisterNo] = useState<string>("")
@@ -67,24 +73,34 @@ export default function AttendanceCorrectionPage() {
 		name: string
 	} | null>(null)
 
-	// Load courses on mount
+	// Load courses when user is available
 	useEffect(() => {
-		fetchCourses()
-	}, [])
+		if (user?.email) {
+			fetchCourses()
+		}
+	}, [user?.email])
 
 	const fetchCourses = async () => {
+		if (!user?.email) {
+			return
+		}
+
 		try {
 			setLoadingCourses(true)
-			const res = await fetch('/api/courses')
+			const res = await fetch(`/api/attendance-correction/courses?user_email=${encodeURIComponent(user.email)}`)
 			if (res.ok) {
 				const data = await res.json()
 				setCourses(data)
+			} else {
+				const errorData = await res.json()
+				throw new Error(errorData.error || 'Failed to fetch courses')
 			}
 		} catch (error) {
 			console.error('Error fetching courses:', error)
+			const errorMessage = error instanceof Error ? error.message : 'Failed to load courses'
 			toast({
 				title: "❌ Error",
-				description: "Failed to load courses",
+				description: errorMessage,
 				variant: "destructive",
 				className: "bg-red-50 border-red-200 text-red-800 dark:bg-red-900/20 dark:border-red-800 dark:text-red-200",
 			})
@@ -234,18 +250,26 @@ export default function AttendanceCorrectionPage() {
 
 			const result = await res.json()
 
+			// Show success message with detailed information
 			toast({
-				title: "✅ Attendance Updated",
-				description: `Successfully updated attendance for ${studentInfo?.name}`,
+				title: "✅ Attendance Correction Saved",
+				description: `Successfully updated attendance status to "${attendanceRecord.attendance_status}" for ${studentInfo?.name} (${studentInfo?.register_no}) in ${attendanceRecord.course_code}. Redirecting in 3 seconds...`,
 				className: "bg-green-50 border-green-200 text-green-800 dark:bg-green-900/20 dark:border-green-800 dark:text-green-200",
 				duration: 5000,
 			})
 
-			// Update the record with new data
-			setAttendanceRecord({
-				...attendanceRecord,
-				updated_by: user.email
-			})
+		// Redirect to attendance correction page after 3 seconds to allow message to be read
+			setTimeout(() => {
+				// Reset form state before redirect
+				setRegisterNo("")
+				setSelectedCourseCode("")
+				setAttendanceRecord(null)
+				setShowRecord(false)
+				setStudentInfo(null)
+
+				// Navigate to fresh page
+				router.push('/attendance-correction')
+			}, 3000)
 
 		} catch (error) {
 			console.error('Error updating attendance:', error)
@@ -323,31 +347,67 @@ export default function AttendanceCorrectionPage() {
 										<Label htmlFor="course_code" className="text-xs font-semibold">
 											Course Code <span className="text-red-500">*</span>
 										</Label>
-										<Select value={selectedCourseCode} onValueChange={setSelectedCourseCode}>
-											<SelectTrigger id="course_code" className="h-8 text-xs">
-												<SelectValue placeholder="Select course" />
-											</SelectTrigger>
-											<SelectContent>
-												{loadingCourses ? (
-													<SelectItem value="loading" disabled>
-														Loading courses...
-													</SelectItem>
-												) : courses.length === 0 ? (
-													<SelectItem value="no-courses" disabled>
-														No courses available
-													</SelectItem>
-												) : (
-													courses.map((course) => (
-														<SelectItem key={course.id} value={course.course_code}>
-															{course.course_code} - {course.course_name}
-														</SelectItem>
-													))
-												)}
-											</SelectContent>
-										</Select>
+										<Popover open={courseComboboxOpen} onOpenChange={setCourseComboboxOpen}>
+											<PopoverTrigger asChild>
+												<Button
+													variant="outline"
+													role="combobox"
+													aria-expanded={courseComboboxOpen}
+													className="h-8 w-full justify-between text-xs font-normal"
+													disabled={loadingCourses}
+												>
+													{loadingCourses ? (
+														<span className="text-muted-foreground">Loading courses...</span>
+													) : selectedCourseCode ? (
+														<span>
+															{courses.find((course) => course.course_code === selectedCourseCode)?.course_code || selectedCourseCode}
+															{" - "}
+															{courses.find((course) => course.course_code === selectedCourseCode)?.course_name}
+														</span>
+													) : (
+														<span className="text-muted-foreground">Select course...</span>
+													)}
+													<ChevronsUpDown className="ml-2 h-3 w-3 shrink-0 opacity-50" />
+												</Button>
+											</PopoverTrigger>
+											<PopoverContent className="w-[400px] p-0" align="start">
+												<Command>
+													<CommandInput placeholder="Search course code or name..." className="h-9 text-xs" />
+													<CommandList>
+														<CommandEmpty>
+															{courses.length === 0 ? "No courses available for your institution." : "No course found."}
+														</CommandEmpty>
+														<CommandGroup>
+															{courses.map((course) => (
+																<CommandItem
+																	key={course.id}
+																	value={`${course.course_code} ${course.course_name}`}
+																	onSelect={() => {
+																		setSelectedCourseCode(course.course_code)
+																		setCourseComboboxOpen(false)
+																	}}
+																	className="text-xs"
+																>
+																	<Check
+																		className={cn(
+																			"mr-2 h-3 w-3",
+																			selectedCourseCode === course.course_code ? "opacity-100" : "opacity-0"
+																		)}
+																	/>
+																	<div className="flex flex-col">
+																		<span className="font-medium">{course.course_code}</span>
+																		<span className="text-[11px] text-muted-foreground">{course.course_name}</span>
+																	</div>
+																</CommandItem>
+															))}
+														</CommandGroup>
+													</CommandList>
+												</Command>
+											</PopoverContent>
+										</Popover>
 									</div>
 
-									{/* Register Number Input (Child) */}
+									{/* Register Number Input (Child - Dependent on Course Selection) */}
 									<div className="space-y-2">
 										<Label htmlFor="register_no" className="text-xs font-semibold">
 											Student Register Number <span className="text-red-500">*</span>
@@ -357,17 +417,18 @@ export default function AttendanceCorrectionPage() {
 												id="register_no"
 												value={registerNo}
 												onChange={(e) => setRegisterNo(e.target.value.toUpperCase())}
-												placeholder="Enter register number (e.g., 23CS101)"
+												placeholder={!selectedCourseCode ? "Select course first..." : "Enter register number (e.g., 23CS101)"}
 												className="h-8 text-xs uppercase"
+												disabled={!selectedCourseCode}
 												onKeyDown={(e) => {
-													if (e.key === 'Enter') {
+													if (e.key === 'Enter' && selectedCourseCode) {
 														handleSearch()
 													}
 												}}
 											/>
 											<Button
 												onClick={handleSearch}
-												disabled={searching || !selectedCourseCode}
+												disabled={searching || !selectedCourseCode || !registerNo.trim()}
 												size="sm"
 												className="h-8 px-3 text-xs whitespace-nowrap"
 											>

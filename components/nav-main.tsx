@@ -27,6 +27,7 @@ import {
   SidebarMenuSubItem,
   useSidebar,
 } from "@/components/ui/sidebar"
+import { useAuth } from "@/lib/auth/auth-context"
 
 export function NavMain({
   items,
@@ -36,10 +37,12 @@ export function NavMain({
     url: string
     icon?: LucideIcon
     isActive?: boolean
+    roles?: string[]
     items?: {
       title: string
       url: string
       icon?: LucideIcon
+      roles?: string[]
     }[]
   }[]
 }) {
@@ -47,7 +50,8 @@ export function NavMain({
   const router = useRouter()
   const { state } = useSidebar()
   const isCollapsed = state === "collapsed"
-  
+  const { hasAnyRole } = useAuth()
+
   const [openMap, setOpenMap] = useState<Record<string, boolean>>(() => {
     // Ensure SSR and first client render are identical: start all closed
     const initial: Record<string, boolean> = {}
@@ -60,6 +64,17 @@ export function NavMain({
   const [loadingRoutes, setLoadingRoutes] = useState<Set<string>>(new Set())
   const [clickedItems, setClickedItems] = useState<Set<string>>(new Set())
   const [loadingMenus, setLoadingMenus] = useState<Set<string>>(new Set())
+
+  // Helper function to filter sub-items based on user roles
+  const filterSubItems = (subItems: typeof items[0]['items']) => {
+    if (!subItems) return []
+    return subItems.filter(subItem => {
+      // If no roles specified, item is available to all authenticated users
+      if (!subItem.roles || subItem.roles.length === 0) return true
+      // Check if user has any of the required roles
+      return hasAnyRole(subItem.roles)
+    })
+  }
 
   // Prefetch routes on hover for faster navigation
   const handleMouseEnter = (url: string) => {
@@ -266,18 +281,18 @@ export function NavMain({
                         <ChevronRight className={`ml-auto h-4 w-4 transition-all duration-300 ${isActive ? 'text-white' : 'text-slate-500 dark:text-slate-400'} opacity-0`} />
                       </SidebarMenuButton>
                     </DropdownMenuTrigger>
-                    <DropdownMenuContent 
-                      className="w-56 ml-2" 
-                      side="right" 
+                    <DropdownMenuContent
+                      className="w-56 ml-2"
+                      side="right"
                       align="start"
                       sideOffset={8}
                     >
-                      {item.items?.map((subItem) => {
+                      {filterSubItems(item.items)?.map((subItem) => {
                         const isSubItemActive = subItem.url === pathname
                         return (
                           <DropdownMenuItem key={subItem.title} asChild>
-                                    <Link 
-                                      href={subItem.url} 
+                                    <Link
+                                      href={subItem.url}
                                       className="flex items-center gap-3 w-full"
                                       role="menuitem"
                                       tabIndex={0}
@@ -344,22 +359,22 @@ export function NavMain({
                     </CollapsibleTrigger>
                     <CollapsibleContent className="animate-slide-down">
                       <SidebarMenuSub>
-                        {item.items?.map((subItem) => {
+                        {filterSubItems(item.items)?.map((subItem) => {
                           const isSubItemActive = subItem.url === pathname
                           return (
                             <SidebarMenuSubItem key={subItem.title}>
-                              <SidebarMenuSubButton 
-                                asChild 
+                              <SidebarMenuSubButton
+                                asChild
                                 className={`transition-all duration-300 ease-in-out ${
-                                  isSubItemActive 
-                                    ? 'bg-gradient-to-r from-[#059669] to-[#047857] text-white hover:from-[#059669]/90 hover:to-[#047857]/90' 
+                                  isSubItemActive
+                                    ? 'bg-gradient-to-r from-[#059669] to-[#047857] text-white hover:from-[#059669]/90 hover:to-[#047857]/90'
                                     : clickedItems.has(subItem.title)
                                     ? 'bg-gradient-to-r from-[#059669]/20 to-[#047857]/20 ring-2 ring-[#059669]/30 animate-pulse'
                                     : 'hover:bg-gradient-to-r hover:from-[#059669]/8 hover:to-[#047857]/8'
                                 }`}
                               >
-                                        <Link 
-                                          href={subItem.url || '#'} 
+                                        <Link
+                                          href={subItem.url || '#'}
                                           className="flex items-center gap-3"
                                           role="menuitem"
                                           tabIndex={0}
@@ -380,14 +395,14 @@ export function NavMain({
                                     <Loader2 className="h-4 w-4 animate-spin text-white" />
                                   ) : (
                                     subItem.icon && (
-                                      <subItem.icon 
+                                      <subItem.icon
                                         className={`h-4 w-4 transition-all duration-200 ${
-                                          isSubItemActive 
-                                            ? 'text-white' 
+                                          isSubItemActive
+                                            ? 'text-white'
                                             : clickedItems.has(subItem.title)
                                             ? 'text-[#047857] dark:text-[#047857] scale-110'
                                             : 'text-[#059669] dark:text-[#059669]'
-                                        }`} 
+                                        }`}
                                       />
                                     )
                                   )}

@@ -6,8 +6,17 @@ import { getSupabaseServer } from '@/lib/supabase-server'
 // Optimized permission system:
 // - Super admins: Use JSONB permissions field ONLY (for special privileges)
 // - Other users: Compute from RBAC and cache in JSONB for performance
+// - Supports force refresh via query parameter: ?force=true (bypasses cache)
 export async function GET(req: NextRequest) {
   try {
+    // Check if force refresh is requested (bypasses cache for immediate updates)
+    const { searchParams } = new URL(req.url)
+    const forceRefresh = searchParams.get('force') === 'true'
+
+    if (forceRefresh) {
+      console.log('🔄 Force refresh requested - bypassing cache')
+    }
+
     // Use auth-helpers to bind the Supabase client to the user's auth cookies
     const supabase = createRouteHandlerClient({ cookies })
 
@@ -109,8 +118,8 @@ export async function GET(req: NextRequest) {
       Date.now() - new Date(currentUser.updated_at).getTime() : Infinity
     const CACHE_TTL = 5 * 60 * 1000 // 5 minutes cache TTL
 
-    // If cache is fresh and has permissions, use it for performance
-    if (cacheAge < CACHE_TTL && Object.keys(cachedPermissions).length > 0) {
+    // If cache is fresh and has permissions, use it for performance (unless force refresh)
+    if (!forceRefresh && cacheAge < CACHE_TTL && Object.keys(cachedPermissions).length > 0) {
       const permissionList = Object.entries(cachedPermissions)
         .filter(([_, value]) => value === true)
         .map(([key, _]) => key)

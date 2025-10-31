@@ -20,6 +20,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { useToast } from "@/hooks/use-toast"
 import { Loader2, ClipboardCheck, Calendar, BookOpen, Clock, Users, CheckCircle, XCircle, AlertTriangle, Check, ChevronsUpDown } from "lucide-react"
 import { cn } from "@/lib/utils"
+import { getISTDate } from "@/lib/utils/date-utils"
 import Link from "next/link"
 
 interface Institution {
@@ -242,8 +243,8 @@ export default function ExamAttendancePage() {
 			setAttendanceRecords([])
 			setShowStudentList(false)
 			setIsViewMode(false)
-			// Set today's date
-			const today = new Date().toISOString().split('T')[0]
+			// Set today's date in IST
+			const today = getISTDate()
 			setSelectedExamDate(today)
 		} else if (!selectedProgramCode) {
 			// Clear everything if program is deselected
@@ -433,8 +434,8 @@ export default function ExamAttendancePage() {
 						student_name: att.student_name,
 						attempt_number: att.attempt_number,
 						is_regular: att.is_regular,
-						is_present: !att.is_absent,
-						is_absent: att.is_absent,
+						is_present: att.attendance_status === 'Present',
+						is_absent: att.attendance_status === 'Absent',
 						attendance_status: att.attendance_status,
 						remarks: att.remarks || ''
 					}))
@@ -1097,8 +1098,7 @@ export default function ExamAttendancePage() {
 														</TableCell>
 														<TableCell className="text-center">
 															<Badge
-																variant={record.is_present ? "default" : "destructive"}
-																className={`text-[11px] ${
+																className={`text-[11px] font-medium ${
 																	record.is_present
 																		? "bg-green-100 text-green-800 hover:bg-green-200 dark:bg-green-900 dark:text-green-200"
 																		: "bg-red-100 text-red-800 hover:bg-red-200 dark:bg-red-900 dark:text-red-200"

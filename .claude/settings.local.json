@@ -24,7 +24,11 @@
       "Bash(node:*)",
       "Bash(netstat:*)",
       "Bash(tail:*)",
-      "Bash(npx claude-code-templates@latest --skill=development/skill-creator --yes)"
+      "Bash(npx claude-code-templates@latest --skill=development/skill-creator --yes)",
+      "Bash(npx claude-code-templates@latest:*)",
+      "Bash(pip install:*)",
+      "Bash(python -m pip install:*)",
+      "Bash(touch:*)"
     ],
     "deny": [],
     "ask": []

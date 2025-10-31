@@ -57,19 +57,64 @@ export async function POST(request: NextRequest) {
     const body = await request.json()
     const supabase = getSupabaseServer()
 
+    // Extract and validate required fields
+    const roleName = body.role_name || body.name
+    const roleDescription = body.role_description || body.description
+
+    if (!roleName || !roleName.trim()) {
+      return NextResponse.json({
+        error: 'Role name is required'
+      }, { status: 400 })
+    }
+
+    // Prepare payload with correct field names matching the database schema
+    const payload = {
+      name: roleName.trim(),
+      description: roleDescription || null,
+      is_active: body.is_active !== undefined ? body.is_active : true,
+      is_system_role: body.is_system_role || false
+    }
+
     const { data, error } = await supabase
       .from('roles')
-      .insert([body])
+      .insert([payload])
       .select()
 
     if (error) {
-      console.error('Supabase error:', error)
-      return NextResponse.json({ error: 'Failed to create role' }, { status: 500 })
+      console.error('Error creating role:', error)
+
+      // Handle duplicate key constraint violation (23505)
+      if (error.code === '23505') {
+        return NextResponse.json({
+          error: `Role "${roleName}" already exists. Please use a different name.`
+        }, { status: 400 })
+      }
+
+      // Handle not-null constraint violation (23502)
+      if (error.code === '23502') {
+        return NextResponse.json({
+          error: 'Missing required field. Please check your input.'
+        }, { status: 400 })
+      }
+
+      // Handle check constraint violation (23514)
+      if (error.code === '23514') {
+        return NextResponse.json({
+          error: 'Invalid value. Please check your input.'
+        }, { status: 400 })
+      }
+
+      // Generic error
+      return NextResponse.json({
+        error: 'Failed to create role. Please try again.'
+      }, { status: 500 })
     }
 
     return NextResponse.json(data[0], { status: 201 })
   } catch (error) {
-    console.error('Error:', error)
-    return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
+    console.error('Error creating role:', error)
+    return NextResponse.json({
+      error: 'Internal server error. Please try again.'
+    }, { status: 500 })
   }
 }

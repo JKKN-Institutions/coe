@@ -64,20 +64,29 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
   try {
     const { id } = await params
     const body = await req.json()
-    const { full_name, email, role, is_active, phone, bio, website, location, date_of_birth, institution_id, avatar_url } = body as Record<string, unknown>
+    const { full_name, email, role, roles, is_active, phone, bio, website, location, date_of_birth, institution_id, avatar_url } = body as Record<string, unknown>
+
+    const supabase2 = getSupabaseServer()
+
+    // Handle multiple roles from roles array
+    let roleToUpdate = role
+    const rolesArray = Array.isArray(roles) ? roles : []
+
+    // If roles array provided, use first role as legacy role field
+    if (rolesArray.length > 0) {
+      roleToUpdate = rolesArray[0]
+    }
 
     // If role_id is provided, convert it to role name
-    let roleToUpdate = role
     if (body.role_id !== undefined && body.role_id) {
-      // Get the role name from the roles table
-      const { data: roleData, error: roleError } = await getSupabaseServer()
+      const { data: roleData, error: roleError } = await supabase2
         .from('roles')
-        .select('role_name')
+        .select('name')
         .eq('id', String(body.role_id))
         .single()
 
       if (!roleError && roleData) {
-        roleToUpdate = roleData.role_name
+        roleToUpdate = roleData.name
       }
     }
 
@@ -98,7 +107,6 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
       updated_at: new Date().toISOString(),
     }
 
-    const supabase2 = getSupabaseServer()
     const { data: updated, error } = await supabase2
       .from('users')
       .update(data)
@@ -126,27 +134,42 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
 
     if (error) throw error
 
-    // Get role if user has one (match by role_name)
-    let userRole = null
-    if (updated.role) {
-      const { data: roleData, error: roleError } = await supabase2
-        .from('roles')
-        .select('id, role_name, role_description, is_active')
-        .eq('role_name', updated.role)
-        .single()
+    // Update user_roles table if roles array provided
+    if (rolesArray.length > 0) {
+      // Delete existing user_roles
+      await supabase2
+        .from('user_roles')
+        .delete()
+        .eq('user_id', id)
 
-      if (!roleError && roleData) {
-        userRole = roleData
+      // Get role IDs for the provided role names
+      const { data: roleRecords, error: roleError } = await supabase2
+        .from('roles')
+        .select('id, name')
+        .in('name', rolesArray.map(r => String(r)))
+
+      if (!roleError && roleRecords) {
+        // Insert new user_roles
+        const userRolesInserts = roleRecords.map(roleRecord => ({
+          user_id: id,
+          role_id: roleRecord.id,
+          assigned_at: new Date().toISOString(),
+          is_active: true,
+          expires_at: null
+        }))
+
+        await supabase2
+          .from('user_roles')
+          .insert(userRolesInserts)
       }
     }
 
     return NextResponse.json({
       ...updated,
-      institution_code: (updated as any).institutions?.institution_code || null,
-      role_id: userRole?.id || null, // Map to role_id for frontend compatibility
-      roles: userRole
+      institution_code: (updated as any).institutions?.institution_code || null
     })
   } catch (err) {
+    console.error('Update user error:', err)
     return NextResponse.json({ error: 'Failed to update user' }, { status: 500 })
   }
 }

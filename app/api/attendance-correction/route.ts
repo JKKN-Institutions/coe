@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getSupabaseServer } from '@/lib/supabase-server'
 
 // GET: Search student attendance record by register number and course code
+// Uses SQL logic: exam_attendance -> exam_registrations
 export async function GET(request: NextRequest) {
 	try {
 		const { searchParams } = new URL(request.url)
@@ -18,82 +19,9 @@ export async function GET(request: NextRequest) {
 
 		const supabase = getSupabaseServer()
 
-		// Step 1: Find student by register number (case-insensitive search)
-		const { data: studentData, error: studentError } = await supabase
-			.from('students')
-			.select('id, register_number, student_name')
-			.ilike('register_number', registerNo.trim())
-			.single()
-
-		if (studentError) {
-			console.error('Error fetching student:', studentError)
-
-			// Check if it's a "no rows" error
-			if (studentError.code === 'PGRST116') {
-				return NextResponse.json({
-					error: `Student with register number "${registerNo}" not found. Please verify the register number is correct.`
-				}, { status: 404 })
-			}
-
-			return NextResponse.json({
-				error: `Error searching for student: ${studentError.message}`
-			}, { status: 500 })
-		}
-
-		if (!studentData) {
-			return NextResponse.json({
-				error: `Student with register number "${registerNo}" not found. Please verify the register number is correct.`
-			}, { status: 404 })
-		}
-
-		// Step 2: Find course by course code
-		const { data: courseData, error: courseError } = await supabase
-			.from('courses')
-			.select('id, course_code, course_title')
-			.ilike('course_code', courseCode.trim())
-			.single()
-
-		if (courseError) {
-			console.error('Error fetching course:', courseError)
-
-			if (courseError.code === 'PGRST116') {
-				return NextResponse.json({
-					error: `Course with code "${courseCode}" not found. Please verify the course code is correct.`
-				}, { status: 404 })
-			}
-
-			return NextResponse.json({
-				error: `Error searching for course: ${courseError.message}`
-			}, { status: 500 })
-		}
-
-		if (!courseData) {
-			return NextResponse.json({
-				error: `Course with code "${courseCode}" not found. Please verify the course code is correct.`
-			}, { status: 404 })
-		}
-
-		// Step 3: Get exam registrations for this student
-		const { data: registrations, error: regError } = await supabase
-			.from('exam_registrations')
-			.select('id')
-			.eq('student_id', studentData.id)
-
-		if (regError) {
-			console.error('Error fetching exam registrations:', regError)
-			throw regError
-		}
-
-		if (!registrations || registrations.length === 0) {
-			return NextResponse.json({
-				error: `No exam registrations found for student "${registerNo}".`
-			}, { status: 404 })
-		}
-
-		const registrationIds = registrations.map(r => r.id)
-
-		// Step 4: Get the single attendance record matching student and course
-		const { data: attendanceData, error: attendanceError } = await supabase
+		// Using the SQL join logic: exam_attendance -> exam_registrations
+		// WHERE exam_registrations.stu_register_no = ? AND exam_registrations.course_code = ?
+		const { data: attendanceRecords, error: attendanceError } = await supabase
 			.from('exam_attendance')
 			.select(`
 				id,
@@ -105,33 +33,45 @@ export async function GET(request: NextRequest) {
 				program_id,
 				course_id,
 				examination_session_id,
-				updated_by
+				updated_by,
+				created_at,
+				exam_registrations!inner (
+					id,
+					student_id,
+					course_code,
+					stu_register_no,
+					student_name
+				)
 			`)
-			.in('exam_registration_id', registrationIds)
-			.eq('course_id', courseData.id)
+			.eq('exam_registrations.course_code', courseCode.trim())
+			.ilike('exam_registrations.stu_register_no', registerNo.trim())
 			.order('created_at', { ascending: false })
 			.limit(1)
-			.single()
 
 		if (attendanceError) {
 			console.error('Error fetching attendance record:', attendanceError)
-
-			if (attendanceError.code === 'PGRST116') {
-				return NextResponse.json({
-					error: `No attendance record found for student "${registerNo}" in course "${courseCode}".`
-				}, { status: 404 })
-			}
-
-			throw attendanceError
+			return NextResponse.json({
+				error: 'Failed to fetch attendance record',
+				details: attendanceError.message
+			}, { status: 500 })
 		}
 
-		if (!attendanceData) {
+		if (!attendanceRecords || attendanceRecords.length === 0) {
 			return NextResponse.json({
 				error: `No attendance record found for student "${registerNo}" in course "${courseCode}".`
 			}, { status: 404 })
 		}
 
-		// Step 5: Get related data for the attendance record
+		const attendanceData = attendanceRecords[0]
+		const registrationData = attendanceData.exam_registrations
+
+		// Get course details
+		const { data: courseData } = await supabase
+			.from('courses')
+			.select('course_code, course_name')
+			.eq('id', attendanceData.course_id)
+			.single()
+
 		// Get program details
 		const { data: programData } = await supabase
 			.from('programs')
@@ -148,12 +88,12 @@ export async function GET(request: NextRequest) {
 
 		const record = {
 			id: attendanceData.id,
-			stu_register_no: studentData.register_number,
-			student_name: studentData.student_name,
+			stu_register_no: registrationData.stu_register_no,
+			student_name: registrationData.student_name,
 			program_code: programData?.program_code || 'N/A',
 			program_name: programData?.program_name || 'N/A',
-			course_code: courseData.course_code,
-			course_name: courseData.course_title,
+			course_code: courseData?.course_code || courseCode,
+			course_name: courseData?.course_name || 'N/A',
 			exam_date: timetableData?.exam_date || null,
 			session: timetableData?.session || 'N/A',
 			attendance_status: attendanceData.attendance_status,
@@ -163,8 +103,8 @@ export async function GET(request: NextRequest) {
 
 		return NextResponse.json({
 			student: {
-				register_no: studentData.register_number,
-				name: studentData.student_name
+				register_no: registrationData.stu_register_no,
+				name: registrationData.student_name
 			},
 			record
 		})
@@ -213,7 +153,7 @@ export async function PUT(request: NextRequest) {
 			.from('exam_attendance')
 			.update({
 				attendance_status: body.attendance_status,
-				status: body.attendance_status === 'Absent', // true if Absent, false if Present
+				status: body.attendance_status === 'Present', // true if Present, false if Absent
 				remarks: body.remarks.trim(),
 				updated_by: body.updated_by,
 				updated_at: new Date().toISOString()

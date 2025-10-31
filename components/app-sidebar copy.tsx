@@ -1,3 +1,27 @@
+/**
+ * Application Sidebar with Role-Based Access Control (RBAC)
+ *
+ * This component implements a dynamic sidebar that adapts to user roles.
+ *
+ * Features:
+ * - Multi-role support: Users can have multiple roles simultaneously
+ * - Hierarchical filtering: Parent and child menu items can have different role requirements
+ * - Granular access control: Individual sub-items can specify their own role restrictions
+ * - Dynamic rendering: Only shows menu items the user has access to
+ *
+ * RBAC Integration:
+ * - Roles are loaded from user_roles table (many-to-many relationship)
+ * - Uses hasAnyRole() hook to check if user has required access
+ * - Supports role priority for displaying primary role
+ *
+ * Example Use Cases:
+ * - coe_office can access "Exam Attendance" but not "Attendance Correction"
+ * - super_admin sees all menu items across all institutions
+ * - Regular users see only general access items (Dashboard, Reports)
+ *
+ * @see /lib/auth/auth-context.tsx - Auth hooks and role checking
+ * @see /components/nav-main.tsx - Sub-item role filtering
+ */
 "use client"
 
 import * as React from "react"
@@ -89,7 +113,7 @@ const data = {
 			url: "#",
 			icon: Shield,
 			isActive: false,
-			roles: ["admin", "super_admin"], // Admin and super admin
+			roles: ["admin", "super_admin"], // User and role management
 			items: [
 				{ title: "Users",           url: "/user",             icon: Users },
 				{ title: "Roles",           url: "/roles",           icon: Shield },
@@ -102,7 +126,7 @@ const data = {
 			url: "#",
 			icon: Database,
 			isActive: false,
-			roles: [], // Super admin only
+			roles: ["super_admin"], // Master data management (super admin only)
 			items: [
 				{ title: "Institutions",          url: "/institutions",  icon: School },
 				{ title: "Degree",                url: "/degree",        icon: GraduationCap },
@@ -127,7 +151,7 @@ const data = {
 			url: "#",
 			icon: BookText,
 			isActive: false,
-			roles: [], // COE and above
+			roles: ["super_admin", "coe", "deputy_coe"], // COE and above
 			items: [
 				{ title: "Courses",        url: "/courses",              icon: BookText },
 				{ title: "Course Mapping", url: "/course-mapping-index", icon: TableProperties },
@@ -147,7 +171,7 @@ const data = {
 			title: "Exam Master",
 			url: "#",
 			icon: Database,
-			roles: [], // COE and above
+			roles: ["super_admin", "coe", "deputy_coe"], // COE and above
 			items: [
 				{ title: "Grades",       url: "/grades",       icon: BookText },
 				{ title: "Grade System", url: "/grade-system", icon: CalendarDays },
@@ -157,7 +181,7 @@ const data = {
 			title: "Pre-Exam",
 			url: "#",
 			icon: CalendarClock,
-			roles: [], // COE and above
+			roles: ["super_admin", "coe", "deputy_coe"], // COE and above
 			items: [
 				{ title: "Exam Types",            url: "/exam-types",           icon: Tags },
 				{ title: "Examination Sessions",  url: "/examination-sessions", icon: CalendarDays },
@@ -170,18 +194,18 @@ const data = {
 			title: "During-Exam",
 			url: "#",
 			icon: Play,
-			roles: [],
+			roles: ["super_admin", "coe", "deputy_coe", "coe_office"],
 			items: [
 				// Granular access: coe_office can mark attendance but cannot correct it
-				{ title: "Exam Attendance",        url: "/exam-attendance",       icon: ClipboardCheck, roles: [] },
-				{ title: "Attendance Correction",  url: "/attendance-correction", icon: Edit,           roles: [] }, // Restricted: No coe_office access
+				{ title: "Exam Attendance",        url: "/exam-attendance",       icon: ClipboardCheck, roles: ["super_admin", "coe", "deputy_coe", "coe_office"] },
+				{ title: "Attendance Correction",  url: "/attendance-correction", icon: Edit,           roles: ["super_admin", "coe", "deputy_coe"] }, // Restricted: No coe_office access
 			],
 		},
 		{
 			title: "Post-Exam",
 			url: "#",
 			icon: CheckSquare,
-			roles: [], // COE and above
+			roles: ["super_admin", "coe", "deputy_coe"], // COE and above
 			items: [
 				{ title: "Dummy Number", url: "/", icon: BookText },
 			],
@@ -190,7 +214,7 @@ const data = {
 			title: "Reports",
 			url: "#",
 			icon: PieChart,
-			roles: ["super_admin", "coe", "deputy_coe"],
+			roles: [], // Available to all authenticated users
 			items: [
 				{ title: "Reports", url: "#", icon: PieChart },
 			],
@@ -204,12 +228,21 @@ const data = {
 export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
 	const { hasAnyRole } = useAuth()
 
-	// Filter navigation items based on current user's roles
+	/**
+	 * Filter navigation items based on current user's roles
+	 *
+	 * RBAC Filtering Logic:
+	 * 1. Items with empty roles array [] are shown to ALL authenticated users
+	 * 2. Items with specified roles are shown only if user has ANY of those roles
+	 * 3. Sub-items are further filtered in NavMain component for granular control
+	 *
+	 * Note: hasAnyRole() checks user's roles array from user_roles table (RBAC system)
+	 */
 	const filteredNavItems = data.navMain.filter(item => {
-		// If no roles specified, item is available to all authenticated users
+		// Public menu items (available to all authenticated users)
 		if (!item.roles || item.roles.length === 0) return true
 
-		// Check if user has any of the required roles
+		// Restricted menu items (check if user has any required role)
 		return hasAnyRole(item.roles)
 	})
 

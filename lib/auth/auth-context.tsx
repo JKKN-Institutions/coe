@@ -5,7 +5,8 @@ import React, {
   useContext,
   useState,
   useEffect,
-  ReactNode
+  ReactNode,
+  useCallback
 } from 'react';
 import supabaseAuthService, {
   SupabaseUser,
@@ -13,6 +14,7 @@ import supabaseAuthService, {
   LoginCredentials,
   RegisterData
 } from './supabase-auth-service';
+import { usePermissionSync } from './use-permission-sync';
 
 interface AuthContextType {
   user: SupabaseUser | null;
@@ -25,6 +27,7 @@ interface AuthContextType {
   logout: () => Promise<void>;
   refreshSession: () => Promise<boolean>;
   validateSession: () => Promise<boolean>;
+  refreshPermissions: () => Promise<void>; // NEW: Force refresh permissions
   hasPermission: (permission: string) => boolean;
   hasRole: (role: string) => boolean;
   hasAnyRole: (roles: string[]) => boolean;
@@ -391,7 +394,31 @@ export function AuthProvider({
     }
   };
 
+  /**
+   * Force refresh permissions from server
+   * This is called when permissions are changed in the database
+   */
+  const refreshPermissions = useCallback(async (): Promise<void> => {
+    try {
+      console.log('🔄 Refreshing permissions...');
 
+      // Force refresh from server (bypasses cache)
+      await supabaseAuthService.computeAndCachePermissions(true);
+
+      // Update local user state with new permissions
+      const updatedUser = supabaseAuthService.getUser();
+      if (updatedUser) {
+        setUser(updatedUser);
+      }
+
+      console.log('✅ Permissions refreshed successfully');
+    } catch (error) {
+      console.error('Error refreshing permissions:', error);
+    }
+  }, []);
+
+  // Setup real-time permission sync (listens for user_roles table changes)
+  usePermissionSync(user?.id, refreshPermissions);
 
   const hasPermission = (permission: string): boolean => {
     return supabaseAuthService.hasPermission(permission);
@@ -418,6 +445,7 @@ export function AuthProvider({
         logout,
         refreshSession,
         validateSession,
+        refreshPermissions, // NEW: Force refresh permissions
         hasPermission,
         hasRole,
         hasAnyRole
