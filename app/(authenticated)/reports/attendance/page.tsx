@@ -428,7 +428,7 @@ export default function AttendanceReportsPage() {
 			<SidebarInset className="flex flex-col min-h-screen">
 				<AppHeader />
 
-				<div className="flex flex-1 flex-col gap-4 p-4 pt-0 overflow-y-auto">
+				<div className="flex flex-1 flex-col 1 p-4 pt-0 overflow-y-auto">
 					{/* Breadcrumb */}
 					<Breadcrumb>
 						<BreadcrumbList>
@@ -445,7 +445,7 @@ export default function AttendanceReportsPage() {
 					</Breadcrumb>
 
 					{/* Page Header */}
-					<div className="flex flex-col gap-2">
+					<div className="flex flex-col ">
 						<h1 className="text-2xl font-bold">Attendance Reports</h1>
 						<p className="text-sm text-muted-foreground">
 							Generate PDF reports for exam attendance data
@@ -454,13 +454,10 @@ export default function AttendanceReportsPage() {
 
 					{/* Filter Section */}
 					<Card>
-						<CardHeader className="bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-blue-950/20 dark:to-indigo-950/20 p-3">
-							<CardTitle className="text-sm font-semibold">Select Filters</CardTitle>
-							<CardDescription className="text-xs">Choose filters to generate attendance reports</CardDescription>
-						</CardHeader>
-						<CardContent className="pt-6 space-y-4">
+						
+						<CardContent className="pt-2 space-y-2">
 							{/* Required Filters */}
-							<div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+							<div className="grid grid-cols-1 md:grid-cols-2 gap-">
 								{/* Institution */}
 								<div className="space-y-2">
 									<Label htmlFor="institution" className="text-xs font-medium">
