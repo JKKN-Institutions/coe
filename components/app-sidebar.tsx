@@ -190,9 +190,9 @@ const data = {
 			title: "Reports",
 			url: "#",
 			icon: PieChart,
-			roles: ["super_admin", "coe", "deputy_coe"],
+			roles: [],
 			items: [
-				{ title: "Reports", url: "#", icon: PieChart },
+				{ title: "Attendance Report", url: "/reports/attendance", icon: PieChart },
 			],
 		},
 		

@@ -28,7 +28,9 @@
       "Bash(npx claude-code-templates@latest:*)",
       "Bash(pip install:*)",
       "Bash(python -m pip install:*)",
-      "Bash(touch:*)"
+      "Bash(touch:*)",
+      "Skill(pdf-processing-pro)",
+      "Bash(nul)"
     ],
     "deny": [],
     "ask": []

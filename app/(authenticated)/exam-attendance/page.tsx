@@ -18,9 +18,10 @@ import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, 
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { useToast } from "@/hooks/use-toast"
-import { Loader2, ClipboardCheck, Calendar, BookOpen, Clock, Users, CheckCircle, XCircle, AlertTriangle, Check, ChevronsUpDown } from "lucide-react"
+import { Loader2, ClipboardCheck, Calendar, BookOpen, Clock, Users, CheckCircle, XCircle, AlertTriangle, Check, ChevronsUpDown, FileText, Download } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { getISTDate } from "@/lib/utils/date-utils"
+import { generateExamAttendancePDF } from "@/lib/utils/generate-exam-attendance-pdf"
 import Link from "next/link"
 
 interface Institution {
@@ -107,6 +108,7 @@ export default function ExamAttendancePage() {
 	const [saving, setSaving] = useState(false)
 	const [isViewMode, setIsViewMode] = useState(false)
 	const [showStudentList, setShowStudentList] = useState(false)
+	const [generatingPDF, setGeneratingPDF] = useState(false)
 
 	// Combobox open state
 	const [institutionOpen, setInstitutionOpen] = useState(false)
@@ -649,6 +651,92 @@ export default function ExamAttendancePage() {
 		}
 	}
 
+	// Generate PDF Report
+	const handleGeneratePDF = async () => {
+		if (!selectedInstitutionId || !selectedSessionId) {
+			toast({
+				title: "⚠️ Missing Information",
+				description: "Please select Institution and Examination Session to generate the report.",
+				variant: "destructive",
+			})
+			return
+		}
+
+		try {
+			setGeneratingPDF(true)
+
+			// Get institution code and session code
+			const institution = institutions.find(i => i.id === selectedInstitutionId)
+			const session = sessions.find(s => s.id === selectedSessionId)
+
+			if (!institution || !session) {
+				throw new Error('Unable to find institution or session details')
+			}
+
+			// Fetch report data from API
+			const response = await fetch(
+				`/api/exam-attendance/report?institution_code=${institution.institution_code}&session_code=${session.session_code}`
+			)
+
+			if (!response.ok) {
+				const errorData = await response.json()
+				throw new Error(errorData.error || 'Failed to fetch attendance data')
+			}
+
+			const reportData = await response.json()
+
+			// Check if there's data to generate report
+			if (!reportData.records || reportData.records.length === 0) {
+				toast({
+					title: "ℹ️ No Data",
+					description: "No attendance records found for the selected criteria.",
+					className: "bg-blue-50 border-blue-200 text-blue-800",
+				})
+				return
+			}
+
+			// Convert logo to base64 if available
+			let logoBase64 = undefined
+			try {
+				const logoResponse = await fetch('/jkkn_logo.png')
+				if (logoResponse.ok) {
+					const blob = await logoResponse.blob()
+					logoBase64 = await new Promise<string>((resolve) => {
+						const reader = new FileReader()
+						reader.onloadend = () => resolve(reader.result as string)
+						reader.readAsDataURL(blob)
+					})
+				}
+			} catch (e) {
+				console.warn('Logo not loaded:', e)
+			}
+
+			// Generate PDF
+			const fileName = generateExamAttendancePDF({
+				...reportData,
+				logoImage: logoBase64
+			})
+
+			toast({
+				title: "✅ PDF Generated",
+				description: `${fileName} has been downloaded successfully.`,
+				className: "bg-green-50 border-green-200 text-green-800",
+				duration: 5000,
+			})
+
+		} catch (error) {
+			console.error('Error generating PDF:', error)
+			const errorMessage = error instanceof Error ? error.message : 'Failed to generate PDF report'
+			toast({
+				title: "❌ Generation Failed",
+				description: errorMessage,
+				variant: "destructive",
+			})
+		} finally {
+			setGeneratingPDF(false)
+		}
+	}
+
 	// Get display values for header
 	const selectedInstitution = institutions.find(i => i.id === selectedInstitutionId)
 	const selectedSession = sessions.find(s => s.id === selectedSessionId)
@@ -665,7 +753,7 @@ export default function ExamAttendancePage() {
 				<AppHeader />
 
 				<div className="flex flex-1 flex-col gap-4 p-4 pt-0 overflow-y-auto">
-					<div className="flex items-center gap-2">
+					<div className="flex items-center justify-between gap-2">
 						<Breadcrumb>
 							<BreadcrumbList>
 								<BreadcrumbItem>
@@ -679,6 +767,24 @@ export default function ExamAttendancePage() {
 								</BreadcrumbItem>
 							</BreadcrumbList>
 						</Breadcrumb>
+						<Button
+							onClick={handleGeneratePDF}
+							disabled={generatingPDF || !selectedInstitutionId || !selectedSessionId}
+							size="sm"
+							className="h-8 gap-2 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white"
+						>
+							{generatingPDF ? (
+								<>
+									<Loader2 className="h-4 w-4 animate-spin" />
+									Generating PDF...
+								</>
+							) : (
+								<>
+									<FileText className="h-4 w-4" />
+									Generate PDF Report
+								</>
+							)}
+						</Button>
 					</div>
 
 					<div className="space-y-3">
