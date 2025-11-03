@@ -48,33 +48,40 @@ export async function GET(request: Request) {
 
 		console.log('Student attendance sheet records found:', data?.length || 0)
 
-		// Group data by exam_date, session, course_code
-		const groupedData: Record<string, any> = {}
+		// Group data by exam_date and session (merge all courses in same date+session into one sheet)
+		const groupedByDateSession: Record<string, any> = {}
 
 		data?.forEach((record: any) => {
-			const key = `${record.exam_date}_${record.session}_${record.course_code}`
+			const dateSessionKey = `${record.exam_date}_${record.session}`
 
-			if (!groupedData[key]) {
-				groupedData[key] = {
-					metadata: {
-						exam_date: record.exam_date,
-						session: record.session,
-						course_code: record.course_code,
-						course_title: record.course_title,
-						program_code: record.program_code,
-						program_name: record.program_name,
-						program_order: record.program_order || 999,
-						semester: record.semester,
-						regulation_code: record.regulation_code,
-						institution_name: record.institution_name,
-						institution_code: record.institution_code,
-						session_name: record.session_name
-					},
+			if (!groupedByDateSession[dateSessionKey]) {
+				groupedByDateSession[dateSessionKey] = {
+					exam_date: record.exam_date,
+					session: record.session,
+					session_name: record.session_name,
+					institution_name: record.institution_name,
+					institution_code: record.institution_code,
+					regulation_code: record.regulation_code,
+					courses: {}
+				}
+			}
+
+			// Group by course within the date+session
+			const courseKey = `${record.course_code}`
+
+			if (!groupedByDateSession[dateSessionKey].courses[courseKey]) {
+				groupedByDateSession[dateSessionKey].courses[courseKey] = {
+					course_code: record.course_code,
+					course_title: record.course_title,
+					program_code: record.program_code,
+					program_name: record.program_name,
+					program_order: record.program_order || 999,
+					semester: record.semester,
 					students: []
 				}
 			}
 
-			groupedData[key].students.push({
+			groupedByDateSession[dateSessionKey].courses[courseKey].students.push({
 				register_number: record.register_number,
 				student_name: record.student_name,
 				attendance_status: record.attendance_status.toUpperCase(),
@@ -84,16 +91,30 @@ export async function GET(request: Request) {
 			})
 		})
 
-		// Convert to array of sheets and sort by program_order
-		const sheets = Object.values(groupedData).sort((a: any, b: any) => {
-			// Sort by program_order first, then by program_code
-			if (a.metadata.program_order !== b.metadata.program_order) {
-				return a.metadata.program_order - b.metadata.program_order
+		// Convert to array of sheets (one sheet per date+session with all courses)
+		const sheets = Object.values(groupedByDateSession).map((dateSessionGroup: any) => {
+			// Sort courses by program_order, then by program_code
+			const sortedCourses = Object.values(dateSessionGroup.courses).sort((a: any, b: any) => {
+				if (a.program_order !== b.program_order) {
+					return a.program_order - b.program_order
+				}
+				return a.program_code.localeCompare(b.program_code)
+			})
+
+			return {
+				metadata: {
+					exam_date: dateSessionGroup.exam_date,
+					session: dateSessionGroup.session,
+					session_name: dateSessionGroup.session_name,
+					institution_name: dateSessionGroup.institution_name,
+					institution_code: dateSessionGroup.institution_code,
+					regulation_code: dateSessionGroup.regulation_code
+				},
+				courses: sortedCourses
 			}
-			return a.metadata.program_code.localeCompare(b.metadata.program_code)
 		})
 
-		console.log('Generated sheets:', sheets.length)
+		console.log('Generated sheets:', sheets.length, 'date+session combinations')
 
 		return NextResponse.json({ sheets })
 

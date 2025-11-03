@@ -10,24 +10,28 @@ interface StudentRecord {
 	semester: string
 }
 
-interface SheetMetadata {
-	exam_date: string
-	session: string
+interface CourseData {
 	course_code: string
 	course_title: string
 	program_code: string
 	program_name: string
-	program_order?: number
+	program_order: number
 	semester: string
-	regulation_code: string
+	students: StudentRecord[]
+}
+
+interface SheetMetadata {
+	exam_date: string
+	session: string
+	session_name: string
 	institution_name: string
 	institution_code: string
-	session_name: string
+	regulation_code: string
 }
 
 interface AttendanceSheet {
 	metadata: SheetMetadata
-	students: StudentRecord[]
+	courses: CourseData[]
 }
 
 interface StudentAttendanceSheetData {
@@ -42,18 +46,24 @@ export function generateStudentAttendanceSheetPDF(data: StudentAttendanceSheetDa
 	const pageWidth = doc.internal.pageSize.getWidth()
 	const pageHeight = doc.internal.pageSize.getHeight()
 	const margin = 12.7 // 0.5 inch in mm
-	const contentWidth = pageWidth - (2 * margin)
 
-	// Process each sheet (grouped by exam_date, session, course)
+	// Process each sheet (grouped by exam_date, session)
 	data.sheets.forEach((sheet, sheetIndex) => {
 		// Add new page for each sheet (except the first one)
 		if (sheetIndex > 0) {
 			doc.addPage()
 		}
 
-		// Helper function to add header to each page
-		const addHeader = () => {
+		// Process each course within the sheet
+		sheet.courses.forEach((course, courseIndex) => {
+			// Add new page for each course (except the first course of first sheet)
+			if (sheetIndex > 0 || courseIndex > 0) {
+				doc.addPage()
+			}
+
 			let currentY = margin
+
+			// ========== HEADER SECTION ==========
 
 			// College Logo (left side)
 			if (data.logoImage) {
@@ -97,7 +107,8 @@ export function generateStudentAttendanceSheetPDF(data: StudentAttendanceSheetDa
 
 			currentY += 37
 
-			// Program/Subject/Date information section
+			// ========== COURSE INFORMATION SECTION ==========
+
 			doc.setFont('times', 'bold')
 			doc.setFontSize(9)
 
@@ -105,12 +116,17 @@ export function generateStudentAttendanceSheetPDF(data: StudentAttendanceSheetDa
 			const col1X = margin + 2
 			const col2X = pageWidth * 0.65
 
-			// Left side
+			// Calculate total students for this course
+			const totalStudents = course.students.length
+			const presentCount = course.students.filter(s => s.attendance_status === 'PRESENT').length
+			const absentCount = course.students.filter(s => s.attendance_status === 'ABSENT').length
+
+			// Left side - Program code & Name
 			doc.text('Program code & Name', col1X, infoY)
 			doc.setFont('times', 'normal')
-			doc.text(`: ${sheet.metadata.program_code} - ${sheet.metadata.program_name}`, col1X + 45, infoY)
+			doc.text(`: ${course.program_code} - ${course.program_name}`, col1X + 45, infoY)
 
-			// Right side
+			// Right side - Examination
 			doc.setFont('times', 'bold')
 			doc.text('Examination', col2X, infoY)
 			doc.setFont('times', 'normal')
@@ -123,9 +139,9 @@ export function generateStudentAttendanceSheetPDF(data: StudentAttendanceSheetDa
 			doc.text('Subject Code & Name', col1X, currentY)
 			doc.setFont('times', 'normal')
 
-			// Calculate available width for subject text (from label end to column 2 start with some padding)
+			// Calculate available width for subject text
 			const subjectTextMaxWidth = col2X - (col1X + 45) - 5
-			const subjectText = `: ${sheet.metadata.course_code} - ${sheet.metadata.course_title}`
+			const subjectText = `: ${course.course_code} - ${course.course_title}`
 			const subjectLines = doc.splitTextToSize(subjectText, subjectTextMaxWidth)
 			doc.text(subjectLines, col1X + 45, currentY)
 
@@ -135,9 +151,9 @@ export function generateStudentAttendanceSheetPDF(data: StudentAttendanceSheetDa
 			doc.setFont('times', 'normal')
 			doc.text(totalStudents.toString(), col2X + 30, currentY)
 
-			// Adjust currentY based on subject text height (if it wrapped to multiple lines)
+			// Adjust currentY based on subject text height
 			if (subjectLines.length > 1) {
-				currentY += (subjectLines.length - 1) * 4 // Add extra space for wrapped lines
+				currentY += (subjectLines.length - 1) * 4
 			}
 
 			currentY += 5
@@ -166,108 +182,100 @@ export function generateStudentAttendanceSheetPDF(data: StudentAttendanceSheetDa
 			doc.setDrawColor(0, 0, 0)
 			doc.line(margin, currentY, pageWidth - margin, currentY)
 
-			return currentY + 5
-		}
+			currentY += 5
 
-		// Summary Statistics (calculate before header to use in header)
-		const totalStudents = sheet.students.length
-		const presentCount = sheet.students.filter(s => s.attendance_status === 'PRESENT').length
-		const absentCount = sheet.students.filter(s => s.attendance_status === 'ABSENT').length
-		const attendancePercentage = totalStudents > 0 ? ((presentCount / totalStudents) * 100).toFixed(2) : '0.00'
+			// ========== STUDENT ATTENDANCE TABLE ==========
 
-		// Add initial header
-		let startY = addHeader()
-
-		// Student attendance table
-		const tableData = sheet.students.map((student, index) => {
-			return [
-				(index + 1).toString(),
-				student.register_number,
-				student.student_name,
-				student.attendance_status
-			]
-		})
-
-		autoTable(doc, {
-			startY: startY,
-			head: [
-				[
-					'S.No',
-					'Register Number',
-					'Student Name',
-					'Attendance Status'
+			const tableData = course.students.map((student, index) => {
+				return [
+					(index + 1).toString(),
+					student.register_number,
+					student.student_name,
+					student.attendance_status
 				]
-			],
-			body: tableData,
-			theme: 'grid',
-			styles: {
-				font: 'times',
-				fontStyle: 'normal',
-				fontSize: 9,
-				textColor: [0, 0, 0],
-				lineColor: [0, 0, 0],
-				lineWidth: 0.3,
-				cellPadding: 2
-			},
-			headStyles: {
-				font: 'times',
-				fontStyle: 'bold',
-				fontSize: 10,
-				fillColor: [255, 255, 255],
-				textColor: [0, 0, 0],
-				halign: 'center',
-				valign: 'middle',
-				lineWidth: 0.3
-			},
-			bodyStyles: {
-				font: 'times',
-				fontSize: 9
-			},
-			columnStyles: {
-				0: { halign: 'center', cellWidth: 15 }, // S.No
-				1: { halign: 'center', cellWidth: 35 }, // Register Number
-				2: { halign: 'left', cellWidth: 80 }, // Student Name
-				3: { halign: 'center', cellWidth: 35 } // Attendance Status
-			},
-			margin: { left: margin, right: margin },
-			didParseCell: (data) => {
-				// Highlight PRESENT in green, ABSENT in red
-				if (data.column.index === 3 && data.section === 'body') {
-					if (data.cell.text[0] === 'PRESENT') {
-						data.cell.styles.textColor = [0, 128, 0] // Green
-						data.cell.styles.fontStyle = 'bold'
-					} else if (data.cell.text[0] === 'ABSENT') {
-						data.cell.styles.textColor = [255, 0, 0] // Red
-						data.cell.styles.fontStyle = 'bold'
+			})
+
+			autoTable(doc, {
+				startY: currentY,
+				head: [
+					[
+						'S.No',
+						'Register Number',
+						'Student Name',
+						'Attendance Status'
+					]
+				],
+				body: tableData,
+				theme: 'grid',
+				styles: {
+					font: 'times',
+					fontStyle: 'normal',
+					fontSize: 9,
+					textColor: [0, 0, 0],
+					lineColor: [0, 0, 0],
+					lineWidth: 0.3,
+					cellPadding: 2
+				},
+				headStyles: {
+					font: 'times',
+					fontStyle: 'bold',
+					fontSize: 10,
+					fillColor: [255, 255, 255],
+					textColor: [0, 0, 0],
+					halign: 'center',
+					valign: 'middle',
+					lineWidth: 0.3
+				},
+				bodyStyles: {
+					font: 'times',
+					fontSize: 9
+				},
+				columnStyles: {
+					0: { halign: 'center', cellWidth: 15 }, // S.No
+					1: { halign: 'center', cellWidth: 35 }, // Register Number
+					2: { halign: 'left', cellWidth: 80 }, // Student Name
+					3: { halign: 'center', cellWidth: 35 } // Attendance Status
+				},
+				margin: { left: margin, right: margin },
+				didParseCell: (data) => {
+					// Highlight PRESENT in green, ABSENT in red
+					if (data.column.index === 3 && data.section === 'body') {
+						if (data.cell.text[0] === 'PRESENT') {
+							data.cell.styles.textColor = [0, 128, 0] // Green
+							data.cell.styles.fontStyle = 'bold'
+						} else if (data.cell.text[0] === 'ABSENT') {
+							data.cell.styles.textColor = [255, 0, 0] // Red
+							data.cell.styles.fontStyle = 'bold'
+						}
 					}
+				},
+				didDrawPage: (data) => {
+					// Add footer with page number and timestamp
+					const pageCount = (doc as any).internal.getNumberOfPages()
+					const currentPageNumber = (doc as any).internal.getCurrentPageInfo().pageNumber
+
+					// Page number (centered)
+					doc.setFont('times', 'normal')
+					doc.setFontSize(9)
+					doc.setTextColor(0, 0, 0)
+					const footerText = `Page ${currentPageNumber} of ${pageCount}`
+					doc.text(footerText, pageWidth / 2, pageHeight - margin + 5, { align: 'center' })
+
+					// Date & time (right-aligned)
+					doc.setFont('times', 'italic')
+					doc.setFontSize(8)
+					doc.setTextColor(80, 80, 80)
+					const timestamp = new Date().toLocaleString('en-GB', {
+						day: '2-digit',
+						month: '2-digit',
+						year: 'numeric',
+						hour: '2-digit',
+						minute: '2-digit',
+						second: '2-digit'
+					})
+					doc.text(`Generated on: ${timestamp}`, pageWidth - margin, pageHeight - margin + 5, { align: 'right' })
 				}
-			},
-			didDrawPage: (data) => {
-				// Add footer with page number and timestamp
-				const pageCount = (doc as any).internal.getNumberOfPages()
-				const currentPageNumber = (doc as any).internal.getCurrentPageInfo().pageNumber
-
-				// Page number (centered)
-				doc.setFont('times', 'normal')
-				doc.setFontSize(9)
-				doc.setTextColor(0, 0, 0)
-				const footerText = `Page ${currentPageNumber} of ${pageCount}`
-				doc.text(footerText, pageWidth / 2, pageHeight - margin + 5, { align: 'center' })
-
-				// Date & time (right-aligned)
-				doc.setFont('times', 'italic')
-				doc.setFontSize(8)
-				doc.setTextColor(80, 80, 80)
-				const timestamp = new Date().toLocaleString('en-GB', {
-					day: '2-digit',
-					month: '2-digit',
-					year: 'numeric',
-					hour: '2-digit',
-					minute: '2-digit',
-					second: '2-digit'
-				})
-				doc.text(`Generated on: ${timestamp}`, pageWidth - margin, pageHeight - margin + 5, { align: 'right' })
-			}
+			})
 		})
 	})
 

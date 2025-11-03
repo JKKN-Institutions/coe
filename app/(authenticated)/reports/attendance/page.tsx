@@ -497,26 +497,25 @@ export default function AttendanceReportsPage() {
 				console.warn('Logo not loaded:', e)
 			}
 
-			// Generate PDF for each subject
+			// Generate single combined PDF for all subjects (merged by date+session)
+			const fileName = generateBundleCoverPDF({
+				bundles: responseData.bundles,
+				logoImage: logoBase64,
+				rightLogoImage: rightLogoBase64
+			})
+
+			// Calculate total bundles across all subjects
 			let totalBundlesGenerated = 0
-			let totalSubjects = responseData.bundles.length
-			const generatedFiles: string[] = []
-
-			for (const bundleData of responseData.bundles) {
-				const fileName = generateBundleCoverPDF({
-					...bundleData,
-					logoImage: logoBase64,
-					rightLogoImage: rightLogoBase64
-				})
-
+			responseData.bundles.forEach((bundleData: any) => {
 				const bundlesForSubject = Math.ceil(bundleData.students.length / 60)
 				totalBundlesGenerated += bundlesForSubject
-				generatedFiles.push(fileName)
-			}
+			})
+
+			const totalSubjects = responseData.bundles.length
 
 			toast({
 				title: "✅ Bundle Covers Generated",
-				description: `Generated ${totalBundlesGenerated} bundle${totalBundlesGenerated > 1 ? 's' : ''} for ${totalSubjects} subject${totalSubjects > 1 ? 's' : ''}.`,
+				description: `${fileName} has been downloaded successfully (${totalBundlesGenerated} bundle${totalBundlesGenerated > 1 ? 's' : ''} for ${totalSubjects} subject${totalSubjects > 1 ? 's' : ''}).`,
 				className: "bg-green-50 border-green-200 text-green-800",
 				duration: 5000,
 			})
