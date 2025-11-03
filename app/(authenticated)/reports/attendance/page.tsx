@@ -13,11 +13,12 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { useToast } from "@/hooks/use-toast"
-import { Loader2, FileSpreadsheet, FileText, Calendar, Check, ChevronsUpDown, X } from "lucide-react"
+import { Loader2, FileSpreadsheet, FileText, Calendar, Check, ChevronsUpDown, X, Package } from "lucide-react"
 import { cn } from "@/lib/utils"
 import Link from "next/link"
 import { generateStudentAttendanceSheetPDF } from "@/lib/utils/generate-student-attendance-sheet-pdf"
 import { generateExamAttendancePDF } from "@/lib/utils/generate-exam-attendance-pdf"
+import { generateBundleCoverPDF } from "@/lib/utils/generate-bundle-cover-pdf"
 
 interface Institution {
 	id: string
@@ -75,6 +76,7 @@ export default function AttendanceReportsPage() {
 	const [loadingCourses, setLoadingCourses] = useState(false)
 	const [generatingStudentSheet, setGeneratingStudentSheet] = useState(false)
 	const [generatingSummary, setGeneratingSummary] = useState(false)
+	const [generatingBundle, setGeneratingBundle] = useState(false)
 
 	// Popover open states for searchable dropdowns
 	const [institutionOpen, setInstitutionOpen] = useState(false)
@@ -418,6 +420,120 @@ export default function AttendanceReportsPage() {
 		}
 	}
 
+	// Generate Bundle Cover PDF
+	const handleGenerateBundle = async () => {
+		if (!selectedInstitutionId || !selectedSessionId || !selectedExamDate || !selectedSessionType) {
+			toast({
+				title: "⚠️ Missing Information",
+				description: "Please select required filters (Institution, Session, Date, and Session Type) to generate bundle cover. Program and Course are optional.",
+				variant: "destructive",
+			})
+			return
+		}
+
+		try {
+			setGeneratingBundle(true)
+
+			// Build query params (program and course are optional)
+			const params = new URLSearchParams({
+				institution_id: selectedInstitutionId,
+				session_id: selectedSessionId,
+				exam_date: selectedExamDate,
+				session: selectedSessionType
+			})
+
+			if (selectedProgramCode) {
+				params.append('program_code', selectedProgramCode)
+			}
+
+			if (selectedCourseCode) {
+				params.append('course_code', selectedCourseCode)
+			}
+
+			// Fetch bundle cover data
+			const response = await fetch(`/api/exam-attendance/bundle-cover?${params.toString()}`)
+
+			if (!response.ok) {
+				const errorData = await response.json()
+				throw new Error(errorData.error || 'Failed to fetch bundle cover data')
+			}
+
+			const responseData = await response.json()
+
+			if (!responseData.bundles || responseData.bundles.length === 0) {
+				toast({
+					title: "⚠️ No Data",
+					description: "No attendance records found for the selected filters.",
+					variant: "destructive",
+				})
+				return
+			}
+
+			// Load logos
+			let logoBase64 = ''
+			let rightLogoBase64 = ''
+
+			try {
+				const logoResponse = await fetch('/jkkn_logo.png')
+				if (logoResponse.ok) {
+					const blob = await logoResponse.blob()
+					logoBase64 = await new Promise<string>((resolve) => {
+						const reader = new FileReader()
+						reader.onloadend = () => resolve(reader.result as string)
+						reader.readAsDataURL(blob)
+					})
+				}
+
+				const rightLogoResponse = await fetch('/jkkncas_logo.png')
+				if (rightLogoResponse.ok) {
+					const blob = await rightLogoResponse.blob()
+					rightLogoBase64 = await new Promise<string>((resolve) => {
+						const reader = new FileReader()
+						reader.onloadend = () => resolve(reader.result as string)
+						reader.readAsDataURL(blob)
+					})
+				}
+			} catch (e) {
+				console.warn('Logo not loaded:', e)
+			}
+
+			// Generate PDF for each subject
+			let totalBundlesGenerated = 0
+			let totalSubjects = responseData.bundles.length
+			const generatedFiles: string[] = []
+
+			for (const bundleData of responseData.bundles) {
+				const fileName = generateBundleCoverPDF({
+					...bundleData,
+					logoImage: logoBase64,
+					rightLogoImage: rightLogoBase64
+				})
+
+				const bundlesForSubject = Math.ceil(bundleData.students.length / 60)
+				totalBundlesGenerated += bundlesForSubject
+				generatedFiles.push(fileName)
+			}
+
+			toast({
+				title: "✅ Bundle Covers Generated",
+				description: `Generated ${totalBundlesGenerated} bundle${totalBundlesGenerated > 1 ? 's' : ''} for ${totalSubjects} subject${totalSubjects > 1 ? 's' : ''}.`,
+				className: "bg-green-50 border-green-200 text-green-800",
+				duration: 5000,
+			})
+
+		} catch (error) {
+			console.error('Error generating bundle cover:', error)
+			const errorMessage = error instanceof Error ? error.message : 'Failed to generate bundle cover'
+			toast({
+				title: "❌ Generation Failed",
+				description: errorMessage,
+				variant: "destructive",
+			})
+		} finally {
+			setGeneratingBundle(false)
+		}
+	}
+
 	// Get display values
 	const selectedInstitution = institutions.find(i => i.id === selectedInstitutionId)
 	const selectedSession = sessions.find(s => s.id === selectedSessionId)
@@ -472,10 +588,12 @@ export default function AttendanceReportsPage() {
 												className="h-8 w-full justify-between text-xs"
 												disabled={loadingInstitutions}
 											>
-												{selectedInstitutionId
-													? institutions.find(i => i.id === selectedInstitutionId)?.institution_code + " - " + institutions.find(i => i.id === selectedInstitutionId)?.institution_name
-													: "Select institution"}
-												<div className="flex items-center gap-1">
+												<span className="truncate">
+													{selectedInstitutionId
+														? institutions.find(i => i.id === selectedInstitutionId)?.institution_code + " - " + institutions.find(i => i.id === selectedInstitutionId)?.institution_name
+														: "Select institution"}
+												</span>
+												<div className="flex items-center gap-1 flex-shrink-0">
 													{selectedInstitutionId && (
 														<X
 															className="h-3 w-3 opacity-50 hover:opacity-100"
@@ -536,10 +654,12 @@ export default function AttendanceReportsPage() {
 												className="h-8 w-full justify-between text-xs"
 												disabled={!selectedInstitutionId || loadingSessions}
 											>
-												{selectedSessionId
-													? sessions.find(s => s.id === selectedSessionId)?.session_name + " (" + sessions.find(s => s.id === selectedSessionId)?.session_type + ")"
-													: "Select session"}
-												<div className="flex items-center gap-1">
+												<span className="truncate">
+													{selectedSessionId
+														? sessions.find(s => s.id === selectedSessionId)?.session_name + " (" + sessions.find(s => s.id === selectedSessionId)?.session_type + ")"
+														: "Select session"}
+												</span>
+												<div className="flex items-center gap-1 flex-shrink-0">
 													{selectedSessionId && (
 														<X
 															className="h-3 w-3 opacity-50 hover:opacity-100"
@@ -641,10 +761,12 @@ export default function AttendanceReportsPage() {
 														className="h-8 w-full justify-between text-xs"
 														disabled={loadingPrograms}
 													>
-														{selectedProgramCode
-															? programs.find(p => p.program_code === selectedProgramCode)?.program_code + " - " + programs.find(p => p.program_code === selectedProgramCode)?.program_name
-															: "Select program"}
-														<div className="flex items-center gap-1">
+														<span className="truncate">
+															{selectedProgramCode
+																? programs.find(p => p.program_code === selectedProgramCode)?.program_code + " - " + programs.find(p => p.program_code === selectedProgramCode)?.program_name
+																: "Select program"}
+														</span>
+														<div className="flex items-center gap-1 flex-shrink-0">
 															{selectedProgramCode && (
 																<X
 																	className="h-3 w-3 opacity-50 hover:opacity-100"
@@ -703,10 +825,12 @@ export default function AttendanceReportsPage() {
 														className="h-8 w-full justify-between text-xs"
 														disabled={!selectedProgramCode || loadingCourses}
 													>
-														{selectedCourseCode
-															? courses.find(c => c.course_code === selectedCourseCode)?.course_code + " - " + courses.find(c => c.course_code === selectedCourseCode)?.course_title
-															: "Select course"}
-														<div className="flex items-center gap-1">
+														<span className="truncate">
+															{selectedCourseCode
+																? courses.find(c => c.course_code === selectedCourseCode)?.course_code + " - " + courses.find(c => c.course_code === selectedCourseCode)?.course_title
+																: "Select course"}
+														</span>
+														<div className="flex items-center gap-1 flex-shrink-0">
 															{selectedCourseCode && (
 																<X
 																	className="h-3 w-3 opacity-50 hover:opacity-100"
@@ -794,7 +918,7 @@ export default function AttendanceReportsPage() {
 					)}
 
 					{/* Report Generation Cards */}
-					<div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+					<div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
 						{/* Student Attendance Sheet */}
 						<Card>
 							<CardHeader className="bg-gradient-to-r from-green-50 to-emerald-50 dark:from-green-950/20 dark:to-emerald-950/20 p-3">
@@ -864,6 +988,44 @@ export default function AttendanceReportsPage() {
 										<>
 											<FileText className="mr-1 h-3 w-3" />
 											Generate Summary Report
+										</>
+									)}
+								</Button>
+							</CardContent>
+						</Card>
+
+						{/* Bundle Cover */}
+						<Card>
+							<CardHeader className="bg-gradient-to-r from-emerald-50 to-teal-50 dark:from-emerald-950/20 dark:to-teal-950/20 p-3">
+								<div className="flex items-center gap-2">
+									<div className="h-8 w-8 rounded-full bg-gradient-to-r from-emerald-500 to-teal-600 flex items-center justify-center">
+										<Package className="h-4 w-4 text-white" />
+									</div>
+									<div>
+										<CardTitle className="text-sm font-semibold">Bundle Cover</CardTitle>
+										<CardDescription className="text-xs">Answer sheet bundle cover sheets</CardDescription>
+									</div>
+								</div>
+							</CardHeader>
+							<CardContent className="pt-4 p-3">
+								<p className="text-xs text-muted-foreground mb-3">
+									Generate bundle cover sheets for answer booklets. Automatically creates bundles of 60 students.
+									Program and Course filters are optional.
+								</p>
+								<Button
+									onClick={handleGenerateBundle}
+									disabled={generatingBundle || !selectedInstitutionId || !selectedSessionId || !selectedExamDate || !selectedSessionType}
+									className="w-full bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 h-8 text-xs"
+								>
+									{generatingBundle ? (
+										<>
+											<Loader2 className="mr-1 h-3 w-3 animate-spin" />
+											Generating...
+										</>
+									) : (
+										<>
+											<Package className="mr-1 h-3 w-3" />
+											Generate Bundle Cover
 										</>
 									)}
 								</Button>

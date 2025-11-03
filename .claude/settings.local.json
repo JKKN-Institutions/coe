@@ -30,7 +30,9 @@
       "Bash(python -m pip install:*)",
       "Bash(touch:*)",
       "Skill(pdf-processing-pro)",
-      "Bash(nul)"
+      "Bash(nul)",
+      "Skill(supabase-expert)",
+      "Bash(grep:*)"
     ],
     "deny": [],
     "ask": []

@@ -830,17 +830,36 @@ export default function ExamAttendancePage() {
 																	setSelectedInstitutionId(inst.id)
 																	setInstitutionOpen(false)
 																}}
-																className="flex items-start gap-3 py-3 px-3 cursor-pointer hover:bg-accent"
+																className={cn(
+																	"flex items-start gap-3 py-3 px-3 cursor-pointer rounded-md mb-2 mx-1 transition-all duration-200",
+																	selectedInstitutionId === inst.id
+																		? "bg-gradient-to-r from-amber-50 to-yellow-50 dark:from-amber-900/20 dark:to-yellow-900/20 border-2 border-amber-300 dark:border-amber-700 shadow-sm"
+																		: "hover:bg-gradient-to-r hover:from-gray-50 hover:to-slate-50 dark:hover:from-gray-800/50 dark:hover:to-slate-800/50 border-2 border-transparent"
+																)}
 															>
 																<Check
 																	className={cn(
-																		"mt-1 h-4 w-4 shrink-0 text-primary",
-																		selectedInstitutionId === inst.id ? "opacity-100" : "opacity-0"
+																		"mt-1 h-4 w-4 shrink-0",
+																		selectedInstitutionId === inst.id
+																			? "opacity-100 text-amber-600 dark:text-amber-400"
+																			: "opacity-0"
 																	)}
 																/>
 																<div className="flex-1 min-w-0 space-y-1">
-																	<div className="text-sm font-semibold text-foreground">{inst.institution_code}</div>
-																	<div className="text-xs text-muted-foreground break-words whitespace-normal leading-relaxed">
+																	<div className={cn(
+																		"text-sm font-semibold",
+																		selectedInstitutionId === inst.id
+																			? "text-amber-900 dark:text-amber-100"
+																			: "text-foreground"
+																	)}>
+																		{inst.institution_code}
+																	</div>
+																	<div className={cn(
+																		"text-xs break-words whitespace-normal leading-relaxed",
+																		selectedInstitutionId === inst.id
+																			? "text-amber-700 dark:text-amber-300"
+																			: "text-muted-foreground"
+																	)}>
 																		{inst.institution_name}
 																	</div>
 																</div>

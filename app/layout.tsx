@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { Inter } from "next/font/google";
+import { Inter, Poppins } from "next/font/google";
 import "./globals.css";
 import { AuthProvider } from "@/lib/auth/auth-context";
 import { ThemeProvider } from "@/components/theme-provider";
@@ -10,6 +10,14 @@ const inter = Inter({
   subsets: ["latin"],
   display: 'swap',
   variable: '--font-inter',
+  weight: ['300', '400', '500', '600', '700'],
+});
+
+const poppins = Poppins({
+  subsets: ["latin"],
+  display: 'swap',
+  variable: '--font-poppins',
+  weight: ['300', '400', '500', '600', '700'],
 });
 
 export const metadata: Metadata = {
@@ -27,7 +35,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en" suppressHydrationWarning className={inter.variable}>
+    <html lang="en" suppressHydrationWarning className={`${inter.variable} ${poppins.variable}`}>
       <head>
         {/* Performance: preconnect/dns-prefetch for auth providers */}
         <link rel="preconnect" href={process.env.NEXT_PUBLIC_SUPABASE_URL} crossOrigin="anonymous" />
@@ -36,8 +44,11 @@ export default function RootLayout({
         <link rel="dns-prefetch" href="https://accounts.google.com" />
         <link rel="preconnect" href="https://oauth2.googleapis.com" crossOrigin="anonymous" />
         <link rel="dns-prefetch" href="https://oauth2.googleapis.com" />
+        {/* Preconnect to Google Fonts */}
+        <link rel="preconnect" href="https://fonts.googleapis.com" crossOrigin="anonymous" />
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
       </head>
-      <body className={`${inter.className} font-inter antialiased`}>
+      <body className={`${inter.className} ${poppins.variable} font-inter antialiased`}>
         <RegisterServiceWorker />
         <ThemeProvider attribute="class" defaultTheme="system" enableSystem disableTransitionOnChange>
           <AuthProvider
