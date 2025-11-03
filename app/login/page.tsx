@@ -2,7 +2,7 @@
 
 import { useEffect, useState, Suspense } from 'react';
 import Image from 'next/image';
-import { useAuth } from '@/lib/auth/auth-context';
+import { useAuth } from '@/context/auth-context';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -15,7 +15,7 @@ import {
   CardHeader,
   CardTitle
 } from '@/components/ui/card';
-import { AppFooter } from '@/components/app-footer';
+import { AppFooter } from '@/components/layout/app-footer';
 
 function LoginContent() {
   const { loginWithGoogle, isAuthenticated, isLoading, error } = useAuth();

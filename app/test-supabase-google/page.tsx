@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { useAuth } from '@/lib/auth/auth-context';
+import { useAuth } from '@/context/auth-context';
 import { CheckCircle, XCircle, Info, LogOut, RefreshCw, Shield, User } from 'lucide-react';
 import { createClient } from '@supabase/supabase-js';
 

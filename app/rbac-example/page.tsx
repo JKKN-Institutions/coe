@@ -1,9 +1,9 @@
 'use client';
 
 import React, { useEffect, useState } from 'react';
-import { useAuth } from '@/lib/auth/auth-context';
-import supabaseAuthService from '@/lib/auth/supabase-auth-service';
-import { ProtectedRoute, RequirePermission, RequireRole } from '@/components/protected-route';
+import { useAuth } from '@/context/auth-context';
+import supabaseAuthService from '@/services/auth/supabase-auth-service';
+import { ProtectedRoute, RequirePermission, RequireRole } from '@/components/common/protected-route';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -100,16 +100,18 @@ export default function RBACExamplePage() {
               </div>
 
               {/* All Roles from Auth Service */}
-              <div>
-                <p className="text-sm font-medium mb-2">All Roles (from auth service):</p>
-                <div className="flex flex-wrap gap-2">
-                  {supabaseAuthService.getUserRoles().map(role => (
-                    <Badge key={role} variant="default">
-                      {role}
-                    </Badge>
-                  ))}
+              {typeof window !== 'undefined' && (
+                <div>
+                  <p className="text-sm font-medium mb-2">All Roles (from auth service):</p>
+                  <div className="flex flex-wrap gap-2">
+                    {supabaseAuthService.getUserRoles().map(role => (
+                      <Badge key={role} variant="default">
+                        {role}
+                      </Badge>
+                    ))}
+                  </div>
                 </div>
-              </div>
+              )}
             </div>
           </CardContent>
         </Card>

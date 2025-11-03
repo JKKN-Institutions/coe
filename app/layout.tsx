@@ -1,23 +1,23 @@
 import type { Metadata } from "next";
-import { Inter, Poppins } from "next/font/google";
-import "./globals.css";
-import { AuthProvider } from "@/lib/auth/auth-context";
-import { ThemeProvider } from "@/components/theme-provider";
-import { SessionTimeoutProvider } from "@/components/session-timeout-provider";
+import { Inter, Montserrat } from "next/font/google";
+import "@/styles/globals.css";
+import { AuthProvider } from "@/context/auth-context";
+import { ThemeProvider } from "@/components/common/theme-provider";
+import { SessionTimeoutProvider } from "@/components/common/session-timeout-provider";
 import { RegisterServiceWorker } from "./register-sw";
 
 const inter = Inter({
   subsets: ["latin"],
   display: 'swap',
   variable: '--font-inter',
-  weight: ['300', '400', '500', '600', '700'],
+  weight: ['400', '500', '600'],
 });
 
-const poppins = Poppins({
+const montserrat = Montserrat({
   subsets: ["latin"],
   display: 'swap',
-  variable: '--font-poppins',
-  weight: ['300', '400', '500', '600', '700'],
+  variable: '--font-montserrat',
+  weight: ['600', '700'],
 });
 
 export const metadata: Metadata = {
@@ -35,7 +35,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en" suppressHydrationWarning className={`${inter.variable} ${poppins.variable}`}>
+    <html lang="en" suppressHydrationWarning className={`${inter.variable} ${montserrat.variable}`}>
       <head>
         {/* Performance: preconnect/dns-prefetch for auth providers */}
         <link rel="preconnect" href={process.env.NEXT_PUBLIC_SUPABASE_URL} crossOrigin="anonymous" />
@@ -48,7 +48,7 @@ export default function RootLayout({
         <link rel="preconnect" href="https://fonts.googleapis.com" crossOrigin="anonymous" />
         <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
       </head>
-      <body className={`${inter.className} ${poppins.variable} font-inter antialiased`}>
+      <body className={`${inter.className} ${montserrat.variable} font-inter antialiased`}>
         <RegisterServiceWorker />
         <ThemeProvider attribute="class" defaultTheme="system" enableSystem disableTransitionOnChange>
           <AuthProvider

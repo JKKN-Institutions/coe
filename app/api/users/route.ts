@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { randomUUID } from 'crypto'
 import { getSupabaseServer } from '@/lib/supabase-server'
-import { sendWelcomeEmail } from '@/lib/email-service'
+import { sendWelcomeEmail } from '@/services/email-service'
 
 export async function GET(req: NextRequest) {
   try {

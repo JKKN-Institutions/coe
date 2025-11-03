@@ -11,8 +11,9 @@ export async function GET(req: NextRequest) {
     const supabase = getSupabaseServer()
     let query = supabase
       .from('regulations')
-      .select('*')
+      .select('*', { count: 'exact' })
       .order('created_at', { ascending: false })
+      .range(0, 9999) // Increase limit from default 1000 to 10000 rows
 
     // Apply filters
     if (search) {

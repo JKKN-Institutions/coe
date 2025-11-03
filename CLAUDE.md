@@ -118,6 +118,28 @@ npm run lint         # Run ESLint
 - [app/(authenticated)/layout.tsx](app/(authenticated)/layout.tsx) - Wraps authenticated pages with `<ProtectedRoute>`
 - [app/layout.tsx](app/layout.tsx) - Root layout with theme provider and auth context
 
+**Typography & Fonts:**
+- **Body Font**: Inter (weights: 400, 500, 600)
+  - Font family: `'Inter', 'Helvetica Neue', Arial, sans-serif`
+  - Usage: All body text, captions, UI elements
+  - Weight: 400 (normal) for regular text
+- **Heading Font**: Montserrat (weights: 600, 700)
+  - Font family: `'Montserrat', 'Segoe UI', Arial, sans-serif`
+  - Usage: All headings, titles, section headers
+  - Weights: 600 (semibold) or 700 (bold)
+- **Font Loading**: Via Next.js Font optimization with `display: swap`
+- **CSS Variables**: `--font-inter`, `--font-montserrat`
+- **Tailwind Classes**:
+  - `font-inter` or `font-sans` - Inter for body text
+  - `font-heading` or `font-montserrat` - Montserrat for headings
+- **Typography Utilities** ([styles/globals.css](styles/globals.css)):
+  - `.text-display` - 4xl/5xl, bold, Montserrat
+  - `.text-heading-lg` - 3xl, bold, Montserrat
+  - `.text-heading` - 2xl, semibold, Montserrat
+  - `.text-subheading` - lg, semibold, Montserrat
+  - `.text-body` - base, normal, Inter
+  - `.text-caption` - sm, normal, Inter
+
 ## Development Standards
 
 **Critical conventions from [.cursor/rules/DEVELOPMENT_STANDARDS.md](.cursor/rules/DEVELOPMENT_STANDARDS.md):**

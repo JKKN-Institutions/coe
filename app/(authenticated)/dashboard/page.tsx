@@ -1,14 +1,14 @@
 "use client"
 
 import { useEffect, useState } from "react"
-import { AppSidebar } from "@/components/app-sidebar"
-import { AppHeaderWhite } from "@/components/app-header-white"
-import { AppFooter } from "@/components/app-footer"
+import { AppSidebar } from "@/components/layout/app-sidebar"
+import { AppHeaderWhite } from "@/components/layout/app-header-white"
+import { AppFooter } from "@/components/layout/app-footer"
 import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Users, BookOpen, UserCheck, BarChart3, GraduationCap, TrendingUp, Calendar, Clock } from "lucide-react"
-import { useAuth } from "@/lib/auth/auth-context"
+import { useAuth } from "@/context/auth-context"
 import { useToast } from "@/hooks/use-toast"
 
 interface DashboardStats {

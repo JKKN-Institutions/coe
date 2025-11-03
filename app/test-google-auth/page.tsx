@@ -3,8 +3,8 @@
 import { useState, useEffect } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { googleAuthService } from '@/lib/auth/google-auth-service';
-import GoogleSignInButton from '@/components/google-sign-in-button';
+import { googleAuthService } from '@/services/auth/google-auth-service';
+import GoogleSignInButton from '@/components/common/google-sign-in-button';
 import { CheckCircle, XCircle, Info, LogOut, RefreshCw } from 'lucide-react';
 
 export default function TestGoogleAuthPage() {

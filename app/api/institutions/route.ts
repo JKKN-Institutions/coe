@@ -34,8 +34,9 @@ export async function GET() {
         timetable_type,
         is_active,
         created_at
-      `)
+      `, { count: 'exact' })
       .order('created_at', { ascending: false })
+      .range(0, 9999) // Increase limit from default 1000 to 10000 rows
 
     if (error) {
       console.error('Institutions table error:', error)

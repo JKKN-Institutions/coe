@@ -5,7 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/com
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Shield, AlertTriangle, Rocket } from 'lucide-react';
-import { DevAuthBypass } from '@/lib/auth/dev-auth-bypass';
+import { DevAuthBypass } from '@/services/auth/dev-auth-bypass';
 
 export default function DevLoginPage() {
   const [isDev, setIsDev] = useState(false);

@@ -7,7 +7,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { AlertCircle, CheckCircle, User, Shield, Database } from 'lucide-react';
-import { useAuth } from '@/lib/auth/auth-context';
+import { useAuth } from '@/context/auth-context';
 
 export default function TestUserStatusPage() {
   const { user, login, logout, isAuthenticated } = useAuth();

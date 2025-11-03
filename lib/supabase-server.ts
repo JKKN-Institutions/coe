@@ -16,7 +16,19 @@ export function getSupabaseServer(): SupabaseClient {
     throw new Error('Supabase configuration is missing. Please check your environment variables.')
   }
 
-  cachedClient = createClient(supabaseUrl, supabaseServiceKey)
+  cachedClient = createClient(supabaseUrl, supabaseServiceKey, {
+    db: {
+      schema: 'public',
+    },
+    auth: {
+      persistSession: false,
+    },
+    global: {
+      headers: {
+        'Prefer': 'return=representation'
+      }
+    }
+  })
   return cachedClient
 }
 

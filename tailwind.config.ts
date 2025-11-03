@@ -11,10 +11,10 @@ const config: Config = {
   theme: {
   	extend: {
   		fontFamily: {
-  			sans: ['var(--font-inter)', 'system-ui', 'sans-serif'],
-  			inter: ['var(--font-inter)', 'system-ui', 'sans-serif'],
-  			heading: ['var(--font-poppins)', 'var(--font-inter)', 'system-ui', 'sans-serif'],
-  			poppins: ['var(--font-poppins)', 'system-ui', 'sans-serif'],
+  			sans: ['var(--font-inter)', 'Helvetica Neue', 'Arial', 'sans-serif'],
+  			inter: ['var(--font-inter)', 'Helvetica Neue', 'Arial', 'sans-serif'],
+  			heading: ['var(--font-montserrat)', 'Segoe UI', 'Arial', 'sans-serif'],
+  			montserrat: ['var(--font-montserrat)', 'Segoe UI', 'Arial', 'sans-serif'],
   		},
   		colors: {
   			// Brand Colors

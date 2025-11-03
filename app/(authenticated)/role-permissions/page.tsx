@@ -3,7 +3,7 @@
 import { useState, useEffect, useMemo } from "react"
 import * as React from "react"
 import Link from "next/link"
-import { AppFooter } from "@/components/app-footer"
+import { AppFooter } from "@/components/layout/app-footer"
 import {
   Breadcrumb, 
   BreadcrumbItem,
@@ -32,10 +32,10 @@ import {
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Checkbox } from "@/components/ui/checkbox"
-import { AppSidebar } from "@/components/app-sidebar"
-import { AppHeader } from "@/components/app-header"
+import { AppSidebar } from "@/components/layout/app-sidebar"
+import { AppHeader } from "@/components/layout/app-header"
 import { SidebarProvider, SidebarInset } from "@/components/ui/sidebar"
-import { ProtectedRoute } from "@/components/protected-route"
+import { ProtectedRoute } from "@/components/common/protected-route"
 import { Separator } from "@/components/ui/separator"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Skeleton } from "@/components/ui/skeleton"

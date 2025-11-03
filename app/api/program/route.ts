@@ -13,8 +13,9 @@ export async function GET(req: NextRequest) {
     const supabase = getSupabaseServer()
     let query = supabase
       .from('programs')
-      .select('*')
+      .select('*', { count: 'exact' })
       .order('created_at', { ascending: false })
+      .range(0, 9999) // Increase limit from default 1000 to 10000 rows
 
     if (search) {
       query = query.or(`program_code.ilike.%${search}%,program_name.ilike.%${search}%,degree_code.ilike.%${search}%,institution_code.ilike.%${search}%`)

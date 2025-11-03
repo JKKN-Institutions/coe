@@ -33,11 +33,11 @@ import {
 import { Card, CardContent, CardHeader } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet"
-import { AppSidebar } from "@/components/app-sidebar"
-import { ProtectedRoute } from "@/components/protected-route"
-import { AppHeader } from "@/components/app-header"
+import { AppSidebar } from "@/components/layout/app-sidebar"
+import { ProtectedRoute } from "@/components/common/protected-route"
+import { AppHeader } from "@/components/layout/app-header"
 import { SidebarProvider, SidebarInset } from "@/components/ui/sidebar"
-import { AppFooter } from "@/components/app-footer"
+import { AppFooter } from "@/components/layout/app-footer"
 import {
   AlertDialog,
   AlertDialogAction,

@@ -11,8 +11,9 @@ export async function GET(request: Request) {
 
     let query = supabase
       .from('degrees')
-      .select('*')
+      .select('*', { count: 'exact' })
       .order('created_at', { ascending: false })
+      .range(0, 9999) // Increase limit from default 1000 to 10000 rows
 
     if (program_id) {
       query = query.eq('program_id', program_id)

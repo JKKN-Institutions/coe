@@ -17,8 +17,9 @@ export async function GET(request: Request) {
 			// Fetch students with basic data (view doesn't exist yet)
 			let query = supabase
 				.from('students')
-				.select('*')
+				.select('*', { count: 'exact' })
 				.order('created_at', { ascending: false })
+				.range(0, 9999) // Increase limit from default 1000 to 10000 rows
 
 			if (institutionId) query = query.eq('institution_id', institutionId)
 			if (programId) query = query.eq('program_id', programId)
@@ -38,8 +39,9 @@ export async function GET(request: Request) {
 			// Use basic query without joins (FK constraints may not exist for all relationships)
 			let query = supabase
 				.from('students')
-				.select('*')
+				.select('*', { count: 'exact' })
 				.order('created_at', { ascending: false })
+				.range(0, 9999) // Increase limit from default 1000 to 10000 rows
 
 			if (institutionId) query = query.eq('institution_id', institutionId)
 			if (programId) query = query.eq('program_id', programId)

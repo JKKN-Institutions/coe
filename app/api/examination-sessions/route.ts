@@ -13,8 +13,9 @@ export async function GET(request: Request) {
 
 		let query = supabase
 			.from('examination_sessions')
-			.select('*')
+			.select('*', { count: 'exact' })
 			.order('created_at', { ascending: false })
+			.range(0, 9999) // Increase limit from default 1000 to 10000 rows
 
 		if (institutionsId) {
 			query = query.eq('institutions_id', institutionsId)

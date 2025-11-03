@@ -2,10 +2,10 @@
 
 import { useMemo, useState, useEffect } from "react"
 import * as XLSX from "xlsx"
-import supabaseAuthService from "@/lib/auth/supabase-auth-service"
-import { AppSidebar } from "@/components/app-sidebar"
-import { AppHeader } from "@/components/app-header"
-import { AppFooter } from "@/components/app-footer"
+import supabaseAuthService from "@/services/auth/supabase-auth-service"
+import { AppSidebar } from "@/components/layout/app-sidebar"
+import { AppHeader } from "@/components/layout/app-header"
+import { AppFooter } from "@/components/layout/app-footer"
 import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar"
 import { Breadcrumb, BreadcrumbItem, BreadcrumbLink, BreadcrumbList, BreadcrumbPage, BreadcrumbSeparator } from "@/components/ui/breadcrumb"
 import { Card, CardContent, CardHeader } from "@/components/ui/card"
@@ -113,11 +113,14 @@ export default function ExamRegistrationsPage() {
 	const fetchExamRegistrations = async () => {
 		try {
 			setLoading(true)
-			const response = await fetch('/api/exam-registrations')
+			// Explicitly request 10,000 rows to override default Supabase limit
+			const response = await fetch('/api/exam-registrations?pageSize=10000')
 			if (!response.ok) {
 				throw new Error('Failed to fetch exam registrations')
 			}
-			const data = await response.json()
+			const result = await response.json()
+			// Handle both paginated and non-paginated responses
+			const data = Array.isArray(result) ? result : result.data || []
 			setItems(data)
 		} catch (error) {
 			console.error('Error fetching exam registrations:', error)
@@ -129,16 +132,15 @@ export default function ExamRegistrationsPage() {
 
 	const fetchInstitutions = async () => {
 		try {
-			const res = await fetch('/api/institutions')
+			const res = await fetch('/api/institutions?pageSize=10000')
 			if (res.ok) {
-				const data = await res.json()
-				const mapped = Array.isArray(data)
-					? data.filter((i: any) => i?.institution_code).map((i: any) => ({
-						id: i.id,
-						institution_code: i.institution_code,
-						name: i.name
-					}))
-					: []
+				const result = await res.json()
+				const data = Array.isArray(result) ? result : result.data || []
+				const mapped = data.filter((i: any) => i?.institution_code).map((i: any) => ({
+					id: i.id,
+					institution_code: i.institution_code,
+					name: i.name
+				}))
 				setInstitutions(mapped)
 			}
 		} catch (e) {
@@ -148,19 +150,18 @@ export default function ExamRegistrationsPage() {
 
 	const fetchStudents = async () => {
 		try {
-			const res = await fetch('/api/students')
+			const res = await fetch('/api/students?pageSize=10000')
 			if (res.ok) {
-				const data = await res.json()
-				const mapped = Array.isArray(data)
-					? data.filter((s: any) => s?.register_number || s?.roll_number).map((s: any) => ({
-						id: s.id,
-						roll_number: s.roll_number,
-						register_number: s.register_number,
-						first_name: s.first_name,
-						last_name: s.last_name,
-						institution_id: s.institution_id
-					}))
-					: []
+				const result = await res.json()
+				const data = Array.isArray(result) ? result : result.data || []
+				const mapped = data.filter((s: any) => s?.register_number || s?.roll_number).map((s: any) => ({
+					id: s.id,
+					roll_number: s.roll_number,
+					register_number: s.register_number,
+					first_name: s.first_name,
+					last_name: s.last_name,
+					institution_id: s.institution_id
+				}))
 				setAllStudents(mapped)
 			}
 		} catch (e) {
@@ -170,17 +171,16 @@ export default function ExamRegistrationsPage() {
 
 	const fetchExaminationSessions = async () => {
 		try {
-			const res = await fetch('/api/examination-sessions')
+			const res = await fetch('/api/examination-sessions?pageSize=10000')
 			if (res.ok) {
-				const data = await res.json()
-				const mapped = Array.isArray(data)
-					? data.filter((s: any) => s?.session_code).map((s: any) => ({
-						id: s.id,
-						session_code: s.session_code,
-						session_name: s.session_name,
-						institutions_id: s.institutions_id
-					}))
-					: []
+				const result = await res.json()
+				const data = Array.isArray(result) ? result : result.data || []
+				const mapped = data.filter((s: any) => s?.session_code).map((s: any) => ({
+					id: s.id,
+					session_code: s.session_code,
+					session_name: s.session_name,
+					institutions_id: s.institutions_id
+				}))
 				setAllExaminationSessions(mapped)
 			}
 		} catch (e) {
@@ -190,17 +190,16 @@ export default function ExamRegistrationsPage() {
 
 	const fetchCourseOfferings = async () => {
 		try {
-			const res = await fetch('/api/course-offering')
+			const res = await fetch('/api/course-offering?pageSize=10000')
 			if (res.ok) {
-				const data = await res.json()
-				const mapped = Array.isArray(data)
-					? data.filter((c: any) => c?.course_code).map((c: any) => ({
-						id: c.id,
-						course_code: c.course_code,
-						course_name: c.course_name,
-						institutions_id: c.institutions_id
-					}))
-					: []
+				const result = await res.json()
+				const data = Array.isArray(result) ? result : result.data || []
+				const mapped = data.filter((c: any) => c?.course_code).map((c: any) => ({
+					id: c.id,
+					course_code: c.course_code,
+					course_name: c.course_name,
+					institutions_id: c.institutions_id
+				}))
 				setAllCourseOfferings(mapped)
 			}
 		} catch (e) {
@@ -610,9 +609,10 @@ export default function ExamRegistrationsPage() {
 			try {
 				// Fetch institutions if needed
 				if (institutions.length === 0) {
-					const resInst = await fetch('/api/institutions')
+					const resInst = await fetch('/api/institutions?pageSize=10000')
 					if (resInst.ok) {
-						const dataInst = await resInst.json()
+						const resultInst = await resInst.json()
+						const dataInst = Array.isArray(resultInst) ? resultInst : resultInst.data || []
 						currentInstitutions = dataInst.filter((i: any) => i?.institution_code).map((i: any) => ({
 							id: i.id,
 							institution_code: i.institution_code,
@@ -624,9 +624,10 @@ export default function ExamRegistrationsPage() {
 
 				// Fetch students if needed
 				if (allStudents.length === 0) {
-					const resStudents = await fetch('/api/students')
+					const resStudents = await fetch('/api/students?pageSize=10000')
 					if (resStudents.ok) {
-						const dataStudents = await resStudents.json()
+						const resultStudents = await resStudents.json()
+						const dataStudents = Array.isArray(resultStudents) ? resultStudents : resultStudents.data || []
 						currentStudents = dataStudents.filter((s: any) => s?.register_number || s?.roll_number).map((s: any) => ({
 							id: s.id,
 							roll_number: s.roll_number,
@@ -641,9 +642,10 @@ export default function ExamRegistrationsPage() {
 
 				// Fetch examination sessions if needed
 				if (allExaminationSessions.length === 0) {
-					const resSessions = await fetch('/api/examination-sessions')
+					const resSessions = await fetch('/api/examination-sessions?pageSize=10000')
 					if (resSessions.ok) {
-						const dataSessions = await resSessions.json()
+						const resultSessions = await resSessions.json()
+						const dataSessions = Array.isArray(resultSessions) ? resultSessions : resultSessions.data || []
 						currentSessions = dataSessions.filter((s: any) => s?.session_code).map((s: any) => ({
 							id: s.id,
 							session_code: s.session_code,
@@ -656,9 +658,10 @@ export default function ExamRegistrationsPage() {
 
 				// Fetch course offerings if needed
 				if (allCourseOfferings.length === 0) {
-					const resCourses = await fetch('/api/course-offering')
+					const resCourses = await fetch('/api/course-offering?pageSize=10000')
 					if (resCourses.ok) {
-						const dataCourses = await resCourses.json()
+						const resultCourses = await resCourses.json()
+						const dataCourses = Array.isArray(resultCourses) ? resultCourses : resultCourses.data || []
 						currentCourses = dataCourses.filter((c: any) => c?.course_code).map((c: any) => ({
 							id: c.id,
 							course_code: c.course_code,
@@ -1331,18 +1334,15 @@ export default function ExamRegistrationsPage() {
 													{pageItems.map((row) => (
 														<TableRow key={row.id}>
 															<TableCell className="text-[11px] font-medium">
-																{row.student?.roll_number || '-'}
+																{row.student?.register_number || '-'}
 																<br />
 																<span className="text-muted-foreground text-[10px]">
-																	{row.student ? `${row.student.first_name} ${row.student.last_name}` : ''}
+																	{row.student ? `${row.student.first_name} ` : ''}
 																</span>
 															</TableCell>
 															<TableCell className="text-[11px]">
 																{row.examination_session?.session_code || '-'}
-																<br />
-																<span className="text-muted-foreground text-[10px]">
-																	{row.examination_session?.session_name || ''}
-																</span>
+																
 															</TableCell>
 															<TableCell className="text-[11px]">
 																{row.course_offering?.course_code || '-'}

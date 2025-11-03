@@ -70,8 +70,9 @@ export async function GET(req: NextRequest) {
         total_max_mark,
         annual_semester,
         registration_based
-      `)
+      `, { count: 'exact' })
       .order('created_at', { ascending: false })
+      .range(0, 9999) // Increase limit from default 1000 to 10000 rows
 
     // Apply filters against the real column names
     if (id) {

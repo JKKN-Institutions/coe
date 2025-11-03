@@ -1,8 +1,8 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { useSessionTimeout } from '@/lib/auth/use-session-timeout';
-import { useAuth } from '@/lib/auth/auth-context';
+import { useSessionTimeout } from '@/hooks/use-session-timeout';
+import { useAuth } from '@/context/auth-context';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';

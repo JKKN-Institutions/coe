@@ -5,7 +5,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { AlertCircle, CheckCircle, User, Shield, Database } from 'lucide-react';
-import { useAuth } from '@/lib/auth/auth-context';
+import { useAuth } from '@/context/auth-context';
 
 export default function TestOAuthInactivePage() {
   const { user, loginWithGoogle, logout, isAuthenticated, error } = useAuth();

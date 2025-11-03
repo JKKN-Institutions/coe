@@ -14,7 +14,7 @@ import {
 } from '@/components/ui/card';
 import { ArrowLeft, CheckCircle, AlertCircle, RefreshCw } from 'lucide-react';
 import Link from 'next/link';
-import supabaseAuthService from '@/lib/auth/supabase-auth-service';
+import supabaseAuthService from '@/services/auth/supabase-auth-service';
 import { useToast } from '@/hooks/use-toast';
 
 function VerifyEmailContent() {

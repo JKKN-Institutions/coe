@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { googleAuthService, GoogleUser } from '@/lib/auth/google-auth-service';
+import { googleAuthService, GoogleUser } from '@/services/auth/google-auth-service';
 
 interface UseAuthGuardOptions {
   requiredRole?: string;

@@ -32,7 +32,14 @@
       "Skill(pdf-processing-pro)",
       "Bash(nul)",
       "Skill(supabase-expert)",
-      "Bash(grep:*)"
+      "Bash(grep:*)",
+      "Bash(tree:*)",
+      "Bash(mv:*)",
+      "Bash(chmod:*)",
+      "Bash(bash:*)",
+      "Bash(xargs sed -i \"s|@/lib/auth/auth-context|@/context/auth-context|g\")",
+      "Bash(xargs:*)",
+      "Bash(tee:*)"
     ],
     "deny": [],
     "ask": []

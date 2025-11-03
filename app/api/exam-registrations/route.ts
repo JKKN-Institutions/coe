@@ -11,16 +11,26 @@ export async function GET(request: Request) {
 		const examination_session_id = searchParams.get('examination_session_id')
 		const registration_status = searchParams.get('registration_status')
 
+		// Pagination parameters
+		const page = parseInt(searchParams.get('page') || '1')
+		const pageSize = parseInt(searchParams.get('pageSize') || '10000') // Default to 10k for backward compatibility
+		const from = (page - 1) * pageSize
+		const to = from + pageSize - 1
+
+		// Debug logging
+		console.log('📊 Pagination params:', { page, pageSize, from, to })
+
 		let query = supabase
 			.from('exam_registrations')
 			.select(`
 				*,
 				institution:institutions(id, institution_code, name),
-				student:students(id, roll_number, first_name, last_name),
+				student:students(id, register_number, first_name, last_name),
 				examination_session:examination_sessions(id, session_name, session_code, exam_start_date, exam_end_date),
 				course_offering:course_offerings(id, course_code)
-			`)
+			`, { count: 'exact' })
 			.order('created_at', { ascending: false })
+			.range(from, to) // Dynamic pagination range
 
 		if (institutions_id) {
 			query = query.eq('institutions_id', institutions_id)
@@ -35,7 +45,14 @@ export async function GET(request: Request) {
 			query = query.eq('registration_status', registration_status)
 		}
 
-		const { data, error } = await query
+		const { data, error, count } = await query
+
+		// Debug logging
+		console.log('📊 Query result:', {
+			rowsFetched: data?.length || 0,
+			totalCount: count,
+			error: error?.message
+		})
 
 		if (error) {
 			console.error('Exam registrations table error:', error)
@@ -46,6 +63,7 @@ export async function GET(request: Request) {
 		const { data: courses, error: coursesError } = await supabase
 			.from('courses')
 			.select('course_code, course_name')
+			.range(0, 9999) // Increase limit from default 1000 rows
 
 		if (coursesError) {
 			console.error('Courses fetch error:', coursesError)
@@ -66,7 +84,27 @@ export async function GET(request: Request) {
 			} : null
 		}))
 
-		return NextResponse.json(transformedData)
+		// Return with pagination metadata
+		// Check if pagination is explicitly requested (when page or pageSize params are provided)
+		const usePagination = searchParams.has('page') || searchParams.has('pageSize')
+		const totalPages = count ? Math.ceil(count / pageSize) : 0
+
+		if (usePagination) {
+			// Return paginated response with metadata
+			return NextResponse.json({
+				data: transformedData,
+				pagination: {
+					page,
+					pageSize,
+					total: count || 0,
+					totalPages,
+					hasMore: page < totalPages
+				}
+			})
+		} else {
+			// Backward compatibility: return data array directly
+			return NextResponse.json(transformedData)
+		}
 	} catch (e) {
 		console.error('Exam registrations API error:', e)
 		return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
