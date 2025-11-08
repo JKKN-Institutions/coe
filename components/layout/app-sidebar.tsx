@@ -44,6 +44,7 @@ import {
 	ListChecks,
 	Key,
 	Crown,
+	Hash,
 } from "lucide-react"
 
 import { NavMain } from "@/components/layout/nav-main"
@@ -183,7 +184,7 @@ const data = {
 			icon: CheckSquare,
 			roles: [], // COE and above
 			items: [
-				{ title: "Dummy Number", url: "/", icon: BookText },
+				{ title: "Dummy Numbers", url: "/dummy-numbers", icon: Hash },
 			],
 		},
 		{

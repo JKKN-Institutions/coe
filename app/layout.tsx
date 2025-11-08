@@ -5,6 +5,8 @@ import { AuthProvider } from "@/context/auth-context";
 import { ThemeProvider } from "@/components/common/theme-provider";
 import { SessionTimeoutProvider } from "@/components/common/session-timeout-provider";
 import { RegisterServiceWorker } from "./register-sw";
+import { BugReporterWrapper } from "@/components/bug-reporter/bug-reporter-wrapper";
+import { Toaster } from "react-hot-toast";
 
 const inter = Inter({
   subsets: ["latin"],
@@ -58,14 +60,17 @@ export default function RootLayout({
             sessionTimeout={15} // 15 minutes
             sessionWarning={2} // 2 minutes warning
           >
-            <SessionTimeoutProvider
-              timeoutDuration={15} // 15 minutes
-              warningDuration={2} // 2 minutes warning
-            >
-              {children}
-            </SessionTimeoutProvider>
+            <BugReporterWrapper>
+              <SessionTimeoutProvider
+                timeoutDuration={15} // 15 minutes
+                warningDuration={2} // 2 minutes warning
+              >
+                {children}
+              </SessionTimeoutProvider>
+            </BugReporterWrapper>
           </AuthProvider>
         </ThemeProvider>
+        <Toaster position="top-right" />
       </body>
     </html>
   );

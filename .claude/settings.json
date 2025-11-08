@@ -1,0 +1,45 @@
+{
+  "slashCommands": {
+    "commit": {
+      "commands": [
+        "git add .",
+        "git commit -m '{{commit_message}}'",
+        "git push origin {{branch}}"
+      ],
+      "preApproved": ["git commit", "git push", "gh"]
+    }
+  },
+  "preApproved": {
+    "commands": [
+      "git status",
+      "git add",
+      "git commit",
+      "git push",
+      "npm test",
+      "npm run build",
+      "ls",
+      "cat",
+      "grep"
+    ],
+    "filePatterns": [
+      "src/**/*.ts",
+      "src/**/*.tsx",
+      "tests/**/*"
+    ]
+  },
+  "blocked": {
+    "commands": [
+      "rm -rf",
+      "sudo",
+      "curl | bash"
+    ],
+    "filePatterns": [
+      ".env",
+      "secrets/**/*",
+      "config/production.*"
+    ]
+  },
+  "stopHooks": {
+    "onTaskComplete": "npm test"
+  }
+}

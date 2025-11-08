@@ -39,7 +39,12 @@
       "Bash(bash:*)",
       "Bash(xargs sed -i \"s|@/lib/auth/auth-context|@/context/auth-context|g\")",
       "Bash(xargs:*)",
-      "Bash(tee:*)"
+      "Bash(tee:*)",
+      "Bash(sed:*)",
+      "Bash(python:*)",
+      "Bash(tar:*)",
+      "Bash(npx shadcn@latest add:*)",
+      "Bash(npm install:*)"
     ],
     "deny": [],
     "ask": []
