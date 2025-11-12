@@ -17,7 +17,7 @@ jkkncoe/
 │       └── DEVELOPMENT_STANDARDS.md   # Code style, naming, conventions
 │
 ├── app/                               # Next.js 15 App Router
-│   ├── (authenticated)/               # Route group: Protected pages
+│   ├── coe/               # Route group: Protected pages
 │   │   ├── academic-years/
 │   │   │   └── page.tsx               # Academic years management
 │   │   ├── attendance-correction/
@@ -383,10 +383,10 @@ jkkncoe/
   - File-system based routing
   - Server Components by default
   - API routes in `api/` subdirectory
-  - Route groups for organization (e.g., `(authenticated)`)
+  - Route groups for organization (e.g., `coe`)
 - **Naming**: Always use `page.tsx` for routes, `layout.tsx` for layouts, `route.ts` for API
 
-#### `app/(authenticated)/` - Protected Routes
+#### `app/coe/` - Protected Routes
 - **Purpose**: Route group containing all authenticated pages
 - **Key Features**:
   - Wrapped by `layout.tsx` with `<ProtectedRoute>`
@@ -532,7 +532,7 @@ import { helperFunction } from './utils'
 
 ### Find Entity CRUD Pages
 ```bash
-**/app/(authenticated)/[entity]/page.tsx
+**/app/coe/[entity]/page.tsx
 ```
 
 ### Find Entity API Routes
@@ -572,7 +572,7 @@ For any new entity (e.g., "exams"), follow this structure:
 ```
 jkkncoe/
 ├── app/
-│   ├── (authenticated)/
+│   ├── coe/
 │   │   └── exams/
 │   │       └── page.tsx               # Main CRUD page
 │   └── api/
@@ -602,10 +602,10 @@ jkkncoe/
 - **Protected Route**: `components/common/protected-route.tsx`
 
 ### RBAC (Role-Based Access Control)
-- **Roles Page**: `app/(authenticated)/roles/page.tsx`
-- **Permissions Page**: `app/(authenticated)/permissions/page.tsx`
-- **Role-Permissions**: `app/(authenticated)/role-permissions/page.tsx`
-- **User-Roles**: `app/(authenticated)/user-roles/page.tsx`
+- **Roles Page**: `app/coe/roles/page.tsx`
+- **Permissions Page**: `app/coe/permissions/page.tsx`
+- **Role-Permissions**: `app/coe/role-permissions/page.tsx`
+- **User-Roles**: `app/coe/user-roles/page.tsx`
 - **API**: `app/api/roles/`, `app/api/permissions/`, etc.
 
 ### UI/UX

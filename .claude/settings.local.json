@@ -44,7 +44,16 @@
       "Bash(python:*)",
       "Bash(tar:*)",
       "Bash(npx shadcn@latest add:*)",
-      "Bash(npm install:*)"
+      "Bash(npm install:*)",
+      "Bash(if exist .next rmdir /s /q .next)",
+      "Bash(move \"app\\(authenticated)\" \"app\\coe\")",
+      "Bash(robocopy:*)",
+      "Bash(xcopy:*)",
+      "Bash(git add:*)",
+      "Bash(git checkout:*)",
+      "Bash(git mv:*)",
+      "Bash(rm:*)",
+      "Bash(powershell -ExecutionPolicy Bypass -File update-hooks-imports.ps1)"
     ],
     "deny": [],
     "ask": []

@@ -5,8 +5,8 @@ This document provides a comprehensive prompt template for generating fully-feat
 ## Reference Implementation
 
 **Complete working examples:**
-- Frontend: [app/(authenticated)/degree/page.tsx](app/(authenticated)/degree/page.tsx)
-- Backend API: [app/api/degrees/route.ts](app/api/degrees/route.ts)
+- Frontend: [app/(coe)/master/degrees/page.tsx](../app/(coe)/master/degrees/page.tsx)
+- Backend API: [app/api/master/degrees/route.ts](../app/api/master/degrees/route.ts)
 
 ---
 
@@ -69,7 +69,9 @@ interface [ENTITY_NAME] {
 
 ### 2. Component Structure
 
-**File Location:** `app/(authenticated)/[PAGE_ROUTE]/page.tsx`
+**File Location:** `app/(coe)/[DOMAIN]/[PAGE_ROUTE]/page.tsx`
+- Use appropriate domain folder: `master/`, `course-management/`, `exam-management/`, `grading/`, `users/`, or `utilities/`
+- Example: `app/(coe)/master/institutions/page.tsx` for institutions page
 
 **Required Imports:**
 ```typescript
@@ -989,7 +991,9 @@ const handleImport = () => {
 ## Backend API Implementation Requirements
 
 ### File Location
-`app/api/[API_ROUTE]/route.ts`
+`app/api/[DOMAIN]/[API_ROUTE]/route.ts`
+- Use appropriate domain folder: `master/`, `course-management/`, `exam-management/`, `grading/`, `users/`, or `utilities/`
+- Example: `app/api/master/institutions/route.ts` for institutions API
 
 ### Required Imports
 ```typescript
@@ -1367,8 +1371,9 @@ Add file upload input and S3/storage integration logic.
 
 ## Reference Files
 
-- Frontend: `app/(authenticated)/degree/page.tsx`
-- Backend: `app/api/degrees/route.ts`
+- Frontend: `app/(coe)/master/degrees/page.tsx`
+- Backend: `app/api/master/degrees/route.ts`
+- Folder Structure: `docs/FOLDER_STRUCTURE.md`
 - Development Standards: `.cursor/rules/DEVELOPMENT_STANDARDS.md`
 - Project Instructions: `CLAUDE.md`
 - Product Requirements: `CoE PRD.txt`

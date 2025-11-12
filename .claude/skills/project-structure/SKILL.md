@@ -40,7 +40,7 @@ jkkncoe/
 ├── .cursor/                    # Cursor IDE configuration
 │   └── rules/                  # Development standards and conventions
 ├── app/                        # Next.js 15 App Router (main application code)
-│   ├── (authenticated)/        # Route group for protected pages
+│   ├── coe/        # Route group for protected pages
 │   ├── api/                    # API route handlers
 │   ├── auth/                   # Authentication pages (login, callback)
 │   └── layout.tsx              # Root layout
@@ -75,7 +75,7 @@ For comprehensive folder structure details, file naming conventions, and usage e
 **Structure:**
 ```
 app/
-├── (authenticated)/           # Protected routes
+├── coe/           # Protected routes
 │   ├── courses/               # Entity module
 │   │   └── page.tsx           # Main page component
 │   ├── degrees/
@@ -91,8 +91,8 @@ app/
 ```
 
 **When to create new files:**
-- **New entity page**: `app/(authenticated)/[entity-name]/page.tsx`
-- **Nested route**: `app/(authenticated)/[entity]/[sub-route]/page.tsx`
+- **New entity page**: `app/coe/[entity-name]/page.tsx`
+- **Nested route**: `app/coe/[entity]/[sub-route]/page.tsx`
 - **API endpoint**: `app/api/[entity]/route.ts`
 - **Dynamic API route**: `app/api/[entity]/[id]/route.ts`
 
@@ -307,7 +307,7 @@ export function useCourses() {
 }
 ```
 
-### Layer 4: Components (`app/(authenticated)/[entity]/page.tsx`)
+### Layer 4: Components (`app/coe/[entity]/page.tsx`)
 ```typescript
 'use client'
 
@@ -346,11 +346,11 @@ export async function POST(req: NextRequest) {
 
 **RBAC System:**
 - Permission checks: `components/common/protected-route.tsx`
-- Role management page: `app/(authenticated)/roles/page.tsx`
+- Role management page: `app/coe/roles/page.tsx`
 - User roles API: `app/api/user-roles/route.ts`
 
 **Entity CRUD:**
-- Page: `app/(authenticated)/[entity]/page.tsx`
+- Page: `app/coe/[entity]/page.tsx`
 - API: `app/api/[entity]/route.ts`
 - Types: `types/[entity].ts`
 - Service: `services/[entity]-service.ts`
@@ -366,7 +366,7 @@ Use these patterns to quickly find files:
 
 ```bash
 # Find all entity pages
-**/(authenticated)/*/page.tsx
+**/coe/*/page.tsx
 
 # Find all API routes
 **/api/*/route.ts
@@ -397,7 +397,7 @@ components/**/*-[name].tsx
 
 1. **Define types**: `types/[entity].ts`
 2. **Create API routes**: `app/api/[entity]/route.ts` and `app/api/[entity]/[id]/route.ts`
-3. **Create page**: `app/(authenticated)/[entity]/page.tsx`
+3. **Create page**: `app/coe/[entity]/page.tsx`
 4. **Add to sidebar**: Update `components/layout/app-sidebar.tsx`
 5. **Test and verify**: Check RBAC, validation, error handling
 

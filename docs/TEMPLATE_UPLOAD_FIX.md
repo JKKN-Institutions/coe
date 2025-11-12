@@ -242,7 +242,7 @@ Error dialog shows:
 
 ## 📝 **Files Modified**
 
-- ✅ `app/(authenticated)/department/page.tsx`
+- ✅ `app/coe/department/page.tsx`
   - Line 310-320: Empty template row
   - Line 364-380: Instructions sheet added
   - Line 467-470: Skip empty rows filter

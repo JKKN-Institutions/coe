@@ -221,7 +221,7 @@ export async function DELETE(
 }
 ```
 
-### Step 4: Create Page Component (`app/(authenticated)/teachers/page.tsx`)
+### Step 4: Create Page Component (`app/coe/teachers/page.tsx`)
 
 ```typescript
 "use client"
@@ -847,7 +847,7 @@ try {
 ### Protected Route Usage
 
 ```typescript
-// app/(authenticated)/teachers/page.tsx
+// app/coe/teachers/page.tsx
 
 import { ProtectedRoute } from '@/components/common/protected-route'
 

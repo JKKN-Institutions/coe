@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { Inter, Montserrat } from "next/font/google";
+import { Inter, Montserrat, Space_Grotesk } from "next/font/google";
 import "@/styles/globals.css";
 import { AuthProvider } from "@/context/auth-context";
 import { ThemeProvider } from "@/components/common/theme-provider";
@@ -22,6 +22,13 @@ const montserrat = Montserrat({
   weight: ['600', '700'],
 });
 
+const spaceGrotesk = Space_Grotesk({
+  subsets: ["latin"],
+  display: 'swap',
+  variable: '--font-space-grotesk',
+  weight: ['600', '700'],
+});
+
 export const metadata: Metadata = {
   title: "JKKN | COE",
   
@@ -37,7 +44,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en" suppressHydrationWarning className={`${inter.variable} ${montserrat.variable}`}>
+    <html lang="en" suppressHydrationWarning className={`${inter.variable} ${montserrat.variable} ${spaceGrotesk.variable}`}>
       <head>
         {/* Performance: preconnect/dns-prefetch for auth providers */}
         <link rel="preconnect" href={process.env.NEXT_PUBLIC_SUPABASE_URL} crossOrigin="anonymous" />
@@ -50,7 +57,7 @@ export default function RootLayout({
         <link rel="preconnect" href="https://fonts.googleapis.com" crossOrigin="anonymous" />
         <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
       </head>
-      <body className={`${inter.className} ${montserrat.variable} font-inter antialiased`}>
+      <body className={`${inter.className} ${montserrat.variable} ${spaceGrotesk.variable} font-inter antialiased`}>
         <RegisterServiceWorker />
         <ThemeProvider attribute="class" defaultTheme="system" enableSystem disableTransitionOnChange>
           <AuthProvider

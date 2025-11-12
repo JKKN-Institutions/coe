@@ -104,10 +104,10 @@ Example: `Exam_Attendance_Report_JKKNCAS-NOV-DEC-2025_2025-10-31.pdf`
 ### File Structure
 
 ```
-lib/utils/generate-exam-attendance-pdf.ts          # PDF generation logic
-app/api/exam-attendance/report/route.ts            # Data fetching API endpoint
+lib/utils/generate-exam-attendance-pdf.ts                          # PDF generation logic
+app/api/exam-management/exam-attendance/report/route.ts            # Data fetching API endpoint
 supabase/migrations/20251031_create_exam_attendance_report_function.sql  # Database function
-app/(authenticated)/exam-attendance/page.tsx       # UI with Generate PDF button
+app/(coe)/exam-management/exam-attendance/page.tsx                 # UI with Generate PDF button
 ```
 
 ### API Endpoint

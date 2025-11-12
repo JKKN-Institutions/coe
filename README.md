@@ -212,8 +212,8 @@ See [.claude/skills/QUICKSTART.md](.claude/skills/QUICKSTART.md) for detailed us
 - `lib/myjkkn-api.ts` - API client library
 - `app/api/myjkkn/students/route.ts` - Students list endpoint
 - `app/api/myjkkn/students/[id]/route.ts` - Student details endpoint
-- `app/(authenticated)/myjkkn-students/page.tsx` - Main UI
-- `app/(authenticated)/myjkkn-students/student-details.tsx` - Details component
+- `app/coe/myjkkn-students/page.tsx` - Main UI
+- `app/coe/myjkkn-students/student-details.tsx` - Details component
 
 ### 🆕 Exam Registrations Module
 **Date:** October 27, 2025
@@ -233,7 +233,7 @@ See [.claude/skills/QUICKSTART.md](.claude/skills/QUICKSTART.md) for detailed us
 - Toast notifications with proper pluralization
 
 **Files:**
-- `app/(authenticated)/exam-registrations/page.tsx`
+- `app/coe/exam-registrations/page.tsx`
 - `app/api/exam-registrations/route.ts`
 - `supabase/migrations/20251027_add_missing_fk_constraints.sql`
 
@@ -264,7 +264,7 @@ See [.claude/skills/QUICKSTART.md](.claude/skills/QUICKSTART.md) for detailed us
 ```
 jkkncoe/
 ├── app/
-│   ├── (authenticated)/          # Protected routes
+│   ├── coe/          # Protected routes
 │   │   ├── board/                # Board management
 │   │   ├── course-mapping/       # Course mapping
 │   │   ├── course-mapping-index/ # Course mapping index

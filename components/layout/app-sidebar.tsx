@@ -92,10 +92,10 @@ const data = {
 			isActive: false,
 			roles: ["admin", "super_admin"], // Admin and super admin
 			items: [
-				{ title: "Users",           url: "/user",             icon: Users },
-				{ title: "Roles",           url: "/roles",           icon: Shield },
-				{ title: "Permissions",     url: "/permissions",     icon: Key },
-				{ title: "Role Permission", url: "/role-permissions", icon: LibraryBig },
+				{ title: "Users",           url: "/users/users-list",     icon: Users },
+				{ title: "Roles",           url: "/users/roles",          icon: Shield },
+				{ title: "Permissions",     url: "/users/permissions",    icon: Key },
+				{ title: "Role Permission", url: "/users/role-permissions", icon: LibraryBig },
 			],
 		},
 		{
@@ -105,22 +105,23 @@ const data = {
 			isActive: false,
 			roles: [], // Super admin only
 			items: [
-				{ title: "Institutions",          url: "/institutions",  icon: School },
-				{ title: "Degree",                url: "/degree",        icon: GraduationCap },
-				{ title: "Department",            url: "/department",    icon: Grid2X2 },
-				{ title: "Program",               url: "/program",       icon: GraduationCap },
-				{ title: "Semester",              url: "/semester",      icon: CalendarCheck2 },
-				{ title: "Academic Year",         url: "/academic-years", icon: Calendar },
-				{ title: "Batch",                 url: "/batch",         icon: SquareStack },
-				{ title: "Regulations",           url: "/regulations",   icon: LibraryBig },
-				{ title: "Section",               url: "/section",       icon: Shapes },
-				{ title: "Grade Card Report",     url: "#",              icon: FileText },
-				{ title: "Hall",                  url: "#",              icon: Shapes },
-				{ title: "QP Template",           url: "#",              icon: NotepadText },
-				{ title: "COE Calender",          url: "#",              icon: CalendarDays },
-				{ title: "Fee Details",           url: "#",              icon: Tags },
-				{ title: "Fee Structure",         url: "#",              icon: CreditCard },
-				{ title: "Moderation Mark Setup", url: "#",              icon: ListChecks },
+				{ title: "Institutions",          url: "/master/institutions",    icon: School },
+				{ title: "Degree",                url: "/master/degrees",         icon: GraduationCap },
+				{ title: "Department",            url: "/master/departments",     icon: Grid2X2 },
+				{ title: "Program",               url: "/master/programs",        icon: GraduationCap },
+				{ title: "Semester",              url: "/master/semesters",       icon: CalendarCheck2 },
+				{ title: "Academic Year",         url: "/master/academic-years",  icon: Calendar },
+				{ title: "Batch",                 url: "/master/batches",         icon: SquareStack },
+				{ title: "Regulations",           url: "/master/regulations",     icon: LibraryBig },
+				{ title: "Section",               url: "/master/sections",        icon: Shapes },
+				{ title: "Board",                 url: "/master/boards",          icon: Shapes },
+				{ title: "Grade Card Report",     url: "#",                       icon: FileText },
+				{ title: "Hall",                  url: "#",                       icon: Shapes },
+				{ title: "QP Template",           url: "#",                       icon: NotepadText },
+				{ title: "COE Calender",          url: "#",                       icon: CalendarDays },
+				{ title: "Fee Details",           url: "#",                       icon: Tags },
+				{ title: "Fee Structure",         url: "#",                       icon: CreditCard },
+				{ title: "Moderation Mark Setup", url: "#",                       icon: ListChecks },
 			],
 		},
 		{
@@ -130,8 +131,9 @@ const data = {
 			isActive: false,
 			roles: [], // COE and above
 			items: [
-				{ title: "Courses",        url: "/courses",              icon: BookText },
-				{ title: "Course Mapping", url: "/course-mapping-index", icon: TableProperties },
+				{ title: "Courses",        url: "/master/courses",                      icon: BookText },
+				{ title: "Course Offering",url: "/course-management/course-offering",   icon: BookText },
+				{ title: "Course Mapping", url: "/course-management/course-mapping-index", icon: TableProperties },
 			],
 		},
 		{
@@ -140,18 +142,18 @@ const data = {
 			icon: GraduationCap,
 			roles: [], // Available to all authenticated users
 			items: [
-				{ title: "Student List",      url: "#" },
+				{ title: "Student List",      url: "/users/students-list", icon: GraduationCap },
 				{ title: "Student Promotion", url: "#" },
 			],
 		},
 		{
-			title: "Exam Master",
+			title: "Grading",
 			url: "#",
 			icon: Database,
 			roles: [], // COE and above
 			items: [
-				{ title: "Grades",       url: "/grades",       icon: BookText },
-				{ title: "Grade System", url: "/grade-system", icon: CalendarDays },
+				{ title: "Grades",       url: "/grading/grades",       icon: BookText },
+				{ title: "Grade System", url: "/grading/grade-system", icon: CalendarDays },
 			],
 		},
 		{
@@ -160,11 +162,10 @@ const data = {
 			icon: CalendarClock,
 			roles: [], // COE and above
 			items: [
-				{ title: "Exam Types",            url: "/exam-types",           icon: Tags },
-				{ title: "Examination Sessions",  url: "/examination-sessions", icon: CalendarDays },
-				{ title: "Exam Course Offer",     url: "/course-offering",      icon: BookText },
-				{ title: "Exam Registrations",    url: "/exam-registrations",   icon: UserPlus },
-				{ title: "Exam Timetable",        url: "/exam-timetables",      icon: Calendar },
+				{ title: "Exam Types",            url: "/exam-management/exam-types",           icon: Tags },
+				{ title: "Examination Sessions",  url: "/exam-management/examination-sessions", icon: CalendarDays },
+				{ title: "Exam Registrations",    url: "/exam-management/exam-registrations",   icon: UserPlus },
+				{ title: "Exam Timetable",        url: "/exam-management/exam-timetables",      icon: Calendar },
 			],
 		},
 		{
@@ -174,8 +175,9 @@ const data = {
 			roles: [],
 			items: [
 				// Granular access: coe_office can mark attendance but cannot correct it
-				{ title: "Exam Attendance",        url: "/exam-attendance",       icon: ClipboardCheck, roles: [] },
-				{ title: "Attendance Correction",  url: "/attendance-correction", icon: Edit,           roles: [] }, // Restricted: No coe_office access
+				{ title: "Exam Attendance",        url: "/exam-management/exam-attendance",       icon: ClipboardCheck, roles: [] },
+				{ title: "Attendance Correction",  url: "/exam-management/attendance-correction", icon: Edit,           roles: [] }, // Restricted: No coe_office access
+				{ title: "Exam Rooms",             url: "/exam-management/exam-rooms",            icon: Shapes,         roles: [] },
 			],
 		},
 		{
@@ -184,7 +186,7 @@ const data = {
 			icon: CheckSquare,
 			roles: [], // COE and above
 			items: [
-				{ title: "Dummy Numbers", url: "/dummy-numbers", icon: Hash },
+				{ title: "Dummy Numbers", url: "/utilities/dummy-numbers", icon: Hash },
 			],
 		},
 		{
@@ -193,12 +195,12 @@ const data = {
 			icon: PieChart,
 			roles: [],
 			items: [
-				{ title: "Attendance Report", url: "/reports/attendance", icon: PieChart },
+				{ title: "Attendance Report", url: "/exam-management/reports/attendance", icon: PieChart },
 			],
 		},
-		
-		
-		
+
+
+
 	],
 }
 
@@ -217,19 +219,20 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
 	return (
 		<Sidebar collapsible="icon" {...props}>
 			{/* ===== Sidebar Header ===== */}
-			<SidebarHeader className="h-16 flex items-center mb-4">
-				<div className="flex items-center gap-3 px-3">
+			<SidebarHeader className="h-16 flex items-center mb-8">
+				<div className="flex items-center gap-4 px-4">
 					{/* Logo - Collapsed version (Icon only) */}
-					<div className="group-data-[collapsible=icon]:block hidden">
-						<div className="flex flex-col items-center space-y-1">
-							{/* Crown Icon with frame */}
-							<div className="h-8 w-8 flex items-center justify-center rounded-lg bg-gradient-to-br from-[#16a34a]/10 to-[#059669]/10 border border-[#16a34a]/20 shadow-sm">
-								<Crown className="h-5 w-5 text-[#16a34a] dark:text-[#16a34a] drop-shadow-sm" />
+					<div className="group-data-[collapsible=icon]:flex hidden flex-col items-center justify-center gap-2 transition-all duration-300">
+						{/* Crown Icon with enhanced styling */}
+						<div className="relative group/logo">
+							<div className="absolute inset-0 bg-gradient-to-br from-green-500 via-green-600 to-green-700 rounded-xl blur-lg opacity-25 group-hover/logo:opacity-40 transition-opacity duration-300 animate-pulse" />
+							<div className="relative h-11 w-11 flex items-center justify-center rounded-xl bg-gradient-to-br from-green-500/20 via-green-600/15 to-green-700/20 border-2 border-green-500/40 shadow-xl backdrop-blur-sm group-hover/logo:scale-110 group-hover/logo:shadow-2xl group-hover/logo:border-green-400/60 transition-all duration-300">
+								<Crown className="h-4 w-6 text-green-600 dark:text-green-400 drop-shadow-lg group-hover/logo:text-green-500 dark:group-hover/logo:text-green-300 transition-colors" />
 							</div>
-							{/* JKKN Text */}
-							<div className="text-xs font-extrabold tracking-widest text-[#16a34a] dark:text-[#16a34a] drop-shadow-lg">
-								JKKN
-							</div>
+						</div>
+						{/* JKKN Text */}
+						<div className="text-[11px] font-black tracking-[0.25em] text-transparent bg-clip-text bg-gradient-to-r from-green-600 via-green-700 to-green-800 dark:from-green-400 dark:via-green-500 dark:to-green-600 drop-shadow-sm">
+							JKKN
 						</div>
 					</div>
 
@@ -252,22 +255,21 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
 								alt="JKKN | COE"
 								className="h-18 w-28 object-contain relative z-10 filter drop-shadow-sm"
 							/>
-							
+
 						</div>
-					
+
 					</div>
 				</div>
 			</SidebarHeader>
-			<br></br>
 
 			{/* ===== Sidebar Content ===== */}
-			<SidebarContent className="py-2">
+			<SidebarContent className="px1 py-4">
 				{/* Filtered Navigation based on user roles */}
 				<NavMain items={filteredNavItems} />
 			</SidebarContent>
 
 			{/* ===== Sidebar Footer ===== */}
-			<SidebarFooter className="mt-4">
+			<SidebarFooter className="border-t border-border/40 mt-auto p-2">
 				<NavUser />
 			</SidebarFooter>
 

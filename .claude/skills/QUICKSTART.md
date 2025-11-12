@@ -136,7 +136,7 @@ Parameters:
   foreign_keys: [...]                # Array of FK objects
 
 Generates:
-  - app/(authenticated)/courses/page.tsx
+  - app/coe/courses/page.tsx
   - app/api/courses/route.ts
 ```
 
@@ -289,7 +289,7 @@ Skills generate 80-90% of the code. You can:
 
 ### Tip 3: Use Reference Implementations
 Generated code follows these proven patterns:
-- Frontend: [app/(authenticated)/degree/page.tsx](../../app/(authenticated)/degree/page.tsx)
+- Frontend: [app/coe/degree/page.tsx](../../app/coe/degree/page.tsx)
 - Backend: [app/api/degrees/route.ts](../../app/api/degrees/route.ts)
 
 ### Tip 4: Keep Skills Updated
@@ -344,9 +344,9 @@ All generated code is fully typed:
 - [CoE PRD.txt](../../CoE%20PRD.txt) - Product requirements
 
 ### Reference Implementations
-- [Degree Module](../../app/(authenticated)/degree/) - Complete CRUD example
-- [Courses Module](../../app/(authenticated)/courses/) - With foreign keys
-- [Students Module](../../app/(authenticated)/students/) - Complex relationships
+- [Degree Module](../../app/coe/degree/) - Complete CRUD example
+- [Courses Module](../../app/coe/courses/) - With foreign keys
+- [Students Module](../../app/coe/students/) - Complex relationships
 
 ### External Resources
 - [Claude Code Documentation](https://docs.claude.ai/claude-code)

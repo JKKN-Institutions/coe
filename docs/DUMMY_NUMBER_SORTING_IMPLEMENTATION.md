@@ -291,7 +291,7 @@ LIMIT 100;
 
 - **Generate Endpoint**: [app/api/dummy-numbers/generate/route.ts](../app/api/dummy-numbers/generate/route.ts)
 - **GET Endpoint**: [app/api/dummy-numbers/route.ts](../app/api/dummy-numbers/route.ts)
-- **Frontend Page**: [app/(authenticated)/dummy-numbers/page.tsx](../app/(authenticated)/dummy-numbers/page.tsx)
+- **Frontend Page**: [app/coe/dummy-numbers/page.tsx](../app/coe/dummy-numbers/page.tsx)
 
 ## Migration Files
 

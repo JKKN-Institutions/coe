@@ -93,9 +93,9 @@ Example: `Course_Mapping_B.A_ENGLISH_LITERATURE_2024_-_2027.pdf`
 ### File Structure
 
 ```
-lib/utils/generate-course-mapping-pdf.ts    # PDF generation logic
-app/api/course-mapping/report/route.ts      # Data fetching API endpoint
-app/(authenticated)/course-mapping/page.tsx # UI with Generate PDF button
+lib/utils/generate-course-mapping-pdf.ts                      # PDF generation logic
+app/api/course-management/course-mapping/report/route.ts     # Data fetching API endpoint
+app/(coe)/course-management/course-mapping/page.tsx          # UI with Generate PDF button
 ```
 
 ### API Endpoint

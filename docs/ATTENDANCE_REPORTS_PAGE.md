@@ -2,19 +2,19 @@
 
 ## Overview
 
-The Attendance Reports page (`app/(authenticated)/reports/attendance/page.tsx`) is a comprehensive reporting interface that allows users to generate two types of PDF reports for exam attendance data:
+The Attendance Reports page (`app/(coe)/exam-management/reports/attendance/page.tsx`) is a comprehensive reporting interface that allows users to generate two types of PDF reports for exam attendance data:
 
 1. **Student Attendance Sheet** - Individual student-wise attendance records
 2. **Summary Report** - Aggregated attendance statistics
 
 ## File Location
 
-- **Page Component**: [app/(authenticated)/reports/attendance/page.tsx](../app/(authenticated)/reports/attendance/page.tsx)
+- **Page Component**: [app/(coe)/exam-management/reports/attendance/page.tsx](../app/(coe)/exam-management/reports/attendance/page.tsx)
 - **Student Sheet PDF Generator**: [lib/utils/generate-student-attendance-sheet-pdf.ts](../lib/utils/generate-student-attendance-sheet-pdf.ts)
 - **Summary Report PDF Generator**: [lib/utils/generate-exam-attendance-pdf.ts](../lib/utils/generate-exam-attendance-pdf.ts)
-- **Student Sheet API**: [app/api/exam-attendance/student-sheet/route.ts](../app/api/exam-attendance/student-sheet/route.ts)
-- **Summary Report API**: [app/api/exam-attendance/report/route.ts](../app/api/exam-attendance/report/route.ts)
-- **Dropdowns API**: [app/api/exam-attendance/dropdowns/route.ts](../app/api/exam-attendance/dropdowns/route.ts)
+- **Student Sheet API**: [app/api/exam-management/exam-attendance/student-sheet/route.ts](../app/api/exam-management/exam-attendance/student-sheet/route.ts)
+- **Summary Report API**: [app/api/exam-management/exam-attendance/report/route.ts](../app/api/exam-management/exam-attendance/report/route.ts)
+- **Dropdowns API**: [app/api/exam-management/exam-attendance/dropdowns/route.ts](../app/api/exam-management/exam-attendance/dropdowns/route.ts)
 
 ## Features
 

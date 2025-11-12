@@ -109,13 +109,13 @@ npm run lint         # Run ESLint
 ### UI Architecture
 
 **Component Structure:**
-- App Router ([app/](app/)) with route groups: `(authenticated)/` for protected pages
+- App Router ([app/](app/)) with route groups: `coe/` for protected pages
 - Shadcn UI + Radix UI primitives for accessible components
 - Tailwind CSS with dark mode support via `next-themes`
 - Mobile-responsive layouts using utility-first CSS
 
 **Layout Pattern:**
-- [app/(authenticated)/layout.tsx](app/(authenticated)/layout.tsx) - Wraps authenticated pages with `<ProtectedRoute>`
+- [app/coe/layout.tsx](app/coe/layout.tsx) - Wraps authenticated pages with `<ProtectedRoute>`
 - [app/layout.tsx](app/layout.tsx) - Root layout with theme provider and auth context
 
 **Typography & Fonts:**
@@ -227,7 +227,7 @@ const supabase = getSupabaseServer() // Uses service role key
 
 ### Comprehensive Form Validation Pattern
 
-Reference implementation: [app/(authenticated)/courses/page.tsx](app/(authenticated)/courses/page.tsx)
+Reference implementation: [app/coe/courses/page.tsx](app/coe/courses/page.tsx)
 
 **Validation Function Structure:**
 ```typescript
@@ -358,7 +358,7 @@ const handleSubmit = async () => {
 
 ### Import/Upload Error Handling Pattern
 
-Reference implementation: [app/(authenticated)/courses/page.tsx](app/(authenticated)/courses/page.tsx)
+Reference implementation: [app/coe/courses/page.tsx](app/coe/courses/page.tsx)
 
 **Error Tracking State:**
 ```typescript
@@ -539,7 +539,7 @@ toast({
 
 ### Enhanced Upload Summary with Row Count Tracking
 
-Reference implementation: [app/(authenticated)/degree/page.tsx](app/(authenticated)/degree/page.tsx)
+Reference implementation: [app/coe/degree/page.tsx](app/coe/degree/page.tsx)
 
 **State Management for Upload Summary:**
 ```typescript
@@ -929,7 +929,7 @@ const save = async () => {
 
 ### Standardized Upload/Import Pattern for All Pages
 
-**IMPORTANT**: When adding or modifying upload/import functionality in any entity page ([courses](app/(authenticated)/courses/page.tsx), [degree](app/(authenticated)/degree/page.tsx), [department](app/(authenticated)/department/page.tsx), [institutions](app/(authenticated)/institutions/page.tsx), [program](app/(authenticated)/program/page.tsx), [regulations](app/(authenticated)/regulations/page.tsx), [section](app/(authenticated)/section/page.tsx), [semester](app/(authenticated)/semester/page.tsx), [students](app/(authenticated)/students/page.tsx)), you **MUST** include the following standardized structure using the [degree/page.tsx](app/(authenticated)/degree/page.tsx) implementation as the reference pattern.
+**IMPORTANT**: When adding or modifying upload/import functionality in any entity page ([courses](app/coe/courses/page.tsx), [degree](app/coe/degree/page.tsx), [department](app/coe/department/page.tsx), [institutions](app/coe/institutions/page.tsx), [program](app/coe/program/page.tsx), [regulations](app/coe/regulations/page.tsx), [section](app/coe/section/page.tsx), [semester](app/coe/semester/page.tsx), [students](app/coe/students/page.tsx)), you **MUST** include the following standardized structure using the [degree/page.tsx](app/coe/degree/page.tsx) implementation as the reference pattern.
 
 **Required Components:**
 
@@ -996,7 +996,7 @@ const save = async () => {
    - Color-coded design: Blue (total), Green (success), Red (failed)
    - Show detailed error list with row numbers and specific error messages
    - Include helpful tips section for common fixes
-   - See lines 1127-1202 in [degree/page.tsx](app/(authenticated)/degree/page.tsx)
+   - See lines 1127-1202 in [degree/page.tsx](app/coe/degree/page.tsx)
 
 4. **Enhanced API Error Handling**
    - Extract specific error messages from API response JSON
@@ -1051,7 +1051,7 @@ const save = async () => {
 - ✅ API error extraction from response JSON
 - ✅ Differentiation between validation, FK, and network errors
 
-**Reference Implementation:** See [app/(authenticated)/degree/page.tsx](app/(authenticated)/degree/page.tsx) lines 62-66 (state), 590-682 (upload logic), 1127-1202 (error dialog), 233-240 (API error handling).
+**Reference Implementation:** See [app/coe/degree/page.tsx](app/coe/degree/page.tsx) lines 62-66 (state), 590-682 (upload logic), 1127-1202 (error dialog), 233-240 (API error handling).
 
 ## Important Notes
 

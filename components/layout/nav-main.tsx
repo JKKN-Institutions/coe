@@ -177,24 +177,24 @@ export function NavMain({
       <SidebarMenu>
         {items.map((item) => {
           const isActive = isItemActive(item)
-          
+
           // If item has no sub-items, render as simple link
           if (!item.items || item.items.length === 0) {
             return (
               <SidebarMenuItem key={item.title}>
-                <SidebarMenuButton 
-                  asChild 
-                  tooltip={item.title} 
-                  className={`transition-all duration-300 ease-in-out ${
-                    isActive 
-                      ? 'bg-gradient-to-r from-[#16a34a] to-[#059669] text-white hover:from-[#16a34a]/90 hover:to-[#059669]/90' 
+                <SidebarMenuButton
+                  asChild
+                  tooltip={item.title}
+                  className={`transition-all duration-300 ease-in-out rounded-lg ${
+                    isActive
+                      ? 'bg-gradient-to-r from-green-500 via-green-600 to-green-700 text-white shadow-lg shadow-green-500/30 hover:shadow-xl hover:shadow-green-500/40 hover:from-green-400 hover:via-green-500 hover:to-green-600'
                       : clickedItems.has(item.title)
-                      ? 'bg-gradient-to-r from-[#16a34a]/20 to-[#059669]/20 ring-2 ring-[#16a34a]/30 animate-pulse'
-                      : 'hover:bg-gradient-to-r hover:from-[#16a34a]/10 hover:to-[#059669]/10'
+                      ? 'bg-gradient-to-r from-green-500/25 via-green-600/20 to-green-700/25 ring-2 ring-green-500/40 animate-pulse shadow-md'
+                      : 'hover:bg-gradient-to-r hover:from-green-50 hover:via-green-100 hover:to-green-50 dark:hover:from-green-950/50 dark:hover:via-green-900/40 dark:hover:to-green-950/50 hover:shadow-md'
                   }`}
                 >
-                  <Link 
-                    href={item.url || '#'} 
+                  <Link
+                    href={item.url || '#'}
                     className="flex items-center gap-3"
                     role="menuitem"
                     tabIndex={0}
@@ -212,21 +212,21 @@ export function NavMain({
                     }}
                   >
                     {loadingRoutes.has(item.url) ? (
-                      <Loader2 className="h-4 w-4 animate-spin text-[#16a34a] dark:text-[#16a34a]" />
+                      <Loader2 className="h-4 w-4 animate-spin text-green-600 dark:text-green-400" />
                     ) : (
                       item.icon && (
-                        <item.icon 
+                        <item.icon
                           className={`h-4 w-4 transition-all duration-200 ${
-                            isActive 
-                              ? 'text-white' 
+                            isActive
+                              ? 'text-white drop-shadow-md'
                               : clickedItems.has(item.title)
-                              ? 'text-[#059669] dark:text-[#059669] scale-110'
-                              : 'text-[#16a34a] dark:text-[#16a34a]'
-                          }`} 
+                              ? 'text-green-600 dark:text-green-400 scale-110 drop-shadow-sm'
+                              : 'text-green-600 dark:text-green-500'
+                          }`}
                         />
                       )
                     )}
-                    <span className={`font-medium transition-opacity duration-300 ${isActive ? 'text-white' : 'text-slate-800 dark:text-slate-200'} ${isCollapsed ? 'opacity-0 w-0 overflow-hidden' : 'opacity-100'}`}>
+                    <span className={`font-semibold transition-all duration-300 ${isActive ? 'text-white drop-shadow-sm' : 'text-slate-700 dark:text-slate-200'} ${isCollapsed ? 'opacity-0 w-0 overflow-hidden' : 'opacity-100'}`}>
                       {item.title}
                     </span>
                   </Link>
@@ -243,16 +243,16 @@ export function NavMain({
                 <SidebarMenuItem aria-hidden={item.title === "Master"}>
                   <DropdownMenu onOpenChange={(open) => handleDropdownOpenChange(item.title, open)}>
                     <DropdownMenuTrigger asChild>
-                      <SidebarMenuButton 
-                        tooltip={loadingMenus.has(item.title) ? `Loading ${item.title}...` : item.title} 
-                        className={`transition-all duration-300 ease-in-out ${
-                          isActive 
-                            ? 'bg-gradient-to-r from-[#16a34a] to-[#059669] text-white hover:from-[#16a34a]/90 hover:to-[#059669]/90' 
+                      <SidebarMenuButton
+                        tooltip={loadingMenus.has(item.title) ? `Loading ${item.title}...` : item.title}
+                        className={`transition-all duration-300 ease-in-out rounded-lg ${
+                          isActive
+                            ? 'bg-gradient-to-r from-green-500 via-green-600 to-green-700 text-white shadow-lg shadow-green-500/30 hover:shadow-xl hover:shadow-green-500/40 hover:from-green-400 hover:via-green-500 hover:to-green-600'
                             : loadingMenus.has(item.title)
-                            ? 'bg-gradient-to-r from-[#16a34a]/15 to-[#059669]/15 ring-2 ring-[#16a34a]/40'
+                            ? 'bg-gradient-to-r from-green-500/20 via-green-600/15 to-green-700/20 ring-2 ring-green-500/50 opacity-80'
                             : clickedItems.has(item.title)
-                            ? 'bg-gradient-to-r from-[#16a34a]/20 to-[#059669]/20 ring-2 ring-[#16a34a]/30 animate-pulse'
-                            : 'hover:bg-gradient-to-r hover:from-[#16a34a]/10 hover:to-[#059669]/10'
+                            ? 'bg-gradient-to-r from-green-500/25 via-green-600/20 to-green-700/25 ring-2 ring-green-500/40 animate-pulse shadow-md'
+                            : 'hover:bg-gradient-to-r hover:from-green-50 hover:via-green-100 hover:to-green-50 dark:hover:from-green-950/50 dark:hover:via-green-900/40 dark:hover:to-green-950/50 hover:shadow-md'
                         }`}
                         role="button"
                         tabIndex={0}
@@ -261,28 +261,28 @@ export function NavMain({
                         onClick={() => handleMenuClick(item.title)}
                       >
                         {loadingMenus.has(item.title) ? (
-                          <Loader2 className="h-4 w-4 animate-spin text-[#16a34a] dark:text-[#16a34a]" />
+                          <Loader2 className="h-4 w-4 animate-spin text-green-600 dark:text-green-400" />
                         ) : (
                           item.icon && (
-                            <item.icon 
+                            <item.icon
                               className={`h-4 w-4 transition-all duration-200 ${
-                                isActive 
-                                  ? 'text-white' 
+                                isActive
+                                  ? 'text-white drop-shadow-md'
                                   : clickedItems.has(item.title)
-                                  ? 'text-[#059669] dark:text-[#059669] scale-110'
-                                  : 'text-[#16a34a] dark:text-[#16a34a]'
-                              }`} 
+                                  ? 'text-green-600 dark:text-green-400 scale-110 drop-shadow-sm'
+                                  : 'text-green-600 dark:text-green-500'
+                              }`}
                             />
                           )
                         )}
-                        <span className={`font-medium transition-all duration-300 ${isActive ? 'text-white' : 'text-slate-800 dark:text-slate-200'} opacity-0 w-0 overflow-hidden`}>
+                        <span className={`font-semibold transition-all duration-300 ${isActive ? 'text-white drop-shadow-sm' : 'text-slate-700 dark:text-slate-200'} opacity-0 w-0 overflow-hidden`}>
                           {item.title}
                         </span>
                         <ChevronRight className={`ml-auto h-4 w-4 transition-all duration-300 ${isActive ? 'text-white' : 'text-slate-500 dark:text-slate-400'} opacity-0`} />
                       </SidebarMenuButton>
                     </DropdownMenuTrigger>
                     <DropdownMenuContent
-                      className="w-56 ml-2"
+                      className="w-56 ml-2 border-green-200 dark:border-green-800 shadow-xl"
                       side="right"
                       align="start"
                       sideOffset={8}
@@ -293,7 +293,7 @@ export function NavMain({
                           <DropdownMenuItem key={subItem.title} asChild>
                                     <Link
                                       href={subItem.url}
-                                      className="flex items-center gap-3 w-full"
+                                      className="flex items-center gap-3 w-full rounded-md"
                                       role="menuitem"
                                       tabIndex={0}
                                       aria-label={subItem.title}
@@ -301,11 +301,11 @@ export function NavMain({
                                       onClick={() => handleNavigation(subItem.url)}
                                     >
                               {loadingRoutes.has(subItem.url) ? (
-                                <Loader2 className="h-4 w-4 animate-spin text-[#059669]" />
+                                <Loader2 className="h-4 w-4 animate-spin text-green-600 dark:text-green-400" />
                               ) : (
-                                subItem.icon && <subItem.icon className={`h-4 w-4 ${isSubItemActive ? 'text-[#059669]' : 'text-[#059669] dark:text-[#059669]'}`} />
+                                subItem.icon && <subItem.icon className={`h-4 w-4 transition-colors ${isSubItemActive ? 'text-green-600 dark:text-green-400' : 'text-green-600/70 dark:text-green-500/70'}`} />
                               )}
-                              <span className={`text-sm ${isSubItemActive ? 'text-[#059669] font-medium' : 'text-slate-700 dark:text-slate-300'}`}>
+                              <span className={`text-sm font-medium transition-colors ${isSubItemActive ? 'text-green-700 dark:text-green-300' : 'text-slate-700 dark:text-slate-300'}`}>
                                 {subItem.title}
                               </span>
                             </Link>
@@ -325,14 +325,14 @@ export function NavMain({
                 >
                   <SidebarMenuItem aria-hidden={item.title === "Master"}>
                     <CollapsibleTrigger asChild>
-                      <SidebarMenuButton 
-                        tooltip={item.title} 
-                        className={`transition-all duration-300 ease-in-out ${
-                          isActive 
-                            ? 'bg-gradient-to-r from-[#16a34a] to-[#059669] text-white hover:from-[#16a34a]/90 hover:to-[#059669]/90' 
+                      <SidebarMenuButton
+                        tooltip={item.title}
+                        className={`transition-all duration-300 ease-in-out rounded-lg ${
+                          isActive
+                            ? 'bg-gradient-to-r from-green-500 via-green-600 to-green-700 text-white shadow-lg shadow-green-500/30 hover:shadow-xl hover:shadow-green-500/40 hover:from-green-400 hover:via-green-500 hover:to-green-600'
                             : clickedItems.has(item.title)
-                            ? 'bg-gradient-to-r from-[#16a34a]/20 to-[#059669]/20 ring-2 ring-[#16a34a]/30 animate-pulse'
-                            : 'hover:bg-gradient-to-r hover:from-[#16a34a]/10 hover:to-[#059669]/10'
+                            ? 'bg-gradient-to-r from-green-500/25 via-green-600/20 to-green-700/25 ring-2 ring-green-500/40 animate-pulse shadow-md'
+                            : 'hover:bg-gradient-to-r hover:from-green-50 hover:via-green-100 hover:to-green-50 dark:hover:from-green-950/50 dark:hover:via-green-900/40 dark:hover:to-green-950/50 hover:shadow-md'
                         }`}
                         role="button"
                         tabIndex={0}
@@ -341,20 +341,20 @@ export function NavMain({
                         onClick={() => handleMenuClick(item.title)}
                       >
                         {item.icon && (
-                          <item.icon 
+                          <item.icon
                             className={`h-4 w-4 transition-all duration-200 ${
-                              isActive 
-                                ? 'text-white' 
+                              isActive
+                                ? 'text-white drop-shadow-md'
                                 : clickedItems.has(item.title)
-                                ? 'text-[#059669] dark:text-[#059669] scale-110'
-                                : 'text-[#16a34a] dark:text-[#16a34a]'
-                            }`} 
+                                ? 'text-green-600 dark:text-green-400 scale-110 drop-shadow-sm'
+                                : 'text-green-600 dark:text-green-500'
+                            }`}
                           />
                         )}
-                        <span className={`font-medium transition-all duration-300 ${isActive ? 'text-white' : 'text-slate-800 dark:text-slate-200'}`}>
+                        <span className={`font-semibold transition-all duration-300 ${isActive ? 'text-white drop-shadow-sm' : 'text-slate-700 dark:text-slate-200'}`}>
                           {item.title}
                         </span>
-                        <ChevronRight className={`ml-auto h-4 w-4 transition-all duration-300 group-data-[state=open]/collapsible:rotate-90 ${isActive ? 'text-white' : 'text-slate-500 dark:text-slate-400'}`} />
+                        <ChevronRight className={`ml-auto h-4 w-4 transition-all duration-300 group-data-[state=open]/collapsible:rotate-90 ${isActive ? 'text-white' : 'text-green-600 dark:text-green-500'}`} />
                       </SidebarMenuButton>
                     </CollapsibleTrigger>
                     <CollapsibleContent className="animate-slide-down">
@@ -365,12 +365,12 @@ export function NavMain({
                             <SidebarMenuSubItem key={subItem.title}>
                               <SidebarMenuSubButton
                                 asChild
-                                className={`transition-all duration-300 ease-in-out ${
+                                className={`transition-all duration-300 ease-in-out rounded-md ml-2 ${
                                   isSubItemActive
-                                    ? 'bg-gradient-to-r from-[#059669] to-[#047857] text-white hover:from-[#059669]/90 hover:to-[#047857]/90'
+                                    ? 'bg-gradient-to-r from-green-600 via-emerald-600 to-green-700 text-white shadow-md shadow-green-500/30 hover:shadow-lg hover:shadow-green-500/40 hover:from-green-500 hover:via-emerald-500 hover:to-green-600'
                                     : clickedItems.has(subItem.title)
-                                    ? 'bg-gradient-to-r from-[#059669]/20 to-[#047857]/20 ring-2 ring-[#059669]/30 animate-pulse'
-                                    : 'hover:bg-gradient-to-r hover:from-[#059669]/8 hover:to-[#047857]/8'
+                                    ? 'bg-gradient-to-r from-green-600/20 via-emerald-600/15 to-green-700/20 ring-2 ring-green-500/40 animate-pulse'
+                                    : 'hover:bg-gradient-to-r hover:from-green-50 hover:via-emerald-50 hover:to-green-100 dark:hover:from-green-950/40 dark:hover:via-emerald-950/30 dark:hover:to-green-900/40'
                                 }`}
                               >
                                         <Link
@@ -398,15 +398,15 @@ export function NavMain({
                                       <subItem.icon
                                         className={`h-4 w-4 transition-all duration-200 ${
                                           isSubItemActive
-                                            ? 'text-white'
+                                            ? 'text-white drop-shadow-sm'
                                             : clickedItems.has(subItem.title)
-                                            ? 'text-[#047857] dark:text-[#047857] scale-110'
-                                            : 'text-[#059669] dark:text-[#059669]'
+                                            ? 'text-green-600 dark:text-green-400 scale-110'
+                                            : 'text-green-600 dark:text-green-500'
                                         }`}
                                       />
                                     )
                                   )}
-                                  <span className={`text-sm ${isSubItemActive ? 'text-white font-medium' : 'text-slate-700 dark:text-slate-300'}`}>{subItem.title}</span>
+                                  <span className={`text-sm font-medium ${isSubItemActive ? 'text-white drop-shadow-sm' : 'text-slate-700 dark:text-slate-300'}`}>{subItem.title}</span>
                                 </Link>
                               </SidebarMenuSubButton>
                             </SidebarMenuSubItem>

@@ -80,8 +80,8 @@ The generated Excel file contains **5 sheets**:
 ### 3. **UI Integration**
 
 **Files Modified:**
-- `app/(authenticated)/courses/page.tsx`
-- `app/(authenticated)/course-mapping/page.tsx`
+- `app/coe/courses/page.tsx`
+- `app/coe/course-mapping/page.tsx`
 
 **Button Design:**
 - Styled with blue background (`bg-blue-50`)
@@ -385,8 +385,8 @@ Course_Master_Data_Reference_2025-10-08.xlsx
 
 ### Key Files:
 - **API Route:** `app/api/reference-sheet/route.ts` (429 lines)
-- **Courses Page:** `app/(authenticated)/courses/page.tsx` (lines 586-616, 1084-1087)
-- **Mapping Page:** `app/(authenticated)/course-mapping/page.tsx` (lines 481-511, 739-742)
+- **Courses Page:** `app/coe/courses/page.tsx` (lines 586-616, 1084-1087)
+- **Mapping Page:** `app/coe/course-mapping/page.tsx` (lines 481-511, 739-742)
 - **Documentation:** `docs/COURSE_MASTER_DATA_REFERENCE.md` (comprehensive reference)
 
 ### Dependencies:

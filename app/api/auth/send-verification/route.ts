@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getSupabaseServer } from '@/lib/supabase-server'
-import { sendVerificationEmail } from '@/services/email-service'
+import { sendVerificationEmail } from '@/services/shared/email-service'
 
 export async function POST(req: NextRequest) {
   try {

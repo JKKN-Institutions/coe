@@ -101,7 +101,7 @@ Create a complete CRUD page for managing [ENTITY_NAME_PLURAL] in the JKKN COE ap
 Use the entity details from Step 1 above.
 
 Generate both:
-1. Frontend: app/(authenticated)/[PAGE_ROUTE]/page.tsx
+1. Frontend: app/coe/[PAGE_ROUTE]/page.tsx
 2. Backend: app/api/[API_ROUTE]/route.ts
 
 Follow all patterns from the degree module reference implementation including:
@@ -594,7 +594,7 @@ Before deployment, verify:
 
 ## Reference Files
 
-- **Frontend Example**: `app/(authenticated)/degree/page.tsx`
+- **Frontend Example**: `app/coe/degree/page.tsx`
 - **Backend Example**: `app/api/degrees/route.ts`
 - **Template Source**: `UNIVERSAL_CRUD_PROMPT_TEMPLATE.md`
 
@@ -611,7 +611,7 @@ Required: institution_code, regulation_code, course_code, course_title
 Optional: display_name, description, credits, theory_credit, practical_credit
 
 # This generates:
-# - app/(authenticated)/courses/page.tsx (1200+ lines)
+# - app/coe/courses/page.tsx (1200+ lines)
 # - app/api/courses/route.ts (220+ lines)
 
 # Features included:

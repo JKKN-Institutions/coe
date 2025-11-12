@@ -452,4 +452,4 @@ showSuccessToast('create', ENTITY_NAMES.course, formData.course_title)
 For issues or improvements to the toast system:
 1. Check `/lib/utils/toast-utils.ts` for implementation
 2. Review `/lib/constants/toast-config.ts` for configuration
-3. See example usage in `/app/(authenticated)/courses/page-refactored.tsx`
+3. See example usage in `/app/coe/courses/page-refactored.tsx`

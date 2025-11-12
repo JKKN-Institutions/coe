@@ -15,7 +15,7 @@ import {
 import { ArrowLeft, CheckCircle, AlertCircle, RefreshCw } from 'lucide-react';
 import Link from 'next/link';
 import supabaseAuthService from '@/services/auth/supabase-auth-service';
-import { useToast } from '@/hooks/use-toast';
+import { useToast } from '@/hooks/common/use-toast';
 
 function VerifyEmailContent() {
   const router = useRouter();

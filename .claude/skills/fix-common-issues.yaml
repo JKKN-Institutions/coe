@@ -322,7 +322,7 @@ prompt: |
   - Use h-10 for form inputs
   - Use h-8 for search/filter inputs
 
-  **Reference:** [app/(authenticated)/degree/page.tsx](app/(authenticated)/degree/page.tsx)
+  **Reference:** [app/coe/degree/page.tsx](app/coe/degree/page.tsx)
 
   #### Issue: Form sheet not responsive
 

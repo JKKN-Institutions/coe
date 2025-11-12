@@ -5,7 +5,7 @@ description: Complete workflow for building standardized entity CRUD pages in th
 
 # Entity CRUD Page Builder
 
-This skill provides a complete workflow for building standardized entity management pages in the JKKN COE application, following the proven patterns from [app/(authenticated)/degree/page.tsx](app/(authenticated)/degree/page.tsx).
+This skill provides a complete workflow for building standardized entity management pages in the JKKN COE application, following the proven patterns from [app/coe/degree/page.tsx](app/coe/degree/page.tsx).
 
 ## About This Skill
 

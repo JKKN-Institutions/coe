@@ -33,7 +33,7 @@ Successfully created a comprehensive collection of 6 Claude Code skills to accel
 
 **Time Savings:** 90%+ (30 minutes vs. 6 hours)
 
-**Reference Implementation:** [app/(authenticated)/degree/page.tsx](../../app/(authenticated)/degree/page.tsx)
+**Reference Implementation:** [app/coe/degree/page.tsx](../../app/coe/degree/page.tsx)
 
 ---
 
@@ -445,7 +445,7 @@ Skills leverage these existing resources:
 2. **DEVELOPMENT_STANDARDS.md** - Code style and conventions
 3. **CoE PRD.txt** - Product requirements document
 4. **Reference Implementations:**
-   - Frontend: [degree/page.tsx](../../app/(authenticated)/degree/page.tsx)
+   - Frontend: [degree/page.tsx](../../app/coe/degree/page.tsx)
    - Backend: [api/degrees/route.ts](../../app/api/degrees/route.ts)
 
 ### Tech Stack Alignment

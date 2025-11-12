@@ -1,0 +1,149 @@
+import type { Student, StudentFormData, DropdownData } from '@/types/students'
+
+export async function fetchStudents(): Promise<Student[]> {
+	const response = await fetch('/api/students')
+	if (!response.ok) {
+		throw new Error('Failed to fetch students')
+	}
+	return response.json()
+}
+
+export async function createStudent(data: StudentFormData): Promise<Student> {
+	const payload = {
+		...data,
+		batch_year: data.batch_year ? Number(data.batch_year) : null,
+	}
+
+	const response = await fetch('/api/students', {
+		method: 'POST',
+		headers: { 'Content-Type': 'application/json' },
+		body: JSON.stringify(payload)
+	})
+
+	if (!response.ok) {
+		const errorData = await response.json().catch(() => ({}))
+		throw new Error(errorData.error || errorData.details || 'Failed to create student')
+	}
+
+	return response.json()
+}
+
+export async function updateStudent(id: string, data: StudentFormData): Promise<Student> {
+	const payload = {
+		...data,
+		batch_year: data.batch_year ? Number(data.batch_year) : null,
+	}
+
+	const response = await fetch(`/api/students/${id}`, {
+		method: 'PUT',
+		headers: { 'Content-Type': 'application/json' },
+		body: JSON.stringify(payload)
+	})
+
+	if (!response.ok) {
+		const errorData = await response.json().catch(() => ({}))
+		throw new Error(errorData.error || errorData.details || 'Failed to update student')
+	}
+
+	return response.json()
+}
+
+export async function deleteStudent(id: string): Promise<void> {
+	const response = await fetch(`/api/students/${id}`, {
+		method: 'DELETE',
+	})
+
+	if (!response.ok) {
+		const errorData = await response.json().catch(() => ({}))
+		throw new Error(errorData.error || 'Failed to delete student')
+	}
+}
+
+// Dropdown data services
+export async function fetchDropdownData(): Promise<Partial<DropdownData>> {
+	try {
+		const [instRes, ayRes] = await Promise.all([
+			fetch('/api/institutions'),
+			fetch('/api/academic-year')
+		])
+
+		const institutions = instRes.ok ? await instRes.json() : []
+		const academicYears = ayRes.ok ? await ayRes.json() : []
+
+		return { institutions, academicYears }
+	} catch (error) {
+		console.error('Error fetching dropdown data:', error)
+		return {}
+	}
+}
+
+export async function fetchDepartmentsByInstitution(institutionId: string, institutionCode: string) {
+	try {
+		const url = `/api/departments?institution_code=${institutionCode}`
+		const response = await fetch(url)
+
+		if (response.ok) {
+			return await response.json()
+		}
+		return []
+	} catch (error) {
+		console.error('Error fetching departments:', error)
+		return []
+	}
+}
+
+export async function fetchProgramsByDepartment(departmentId: string) {
+	try {
+		const response = await fetch(`/api/program?department_id=${departmentId}`)
+
+		if (response.ok) {
+			return await response.json()
+		}
+		return []
+	} catch (error) {
+		console.error('Error fetching programs:', error)
+		return []
+	}
+}
+
+export async function fetchDegreesByProgram(programId: string) {
+	try {
+		const response = await fetch(`/api/degrees?program_id=${programId}`)
+
+		if (response.ok) {
+			return await response.json()
+		}
+		return []
+	} catch (error) {
+		console.error('Error fetching degrees:', error)
+		return []
+	}
+}
+
+export async function fetchSemestersByProgram(programId: string) {
+	try {
+		const response = await fetch(`/api/semester?program_id=${programId}`)
+
+		if (response.ok) {
+			return await response.json()
+		}
+		return []
+	} catch (error) {
+		console.error('Error fetching semesters:', error)
+		return []
+	}
+}
+
+export async function fetchSectionsByProgram(programId: string) {
+	try {
+		const response = await fetch(`/api/section?program_id=${programId}`)
+
+		if (response.ok) {
+			return await response.json()
+		}
+		return []
+	} catch (error) {
+		console.error('Error fetching sections:', error)
+		return []
+	}
+}

@@ -6,7 +6,7 @@ Enhanced the attendance correction page to provide better user feedback and auto
 
 ## Changes Made
 
-### File: `app/(authenticated)/attendance-correction/page.tsx`
+### File: `app/(coe)/exam-management/attendance-correction/page.tsx`
 
 #### 1. Added Next.js Router Import
 
@@ -64,7 +64,7 @@ setStudentInfo(null)
 ```typescript
 // Redirect to attendance correction page after 1.5 seconds
 setTimeout(() => {
-  router.push('/attendance-correction')
+  router.push('/coe/exam-management/attendance-correction')
 }, 1500)
 ```
 

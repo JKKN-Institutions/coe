@@ -125,8 +125,8 @@ prompt: |
   ## Implementation Requirements
 
   ### Frontend Requirements
-  1. Create file: `app/(authenticated)/{{page_route}}/page.tsx`
-  2. Follow the reference implementation in `app/(authenticated)/degree/page.tsx`
+  1. Create file: `app/coe/{{page_route}}/page.tsx`
+  2. Follow the reference implementation in `app/coe/degree/page.tsx`
   3. Include all required imports from the template
   4. Implement complete state management
   5. Add data fetching functions with error handling
@@ -195,13 +195,13 @@ prompt: |
 
   ## Reference Files
   - Frontend Template: `UNIVERSAL_CRUD_PROMPT_TEMPLATE.md`
-  - Frontend Reference: `app/(authenticated)/degree/page.tsx`
+  - Frontend Reference: `app/coe/degree/page.tsx`
   - Backend Reference: `app/api/degrees/route.ts`
   - Development Standards: `.cursor/rules/DEVELOPMENT_STANDARDS.md`
 
   ## Output Files
   Generate two files:
-  1. `app/(authenticated)/{{page_route}}/page.tsx` - Frontend component
+  1. `app/coe/{{page_route}}/page.tsx` - Frontend component
   2. `app/api/{{api_route}}/route.ts` - Backend API routes
 
   Ensure all placeholders are replaced with actual values and follow the exact patterns from the reference implementation.
@@ -209,7 +209,7 @@ prompt: |
 execution:
   working_directory: "."
   files_to_create:
-    - "app/(authenticated)/{{page_route}}/page.tsx"
+    - "app/coe/{{page_route}}/page.tsx"
     - "app/api/{{api_route}}/route.ts"
   
   validation:

@@ -200,7 +200,7 @@ Each entity can be customized while maintaining the core pattern:
 
 ## Next Steps
 
-1. Review the degree page implementation ([app/(authenticated)/degree/page.tsx](app/(authenticated)/degree/page.tsx))
+1. Review the degree page implementation ([app/coe/degree/page.tsx](app/coe/degree/page.tsx))
 2. Identify entities that need CRUD pages
 3. Ask Claude to create or standardize pages using this skill
 4. Test generated pages thoroughly

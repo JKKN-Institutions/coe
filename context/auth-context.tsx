@@ -14,7 +14,7 @@ import supabaseAuthService, {
   LoginCredentials,
   RegisterData
 } from '@/services/auth/supabase-auth-service';
-import { usePermissionSync } from '@/hooks/use-permission-sync';
+import { usePermissionSync } from '@/hooks/auth/use-permission-sync';
 
 interface AuthContextType {
   user: SupabaseUser | null;

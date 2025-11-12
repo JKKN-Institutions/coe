@@ -40,10 +40,10 @@ Generate complete full-stack CRUD pages with frontend and backend implementation
 ```
 
 **Generates:**
-- `app/(authenticated)/[page_route]/page.tsx` (~1200+ lines)
+- `app/coe/[page_route]/page.tsx` (~1200+ lines)
 - `app/api/[api_route]/route.ts` (~220+ lines)
 
-**Reference Implementation:** See [degree/page.tsx](../../app/(authenticated)/degree/page.tsx)
+**Reference Implementation:** See [degree/page.tsx](../../app/coe/degree/page.tsx)
 
 ---
 
@@ -461,7 +461,7 @@ Skills leverage the following project resources:
 - **CLAUDE.md**: Project overview and guidelines
 - **DEVELOPMENT_STANDARDS.md**: Code style and conventions
 - **Reference Implementations**: Working code examples
-  - Frontend: [degree/page.tsx](../../app/(authenticated)/degree/page.tsx)
+  - Frontend: [degree/page.tsx](../../app/coe/degree/page.tsx)
   - Backend: [api/degrees/route.ts](../../app/api/degrees/route.ts)
 - **PRD**: [CoE PRD.txt](../../CoE%20PRD.txt) - Product requirements
 

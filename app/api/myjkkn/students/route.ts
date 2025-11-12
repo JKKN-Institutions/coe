@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { fetchMyJKKNStudents } from '@/services/myjkkn-api'
+import { fetchMyJKKNStudents } from '@/services/shared/myjkkn-api'
 
 /**
  * GET /api/myjkkn/students
