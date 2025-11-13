@@ -272,9 +272,9 @@ export async function POST(request: Request) {
 		const supabase = getSupabaseServer()
 
 		// Validate required fields
-		if (!body.institutions_id || !body.exam_session_code || !body.course_code || !body.program_code || !body.session_code) {
+		if (!body.institutions_id || !body.exam_session_code || !body.course_code || !body.program_code || !body.session_code || !body.exam_date) {
 			return NextResponse.json({
-				error: 'Required fields: institutions_id, exam_session_code, course_code, program_code, session_code'
+				error: 'Required fields: institutions_id, exam_session_code, course_code, program_code, session_code, exam_date'
 			}, { status: 400 })
 		}
 
@@ -315,14 +315,13 @@ export async function POST(request: Request) {
 		const programId = programData.id
 
 		// Step 3: Get exam_timetable_id
-		const examDate = getISTDate() // Today's date in IST
 		const { data: timetableData, error: timetableError } = await supabase
 			.from('exam_timetables')
 			.select('id')
 			.eq('institutions_id', body.institutions_id)
 			.eq('examination_session_id', body.exam_session_code)
 			.eq('course_id', courseId)
-			.eq('exam_date', examDate)
+			.eq('exam_date', body.exam_date)
 			.eq('session', body.session_code)
 			.eq('is_published', true)
 			.maybeSingle()
@@ -363,7 +362,7 @@ export async function POST(request: Request) {
 			exam_timetable_id: timetableId,
 			exam_registration_id: record.exam_registration_id,
 			student_id: record.student_id, // Include student_id from attendance records
-									
+			is_absent: record.is_absent, // Add is_absent field
 			status: !record.is_absent, // Status is true when present, false when absent
 			attendance_status: record.is_absent ? 'Absent' : 'Present',
 			remarks: record.remarks || null,
