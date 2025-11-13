@@ -174,11 +174,11 @@ export async function loadStudents(
  * Save attendance records
  */
 export async function saveAttendance(payload: {
-	institution_id: string
-	examination_session_id: string
+	institutions_id: string
+	exam_session_code: string
 	course_code: string
 	exam_date: string
-	session: string
+	session_code: string
 	program_code: string
 	attendance_records: AttendanceRecord[]
 }): Promise<void> {

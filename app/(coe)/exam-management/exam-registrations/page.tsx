@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useMemo } from "react"
 import * as XLSX from "xlsx"
 import supabaseAuthService from "@/services/auth/supabase-auth-service"
 import type { ExamRegistration, ExamRegistrationImportError, UploadSummary } from "@/types/exam-registrations"
@@ -36,11 +36,16 @@ export default function ExamRegistrationsPage() {
 		examRegistrations,
 		loading,
 		setLoading,
+		fetchExamRegistrations,
 		saveExamRegistration,
 		removeExamRegistration,
 		refreshExamRegistrations,
-		// Dropdown data (automatically filtered by institution)
+		// Dropdown data (unfiltered - for import validation)
 		institutions,
+		allStudents,
+		allExaminationSessions,
+		allCourseOfferings,
+		// Dropdown data (filtered by institution - for forms)
 		filteredStudents,
 		filteredExaminationSessions,
 		filteredCourseOfferings,

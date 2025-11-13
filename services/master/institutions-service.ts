@@ -1,7 +1,7 @@
 import type { Institution, InstitutionFormData } from '@/types/institutions'
 
 export async function fetchInstitutions(): Promise<Institution[]> {
-  const response = await fetch('/api/institutions')
+  const response = await fetch('/api/master/institutions')
   if (!response.ok) {
     throw new Error('Failed to fetch institutions')
   }
@@ -9,7 +9,7 @@ export async function fetchInstitutions(): Promise<Institution[]> {
 }
 
 export async function createInstitution(data: InstitutionFormData): Promise<Institution> {
-  const response = await fetch('/api/institutions', {
+  const response = await fetch('/api/master/institutions', {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -26,7 +26,7 @@ export async function createInstitution(data: InstitutionFormData): Promise<Inst
 }
 
 export async function updateInstitution(id: string, data: InstitutionFormData): Promise<Institution> {
-  const response = await fetch('/api/institutions', {
+  const response = await fetch('/api/master/institutions', {
     method: 'PUT',
     headers: {
       'Content-Type': 'application/json',
@@ -46,7 +46,7 @@ export async function updateInstitution(id: string, data: InstitutionFormData): 
 }
 
 export async function deleteInstitution(id: string): Promise<void> {
-  const response = await fetch(`/api/institutions?id=${id}`, {
+  const response = await fetch(`/api/master/institutions?id=${id}`, {
     method: 'DELETE',
   })
 

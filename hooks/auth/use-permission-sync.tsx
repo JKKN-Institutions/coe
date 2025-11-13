@@ -82,7 +82,7 @@ export function usePermissionSync(
         if (status === 'SUBSCRIBED') {
           console.log('✅ Real-time permission sync active')
         } else if (status === 'CHANNEL_ERROR') {
-          console.error('❌ Real-time channel error')
+          console.warn('⚠️ Real-time channel error - Enable realtime for user_roles table in Supabase Dashboard')
         } else if (status === 'TIMED_OUT') {
           console.warn('⚠️ Real-time subscription timed out')
         }

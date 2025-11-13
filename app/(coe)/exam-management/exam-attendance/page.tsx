@@ -83,6 +83,12 @@ export default function ExamAttendancePage() {
 	const [programOpen, setProgramOpen] = useState(false)
 	const [courseOpen, setCourseOpen] = useState(false)
 
+	// Search state for dropdowns
+	const [institutionSearch, setInstitutionSearch] = useState("")
+	const [sessionSearch, setSessionSearch] = useState("")
+	const [programSearch, setProgramSearch] = useState("")
+	const [courseSearch, setCourseSearch] = useState("")
+
 	// Load institutions on mount
 	useEffect(() => {
 		fetchInstitutions()
@@ -532,11 +538,11 @@ export default function ExamAttendancePage() {
 			setSaving(true)
 
 			await saveAttendanceService({
-				institution_id: selectedInstitutionId,
-				examination_session_id: selectedSessionId,
+				institutions_id: selectedInstitutionId,
+				exam_session_code: selectedSessionId,
 				course_code: selectedCourseCode,
 				exam_date: selectedExamDate,
-				session: selectedSessionType,
+				session_code: selectedSessionType,
 				program_code: selectedProgramCode,
 				attendance_records: attendanceRecords,
 			})
@@ -708,7 +714,10 @@ export default function ExamAttendancePage() {
 									<Label htmlFor="institution" className="text-[10px] font-medium">
 										Institution <span className="text-red-500">*</span>
 									</Label>
-									<Popover open={institutionOpen} onOpenChange={setInstitutionOpen}>
+									<Popover open={institutionOpen} onOpenChange={(open) => {
+										setInstitutionOpen(open)
+										if (!open) setInstitutionSearch("")
+									}}>
 										<PopoverTrigger asChild>
 											<Button
 												variant="outline"
@@ -728,15 +737,29 @@ export default function ExamAttendancePage() {
 											</Button>
 										</PopoverTrigger>
 										<PopoverContent className="w-[500px] max-w-[90vw] p-0" align="start">
-											<Command>
-												<CommandInput placeholder="Search institution..." className="h-9 text-xs" />
+											<Command shouldFilter={false}>
+												<CommandInput
+													placeholder="Search institution..."
+													className="h-9 text-xs"
+													value={institutionSearch}
+													onValueChange={setInstitutionSearch}
+												/>
 												<CommandList className="max-h-[300px]">
 													<CommandEmpty className="py-6 text-center text-xs text-muted-foreground">No institution found.</CommandEmpty>
 													<CommandGroup>
-														{institutions.map((inst) => (
+														{institutions
+															.filter((inst) => {
+																if (!institutionSearch) return true
+																const search = institutionSearch.toLowerCase()
+																return (
+																	inst.institution_code.toLowerCase().includes(search) ||
+																	inst.institution_name.toLowerCase().includes(search)
+																)
+															})
+															.map((inst) => (
 															<CommandItem
 																key={inst.id}
-																value={`${inst.institution_code} ${inst.institution_name}`}
+																value={inst.id}
 																onSelect={() => {
 																	setSelectedInstitutionId(inst.id)
 																	setInstitutionOpen(false)
@@ -744,8 +767,8 @@ export default function ExamAttendancePage() {
 																className={cn(
 																	"flex items-start gap-3 py-3 px-3 cursor-pointer rounded-md mb-2 mx-1 transition-all duration-200",
 																	selectedInstitutionId === inst.id
-																		? "bg-gradient-to-r from-amber-50 to-yellow-50 dark:from-amber-900/20 dark:to-yellow-900/20 border-2 border-amber-300 dark:border-amber-700 shadow-sm"
-																		: "hover:bg-gradient-to-r hover:from-gray-50 hover:to-slate-50 dark:hover:from-gray-800/50 dark:hover:to-slate-800/50 border-2 border-transparent"
+																		? "bg-gradient-to-r from-amber-50 to-yellow-50 dark:from-amber-900/20 dark:to-yellow-900/20 border-2 border-amber-400 dark:border-amber-600 shadow-md"
+																		: "hover:bg-gradient-to-r hover:from-amber-50/30 hover:to-yellow-50/30 dark:hover:from-amber-900/10 dark:hover:to-yellow-900/10 border-2 border-transparent hover:border-amber-200 dark:hover:border-amber-800"
 																)}
 															>
 																<Check
@@ -788,7 +811,10 @@ export default function ExamAttendancePage() {
 									<Label htmlFor="session" className="text-[10px] font-medium">
 										Examination Session <span className="text-red-500">*</span>
 									</Label>
-									<Popover open={sessionOpen} onOpenChange={setSessionOpen}>
+									<Popover open={sessionOpen} onOpenChange={(open) => {
+										setSessionOpen(open)
+										if (!open) setSessionSearch("")
+									}}>
 										<PopoverTrigger asChild>
 											<Button
 												variant="outline"
@@ -808,29 +834,53 @@ export default function ExamAttendancePage() {
 											</Button>
 										</PopoverTrigger>
 										<PopoverContent className="w-[500px] max-w-[90vw] p-0" align="start">
-											<Command>
-												<CommandInput placeholder="Search session..." className="h-9 text-xs" />
+											<Command shouldFilter={false}>
+												<CommandInput
+													placeholder="Search session..."
+													className="h-9 text-xs"
+													value={sessionSearch}
+													onValueChange={setSessionSearch}
+												/>
 												<CommandList className="max-h-[300px]">
 													<CommandEmpty className="py-6 text-center text-xs text-muted-foreground">No session found.</CommandEmpty>
 													<CommandGroup>
-														{sessions.map((session) => (
+														{sessions
+															.filter((session) => {
+																if (!sessionSearch) return true
+																const search = sessionSearch.toLowerCase()
+																return (
+																	session.session_name.toLowerCase().includes(search) ||
+																	session.session_type.toLowerCase().includes(search)
+																)
+															})
+															.map((session) => (
 															<CommandItem
 																key={session.id}
-																value={`${session.session_name} ${session.session_type}`}
+																value={session.id}
 																onSelect={() => {
 																	setSelectedSessionId(session.id)
 																	setSessionOpen(false)
 																}}
-																className="flex items-start gap-3 py-3 px-3 cursor-pointer hover:bg-accent"
+																className={cn(
+																	"flex items-start gap-3 py-3 px-3 cursor-pointer rounded-md mb-2 mx-1 transition-all duration-200",
+																	selectedSessionId === session.id
+																		? "bg-gradient-to-r from-amber-50 to-yellow-50 dark:from-amber-900/20 dark:to-yellow-900/20 border-2 border-amber-400 dark:border-amber-600 shadow-md"
+																		: "hover:bg-gradient-to-r hover:from-amber-50/30 hover:to-yellow-50/30 dark:hover:from-amber-900/10 dark:hover:to-yellow-900/10 border-2 border-transparent hover:border-amber-200 dark:hover:border-amber-800"
+																)}
 															>
 																<Check
 																	className={cn(
-																		"mt-1 h-4 w-4 shrink-0 text-primary",
-																		selectedSessionId === session.id ? "opacity-100" : "opacity-0"
+																		"mt-1 h-4 w-4 shrink-0",
+																		selectedSessionId === session.id ? "opacity-100 text-amber-600 dark:text-amber-400" : "opacity-0"
 																	)}
 																/>
 																<div className="flex-1 min-w-0 space-y-1">
-																	<div className="text-sm font-semibold text-foreground break-words whitespace-normal leading-relaxed">
+																	<div className={cn(
+																		"text-sm font-semibold break-words whitespace-normal leading-relaxed",
+																		selectedSessionId === session.id
+																			? "text-amber-900 dark:text-amber-100"
+																			: "text-foreground"
+																	)}>
 																		{session.session_name}
 																	</div>
 																	<div className="text-xs text-muted-foreground">
@@ -853,7 +903,10 @@ export default function ExamAttendancePage() {
 									<Label htmlFor="program" className="text-[10px] font-medium">
 										Program Code <span className="text-red-500">*</span>
 									</Label>
-									<Popover open={programOpen} onOpenChange={setProgramOpen}>
+									<Popover open={programOpen} onOpenChange={(open) => {
+										setProgramOpen(open)
+										if (!open) setProgramSearch("")
+									}}>
 										<PopoverTrigger asChild>
 											<Button
 												variant="outline"
@@ -873,30 +926,61 @@ export default function ExamAttendancePage() {
 											</Button>
 										</PopoverTrigger>
 										<PopoverContent className="w-[500px] max-w-[90vw] p-0" align="start">
-											<Command>
-												<CommandInput placeholder="Search program..." className="h-9 text-xs" />
+											<Command shouldFilter={false}>
+												<CommandInput
+													placeholder="Search program..."
+													className="h-9 text-xs"
+													value={programSearch}
+													onValueChange={setProgramSearch}
+												/>
 												<CommandList className="max-h-[300px]">
 													<CommandEmpty className="py-6 text-center text-xs text-muted-foreground">No program found.</CommandEmpty>
 													<CommandGroup>
-														{programs.map((program) => (
+														{programs
+															.filter((program) => {
+																if (!programSearch) return true
+																const search = programSearch.toLowerCase()
+																return (
+																	program.program_code.toLowerCase().includes(search) ||
+																	program.program_name.toLowerCase().includes(search)
+																)
+															})
+															.map((program) => (
 															<CommandItem
 																key={program.id}
-																value={`${program.program_code} ${program.program_name}`}
+																value={program.program_code}
 																onSelect={() => {
 																	setSelectedProgramCode(program.program_code)
 																	setProgramOpen(false)
 																}}
-																className="flex items-start gap-3 py-3 px-3 cursor-pointer hover:bg-accent"
+																className={cn(
+																	"flex items-start gap-3 py-3 px-3 cursor-pointer rounded-md mb-2 mx-1 transition-all duration-200",
+																	selectedProgramCode === program.program_code
+																		? "bg-gradient-to-r from-amber-50 to-yellow-50 dark:from-amber-900/20 dark:to-yellow-900/20 border-2 border-amber-400 dark:border-amber-600 shadow-md"
+																		: "hover:bg-gradient-to-r hover:from-amber-50/30 hover:to-yellow-50/30 dark:hover:from-amber-900/10 dark:hover:to-yellow-900/10 border-2 border-transparent hover:border-amber-200 dark:hover:border-amber-800"
+																)}
 															>
 																<Check
 																	className={cn(
-																		"mt-1 h-4 w-4 shrink-0 text-primary",
-																		selectedProgramCode === program.program_code ? "opacity-100" : "opacity-0"
+																		"mt-1 h-4 w-4 shrink-0",
+																		selectedProgramCode === program.program_code ? "opacity-100 text-amber-600 dark:text-amber-400" : "opacity-0"
 																	)}
 																/>
 																<div className="flex-1 min-w-0 space-y-1">
-																	<div className="text-sm font-semibold text-foreground">{program.program_code}</div>
-																	<div className="text-xs text-muted-foreground break-words whitespace-normal leading-relaxed">
+																	<div className={cn(
+																		"text-sm font-semibold",
+																		selectedProgramCode === program.program_code
+																			? "text-amber-900 dark:text-amber-100"
+																			: "text-foreground"
+																	)}>
+																		{program.program_code}
+																	</div>
+																	<div className={cn(
+																		"text-xs break-words whitespace-normal leading-relaxed",
+																		selectedProgramCode === program.program_code
+																			? "text-amber-700 dark:text-amber-300"
+																			: "text-muted-foreground"
+																	)}>
 																		{program.program_name}
 																	</div>
 																</div>
@@ -953,7 +1037,10 @@ export default function ExamAttendancePage() {
 										<Label htmlFor="course" className="text-[10px] font-medium">
 											Course Code <span className="text-red-500">*</span>
 										</Label>
-										<Popover open={courseOpen} onOpenChange={setCourseOpen}>
+										<Popover open={courseOpen} onOpenChange={(open) => {
+											setCourseOpen(open)
+											if (!open) setCourseSearch("")
+										}}>
 											<PopoverTrigger asChild>
 												<Button
 													variant="outline"
@@ -977,30 +1064,61 @@ export default function ExamAttendancePage() {
 												</Button>
 											</PopoverTrigger>
 											<PopoverContent className="w-[500px] max-w-[90vw] p-0" align="start">
-												<Command>
-													<CommandInput placeholder="Search course..." className="h-9 text-xs" />
+												<Command shouldFilter={false}>
+													<CommandInput
+														placeholder="Search course..."
+														className="h-9 text-xs"
+														value={courseSearch}
+														onValueChange={setCourseSearch}
+													/>
 													<CommandList className="max-h-[300px]">
 														<CommandEmpty className="py-6 text-center text-xs text-muted-foreground">No course found.</CommandEmpty>
 														<CommandGroup>
-															{courses.map((course) => (
+															{courses
+																.filter((course) => {
+																	if (!courseSearch) return true
+																	const search = courseSearch.toLowerCase()
+																	return (
+																		course.course_code.toLowerCase().includes(search) ||
+																		course.course_title.toLowerCase().includes(search)
+																	)
+																})
+																.map((course) => (
 																<CommandItem
 																	key={course.course_code}
-																	value={`${course.course_code} ${course.course_title}`}
+																	value={course.course_code}
 																	onSelect={() => {
 																		setSelectedCourseCode(course.course_code)
 																		setCourseOpen(false)
 																	}}
-																	className="flex items-start gap-3 py-3 px-3 cursor-pointer hover:bg-accent"
+																	className={cn(
+																		"flex items-start gap-3 py-3 px-3 cursor-pointer rounded-md mb-2 mx-1 transition-all duration-200",
+																		selectedCourseCode === course.course_code
+																			? "bg-gradient-to-r from-amber-50 to-yellow-50 dark:from-amber-900/20 dark:to-yellow-900/20 border-2 border-amber-400 dark:border-amber-600 shadow-md"
+																			: "hover:bg-gradient-to-r hover:from-amber-50/30 hover:to-yellow-50/30 dark:hover:from-amber-900/10 dark:hover:to-yellow-900/10 border-2 border-transparent hover:border-amber-200 dark:hover:border-amber-800"
+																	)}
 																>
 																	<Check
 																		className={cn(
-																			"mt-1 h-4 w-4 shrink-0 text-primary",
-																			selectedCourseCode === course.course_code ? "opacity-100" : "opacity-0"
+																			"mt-1 h-4 w-4 shrink-0",
+																			selectedCourseCode === course.course_code ? "opacity-100 text-amber-600 dark:text-amber-400" : "opacity-0"
 																		)}
 																	/>
 																	<div className="flex-1 min-w-0 space-y-1">
-																		<div className="text-sm font-semibold text-foreground">{course.course_code}</div>
-																		<div className="text-xs text-muted-foreground break-words whitespace-normal leading-relaxed">
+																		<div className={cn(
+																			"text-sm font-semibold",
+																			selectedCourseCode === course.course_code
+																				? "text-amber-900 dark:text-amber-100"
+																				: "text-foreground"
+																		)}>
+																			{course.course_code}
+																		</div>
+																		<div className={cn(
+																			"text-xs break-words whitespace-normal leading-relaxed",
+																			selectedCourseCode === course.course_code
+																				? "text-amber-700 dark:text-amber-300"
+																				: "text-muted-foreground"
+																		)}>
 																			{course.course_title}
 																		</div>
 																	</div>

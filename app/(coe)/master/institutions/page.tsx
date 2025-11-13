@@ -4,6 +4,8 @@ import { useMemo, useState, useEffect } from "react"
 import * as XLSX from "xlsx"
 import { AppSidebar } from "@/components/layout/app-sidebar"
 import { PremiumNavbar } from "@/components/layout/premium-navbar"
+import { AppHeader } from "@/components/layout/app-header"
+import { AppHeaderWhite } from "@/components/layout/app-header-white"
 import { AppFooter } from "@/components/layout/app-footer"
 import { PageTransition } from "@/components/common/page-transition"
 import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar"
@@ -33,6 +35,9 @@ import { fetchInstitutions as fetchInstitutionsService, createInstitution, updat
 // Import utilities
 import { validateInstitutionData } from "@/lib/utils/institution-validation"
 import { exportToJSON, exportToExcel, exportTemplate } from "@/lib/utils/institution-export-import"
+
+// Import stats component
+import { PremiumInstitutionStats } from "@/components/stats/premium-institution-stats"
 
 
 export default function InstitutionsPage() {
@@ -562,77 +567,37 @@ export default function InstitutionsPage() {
     <SidebarProvider>
       <AppSidebar />
       <SidebarInset>
-        <PremiumNavbar
-          title="Institutions"
-          description="Manage institutions and their details"
-          showSearch={true}
-        />
+        <AppHeader />
         <PageTransition>
-           {/* Breadcrumb */}
-           <ModernBreadcrumb
-              items={[
-                { label: "Academic", current: true }
-              ]}
-            />
+           
             
-          <div className="flex flex-1 flex-col gap-4 p-4 md:p-4">
+          <div className="flex flex-1 flex-col gap-1 p-1 md:p-1">
+          <div className="flex items-center gap-1">
+            <Breadcrumb>
+              <BreadcrumbList>
+                <BreadcrumbItem>
+                  <BreadcrumbLink asChild>
+                    <Link href="/dashboard">Dashboard</Link>
+                  </BreadcrumbLink>
+                </BreadcrumbItem>
+                <BreadcrumbSeparator />
+                <BreadcrumbItem>
+                  <BreadcrumbPage>Institutions</BreadcrumbPage>
+                </BreadcrumbItem>
+              </BreadcrumbList>
+            </Breadcrumb>
+          </div>
             {/* Premium Stats Cards */}
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-              <div className="card-premium-hover p-4">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-sm text-slate-600 dark:text-slate-400">Total Institutions</p>
-                    <p className="text-3xl font-bold text-slate-900 dark:text-slate-100 mt-1 font-grotesk">{items.length}</p>
-                  </div>
-                  <div className="h-12 w-12 rounded-xl bg-blue-50 dark:bg-blue-900/20 flex items-center justify-center">
-                    <Building2 className="h-6 w-6 text-blue-600 dark:text-blue-400" />
-                  </div>
-                </div>
-              </div>
-
-              <div className="card-premium-hover p-6">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-sm text-slate-600 dark:text-slate-400">Active</p>
-                    <p className="text-3xl font-bold text-emerald-600 dark:text-emerald-400 mt-1 font-grotesk">{items.filter(i=>i.is_active).length}</p>
-                  </div>
-                  <div className="h-12 w-12 rounded-xl bg-emerald-50 dark:bg-emerald-900/20 flex items-center justify-center">
-                    <CheckCircle className="h-6 w-6 text-emerald-600 dark:text-emerald-400" />
-                  </div>
-                </div>
-              </div>
-
-              <div className="card-premium-hover p-6">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-sm text-slate-600 dark:text-slate-400">Inactive</p>
-                    <p className="text-3xl font-bold text-red-600 dark:text-red-400 mt-1 font-grotesk">{items.filter(i=>!i.is_active).length}</p>
-                  </div>
-                  <div className="h-12 w-12 rounded-xl bg-red-50 dark:bg-red-900/20 flex items-center justify-center">
-                    <XCircle className="h-6 w-6 text-red-600 dark:text-red-400" />
-                  </div>
-                </div>
-              </div>
-
-              <div className="card-premium-hover p-6">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-sm text-slate-600 dark:text-slate-400">New This Month</p>
-                    <p className="text-3xl font-bold text-purple-600 dark:text-purple-400 mt-1 font-grotesk">{items.filter(i=>{ const d=new Date(i.created_at); const n=new Date(); return d.getMonth()===n.getMonth() && d.getFullYear()===n.getFullYear() }).length}</p>
-                  </div>
-                  <div className="h-12 w-12 rounded-xl bg-purple-50 dark:bg-purple-900/20 flex items-center justify-center">
-                    <TrendingUp className="h-6 w-6 text-purple-600 dark:text-purple-400" />
-                  </div>
-                </div>
-              </div>
-            </div>
+            <PremiumInstitutionStats items={items} loading={loading} />
 
           <div className="card-premium overflow-hidden">
             {/* Table Header */}
+            <Card className="flex-1 flex flex-col min-h-0">
+            <CardHeader className="flex-shrink-0 p-3"></CardHeader>
             <div className="p-6 border-b border-slate-200 dark:border-slate-800">
               <div className="flex flex-col lg:flex-row gap-4 items-start lg:items-center justify-between">
-                <div className="flex items-center gap-3">
-                  <div className="h-10 w-10 rounded-xl bg-emerald-50 dark:bg-emerald-900/20 flex items-center justify-center">
+              <div className="flex items-center gap-2">
+                 <div className="h-10 w-10 rounded-xl bg-emerald-50 dark:bg-emerald-900/20 flex items-center justify-center">
                     <Building2 className="h-5 w-5 text-emerald-600 dark:text-emerald-400" />
                   </div>
                   <div>
@@ -807,6 +772,9 @@ export default function InstitutionsPage() {
                 </div>
               </div>
             </div>
+
+          </Card>
+
           </div>
           </div>
         </PageTransition>

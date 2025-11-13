@@ -68,6 +68,15 @@ import {
   Users,
 } from "lucide-react"
 import { Switch } from "@/components/ui/switch"
+import { Badge } from "@/components/ui/badge"
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table"
 import * as XLSX from 'xlsx'
 import type { Course, CourseImportError, UploadSummary } from '@/types/courses'
 import {
@@ -923,7 +932,7 @@ export default function CoursesPage() {
         />
 
         <PageTransition>
-          <div className="flex flex-1 flex-col gap-6 p-6 md:p-10">
+          <div className="flex flex-1 flex-col gap-2 p-2 md:p-2 min-h-[calc(100vh-4rem)]">
             {/* Breadcrumb Navigation */}
             <Breadcrumb>
               <BreadcrumbList>
@@ -1005,7 +1014,7 @@ export default function CoursesPage() {
             </div>
 
             {/* Action Bar */}
-            <div className="card-premium overflow-hidden">
+            <div className="card-premium overflow-hidden flex-1 flex flex-col">
               <div className="p-6 border-b border-slate-200 dark:border-slate-800">
                 <div className="flex flex-col lg:flex-row gap-4 items-start lg:items-center justify-between">
                   <div className="flex flex-col sm:flex-row gap-2 w-full lg:w-auto">
@@ -1083,9 +1092,9 @@ export default function CoursesPage() {
                 </div>
               </div>
 
-              <div className="p-6">
+              <div className="p-6 flex-1 flex flex-col min-h-0">
                 {/* Data Table */}
-                <div className="rounded-md border overflow-hidden" style={{ height: '440px' }}>
+                <div className="rounded-md border overflow-hidden flex-1 min-h-[400px]">
                   <div className="h-full overflow-auto">
                     <Table>
                       <TableHeader className="sticky top-0 z-10 bg-slate-50 dark:bg-slate-900/50">

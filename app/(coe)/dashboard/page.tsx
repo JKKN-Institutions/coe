@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react"
 import { SidebarProvider, SidebarInset } from "@/components/ui/sidebar"
 import { AppSidebar } from "@/components/layout/app-sidebar"
+import { AppHeaderWhite } from "@/components/layout/app-header-white"
 import { PremiumNavbar } from "@/components/layout/premium-navbar"
 import { AppFooter } from "@/components/layout/app-footer"
 import { PageTransition, CardAnimation } from "@/components/common/page-transition"
@@ -109,28 +110,20 @@ export default function Page() {
     <SidebarProvider>
       <AppSidebar />
       <SidebarInset>
-        <PremiumNavbar
-          title="Dashboard"
-          description="Welcome back! Here's an overview of your examination system."
-          showSearch={true}
-        />
+      <AppHeaderWhite />
+
 
         <PageTransition>
           <div className="flex flex-1 flex-col gap-4 p-4 md:p-4">
-            {/* Breadcrumb */}
-            <ModernBreadcrumb
-              items={[
-                { label: "Dashboard", current: true }
-              ]}
-            />
+           
 
             {/* Welcome Card - Premium Gradient */}
-            <CardAnimation delay={0}>
+           
+            <Card className="rounded-xl border-0 bg-gradient-to-r from-emerald-600 via-green-600 to-teal-600 text-white shadow-2xl hover:shadow-xl transition-all duration-300 animate-fade-in relative overflow-hidden">
               <div className="card-premium overflow-hidden relative">
-                <div className="absolute inset-0 bg-gradient-to-r from-emerald-600 via-emerald-700 to-emerald-800"></div>
-                <div className="absolute inset-0 bg-gradient-to-r from-emerald-500/10 via-transparent to-teal-500/10 animate-pulse"></div>
-                <div className="absolute inset-0 bg-[radial-gradient(circle_at_30%_20%,rgba(255,255,255,0.1),transparent_50%)]"></div>
-                <div className="absolute inset-0 bg-[radial-gradient(circle_at_70%_80%,rgba(255,255,255,0.05),transparent_50%)]"></div>
+              <div className="absolute inset-0 bg-gradient-to-r from-emerald-500/10 via-transparent to-teal-500/10 animate-pulse"></div>
+            <div className="absolute inset-0 bg-[radial-gradient(circle_at_30%_20%,rgba(255,255,255,0.1),transparent_50%)]"></div>
+            <div className="absolute inset-0 bg-[radial-gradient(circle_at_70%_80%,rgba(255,255,255,0.05),transparent_50%)]"></div>
                 <div className="relative z-10 p-8">
                   <div className="flex flex-col sm:flex-row items-start justify-between gap-4">
                     <div className="space-y-2">
@@ -148,10 +141,12 @@ export default function Page() {
                   </div>
                 </div>
               </div>
-            </CardAnimation>
+              </Card>
+      
 
             {/* Stats Cards - Premium Design */}
-            <div className="grid gap-4 md:gap-6 grid-cols-1 sm:grid-cols-2 lg:grid-cols-4">
+            <div className="grid gap-4 sm:gap-6 grid-cols-1 sm:grid-cols-2 lg:grid-cols-4">
+            <Card className="hover-lift animate-slide-up" style={{ animationDelay: "0.1s" }}>
               {/* Total Students */}
               <CardAnimation delay={0.1}>
                 <div className="card-premium-hover p-6">
@@ -172,7 +167,8 @@ export default function Page() {
                   </p>
                 </div>
               </CardAnimation>
-
+              </Card>
+              <Card className="hover-lift animate-slide-up" style={{ animationDelay: "0.1s" }}>
               {/* Active Courses */}
               <CardAnimation delay={0.2}>
                 <div className="card-premium-hover p-6">
@@ -192,7 +188,8 @@ export default function Page() {
                   </p>
                 </div>
               </CardAnimation>
-
+              </Card>
+              <Card className="hover-lift animate-slide-up" style={{ animationDelay: "0.1s" }}>
               {/* Total Programs */}
               <CardAnimation delay={0.3}>
                 <div className="card-premium-hover p-6">
@@ -212,7 +209,8 @@ export default function Page() {
                   </p>
                 </div>
               </CardAnimation>
-
+              </Card>
+              <Card className="hover-lift animate-slide-up" style={{ animationDelay: "0.1s" }}>
               {/* Faculty Members */}
               <CardAnimation delay={0.4}>
                 <div className="card-premium-hover p-6">
@@ -232,10 +230,12 @@ export default function Page() {
                   </p>
                 </div>
               </CardAnimation>
+              </Card>
             </div>
 
             {/* Attendance Ratio & User Status */}
             <div className="grid gap-4 md:gap-6 grid-cols-1 md:grid-cols-3">
+            <Card className="hover-lift animate-slide-up" style={{ animationDelay: "0.5s" }}>
               <CardAnimation delay={0.5}>
                 <div className="card-premium-hover p-6">
                   <div className="flex items-center justify-between">
@@ -254,8 +254,9 @@ export default function Page() {
                   </p>
                 </div>
               </CardAnimation>
-
-              <CardAnimation delay={0.6}>
+              </Card>
+              <Card className="hover-lift animate-slide-up md:col-span-2" style={{ animationDelay: "0.6s" }}>
+           
                 <div className="card-premium p-6 md:col-span-2">
                   <h3 className="text-sm font-semibold text-slate-700 dark:text-slate-300 mb-4 font-grotesk">User & System Status</h3>
                   <div className="space-y-3">
@@ -297,11 +298,11 @@ export default function Page() {
                     </div>
                   </div>
                 </div>
-              </CardAnimation>
+                </Card>
             </div>
 
             {/* Upcoming Exams - Premium Table */}
-            <CardAnimation delay={0.7}>
+            <Card className="hover-lift animate-slide-up" style={{ animationDelay: "0.7s" }}>
               <div className="card-premium overflow-hidden">
                 <div className="px-6 py-4 border-b border-slate-200 dark:border-slate-800">
                   <div className="flex items-center justify-between">
@@ -369,7 +370,7 @@ export default function Page() {
                   )}
                 </div>
               </div>
-            </CardAnimation>
+            </Card>
           </div>
         </PageTransition>
         <AppFooter />

@@ -179,8 +179,12 @@ export function useExamRegistrations() {
 		refreshExamRegistrations,
 		saveExamRegistration,
 		removeExamRegistration,
-		// Dropdown data
+		// Dropdown data (unfiltered - for import validation)
 		institutions,
+		allStudents,
+		allExaminationSessions,
+		allCourseOfferings,
+		// Dropdown data (filtered by institution - for forms)
 		filteredStudents,
 		filteredExaminationSessions,
 		filteredCourseOfferings,

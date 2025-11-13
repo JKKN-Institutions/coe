@@ -787,7 +787,7 @@ export default function DegreePage() {
                   <div className="flex items-center justify-between">
                     <div>
                       <p className="text-xs font-medium text-muted-foreground">Total Degrees</p>
-                    <p className="text-xl font-bold">{items.length}</p>
+                    <p className="text-xl font-bold font-grotesk mt-1">{items.length}</p>
                     </div>
                     <div className="h-7 w-7 rounded-full bg-blue-100 dark:bg-blue-900/20 flex items-center justify-center">
                     <GraduationCap className="h-3 w-3 text-blue-600 dark:text-blue-400" />
@@ -800,7 +800,7 @@ export default function DegreePage() {
                   <div className="flex items-center justify-between">
                     <div>
                       <p className="text-xs font-medium text-muted-foreground">Active Degrees</p>
-                    <p className="text-xl font-bold text-green-600">{items.filter(i=>i.is_active).length}</p>
+                    <p className="text-xl font-bold text-green-600 font-grotesk mt-1">{items.filter(i=>i.is_active).length}</p>
                     </div>
                     <div className="h-7 w-7 rounded-full bg-green-100 dark:bg-green-900/20 flex items-center justify-center">
                       <GraduationCap className="h-3 w-3 text-green-600 dark:text-green-400" />
@@ -813,7 +813,7 @@ export default function DegreePage() {
                   <div className="flex items-center justify-between">
                     <div>
                       <p className="text-xs font-medium text-muted-foreground">Inactive Degrees</p>
-                    <p className="text-xl font-bold text-red-600">{items.filter(i=>!i.is_active).length}</p>
+                    <p className="text-xl font-bold text-red-600 font-grotesk mt-1">{items.filter(i=>!i.is_active).length}</p>
                     </div>
                     <div className="h-7 w-7 rounded-full bg-red-100 dark:bg-red-900/20 flex items-center justify-center">
                     <GraduationCap className="h-3 w-3 text-red-600 dark:text-red-400" />
@@ -826,7 +826,7 @@ export default function DegreePage() {
                   <div className="flex items-center justify-between">
                     <div>
                       <p className="text-xs font-medium text-muted-foreground">New This Month</p>
-                    <p className="text-xl font-bold text-blue-600">{items.filter(i=>{ const d=new Date(i.created_at); const n=new Date(); return d.getMonth()===n.getMonth() && d.getFullYear()===n.getFullYear() }).length}</p>
+                    <p className="text-xl font-bold text-blue-600 font-grotesk mt-1">{items.filter(i=>{ const d=new Date(i.created_at); const n=new Date(); return d.getMonth()===n.getMonth() && d.getFullYear()===n.getFullYear() }).length}</p>
                     </div>
                     <div className="h-7 w-7 rounded-full bg-purple-100 dark:bg-purple-900/20 flex items-center justify-center">
                       <TrendingUp className="h-3 w-3 text-purple-600 dark:text-purple-400" />

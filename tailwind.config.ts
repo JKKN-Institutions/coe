@@ -23,28 +23,30 @@ const config: Config = {
 		extend: {
 			fontFamily: {
 				sans: ['Inter', 'system-ui', 'sans-serif'],
-				display: ['Space Grotesk', 'sans-serif'],
+				display: ['Poppins', 'sans-serif'],
 				inter: ['var(--font-inter)', 'Helvetica Neue', 'Arial', 'sans-serif'],
-				grotesk: ['var(--font-space-grotesk)', 'Space Grotesk', 'sans-serif'],
+				poppins: ['var(--font-poppins)', 'Poppins', 'sans-serif'],
+				grotesk: ['var(--font-space-grotesk)', 'Space Grotesk', 'sans-serif'], // Legacy
+				montserrat: ['var(--font-montserrat)', 'Montserrat', 'Segoe UI', 'Arial', 'sans-serif'],
+				heading: ['var(--font-montserrat)', 'Montserrat', 'Segoe UI', 'Arial', 'sans-serif'], // Alias for montserrat
 			},
 			colors: {
-				// Premium Emerald Accent
-				emerald: {
-					50: '#ECFDF5',
-					100: '#D1FAE5',
-					200: '#A7F3D0',
-					300: '#6EE7B7',
-					400: '#34D399',
-					500: '#10B981',
-					600: '#059669',  // PRIMARY ACCENT
-					700: '#047857',
-					800: '#065F46',
-					900: '#064E3B',
-					950: '#022C22',
-				},
-				// Keep brand colors for backward compatibility
+				// Brand Primary Green (from brand-styling skill)
 				'brand-green': {
-					DEFAULT: '#059669',
+					DEFAULT: '#0b6d41',  // PRIMARY BRAND GREEN
+					50: '#e6f5ee',
+					100: '#b3e0cc',
+					200: '#80cbaa',
+					300: '#4db688',
+					400: '#2a9966',
+					500: '#0b6d41',  // PRIMARY
+					600: '#095a35',
+					700: '#074829',
+					800: '#05351d',
+					900: '#032211',
+				},
+				// Legacy emerald colors for backward compatibility
+				emerald: {
 					50: '#ECFDF5',
 					100: '#D1FAE5',
 					200: '#A7F3D0',
@@ -55,6 +57,7 @@ const config: Config = {
 					700: '#047857',
 					800: '#065F46',
 					900: '#064E3B',
+					950: '#022C22',
 				},
 				'brand-yellow': {
 					DEFAULT: '#ffde59',

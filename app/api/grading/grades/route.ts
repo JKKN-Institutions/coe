@@ -1,6 +1,9 @@
 import { NextResponse } from 'next/server'
 import { getSupabaseServer } from '@/lib/supabase-server'
 
+// Force this route to be dynamic (not prerendered)
+export const dynamic = 'force-dynamic'
+
 // GET - Fetch all grades
 export async function GET(request: Request) {
 	try {
