@@ -186,11 +186,11 @@ export function NavMain({
                   asChild 
                   tooltip={item.title} 
                   className={`transition-all duration-300 ease-in-out ${
-                    isActive 
-                      ? 'bg-gradient-to-r from-[#16a34a] to-[#059669] text-white hover:from-[#16a34a]/90 hover:to-[#059669]/90' 
+                    isActive
+                      ? 'bg-gradient-to-r from-[#ffd033] to-[#ffc20d] text-gray-900 hover:from-[#ffd033]/90 hover:to-[#ffc20d]/90'
                       : clickedItems.has(item.title)
-                      ? 'bg-gradient-to-r from-[#16a34a]/20 to-[#059669]/20 ring-2 ring-[#16a34a]/30 animate-pulse'
-                      : 'hover:bg-gradient-to-r hover:from-[#16a34a]/10 hover:to-[#059669]/10'
+                      ? 'bg-gradient-to-r from-[#ffd033]/20 to-[#ffc20d]/20 ring-2 ring-[#ffd033]/30 animate-pulse'
+                      : 'hover:bg-gradient-to-r hover:from-[#ffd033]/10 hover:to-[#ffc20d]/10'
                   }`}
                 >
                   <Link 
@@ -215,18 +215,18 @@ export function NavMain({
                       <Loader2 className="h-4 w-4 animate-spin text-[#16a34a] dark:text-[#16a34a]" />
                     ) : (
                       item.icon && (
-                        <item.icon 
+                        <item.icon
                           className={`h-4 w-4 transition-all duration-200 ${
-                            isActive 
-                              ? 'text-white' 
+                            isActive
+                              ? 'text-gray-900'
                               : clickedItems.has(item.title)
-                              ? 'text-[#059669] dark:text-[#059669] scale-110'
+                              ? 'text-[#16a34a] dark:text-[#16a34a] scale-110'
                               : 'text-[#16a34a] dark:text-[#16a34a]'
-                          }`} 
+                          }`}
                         />
                       )
                     )}
-                    <span className={`font-medium transition-opacity duration-300 ${isActive ? 'text-white' : 'text-slate-800 dark:text-slate-200'} ${isCollapsed ? 'opacity-0 w-0 overflow-hidden' : 'opacity-100'}`}>
+                    <span className={`font-grotesk font-medium transition-opacity duration-300 ${isActive ? 'text-gray-900' : 'text-slate-800 dark:text-slate-200'} ${isCollapsed ? 'opacity-0 w-0 overflow-hidden' : 'opacity-100'}`}>
                       {item.title}
                     </span>
                   </Link>
@@ -246,13 +246,13 @@ export function NavMain({
                       <SidebarMenuButton 
                         tooltip={loadingMenus.has(item.title) ? `Loading ${item.title}...` : item.title} 
                         className={`transition-all duration-300 ease-in-out ${
-                          isActive 
-                            ? 'bg-gradient-to-r from-[#16a34a] to-[#059669] text-white hover:from-[#16a34a]/90 hover:to-[#059669]/90' 
+                          isActive
+                            ? 'bg-gradient-to-r from-[#ffd033] to-[#ffc20d] text-gray-900 hover:from-[#ffd033]/90 hover:to-[#ffc20d]/90'
                             : loadingMenus.has(item.title)
-                            ? 'bg-gradient-to-r from-[#16a34a]/15 to-[#059669]/15 ring-2 ring-[#16a34a]/40'
+                            ? 'bg-gradient-to-r from-[#ffd033]/15 to-[#ffc20d]/15 ring-2 ring-[#ffd033]/40'
                             : clickedItems.has(item.title)
-                            ? 'bg-gradient-to-r from-[#16a34a]/20 to-[#059669]/20 ring-2 ring-[#16a34a]/30 animate-pulse'
-                            : 'hover:bg-gradient-to-r hover:from-[#16a34a]/10 hover:to-[#059669]/10'
+                            ? 'bg-gradient-to-r from-[#ffd033]/20 to-[#ffc20d]/20 ring-2 ring-[#ffd033]/30 animate-pulse'
+                            : 'hover:bg-gradient-to-r hover:from-[#ffd033]/10 hover:to-[#ffc20d]/10'
                         }`}
                         role="button"
                         tabIndex={0}
@@ -261,24 +261,24 @@ export function NavMain({
                         onClick={() => handleMenuClick(item.title)}
                       >
                         {loadingMenus.has(item.title) ? (
-                          <Loader2 className="h-4 w-4 animate-spin text-[#16a34a] dark:text-[#16a34a]" />
+                          <Loader2 className="h-4 w-4 animate-spin text-[#ffd033] dark:text-[#ffd033]" />
                         ) : (
                           item.icon && (
-                            <item.icon 
+                            <item.icon
                               className={`h-4 w-4 transition-all duration-200 ${
-                                isActive 
-                                  ? 'text-white' 
+                                isActive
+                                  ? 'text-gray-900'
                                   : clickedItems.has(item.title)
-                                  ? 'text-[#059669] dark:text-[#059669] scale-110'
+                                  ? 'text-[#16a34a] dark:text-[#16a34a] scale-110'
                                   : 'text-[#16a34a] dark:text-[#16a34a]'
-                              }`} 
+                              }`}
                             />
                           )
                         )}
-                        <span className={`font-medium transition-all duration-300 ${isActive ? 'text-white' : 'text-slate-800 dark:text-slate-200'} opacity-0 w-0 overflow-hidden`}>
+                        <span className={`font-grotesk font-medium transition-all duration-300 ${isActive ? 'text-gray-900' : 'text-slate-800 dark:text-slate-200'} opacity-0 w-0 overflow-hidden`}>
                           {item.title}
                         </span>
-                        <ChevronRight className={`ml-auto h-4 w-4 transition-all duration-300 ${isActive ? 'text-white' : 'text-slate-500 dark:text-slate-400'} opacity-0`} />
+                        <ChevronRight className={`ml-auto h-4 w-4 transition-all duration-300 ${isActive ? 'text-gray-900' : 'text-slate-500 dark:text-slate-400'} opacity-0`} />
                       </SidebarMenuButton>
                     </DropdownMenuTrigger>
                     <DropdownMenuContent
@@ -301,11 +301,11 @@ export function NavMain({
                                       onClick={() => handleNavigation(subItem.url)}
                                     >
                               {loadingRoutes.has(subItem.url) ? (
-                                <Loader2 className="h-4 w-4 animate-spin text-[#059669]" />
+                                <Loader2 className="h-4 w-4 animate-spin text-[#ffc20d]" />
                               ) : (
-                                subItem.icon && <subItem.icon className={`h-4 w-4 ${isSubItemActive ? 'text-[#059669]' : 'text-[#059669] dark:text-[#059669]'}`} />
+                                subItem.icon && <subItem.icon className={`h-4 w-4 ${isSubItemActive ? 'text-[#16a34a]' : 'text-[#16a34a] dark:text-[#16a34a]'}`} />
                               )}
-                              <span className={`text-sm ${isSubItemActive ? 'text-[#059669] font-medium' : 'text-slate-700 dark:text-slate-300'}`}>
+                              <span className={`font-grotesk text-sm ${isSubItemActive ? 'text-[#e6a600] font-medium' : 'text-slate-700 dark:text-slate-300'}`}>
                                 {subItem.title}
                               </span>
                             </Link>
@@ -325,14 +325,14 @@ export function NavMain({
                 >
                   <SidebarMenuItem aria-hidden={item.title === "Master"}>
                     <CollapsibleTrigger asChild>
-                      <SidebarMenuButton 
-                        tooltip={item.title} 
+                      <SidebarMenuButton
+                        tooltip={item.title}
                         className={`transition-all duration-300 ease-in-out ${
-                          isActive 
-                            ? 'bg-gradient-to-r from-[#16a34a] to-[#059669] text-white hover:from-[#16a34a]/90 hover:to-[#059669]/90' 
+                          isActive
+                            ? 'bg-gradient-to-r from-[#ffd033] to-[#ffc20d] text-gray-900 hover:from-[#ffd033]/90 hover:to-[#ffc20d]/90'
                             : clickedItems.has(item.title)
-                            ? 'bg-gradient-to-r from-[#16a34a]/20 to-[#059669]/20 ring-2 ring-[#16a34a]/30 animate-pulse'
-                            : 'hover:bg-gradient-to-r hover:from-[#16a34a]/10 hover:to-[#059669]/10'
+                            ? 'bg-gradient-to-r from-[#ffd033]/20 to-[#ffc20d]/20 ring-2 ring-[#ffd033]/30 animate-pulse'
+                            : 'hover:bg-gradient-to-r hover:from-[#ffd033]/10 hover:to-[#ffc20d]/10'
                         }`}
                         role="button"
                         tabIndex={0}
@@ -341,20 +341,20 @@ export function NavMain({
                         onClick={() => handleMenuClick(item.title)}
                       >
                         {item.icon && (
-                          <item.icon 
+                          <item.icon
                             className={`h-4 w-4 transition-all duration-200 ${
-                              isActive 
-                                ? 'text-white' 
+                              isActive
+                                ? 'text-gray-900'
                                 : clickedItems.has(item.title)
-                                ? 'text-[#059669] dark:text-[#059669] scale-110'
-                                : 'text-[#16a34a] dark:text-[#16a34a]'
-                            }`} 
+                                ? 'text-[#16a34a] dark:text-[#ffc20d] scale-110'
+                                : 'text-[#16a34a] dark:text-[#ffd033]'
+                            }`}
                           />
                         )}
-                        <span className={`font-medium transition-all duration-300 ${isActive ? 'text-white' : 'text-slate-800 dark:text-slate-200'}`}>
+                        <span className={`font-grotesk font-medium transition-all duration-300 ${isActive ? 'text-gray-900' : 'text-slate-800 dark:text-slate-200'}`}>
                           {item.title}
                         </span>
-                        <ChevronRight className={`ml-auto h-4 w-4 transition-all duration-300 group-data-[state=open]/collapsible:rotate-90 ${isActive ? 'text-white' : 'text-slate-500 dark:text-slate-400'}`} />
+                        <ChevronRight className={`ml-auto h-4 w-4 transition-all duration-300 group-data-[state=open]/collapsible:rotate-90 ${isActive ? 'text-gray-900' : 'text-slate-500 dark:text-slate-400'}`} />
                       </SidebarMenuButton>
                     </CollapsibleTrigger>
                     <CollapsibleContent className="animate-slide-down">
@@ -367,10 +367,10 @@ export function NavMain({
                                 asChild
                                 className={`transition-all duration-300 ease-in-out ${
                                   isSubItemActive
-                                    ? 'bg-gradient-to-r from-[#059669] to-[#047857] text-white hover:from-[#059669]/90 hover:to-[#047857]/90'
+                                    ? 'bg-gradient-to-r from-[#ffc20d] to-[#e6a600] text-gray-900 hover:from-[#ffc20d]/90 hover:to-[#e6a600]/90'
                                     : clickedItems.has(subItem.title)
-                                    ? 'bg-gradient-to-r from-[#059669]/20 to-[#047857]/20 ring-2 ring-[#059669]/30 animate-pulse'
-                                    : 'hover:bg-gradient-to-r hover:from-[#059669]/8 hover:to-[#047857]/8'
+                                    ? 'bg-gradient-to-r from-[#ffc20d]/20 to-[#e6a600]/20 ring-2 ring-[#ffc20d]/30 animate-pulse'
+                                    : 'hover:bg-gradient-to-r hover:from-[#ffc20d]/8 hover:to-[#e6a600]/8'
                                 }`}
                               >
                                         <Link
@@ -392,21 +392,21 @@ export function NavMain({
                                           }}
                                         >
                                   {loadingRoutes.has(subItem.url) ? (
-                                    <Loader2 className="h-4 w-4 animate-spin text-white" />
+                                    <Loader2 className="h-4 w-4 animate-spin text-gray-900" />
                                   ) : (
                                     subItem.icon && (
                                       <subItem.icon
                                         className={`h-4 w-4 transition-all duration-200 ${
                                           isSubItemActive
-                                            ? 'text-white'
+                                            ? 'text-gray-900'
                                             : clickedItems.has(subItem.title)
-                                            ? 'text-[#047857] dark:text-[#047857] scale-110'
-                                            : 'text-[#059669] dark:text-[#059669]'
+                                            ? 'text-[#16a34a] dark:text-[#16a34a] scale-110'
+                                            : 'text-[#16a34a] dark:text-[#16a34a]'
                                         }`}
                                       />
                                     )
                                   )}
-                                  <span className={`text-sm ${isSubItemActive ? 'text-white font-medium' : 'text-slate-700 dark:text-slate-300'}`}>{subItem.title}</span>
+                                  <span className={`font-grotesk text-sm ${isSubItemActive ? 'text-gray-900 font-medium' : 'text-slate-700 dark:text-slate-300'}`}>{subItem.title}</span>
                                 </Link>
                               </SidebarMenuSubButton>
                             </SidebarMenuSubItem>

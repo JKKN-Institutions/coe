@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getSupabaseServer } from '@/lib/supabase-server'
 
-// GET: Fetch unique course codes from attendance table filtered by user's institution
+// GET: Fetch unique course codes from exam_registrations via attendance table filtered by user's institution
 export async function GET(request: NextRequest) {
 	try {
 		const { searchParams } = new URL(request.url)
@@ -36,42 +36,82 @@ export async function GET(request: NextRequest) {
 
 		const institutionId = userData.institution_id // This is the UUID
 
-		// Step 2: Get unique course IDs from exam_attendance
-		const { data: attendanceRecords, error: attendanceError } = await supabase
-			.from('exam_attendance')
-			.select('course_id')
-			.eq('institutions_id', institutionId)
+		// Step 2: Fetch ALL attendance records in batches to get all unique course codes
+		// Supabase has a default limit of 1000, so we need to fetch all records
+		console.log('Fetching all attendance records (may take a moment for 100k+ records)...')
 
-		if (attendanceError) {
-			console.error('Error fetching attendance records:', attendanceError)
-			return NextResponse.json({
-				error: 'Failed to fetch attendance records',
-				details: attendanceError.message
-			}, { status: 500 })
+		let allAttendanceRecords: any[] = []
+		let from = 0
+		const batchSize = 1000
+		let hasMore = true
+
+		while (hasMore) {
+			const { data, error } = await supabase
+				.from('exam_attendance')
+				.select(`
+					institutions_id,
+					exam_registrations!inner (
+						course_code
+					)
+				`)
+				.eq('institutions_id', institutionId)
+				.range(from, from + batchSize - 1)
+
+			if (error) {
+				console.error('Error fetching attendance batch:', error)
+				return NextResponse.json({
+					error: 'Failed to fetch attendance records',
+					details: error.message
+				}, { status: 500 })
+			}
+
+			if (data && data.length > 0) {
+				allAttendanceRecords = allAttendanceRecords.concat(data)
+				from += batchSize
+				console.log(`Fetched ${allAttendanceRecords.length} records so far...`)
+
+				// If we got fewer records than batch size, we've reached the end
+				if (data.length < batchSize) {
+					hasMore = false
+				}
+			} else {
+				hasMore = false
+			}
 		}
 
-		// Step 3: Get unique course IDs
-		const uniqueCourseIds = [...new Set(
-			attendanceRecords?.map(record => record.course_id).filter(Boolean)
+		console.log('Total attendance records fetched:', allAttendanceRecords.length)
+
+		// Get unique course codes from ALL attendance records
+		const uniqueCourseCodes = [...new Set(
+			allAttendanceRecords
+				.map((record: any) => record.exam_registrations?.course_code)
+				.filter(Boolean)
 		)]
 
-		if (uniqueCourseIds.length === 0) {
+		if (uniqueCourseCodes.length === 0) {
 			return NextResponse.json([])
 		}
 
-		console.log('Unique course IDs found:', uniqueCourseIds.length)
+		console.log('Unique course codes found:', uniqueCourseCodes.length)
+		console.log('Sample course codes:', uniqueCourseCodes.slice(0, 20))
+		console.log('Is 24UENS02 in list?:', uniqueCourseCodes.includes('24UENS02'))
 
-		// Step 4: Fetch courses one by one to avoid join issues
-		const coursesPromises = uniqueCourseIds.map(async (courseId) => {
+		// Step 4: Fetch courses from courses table by course_code
+		const coursesPromises = uniqueCourseCodes.map(async (courseCode) => {
 			const { data, error } = await supabase
 				.from('courses')
 				.select('id, course_code, course_name')
-				.eq('id', courseId)
+				.eq('course_code', courseCode)
 				.single()
 
 			if (error) {
-				console.error(`Error fetching course ${courseId}:`, error)
-				return null
+				console.error(`Error fetching course ${courseCode}:`, error)
+				// If course doesn't exist in courses table, return the course_code with placeholder name
+				return {
+					id: courseCode,
+					course_code: courseCode,
+					course_name: courseCode // Use course_code as name if not found
+				}
 			}
 			return data
 		})

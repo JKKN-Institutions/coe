@@ -63,18 +63,18 @@ export function PremiumSidebar({ navItems, ...props }: PremiumSidebarProps) {
 					{/* Logo - Collapsed */}
 					<div className="group-data-[collapsible=icon]:flex hidden">
 						<div className="w-10 h-10 rounded-md bg-emerald-600/10 flex items-center justify-center">
-							<span className="text-emerald-600 text-lg font-bold">J</span>
+							<span className="text-emerald-600 text-lg font-bold font-grotesk">J</span>
 						</div>
 					</div>
 
 					{/* Logo - Expanded */}
 					<div className="group-data-[collapsible=icon]:hidden flex items-center gap-3">
 						<div className="w-10 h-10 rounded-md bg-emerald-600/10 flex items-center justify-center">
-							<span className="text-emerald-600 text-lg font-bold">J</span>
+							<span className="text-emerald-600 text-lg font-bold font-grotesk">J</span>
 						</div>
 						<div>
-							<div className="text-sm font-semibold text-slate-900 dark:text-slate-100">JKKN COE</div>
-							<div className="text-xs text-slate-500 dark:text-slate-400">Controller of Examination</div>
+							<div className="text-sm font-semibold text-slate-900 dark:text-slate-100 font-grotesk">JKKN COE</div>
+							<div className="text-xs text-slate-500 dark:text-slate-400 font-inter">Controller of Examination</div>
 						</div>
 					</div>
 				</Link>
@@ -132,7 +132,7 @@ function NavItemComponent({ item, pathname }: { item: NavItem; pathname: string 
 							<Icon className="h-4 w-4 text-slate-600 dark:text-slate-300" />
 						</span>
 					)}
-					<span className="group-data-[collapsible=icon]:hidden flex-1 text-left font-medium">
+					<span className="group-data-[collapsible=icon]:hidden flex-1 text-left font-medium font-grotesk">
 						{item.title}
 					</span>
 					<ChevronRight
@@ -165,7 +165,7 @@ function NavItemComponent({ item, pathname }: { item: NavItem; pathname: string 
 									)}
 								>
 									{SubIcon && <SubIcon className="h-4 w-4 shrink-0" />}
-									<span>{subItem.title}</span>
+									<span className="font-grotesk">{subItem.title}</span>
 								</Link>
 							)
 						})}
@@ -203,7 +203,7 @@ function NavItemComponent({ item, pathname }: { item: NavItem; pathname: string 
 					)} />
 				</span>
 			)}
-			<span className="group-data-[collapsible=icon]:hidden">
+			<span className="group-data-[collapsible=icon]:hidden font-grotesk">
 				{item.title}
 			</span>
 		</Link>

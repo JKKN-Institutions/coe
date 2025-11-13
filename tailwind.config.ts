@@ -23,12 +23,11 @@ const config: Config = {
 		extend: {
 			fontFamily: {
 				sans: ['Inter', 'system-ui', 'sans-serif'],
-				display: ['Poppins', 'sans-serif'],
+				display: ['Space Grotesk', 'sans-serif'],
 				inter: ['var(--font-inter)', 'Helvetica Neue', 'Arial', 'sans-serif'],
-				poppins: ['var(--font-poppins)', 'Poppins', 'sans-serif'],
-				grotesk: ['var(--font-space-grotesk)', 'Space Grotesk', 'sans-serif'], // Legacy
-				montserrat: ['var(--font-montserrat)', 'Montserrat', 'Segoe UI', 'Arial', 'sans-serif'],
-				heading: ['var(--font-montserrat)', 'Montserrat', 'Segoe UI', 'Arial', 'sans-serif'], // Alias for montserrat
+				grotesk: ['var(--font-space-grotesk)', 'Space Grotesk', 'sans-serif'],
+				'space-grotesk': ['var(--font-space-grotesk)', 'Space Grotesk', 'sans-serif'],
+				heading: ['var(--font-space-grotesk)', 'Space Grotesk', 'Segoe UI', 'Arial', 'sans-serif'], // Premium heading font
 			},
 			colors: {
 				// Brand Primary Green (from brand-styling skill)

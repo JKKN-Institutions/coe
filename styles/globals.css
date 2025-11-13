@@ -81,7 +81,7 @@
   :root {
     /* Brand Fonts */
     --font-inter: 'Inter', 'Helvetica Neue', Arial, sans-serif;
-    --font-montserrat: 'Montserrat', 'Segoe UI', Arial, sans-serif;
+    --font-space-grotesk: 'Space Grotesk', 'Segoe UI', Arial, sans-serif;
 
     /* Brand Colors - Light Theme */
     --brand-green: #0b6d41;
@@ -188,7 +188,7 @@
 }
 
 @layer components {
-  /* Brand Typography - Using Montserrat for Headings, Inter for Body */
+  /* Brand Typography - Using Space Grotesk for Headings, Inter for Body */
   .text-display {
     @apply text-4xl font-bold tracking-tight lg:text-5xl font-heading;
   }

@@ -84,11 +84,11 @@ export function PremiumNavbar({
 					<>
 						<Separator orientation="vertical" className="h-5" />
 						<div>
-							<div className="text-lg font-semibold text-slate-900 dark:text-slate-100">
+							<div className="text-lg font-semibold text-slate-900 dark:text-slate-100 font-heading">
 								{title}
 							</div>
 							{description && (
-								<div className="text-sm text-slate-500 dark:text-slate-400">
+								<div className="text-sm text-slate-500 dark:text-slate-400 font-inter">
 									{description}
 								</div>
 							)}
@@ -115,6 +115,7 @@ export function PremiumNavbar({
 								placeholder:text-slate-500
 								focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500
 								transition-all duration-200
+								font-inter
 							"
 						/>
 					</div>
@@ -144,33 +145,33 @@ export function PremiumNavbar({
 				{/* User Menu */}
 				<DropdownMenu>
 					<DropdownMenuTrigger asChild>
-						<button className="w-9 h-9 rounded-full bg-gray-100 dark:bg-slate-800 flex items-center justify-center text-sm font-medium text-slate-700 dark:text-slate-200 hover:bg-gray-200 dark:hover:bg-slate-700 transition-colors">
+						<button className="w-9 h-9 rounded-full bg-gray-100 dark:bg-slate-800 flex items-center justify-center text-sm font-medium text-slate-700 dark:text-slate-200 hover:bg-gray-200 dark:hover:bg-slate-700 transition-colors font-heading">
 							{getUserInitials()}
 						</button>
 					</DropdownMenuTrigger>
 					<DropdownMenuContent className="w-56" align="end">
 						<DropdownMenuLabel className="font-normal">
 							<div className="flex flex-col space-y-1">
-								<p className="text-sm font-medium leading-none text-slate-900 dark:text-slate-100">
+								<p className="text-sm font-medium leading-none text-slate-900 dark:text-slate-100 font-heading">
 									{user?.email?.split('@')[0] || "User"}
 								</p>
-								<p className="text-xs leading-none text-slate-500 dark:text-slate-400">
+								<p className="text-xs leading-none text-slate-500 dark:text-slate-400 font-inter">
 									{user?.email || "user@example.com"}
 								</p>
 							</div>
 						</DropdownMenuLabel>
 						<DropdownMenuSeparator />
-						<DropdownMenuItem>
+						<DropdownMenuItem className="font-inter">
 							Profile
 						</DropdownMenuItem>
-						<DropdownMenuItem>
+						<DropdownMenuItem className="font-inter">
 							Settings
 						</DropdownMenuItem>
 						<DropdownMenuSeparator />
 						<DropdownMenuItem
 							onClick={handleLogout}
 							disabled={loggingOut}
-							className="text-red-600 focus:text-red-600 dark:text-red-400 dark:focus:text-red-400"
+							className="text-red-600 focus:text-red-600 dark:text-red-400 dark:focus:text-red-400 font-inter"
 						>
 							{loggingOut ? "Logging out..." : "Log out"}
 						</DropdownMenuItem>

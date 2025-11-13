@@ -200,8 +200,8 @@ export default function Page() {
                         {loading ? "--" : (stats?.totalPrograms?.toLocaleString() || 0)}
                       </p>
                     </div>
-                    <div className="h-12 w-12 rounded-xl bg-amber-50 dark:bg-amber-900/20 flex items-center justify-center">
-                      <GraduationCap className="h-6 w-6 text-amber-600 dark:text-amber-400" />
+                    <div className="h-12 w-12 rounded-xl bg-purple-50 dark:bg-purple-900/20 flex items-center justify-center">
+                      <GraduationCap className="h-6 w-6 text-purple-600 dark:text-purple-400" />
                     </div>
                   </div>
                   <p className="text-xs text-slate-500 dark:text-slate-400 mt-4">

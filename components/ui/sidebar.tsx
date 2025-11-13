@@ -435,6 +435,21 @@ const SidebarFooter = React.forwardRef<
 })
 SidebarFooter.displayName = "SidebarFooter"
 
+const NavUserMenu1 = React.forwardRef<
+  HTMLDivElement,
+  React.ComponentProps<"div">
+>(({ className, ...props }, ref) => {
+  return (
+    <div
+      ref={ref}
+      data-sidebar="header"
+      className={cn("flex flex-col gap-2 p-2", className)}
+      {...props}
+    />
+  )
+})
+NavUserMenu1.displayName = "NavUserMenu1"
+
 const SidebarSeparator = React.forwardRef<
   React.ElementRef<typeof Separator>,
   React.ComponentProps<typeof Separator>
@@ -814,5 +829,6 @@ export {
   SidebarRail,
   SidebarSeparator,
   SidebarTrigger,
+  NavUserMenu1,
   useSidebar,
 }

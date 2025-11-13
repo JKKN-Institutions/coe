@@ -54,6 +54,7 @@ export default function AttendanceCorrectionPage() {
 	const [selectedCourseCode, setSelectedCourseCode] = useState<string>("")
 	const [loadingCourses, setLoadingCourses] = useState(false)
 	const [courseComboboxOpen, setCourseComboboxOpen] = useState(false)
+	const [courseSearchQuery, setCourseSearchQuery] = useState<string>("")
 
 	// Child: Register number search
 	const [registerNo, setRegisterNo] = useState<string>("")
@@ -72,6 +73,37 @@ export default function AttendanceCorrectionPage() {
 		register_no: string
 		name: string
 	} | null>(null)
+
+	// Current time
+	const [currentTime, setCurrentTime] = useState<Date | null>(null)
+
+	// Format current date and time
+	const formatCurrentDateTime = (date: Date | null) => {
+		if (!date) return "Loading..."
+
+		const day = date.getDate().toString().padStart(2, '0')
+		const month = (date.getMonth() + 1).toString().padStart(2, '0')
+		const year = date.getFullYear()
+		const weekday = date.toLocaleDateString('en-US', { weekday: 'short' }).toUpperCase()
+		const time = date.toLocaleTimeString('en-US', {
+			hour: '2-digit',
+			minute: '2-digit',
+			second: '2-digit',
+			hour12: true
+		})
+
+		return `${day}-${month}-${year} | ${weekday} | ${time}`
+	}
+
+	// Update current time every second
+	useEffect(() => {
+		setCurrentTime(new Date())
+		const timer = setInterval(() => {
+			setCurrentTime(new Date())
+		}, 1000)
+
+		return () => clearInterval(timer)
+	}, [])
 
 	// Load courses when user is available
 	useEffect(() => {
@@ -268,7 +300,7 @@ export default function AttendanceCorrectionPage() {
 				setStudentInfo(null)
 
 				// Navigate to fresh page
-				router.push('/attendance-correction')
+				router.push('/exam-management/attendance-correction')
 			}, 3000)
 
 		} catch (error) {
@@ -347,7 +379,10 @@ export default function AttendanceCorrectionPage() {
 										<Label htmlFor="course_code" className="text-xs font-semibold">
 											Course Code <span className="text-red-500">*</span>
 										</Label>
-										<Popover open={courseComboboxOpen} onOpenChange={setCourseComboboxOpen}>
+										<Popover open={courseComboboxOpen} onOpenChange={(open) => {
+											setCourseComboboxOpen(open)
+											if (!open) setCourseSearchQuery("")
+										}}>
 											<PopoverTrigger asChild>
 												<Button
 													variant="outline"
@@ -371,35 +406,50 @@ export default function AttendanceCorrectionPage() {
 												</Button>
 											</PopoverTrigger>
 											<PopoverContent className="w-[400px] p-0" align="start">
-												<Command>
-													<CommandInput placeholder="Search course code or name..." className="h-9 text-xs" />
+												<Command shouldFilter={false}>
+													<CommandInput
+													placeholder="Search course code or name..."
+													className="h-9 text-xs"
+													value={courseSearchQuery}
+													onValueChange={setCourseSearchQuery}
+												/>
 													<CommandList>
 														<CommandEmpty>
 															{courses.length === 0 ? "No courses available for your institution." : "No course found."}
 														</CommandEmpty>
 														<CommandGroup>
-															{courses.map((course) => (
-																<CommandItem
-																	key={course.id}
-																	value={`${course.course_code} ${course.course_name}`}
-																	onSelect={() => {
-																		setSelectedCourseCode(course.course_code)
-																		setCourseComboboxOpen(false)
-																	}}
-																	className="text-xs"
-																>
-																	<Check
-																		className={cn(
-																			"mr-2 h-3 w-3",
-																			selectedCourseCode === course.course_code ? "opacity-100" : "opacity-0"
-																		)}
-																	/>
-																	<div className="flex flex-col">
-																		<span className="font-medium">{course.course_code}</span>
-																		<span className="text-[11px] text-muted-foreground">{course.course_name}</span>
-																	</div>
-																</CommandItem>
-															))}
+															{courses
+																.filter((course) => {
+																	if (!courseSearchQuery.trim()) return true
+																	const query = courseSearchQuery.toLowerCase()
+																	return (
+																		course.course_code.toLowerCase().includes(query) ||
+																		course.course_name.toLowerCase().includes(query)
+																	)
+																})
+																.map((course) => (
+																	<CommandItem
+																		key={course.id}
+																		value={`${course.course_code} ${course.course_name}`}
+																		onSelect={() => {
+																			setSelectedCourseCode(course.course_code)
+																			setCourseComboboxOpen(false)
+																			setCourseSearchQuery("")
+																		}}
+																		className="text-xs"
+																	>
+																		<Check
+																			className={cn(
+																				"mr-2 h-3 w-3",
+																				selectedCourseCode === course.course_code ? "opacity-100" : "opacity-0"
+																			)}
+																		/>
+																		<div className="flex flex-col">
+																			<span className="font-medium">{course.course_code}</span>
+																			<span className="text-[11px] text-muted-foreground">{course.course_name}</span>
+																		</div>
+																	</CommandItem>
+																))}
 														</CommandGroup>
 													</CommandList>
 												</Command>
@@ -525,16 +575,25 @@ export default function AttendanceCorrectionPage() {
 															</div>
 														</TableCell>
 														<TableCell className="text-[14px]">
-															<Badge variant="outline" className="text-[11px]">
-																{attendanceRecord.session}
-															</Badge>
+															<div className="flex flex-col gap-1">
+																<span className="text-[10px] text-muted-foreground font-medium">
+																	{formatCurrentDateTime(currentTime)}
+																</span>
+																<Badge variant="outline" className="text-[11px] w-fit">
+																	{attendanceRecord.session}
+																</Badge>
+															</div>
 														</TableCell>
 														<TableCell>
 															<Select
 																value={attendanceRecord.attendance_status}
 																onValueChange={handleAttendanceChange}
 															>
-																<SelectTrigger className="h-7 text-xs w-24">
+																<SelectTrigger className={`h-7 text-xs w-24 ${
+																	attendanceRecord.attendance_status === 'Absent'
+																		? 'border-red-300 bg-red-50 text-red-700 dark:border-red-700 dark:bg-red-900/20 dark:text-red-300'
+																		: 'border-green-300 bg-green-50 text-green-700 dark:border-green-700 dark:bg-green-900/20 dark:text-green-300'
+																}`}>
 																	<SelectValue />
 																</SelectTrigger>
 																<SelectContent>

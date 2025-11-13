@@ -21,7 +21,7 @@ import { useToast } from "@/hooks/common/use-toast"
 import { Loader2, ClipboardCheck, Calendar, BookOpen, Clock, Users, CheckCircle, XCircle, AlertTriangle, Check, ChevronsUpDown, FileText, Download } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { getISTDate } from "@/lib/utils/date-utils"
-import { generateExamAttendancePDF } from "@/lib/utils/generate-exam-attendance-pdf"
+
 import Link from "next/link"
 
 // Type imports
@@ -537,6 +537,16 @@ export default function ExamAttendancePage() {
 		try {
 			setSaving(true)
 
+			console.log('Starting save attendance with data:', {
+				institutions_id: selectedInstitutionId,
+				exam_session_code: selectedSessionId,
+				course_code: selectedCourseCode,
+				exam_date: selectedExamDate,
+				session_code: selectedSessionType,
+				program_code: selectedProgramCode,
+				attendance_count: attendanceRecords.length,
+			})
+
 			await saveAttendanceService({
 				institutions_id: selectedInstitutionId,
 				exam_session_code: selectedSessionId,
@@ -558,102 +568,20 @@ export default function ExamAttendancePage() {
 		} catch (error) {
 			console.error('Error saving attendance:', error)
 			const errorMessage = error instanceof Error ? error.message : 'Failed to save attendance'
+
 			toast({
 				title: "❌ Save Failed",
 				description: errorMessage,
 				variant: "destructive",
+				className: "bg-red-50 border-red-200 text-red-800 dark:bg-red-900/20 dark:border-red-800 dark:text-red-200",
+				duration: 8000,
 			})
 		} finally {
 			setSaving(false)
 		}
 	}
 
-	// Generate PDF Report
-	const handleGeneratePDF = async () => {
-		if (!selectedInstitutionId || !selectedSessionId) {
-			toast({
-				title: "⚠️ Missing Information",
-				description: "Please select Institution and Examination Session to generate the report.",
-				variant: "destructive",
-			})
-			return
-		}
-
-		try {
-			setGeneratingPDF(true)
-
-			// Get institution code and session code
-			const institution = institutions.find(i => i.id === selectedInstitutionId)
-			const session = sessions.find(s => s.id === selectedSessionId)
-
-			if (!institution || !session) {
-				throw new Error('Unable to find institution or session details')
-			}
-
-			// Fetch report data from API
-			const response = await fetch(
-				`/api/exam-management/exam-attendance/report?institution_code=${institution.institution_code}&session_code=${session.session_code}`
-			)
-
-			if (!response.ok) {
-				const errorData = await response.json()
-				throw new Error(errorData.error || 'Failed to fetch attendance data')
-			}
-
-			const reportData = await response.json()
-
-			// Check if there's data to generate report
-			if (!reportData.records || reportData.records.length === 0) {
-				toast({
-					title: "ℹ️ No Data",
-					description: "No attendance records found for the selected criteria.",
-					className: "bg-blue-50 border-blue-200 text-blue-800",
-				})
-				return
-			}
-
-			// Convert logo to base64 if available
-			let logoBase64 = undefined
-			try {
-				const logoResponse = await fetch('/jkkn_logo.png')
-				if (logoResponse.ok) {
-					const blob = await logoResponse.blob()
-					logoBase64 = await new Promise<string>((resolve) => {
-						const reader = new FileReader()
-						reader.onloadend = () => resolve(reader.result as string)
-						reader.readAsDataURL(blob)
-					})
-				}
-			} catch (e) {
-				console.warn('Logo not loaded:', e)
-			}
-
-			// Generate PDF
-			const fileName = generateExamAttendancePDF({
-				...reportData,
-				logoImage: logoBase64
-			})
-
-			toast({
-				title: "✅ PDF Generated",
-				description: `${fileName} has been downloaded successfully.`,
-				className: "bg-green-50 border-green-200 text-green-800",
-				duration: 5000,
-			})
-
-		} catch (error) {
-			console.error('Error generating PDF:', error)
-			const errorMessage = error instanceof Error ? error.message : 'Failed to generate PDF report'
-			toast({
-				title: "❌ Generation Failed",
-				description: errorMessage,
-				variant: "destructive",
-			})
-		} finally {
-			setGeneratingPDF(false)
-		}
-	}
-
+	
 	// Get display values for header
 	const selectedInstitution = institutions.find(i => i.id === selectedInstitutionId)
 	const selectedSession = sessions.find(s => s.id === selectedSessionId)
@@ -684,24 +612,7 @@ export default function ExamAttendancePage() {
 								</BreadcrumbItem>
 							</BreadcrumbList>
 						</Breadcrumb>
-						<Button
-							onClick={handleGeneratePDF}
-							disabled={generatingPDF || !selectedInstitutionId || !selectedSessionId}
-							size="sm"
-							className="h-8 gap-2 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white"
-						>
-							{generatingPDF ? (
-								<>
-									<Loader2 className="h-4 w-4 animate-spin" />
-									Generating PDF...
-								</>
-							) : (
-								<>
-									<FileText className="h-4 w-4" />
-									Generate PDF Report
-								</>
-							)}
-						</Button>
+						
 					</div>
 
 					<div className="space-y-3">
@@ -767,15 +678,15 @@ export default function ExamAttendancePage() {
 																className={cn(
 																	"flex items-start gap-3 py-3 px-3 cursor-pointer rounded-md mb-2 mx-1 transition-all duration-200",
 																	selectedInstitutionId === inst.id
-																		? "bg-gradient-to-r from-brand-yellow-50 to-brand-yellow-100 dark:from-brand-yellow-900/20 dark:to-brand-yellow-800/20 border-2 border-brand-yellow-400 dark:border-brand-yellow-600 shadow-md"
-																		: "hover:bg-gradient-to-r hover:from-brand-yellow-50/30 hover:to-brand-yellow-100/30 dark:hover:from-brand-yellow-900/10 dark:hover:to-brand-yellow-800/10 border-2 border-transparent hover:border-brand-yellow-200 dark:hover:border-brand-yellow-700"
+																		? "bg-gradient-to-r from-amber-50 to-yellow-50 dark:from-amber-900/20 dark:to-yellow-900/20 border-2 border-amber-400 dark:border-amber-600 shadow-md"
+																		: "hover:bg-gradient-to-r hover:from-amber-50/30 hover:to-yellow-50/30 dark:hover:from-amber-900/10 dark:hover:to-yellow-900/10 border-2 border-transparent hover:border-amber-200 dark:hover:border-amber-700"
 																)}
 															>
 																<Check
 																	className={cn(
 																		"mt-1 h-4 w-4 shrink-0",
 																		selectedInstitutionId === inst.id
-																			? "opacity-100 text-brand-yellow-600 dark:text-brand-yellow-400"
+																			? "opacity-100 text-amber-600 dark:text-amber-400"
 																			: "opacity-0"
 																	)}
 																/>
@@ -783,7 +694,7 @@ export default function ExamAttendancePage() {
 																	<div className={cn(
 																		"text-sm font-semibold",
 																		selectedInstitutionId === inst.id
-																			? "text-brand-yellow-900 dark:text-brand-yellow-100"
+																			? "text-amber-900 dark:text-amber-100"
 																			: "text-foreground"
 																	)}>
 																		{inst.institution_code}
@@ -791,7 +702,7 @@ export default function ExamAttendancePage() {
 																	<div className={cn(
 																		"text-xs break-words whitespace-normal leading-relaxed",
 																		selectedInstitutionId === inst.id
-																			? "text-brand-yellow-700 dark:text-brand-yellow-300"
+																			? "text-amber-700 dark:text-amber-300"
 																			: "text-muted-foreground"
 																	)}>
 																		{inst.institution_name}
@@ -864,21 +775,21 @@ export default function ExamAttendancePage() {
 																className={cn(
 																	"flex items-start gap-3 py-3 px-3 cursor-pointer rounded-md mb-2 mx-1 transition-all duration-200",
 																	selectedSessionId === session.id
-																		? "bg-gradient-to-r from-brand-yellow-50 to-brand-yellow-100 dark:from-brand-yellow-900/20 dark:to-brand-yellow-800/20 border-2 border-brand-yellow-400 dark:border-brand-yellow-600 shadow-md"
-																		: "hover:bg-gradient-to-r hover:from-brand-yellow-50/30 hover:to-brand-yellow-100/30 dark:hover:from-brand-yellow-900/10 dark:hover:to-brand-yellow-800/10 border-2 border-transparent hover:border-brand-yellow-200 dark:hover:border-brand-yellow-700"
+																		? "bg-gradient-to-r from-amber-50 to-yellow-50 dark:from-amber-900/20 dark:to-yellow-900/20 border-2 border-amber-400 dark:border-amber-600 shadow-md"
+																		: "hover:bg-gradient-to-r hover:from-amber-50/30 hover:to-yellow-50/30 dark:hover:from-amber-900/10 dark:hover:to-yellow-900/10 border-2 border-transparent hover:border-amber-200 dark:hover:border-amber-700"
 																)}
 															>
 																<Check
 																	className={cn(
 																		"mt-1 h-4 w-4 shrink-0",
-																		selectedSessionId === session.id ? "opacity-100 text-brand-yellow-600 dark:text-brand-yellow-400" : "opacity-0"
+																		selectedSessionId === session.id ? "opacity-100 text-amber-600 dark:text-amber-400" : "opacity-0"
 																	)}
 																/>
 																<div className="flex-1 min-w-0 space-y-1">
 																	<div className={cn(
 																		"text-sm font-semibold break-words whitespace-normal leading-relaxed",
 																		selectedSessionId === session.id
-																			? "text-brand-yellow-900 dark:text-brand-yellow-100"
+																			? "text-amber-900 dark:text-amber-100"
 																			: "text-foreground"
 																	)}>
 																		{session.session_name}
@@ -956,21 +867,21 @@ export default function ExamAttendancePage() {
 																className={cn(
 																	"flex items-start gap-3 py-3 px-3 cursor-pointer rounded-md mb-2 mx-1 transition-all duration-200",
 																	selectedProgramCode === program.program_code
-																		? "bg-gradient-to-r from-brand-yellow-50 to-brand-yellow-100 dark:from-brand-yellow-900/20 dark:to-brand-yellow-800/20 border-2 border-brand-yellow-400 dark:border-brand-yellow-600 shadow-md"
-																		: "hover:bg-gradient-to-r hover:from-brand-yellow-50/30 hover:to-brand-yellow-100/30 dark:hover:from-brand-yellow-900/10 dark:hover:to-brand-yellow-800/10 border-2 border-transparent hover:border-brand-yellow-200 dark:hover:border-brand-yellow-700"
+																		? "bg-gradient-to-r from-amber-50 to-yellow-50 dark:from-amber-900/20 dark:to-yellow-900/20 border-2 border-amber-400 dark:border-amber-600 shadow-md"
+																		: "hover:bg-gradient-to-r hover:from-amber-50/30 hover:to-yellow-50/30 dark:hover:from-amber-900/10 dark:hover:to-yellow-900/10 border-2 border-transparent hover:border-amber-200 dark:hover:border-amber-700"
 																)}
 															>
 																<Check
 																	className={cn(
 																		"mt-1 h-4 w-4 shrink-0",
-																		selectedProgramCode === program.program_code ? "opacity-100 text-brand-yellow-600 dark:text-brand-yellow-400" : "opacity-0"
+																		selectedProgramCode === program.program_code ? "opacity-100 text-amber-600 dark:text-amber-400" : "opacity-0"
 																	)}
 																/>
 																<div className="flex-1 min-w-0 space-y-1">
 																	<div className={cn(
 																		"text-sm font-semibold",
 																		selectedProgramCode === program.program_code
-																			? "text-brand-yellow-900 dark:text-brand-yellow-100"
+																			? "text-amber-900 dark:text-amber-100"
 																			: "text-foreground"
 																	)}>
 																		{program.program_code}
@@ -978,7 +889,7 @@ export default function ExamAttendancePage() {
 																	<div className={cn(
 																		"text-xs break-words whitespace-normal leading-relaxed",
 																		selectedProgramCode === program.program_code
-																			? "text-brand-yellow-700 dark:text-brand-yellow-300"
+																			? "text-amber-700 dark:text-amber-300"
 																			: "text-muted-foreground"
 																	)}>
 																		{program.program_name}
@@ -1094,21 +1005,21 @@ export default function ExamAttendancePage() {
 																	className={cn(
 																		"flex items-start gap-3 py-3 px-3 cursor-pointer rounded-md mb-2 mx-1 transition-all duration-200",
 																		selectedCourseCode === course.course_code
-																			? "bg-gradient-to-r from-brand-yellow-50 to-brand-yellow-100 dark:from-brand-yellow-900/20 dark:to-brand-yellow-800/20 border-2 border-brand-yellow-400 dark:border-brand-yellow-600 shadow-md"
-																			: "hover:bg-gradient-to-r hover:from-brand-yellow-50/30 hover:to-brand-yellow-100/30 dark:hover:from-brand-yellow-900/10 dark:hover:to-brand-yellow-800/10 border-2 border-transparent hover:border-brand-yellow-200 dark:hover:border-brand-yellow-700"
+																			? "bg-gradient-to-r from-amber-50 to-yellow-50 dark:from-amber-900/20 dark:to-yellow-900/20 border-2 border-amber-400 dark:border-amber-600 shadow-md"
+																			: "hover:bg-gradient-to-r hover:from-amber-50/30 hover:to-yellow-50/30 dark:hover:from-amber-900/10 dark:hover:to-yellow-900/10 border-2 border-transparent hover:border-amber-200 dark:hover:border-amber-700"
 																	)}
 																>
 																	<Check
 																		className={cn(
 																			"mt-1 h-4 w-4 shrink-0",
-																			selectedCourseCode === course.course_code ? "opacity-100 text-brand-yellow-600 dark:text-brand-yellow-400" : "opacity-0"
+																			selectedCourseCode === course.course_code ? "opacity-100 text-amber-600 dark:text-amber-400" : "opacity-0"
 																		)}
 																	/>
 																	<div className="flex-1 min-w-0 space-y-1">
 																		<div className={cn(
 																			"text-sm font-semibold",
 																			selectedCourseCode === course.course_code
-																				? "text-brand-yellow-900 dark:text-brand-yellow-100"
+																				? "text-amber-900 dark:text-amber-100"
 																				: "text-foreground"
 																		)}>
 																			{course.course_code}
@@ -1116,7 +1027,7 @@ export default function ExamAttendancePage() {
 																		<div className={cn(
 																			"text-xs break-words whitespace-normal leading-relaxed",
 																			selectedCourseCode === course.course_code
-																				? "text-brand-yellow-700 dark:text-brand-yellow-300"
+																				? "text-amber-700 dark:text-amber-300"
 																				: "text-muted-foreground"
 																		)}>
 																			{course.course_title}

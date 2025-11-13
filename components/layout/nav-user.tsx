@@ -1,6 +1,6 @@
 "use client"
 
-import { Bell, ChevronsUpDown, LogOut, Loader2 } from "lucide-react"
+import { Bell, ChevronsUpDown, LogOut, Loader2, User, Settings, HelpCircle, Shield, Building2, Clock } from "lucide-react"
 import { useState, useEffect } from "react"
 
 import {
@@ -8,6 +8,7 @@ import {
   AvatarFallback,
   AvatarImage,
 } from "@/components/ui/avatar"
+import { Badge } from "@/components/ui/badge"
 import { useAuth } from "@/context/auth-context"
 import {
   DropdownMenu,
@@ -25,27 +26,68 @@ import {
   useSidebar,
 } from "@/components/ui/sidebar"
 
-export function NavUser() {
+interface NavUserProps {
+  variant?: "full" | "compact"
+}
+
+export function NavUser({ variant = "compact" }: NavUserProps) {
   const { isMobile } = useSidebar()
   const { user, logout, isLoading } = useAuth()
   const [isLoggingOut, setIsLoggingOut] = useState(false)
+  const [institutionName, setInstitutionName] = useState<string | null>(null)
 
   const displayName = user?.full_name || "User"
   const email = user?.email || ""
   const avatarUrl = user?.avatar_url || ""
-  
+  const roles = user?.roles || []
+  const isActive = user?.is_active ?? true
+  const isSuperAdmin = user?.is_super_admin ?? false
+  const lastLogin = user?.last_login
+
   const initials = (displayName || "U")
     .split(" ")
     .map((n) => n[0])
     .join("")
     .slice(0, 2)
     .toUpperCase()
-  
+
   // Use the actual avatar URL, fallback to placeholder if empty
   const finalAvatarUrl = avatarUrl || `https://ui-avatars.com/api/?name=${encodeURIComponent(displayName)}&background=16a34a&color=ffffff&size=32`
 
-  
+  // Fetch institution name
+  useEffect(() => {
+    const fetchInstitution = async () => {
+      if (user?.institution_id) {
+        try {
+          const response = await fetch(`/api/institutions/${user.institution_id}`)
+          if (response.ok) {
+            const data = await response.json()
+            setInstitutionName(data.institution_name)
+          }
+        } catch (error) {
+          console.error('Error fetching institution:', error)
+        }
+      }
+    }
+    fetchInstitution()
+  }, [user?.institution_id])
 
+  // Format last login as relative time
+  const formatLastLogin = (lastLoginDate?: string) => {
+    if (!lastLoginDate) return "Never"
+    const now = new Date()
+    const loginTime = new Date(lastLoginDate)
+    const diffMs = now.getTime() - loginTime.getTime()
+    const diffMins = Math.floor(diffMs / 60000)
+    const diffHours = Math.floor(diffMins / 60)
+    const diffDays = Math.floor(diffHours / 24)
+
+    if (diffMins < 1) return "Just now"
+    if (diffMins < 60) return `${diffMins}m ago`
+    if (diffHours < 24) return `${diffHours}h ago`
+    if (diffDays < 7) return `${diffDays}d ago`
+    return loginTime.toLocaleDateString()
+  }
 
   const handleLogout = async () => {
     try {
@@ -59,6 +101,162 @@ export function NavUser() {
   }
 
 
+  // Compact variant (for header) - no sidebar wrappers
+  if (variant === "compact") {
+    return (
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <button className="flex items-center justify-center hover:opacity-80 transition-opacity cursor-pointer focus:outline-none border-0 bg-transparent p-0">
+            <Avatar className="h-10 w-10 rounded-full">
+              <AvatarImage
+                src={finalAvatarUrl}
+                alt={displayName}
+                className="object-cover"
+              />
+              <AvatarFallback className="rounded-full bg-gradient-to-br from-[#059669] to-emerald-600 text-white font-bold text-sm">
+                {initials}
+              </AvatarFallback>
+            </Avatar>
+          </button>
+        </DropdownMenuTrigger>
+          <DropdownMenuContent
+            className="w-[320px] rounded-2xl p-2"
+            side={isMobile ? "bottom" : "bottom"}
+            align="end"
+            sideOffset={4}
+          >
+            {/* Enhanced Header with User Photo and Details */}
+            <DropdownMenuLabel className="p-0 font-normal">
+              <div className="flex flex-col gap-3 px-3 py-3">
+                <div className="flex items-start gap-3">
+                  {/* Larger Avatar */}
+                  <Avatar className="h-14 w-14 rounded-xl border-2 border-emerald-100 dark:border-emerald-900">
+                    <AvatarImage
+                      src={finalAvatarUrl}
+                      alt={displayName}
+                    />
+                    <AvatarFallback className="rounded-xl bg-gradient-to-br from-[#059669] to-emerald-700 text-white font-bold text-lg">
+                      {initials}
+                    </AvatarFallback>
+                  </Avatar>
+
+                  {/* User Info */}
+                  <div className="flex-1 space-y-1">
+                    <div className="font-[family-name:var(--font-space-grotesk)] font-bold text-base text-foreground leading-tight">
+                      {displayName}
+                    </div>
+                    <div className="text-xs text-muted-foreground font-inter truncate">
+                      {email}
+                    </div>
+
+                    {/* Role Badges */}
+                    {roles.length > 0 && (
+                      <div className="flex flex-wrap gap-1 mt-2">
+                        {isSuperAdmin && (
+                          <Badge className="bg-gradient-to-r from-amber-500 to-orange-500 text-white border-0 text-[10px] px-2 py-0.5 font-semibold">
+                            <Shield className="h-3 w-3 mr-1" />
+                            Super Admin
+                          </Badge>
+                        )}
+                        {roles.slice(0, 2).map((role, index) => (
+                          <Badge
+                            key={index}
+                            variant="secondary"
+                            className="bg-emerald-50 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800 text-[10px] px-2 py-0.5 font-semibold"
+                          >
+                            {role}
+                          </Badge>
+                        ))}
+                        {roles.length > 2 && (
+                          <Badge variant="outline" className="text-[10px] px-2 py-0.5">
+                            +{roles.length - 2}
+                          </Badge>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {/* Institution and Status */}
+                <div className="space-y-1.5 pt-2 border-t border-border/50">
+                  {institutionName && (
+                    <div className="flex items-center gap-2 text-xs">
+                      <Building2 className="h-3.5 w-3.5 text-muted-foreground" />
+                      <span className="text-muted-foreground font-inter truncate">{institutionName}</span>
+                    </div>
+                  )}
+                  <div className="flex items-center justify-between gap-2 text-xs">
+                    <div className="flex items-center gap-2">
+                      <div className={`h-2 w-2 rounded-full ${isActive ? 'bg-emerald-500' : 'bg-red-500'}`} />
+                      <span className="text-muted-foreground font-inter">
+                        {isActive ? 'Active' : 'Inactive'}
+                      </span>
+                    </div>
+                    {lastLogin && (
+                      <div className="flex items-center gap-1 text-muted-foreground">
+                        <Clock className="h-3 w-3" />
+                        <span className="font-inter">{formatLastLogin(lastLogin)}</span>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+            </DropdownMenuLabel>
+
+            <DropdownMenuSeparator className="my-1" />
+
+            {/* Profile Actions */}
+            <DropdownMenuGroup>
+              <DropdownMenuItem className="cursor-pointer rounded-lg">
+                <User className="h-4 w-4" />
+                <span className="font-inter">View Profile</span>
+              </DropdownMenuItem>
+              <DropdownMenuItem className="cursor-pointer rounded-lg">
+                <Settings className="h-4 w-4" />
+                <span className="font-inter">Settings</span>
+              </DropdownMenuItem>
+              <DropdownMenuItem className="cursor-pointer rounded-lg">
+                <HelpCircle className="h-4 w-4" />
+                <span className="font-inter">Help & Documentation</span>
+              </DropdownMenuItem>
+            </DropdownMenuGroup>
+
+            <DropdownMenuSeparator className="my-1" />
+
+            {/* Notifications */}
+            <DropdownMenuGroup>
+              <DropdownMenuItem className="cursor-pointer rounded-lg">
+                <Bell className="h-4 w-4" />
+                <span className="font-inter">Notifications</span>
+              </DropdownMenuItem>
+            </DropdownMenuGroup>
+
+            <DropdownMenuSeparator className="my-1" />
+
+            {/* Logout */}
+            <DropdownMenuItem
+              onSelect={handleLogout}
+              disabled={isLoggingOut || isLoading}
+              className="cursor-pointer rounded-lg text-red-600 dark:text-red-400 focus:text-red-600 dark:focus:text-red-400 focus:bg-red-50 dark:focus:bg-red-950/50"
+            >
+              {isLoggingOut ? (
+                <>
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  <span className="font-inter">Logging out...</span>
+                </>
+              ) : (
+                <>
+                  <LogOut className="h-4 w-4" />
+                  <span className="font-inter">Log out</span>
+                </>
+              )}
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+      </DropdownMenu>
+    )
+  }
+
+  // Full variant (for sidebar) - with sidebar wrappers
   return (
     <SidebarMenu>
       <SidebarMenuItem>
@@ -69,9 +267,10 @@ export function NavUser() {
               className="data-[state=open]:bg-sidebar-accent data-[state=open]:text-sidebar-accent-foreground"
             >
               <Avatar className="h-8 w-8 rounded-lg">
-                <AvatarImage 
-                  src={finalAvatarUrl} 
+                <AvatarImage
+                  src={finalAvatarUrl}
                   alt={displayName}
+                  className="object-cover"
                 />
                 <AvatarFallback className="rounded-lg bg-[#16a34a] text-white font-semibold">
                   {initials}
@@ -85,50 +284,134 @@ export function NavUser() {
             </SidebarMenuButton>
           </DropdownMenuTrigger>
           <DropdownMenuContent
-            className="w-[--radix-dropdown-menu-trigger-width] min-w-56 rounded-lg"
+            className="w-[320px] rounded-2xl p-2"
             side={isMobile ? "bottom" : "right"}
             align="end"
             sideOffset={4}
           >
+            {/* Enhanced Header with User Photo and Details */}
             <DropdownMenuLabel className="p-0 font-normal">
-              <div className="flex items-center gap-2 px-1 py-1.5 text-left text-sm">
-                <Avatar className="h-8 w-8 rounded-lg">
-                  <AvatarImage 
-                    src={finalAvatarUrl} 
-                    alt={displayName}
-                  />
-                  <AvatarFallback className="rounded-lg bg-[#16a34a] text-white font-semibold">
-                    {initials}
-                  </AvatarFallback>
-                </Avatar>
-                <div className="grid flex-1 text-left text-sm leading-tight">
-                  <span className="truncate font-semibold">{displayName}</span>
-                  <span className="truncate text-xs">{email}</span>
+              <div className="flex flex-col gap-3 px-3 py-3">
+                <div className="flex items-start gap-3">
+                  {/* Larger Avatar */}
+                  <Avatar className="h-14 w-14 rounded-xl border-2 border-emerald-100 dark:border-emerald-900">
+                    <AvatarImage
+                      src={finalAvatarUrl}
+                      alt={displayName}
+                    />
+                    <AvatarFallback className="rounded-xl bg-gradient-to-br from-[#059669] to-emerald-700 text-white font-bold text-lg">
+                      {initials}
+                    </AvatarFallback>
+                  </Avatar>
+
+                  {/* User Info */}
+                  <div className="flex-1 space-y-1">
+                    <div className="font-[family-name:var(--font-space-grotesk)] font-bold text-base text-foreground leading-tight">
+                      {displayName}
+                    </div>
+                    <div className="text-xs text-muted-foreground font-inter truncate">
+                      {email}
+                    </div>
+
+                    {/* Role Badges */}
+                    {roles.length > 0 && (
+                      <div className="flex flex-wrap gap-1 mt-2">
+                        {isSuperAdmin && (
+                          <Badge className="bg-gradient-to-r from-amber-500 to-orange-500 text-white border-0 text-[10px] px-2 py-0.5 font-semibold">
+                            <Shield className="h-3 w-3 mr-1" />
+                            Super Admin
+                          </Badge>
+                        )}
+                        {roles.slice(0, 2).map((role, index) => (
+                          <Badge
+                            key={index}
+                            variant="secondary"
+                            className="bg-emerald-50 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800 text-[10px] px-2 py-0.5 font-semibold"
+                          >
+                            {role}
+                          </Badge>
+                        ))}
+                        {roles.length > 2 && (
+                          <Badge variant="outline" className="text-[10px] px-2 py-0.5">
+                            +{roles.length - 2}
+                          </Badge>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {/* Institution and Status */}
+                <div className="space-y-1.5 pt-2 border-t border-border/50">
+                  {institutionName && (
+                    <div className="flex items-center gap-2 text-xs">
+                      <Building2 className="h-3.5 w-3.5 text-muted-foreground" />
+                      <span className="text-muted-foreground font-inter truncate">{institutionName}</span>
+                    </div>
+                  )}
+                  <div className="flex items-center justify-between gap-2 text-xs">
+                    <div className="flex items-center gap-2">
+                      <div className={`h-2 w-2 rounded-full ${isActive ? 'bg-emerald-500' : 'bg-red-500'}`} />
+                      <span className="text-muted-foreground font-inter">
+                        {isActive ? 'Active' : 'Inactive'}
+                      </span>
+                    </div>
+                    {lastLogin && (
+                      <div className="flex items-center gap-1 text-muted-foreground">
+                        <Clock className="h-3 w-3" />
+                        <span className="font-inter">{formatLastLogin(lastLogin)}</span>
+                      </div>
+                    )}
+                  </div>
                 </div>
               </div>
             </DropdownMenuLabel>
-            <DropdownMenuSeparator />
-                    <DropdownMenuGroup>
-                      <DropdownMenuItem>
-                        <Bell />
-                        Notifications
-                      </DropdownMenuItem>
-                    </DropdownMenuGroup>
-            <DropdownMenuSeparator />
-            <DropdownMenuItem 
+
+            <DropdownMenuSeparator className="my-1" />
+
+            {/* Profile Actions */}
+            <DropdownMenuGroup>
+              <DropdownMenuItem className="cursor-pointer rounded-lg">
+                <User className="h-4 w-4" />
+                <span className="font-inter">View Profile</span>
+              </DropdownMenuItem>
+              <DropdownMenuItem className="cursor-pointer rounded-lg">
+                <Settings className="h-4 w-4" />
+                <span className="font-inter">Settings</span>
+              </DropdownMenuItem>
+              <DropdownMenuItem className="cursor-pointer rounded-lg">
+                <HelpCircle className="h-4 w-4" />
+                <span className="font-inter">Help & Documentation</span>
+              </DropdownMenuItem>
+            </DropdownMenuGroup>
+
+            <DropdownMenuSeparator className="my-1" />
+
+            {/* Notifications */}
+            <DropdownMenuGroup>
+              <DropdownMenuItem className="cursor-pointer rounded-lg">
+                <Bell className="h-4 w-4" />
+                <span className="font-inter">Notifications</span>
+              </DropdownMenuItem>
+            </DropdownMenuGroup>
+
+            <DropdownMenuSeparator className="my-1" />
+
+            {/* Logout */}
+            <DropdownMenuItem
               onSelect={handleLogout}
               disabled={isLoggingOut || isLoading}
-              className="cursor-pointer"
+              className="cursor-pointer rounded-lg text-red-600 dark:text-red-400 focus:text-red-600 dark:focus:text-red-400 focus:bg-red-50 dark:focus:bg-red-950/50"
             >
               {isLoggingOut ? (
                 <>
                   <Loader2 className="h-4 w-4 animate-spin" />
-                  Logging out...
+                  <span className="font-inter">Logging out...</span>
                 </>
               ) : (
                 <>
-                  <LogOut />
-                  Log out
+                  <LogOut className="h-4 w-4" />
+                  <span className="font-inter">Log out</span>
                 </>
               )}
             </DropdownMenuItem>

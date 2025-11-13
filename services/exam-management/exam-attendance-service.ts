@@ -182,14 +182,38 @@ export async function saveAttendance(payload: {
 	program_code: string
 	attendance_records: AttendanceRecord[]
 }): Promise<void> {
+	console.log('Saving attendance with payload:', payload)
+
 	const res = await fetch('/api/exam-management/exam-attendance', {
 		method: 'POST',
 		headers: { 'Content-Type': 'application/json' },
 		body: JSON.stringify(payload),
 	})
 
+	console.log('Save attendance response status:', res.status)
+	console.log('Save attendance response headers:', {
+		contentType: res.headers.get('content-type'),
+		contentLength: res.headers.get('content-length')
+	})
+
 	if (!res.ok) {
-		const errorData = await res.json().catch(() => ({ error: 'Unknown error' }))
-		throw new Error(errorData.error || 'Failed to save attendance')
+		// Try to get the response text first
+		const responseText = await res.text()
+		console.error('Save attendance error response text:', responseText)
+
+		// Try to parse as JSON
+		let errorData: any = {}
+		try {
+			errorData = JSON.parse(responseText)
+		} catch (e) {
+			console.error('Failed to parse error response as JSON:', e)
+			errorData = { error: responseText || `HTTP ${res.status}: ${res.statusText}` }
+		}
+
+		console.error('Save attendance error data:', errorData)
+		throw new Error(errorData.error || errorData.message || 'Failed to save attendance')
 	}
+
+	const successData = await res.json()
+	console.log('Save attendance success:', successData)
 }

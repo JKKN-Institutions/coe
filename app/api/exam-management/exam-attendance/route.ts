@@ -271,8 +271,19 @@ export async function POST(request: Request) {
 		const body = await request.json()
 		const supabase = getSupabaseServer()
 
+		console.log('POST /api/exam-management/exam-attendance - Request body:', {
+			institutions_id: body.institutions_id,
+			exam_session_code: body.exam_session_code,
+			course_code: body.course_code,
+			program_code: body.program_code,
+			session_code: body.session_code,
+			exam_date: body.exam_date,
+			attendance_records_count: body.attendance_records?.length || 0,
+		})
+
 		// Validate required fields
 		if (!body.institutions_id || !body.exam_session_code || !body.course_code || !body.program_code || !body.session_code || !body.exam_date) {
+			console.error('Validation failed - missing required fields')
 			return NextResponse.json({
 				error: 'Required fields: institutions_id, exam_session_code, course_code, program_code, session_code, exam_date'
 			}, { status: 400 })
@@ -313,8 +324,18 @@ export async function POST(request: Request) {
 		}
 
 		const programId = programData.id
+		console.log('Program ID resolved:', programId)
 
 		// Step 3: Get exam_timetable_id
+		console.log('Looking up exam timetable with criteria:', {
+			institutions_id: body.institutions_id,
+			examination_session_id: body.exam_session_code,
+			course_id: courseId,
+			exam_date: body.exam_date,
+			session: body.session_code,
+			is_published: true,
+		})
+
 		const { data: timetableData, error: timetableError } = await supabase
 			.from('exam_timetables')
 			.select('id')
@@ -326,13 +347,23 @@ export async function POST(request: Request) {
 			.eq('is_published', true)
 			.maybeSingle()
 
-		if (timetableError || !timetableData) {
+		if (timetableError) {
+			console.error('Timetable lookup error:', timetableError)
 			return NextResponse.json({
-				error: 'Exam timetable not found. Please ensure the exam is scheduled and published.'
-			}, { status: 400 })
+				error: 'Failed to lookup exam timetable: ' + timetableError.message,
+				details: timetableError
+			}, { status: 500 })
+		}
+
+		if (!timetableData) {
+			console.error('No exam timetable found for the given criteria')
+			return NextResponse.json({
+				error: 'Exam timetable not found. Please ensure the exam is scheduled and published for this date and session.'
+			}, { status: 404 })
 		}
 
 		const timetableId = timetableData.id
+		console.log('Exam timetable ID resolved:', timetableId)
 
 		// Step 4: Check if attendance already exists for this program
 		const { data: existingAttendance, error: checkError } = await supabase
@@ -361,15 +392,18 @@ export async function POST(request: Request) {
 			course_id: courseId,
 			exam_timetable_id: timetableId,
 			exam_registration_id: record.exam_registration_id,
-			student_id: record.student_id, // Include student_id from attendance records
-			is_absent: record.is_absent, // Add is_absent field
-			status: !record.is_absent, // Status is true when present, false when absent
+			student_id: record.student_id,
+			// Use attendance_status as the source of truth
+			// is_absent field removed as it's redundant and causing schema cache issues
 			attendance_status: record.is_absent ? 'Absent' : 'Present',
 			remarks: record.remarks || null,
 			verified_by: body.submitted_by || null,
 		}))
 
 		// Step 6: Insert all attendance records
+		console.log('Inserting attendance records. Count:', attendancePayloads.length)
+		console.log('Sample payload:', attendancePayloads[0])
+
 		const { data: insertedData, error: insertError } = await supabase
 			.from('exam_attendance')
 			.insert(attendancePayloads)
@@ -386,16 +420,21 @@ export async function POST(request: Request) {
 
 			if (insertError.code === '23503') {
 				return NextResponse.json({
-					error: 'Invalid reference. Please ensure all IDs exist in their respective tables.'
+					error: 'Invalid reference. Please ensure all IDs exist in their respective tables. Error: ' + insertError.message
 				}, { status: 400 })
 			}
 
-			return NextResponse.json({ error: 'Failed to save attendance records', details: insertError }, { status: 500 })
+			return NextResponse.json({
+				error: 'Failed to save attendance records: ' + insertError.message,
+				details: insertError
+			}, { status: 500 })
 		}
 
 		const presentCount = body.attendance_records.filter((r: any) => !r.is_absent).length
 		const absentCount = body.attendance_records.filter((r: any) => r.is_absent).length
 		const totalStudents = body.attendance_records.length
+
+		console.log('Attendance saved successfully. Records:', insertedData?.length)
 
 		return NextResponse.json({
 			success: true,
