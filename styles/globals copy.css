@@ -410,9 +410,16 @@
 }
 
 /* Bug Reporter Custom Styling */
+.bug-reporter-widget {
+  /* Custom floating button styles */
+  bottom: 2rem !important;
+  left: 2rem !important;
+  right: auto !important;
+  z-index: 9999 !important;
+}
 
-/* Bug reporter SDK container */
 .bug-reporter-sdk {
+  /* Custom modal/widget styles */
   font-family: var(--font-inter) !important;
 }
 
@@ -420,44 +427,13 @@
   font-family: var(--font-inter) !important;
 }
 
-/* Bug reporter button positioning - Bottom Left */
+/* Bug reporter button positioning */
 [data-bug-reporter-button],
 .bug-reporter-button,
-.bug-reporter-floating-btn,
-.bug-reporter-widget,
 button[aria-label*="bug"],
 button[aria-label*="report"],
 div[class*="bug-reporter"] button:last-child {
-  bottom: 1.5rem !important;
-  left: 1.5rem !important;
+  bottom: 24px !important;
+  left: 24px !important;
   right: auto !important;
-  z-index: 9999 !important;
-}
-
-/* Bug reporter button styling  */
-.bug-reporter-button,
-[data-bug-reporter-button],
-.bug-reporter-floating-btn {
-  background: #c70f0f !important;
-  color: white !important;
-  border-radius: 50% !important;
-  width: 40px !important;
-  height: 40px !important;
-  padding: 0 !important;
-  font-size: 10px !important;
-  font-weight: 200 !important;
-  display: flex !important;
-  align-items: center !important;
-  justify-content: center !important;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2) !important;
-  transition: all 0.2s ease !important;
-}
-
-/* Bug reporter button hover state */
-.bug-reporter-button:hover,
-[data-bug-reporter-button]:hover,
-.bug-reporter-floating-btn:hover {
-  background: #a50d0d !important;
-  transform: translateY(-2px) scale(1.05) !important;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3) !important;
 }

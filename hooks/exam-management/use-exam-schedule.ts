@@ -1,5 +1,5 @@
 import { useState, useMemo, useCallback } from 'react'
-import { useInterval } from './use-interval'
+import { useInterval } from '@/hooks/common/use-interval'
 
 interface ExamSession {
 	id: string

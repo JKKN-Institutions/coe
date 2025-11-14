@@ -39,6 +39,7 @@ export { useLocalStorage } from './common/use-local-storage'
 export { useToggle } from './common/use-toggle'
 export { useAsync } from './common/use-async'
 export { useCopyToClipboard } from './common/use-copy-to-clipboard'
+export { useBugReporter } from './common/use-bug-reporter'
 
 // UI/UX Hooks
 export {

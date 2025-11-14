@@ -1,127 +1,136 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useToast } from '@/hooks/common/use-toast'
-import type { Course-mapping, Course-mappingFormData } from '@/types/course-mapping'
+import type { CourseMapping } from '@/types/course-mapping'
 import {
-	fetchCourse-mappings as fetchCourse-mappingsService,
-	createCourse-mapping,
-	updateCourse-mapping,
-	deleteCourse-mapping
+	loadExistingMappings,
+	saveCourseMappings,
+	deleteCourseMapping
 } from '@/services/course-management/course-mapping-service'
 
-export function useCourse-mappings() {
+export function useCourseMappings(
+	institutionCode?: string,
+	programCode?: string,
+	regulationCode?: string
+) {
 	const { toast } = useToast()
-	const [course-mappings, setCourse-mappings] = useState<Course-mapping[]>([])
-	const [loading, setLoading] = useState(true)
+	const [courseMappings, setCourseMappings] = useState<CourseMapping[]>([])
+	const [loading, setLoading] = useState(false)
 
-	// Fetch course-mapping
-	const fetchCourse-mappings = useCallback(async () => {
+	// Fetch course mappings
+	const fetchCourseMappings = useCallback(async () => {
+		if (!institutionCode || !programCode || !regulationCode) {
+			setCourseMappings([])
+			return
+		}
+
 		try {
 			setLoading(true)
-			const data = await fetchCourse-mappingsService()
-			setCourse-mappings(data)
+			const data = await loadExistingMappings(institutionCode, programCode, regulationCode)
+			setCourseMappings(data)
 		} catch (error) {
-			console.error('Error fetching course-mapping:', error)
+			console.error('Error fetching course mappings:', error)
 			toast({
 				title: '❌ Fetch Failed',
-				description: 'Failed to load course-mapping.',
+				description: 'Failed to load course mappings.',
 				variant: 'destructive'
 			})
 		} finally {
 			setLoading(false)
 		}
-	}, [toast])
+	}, [institutionCode, programCode, regulationCode, toast])
 
-	// Refresh course-mapping
-	const refreshCourse-mappings = useCallback(async () => {
+	// Refresh course mappings
+	const refreshCourseMappings = useCallback(async () => {
+		if (!institutionCode || !programCode || !regulationCode) {
+			return
+		}
+
 		try {
 			setLoading(true)
-			const data = await fetchCourse-mappingsService()
-			setCourse-mappings(data)
+			const data = await loadExistingMappings(institutionCode, programCode, regulationCode)
+			setCourseMappings(data)
 			toast({
 				title: '✅ Refreshed',
-				description: `Loaded ${data.length} course-mapping.`,
+				description: `Loaded ${data.length} course mapping${data.length !== 1 ? 's' : ''}.`,
 				className: 'bg-green-50 border-green-200 text-green-800 dark:bg-green-900/20 dark:border-green-800 dark:text-green-200'
 			})
 		} catch (error) {
-			console.error('Error refreshing course-mapping:', error)
+			console.error('Error refreshing course mappings:', error)
 			toast({
 				title: '❌ Refresh Failed',
-				description: 'Failed to load course-mapping.',
+				description: 'Failed to load course mappings.',
 				variant: 'destructive'
 			})
 		} finally {
 			setLoading(false)
 		}
-	}, [toast])
+	}, [institutionCode, programCode, regulationCode, toast])
 
-	// Save course-mapping (create or update)
-	const saveCourse-mapping = useCallback(async (data: Course-mappingFormData, editing: Course-mapping | null) => {
+	// Save course mappings (bulk operation)
+	const saveAllCourseMappings = useCallback(async (mappings: CourseMapping[]) => {
 		try {
-			let savedCourse-mapping: Course-mapping
+			setLoading(true)
+			const result = await saveCourseMappings(mappings)
 
-			if (editing) {
-				savedCourse-mapping = await updateCourse-mapping(editing.id, data)
-				setCourse-mappings(prev => prev.map(item => item.id === editing.id ? savedCourse-mapping : item))
-				toast({
-					title: '✅ Record Updated',
-					description: 'Record has been updated successfully.',
-					className: 'bg-green-50 border-green-200 text-green-800 dark:bg-green-900/20 dark:border-green-800 dark:text-green-200'
-				})
-			} else {
-				savedCourse-mapping = await createCourse-mapping(data)
-				setCourse-mappings(prev => [savedCourse-mapping, ...prev])
-				toast({
-					title: '✅ Record Created',
-					description: 'Record has been created successfully.',
-					className: 'bg-green-50 border-green-200 text-green-800 dark:bg-green-900/20 dark:border-green-800 dark:text-green-200'
-				})
+			if (!result.success) {
+				throw new Error(result.error || 'Failed to save course mappings')
 			}
 
-			return savedCourse-mapping
-		} catch (error) {
-			console.error('Save course-mapping error:', error)
+			setCourseMappings(mappings)
 			toast({
-				title: '❌ Operation Failed',
-				description: error instanceof Error ? error.message : 'Failed to save record.',
+				title: '✅ Mappings Saved',
+				description: `Successfully saved ${mappings.length} course mapping${mappings.length !== 1 ? 's' : ''}.`,
+				className: 'bg-green-50 border-green-200 text-green-800 dark:bg-green-900/20 dark:border-green-800 dark:text-green-200'
+			})
+
+			return true
+		} catch (error) {
+			console.error('Save course mappings error:', error)
+			toast({
+				title: '❌ Save Failed',
+				description: error instanceof Error ? error.message : 'Failed to save course mappings.',
 				variant: 'destructive'
 			})
-			throw error
+			return false
+		} finally {
+			setLoading(false)
 		}
 	}, [toast])
 
-	// Remove course-mapping
-	const removeCourse-mapping = useCallback(async (id: string) => {
+	// Remove course mapping
+	const removeCourseMapping = useCallback(async (id: string) => {
 		try {
-			await deleteCourse-mapping(id)
-			setCourse-mappings(prev => prev.filter(item => item.id !== id))
+			await deleteCourseMapping(id)
+			setCourseMappings(prev => prev.filter(item => item.id !== id))
 			toast({
-				title: '✅ Record Deleted',
-				description: 'Record has been removed.',
+				title: '✅ Mapping Deleted',
+				description: 'Course mapping has been removed.',
 				className: 'bg-green-50 border-green-200 text-green-800 dark:bg-green-900/20 dark:border-green-800 dark:text-green-200'
 			})
 		} catch (error) {
-			console.error('Error deleting course-mapping:', error)
+			console.error('Error deleting course mapping:', error)
 			toast({
 				title: '❌ Delete Failed',
-				description: 'Failed to delete record.',
+				description: 'Failed to delete course mapping.',
 				variant: 'destructive'
 			})
 			throw error
 		}
 	}, [toast])
 
-	// Load course-mapping on mount
+	// Load course mappings when parameters change
 	useEffect(() => {
-		fetchCourse-mappings()
-	}, [fetchCourse-mappings])
+		fetchCourseMappings()
+	}, [fetchCourseMappings])
 
 	return {
-		course-mappings,
+		courseMappings,
 		loading,
 		setLoading,
-		fetchCourse-mappings,
-		refreshCourse-mappings,
-		saveCourse-mapping,
-		removeCourse-mapping,
+		fetchCourseMappings,
+		refreshCourseMappings,
+		saveAllCourseMappings,
+		removeCourseMapping,
+		setCourseMappings
 	}
 }

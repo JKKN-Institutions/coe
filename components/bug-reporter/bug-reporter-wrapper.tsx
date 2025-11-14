@@ -2,14 +2,35 @@
 
 import { BugReporterProvider } from '@boobalan_jkkn/bug-reporter-sdk'
 import { useAuth } from '@/context/auth-context'
-import { ReactNode, useEffect } from 'react'
+import { ReactNode, useEffect, useMemo } from 'react'
 
 export function BugReporterWrapper({
 	children
 }: {
 	children: ReactNode
 }) {
-	const { user, isAuthenticated } = useAuth()
+	const { user, isAuthenticated, hasRole } = useAuth()
+
+	// Determine if bug reporter should be enabled
+	const isBugReporterEnabled = useMemo(() => {
+		// Always enable in development mode
+		if (process.env.NODE_ENV === 'development') {
+			return true
+		}
+
+		// In production, only enable for authenticated users
+		if (!isAuthenticated || !user) {
+			return false
+		}
+
+		// Enable for specific roles
+		// You can customize this list based on your needs
+		const allowedRoles = ['admin', 'super_admin', 'beta-tester', 'developer']
+		const hasAllowedRole = allowedRoles.some((role) => hasRole(role))
+
+		// Enable if user has an allowed role OR if explicitly enabled via env variable
+		return hasAllowedRole || process.env.NEXT_PUBLIC_BUG_REPORTER_FORCE_ENABLE === 'true'
+	}, [isAuthenticated, user, hasRole])
 
 	useEffect(() => {
 		// Add custom CSS to reposition the bug report button to bottom-left
@@ -18,12 +39,15 @@ export function BugReporterWrapper({
 			/* Reposition bug report button to bottom-left corner */
 			[data-bug-reporter-button],
 			.bug-reporter-button,
+			.bug-reporter-floating-btn,
+			.bug-reporter-widget,
 			button[aria-label*="bug"],
 			button[aria-label*="report"],
 			div[class*="bug-reporter"] button:last-child {
-				bottom: 24px !important;
-				left: 24px !important;
+				bottom: 1.5rem !important;
+				left: 1.5rem !important;
 				right: auto !important;
+				z-index: 9999 !important;
 			}
 		`
 		document.head.appendChild(style)
@@ -37,7 +61,7 @@ export function BugReporterWrapper({
 		<BugReporterProvider
 			apiKey={process.env.NEXT_PUBLIC_BUG_REPORTER_API_KEY!}
 			apiUrl={process.env.NEXT_PUBLIC_BUG_REPORTER_API_URL!}
-			enabled={true}
+			enabled={isBugReporterEnabled}
 			debug={process.env.NODE_ENV === 'development'}
 			userContext={
 				isAuthenticated && user

@@ -1,6 +1,6 @@
 "use client"
 
-import { Bell, ChevronsUpDown, LogOut, Loader2, User, Settings, HelpCircle, Shield, Building2, Clock } from "lucide-react"
+import { Bell, ChevronsUpDown, LogOut, Loader2, User, Settings, HelpCircle, Shield, Building2, Clock, Bug } from "lucide-react"
 import { useState, useEffect } from "react"
 
 import {
@@ -10,6 +10,7 @@ import {
 } from "@/components/ui/avatar"
 import { Badge } from "@/components/ui/badge"
 import { useAuth } from "@/context/auth-context"
+import { useBugReporter } from "@/hooks"
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -33,6 +34,7 @@ interface NavUserProps {
 export function NavUser({ variant = "compact" }: NavUserProps) {
   const { isMobile } = useSidebar()
   const { user, logout, isLoading } = useAuth()
+  const { reportBug, isAvailable } = useBugReporter()
   const [isLoggingOut, setIsLoggingOut] = useState(false)
   const [institutionName, setInstitutionName] = useState<string | null>(null)
 
@@ -97,6 +99,14 @@ export function NavUser({ variant = "compact" }: NavUserProps) {
       console.error('Logout error:', error)
     } finally {
       setIsLoggingOut(false)
+    }
+  }
+
+  const handleReportBug = () => {
+    // Trigger the bug reporter by clicking the floating button
+    const bugReporterButton = document.querySelector('[data-bug-reporter-button], .bug-reporter-floating-btn, .bug-reporter-button') as HTMLButtonElement
+    if (bugReporterButton) {
+      bugReporterButton.click()
     }
   }
 
@@ -230,6 +240,21 @@ export function NavUser({ variant = "compact" }: NavUserProps) {
                 <span className="font-inter">Notifications</span>
               </DropdownMenuItem>
             </DropdownMenuGroup>
+
+            <DropdownMenuSeparator className="my-1" />
+
+            {/* Report Bug */}
+            {isAvailable && (
+              <DropdownMenuGroup>
+                <DropdownMenuItem
+                  onSelect={handleReportBug}
+                  className="cursor-pointer rounded-lg text-red-600 dark:text-red-400 focus:text-red-600 dark:focus:text-red-400 focus:bg-red-50 dark:focus:bg-red-950/50"
+                >
+                  <Bug className="h-4 w-4" />
+                  <span className="font-inter">Report a Bug</span>
+                </DropdownMenuItem>
+              </DropdownMenuGroup>
+            )}
 
             <DropdownMenuSeparator className="my-1" />
 
@@ -394,6 +419,21 @@ export function NavUser({ variant = "compact" }: NavUserProps) {
                 <span className="font-inter">Notifications</span>
               </DropdownMenuItem>
             </DropdownMenuGroup>
+
+            <DropdownMenuSeparator className="my-1" />
+
+            {/* Report Bug */}
+            {isAvailable && (
+              <DropdownMenuGroup>
+                <DropdownMenuItem
+                  onSelect={handleReportBug}
+                  className="cursor-pointer rounded-lg text-red-600 dark:text-red-400 focus:text-red-600 dark:focus:text-red-400 focus:bg-red-50 dark:focus:bg-red-950/50"
+                >
+                  <Bug className="h-4 w-4" />
+                  <span className="font-inter">Report a Bug</span>
+                </DropdownMenuItem>
+              </DropdownMenuGroup>
+            )}
 
             <DropdownMenuSeparator className="my-1" />
 
