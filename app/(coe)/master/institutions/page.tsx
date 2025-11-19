@@ -2,14 +2,12 @@
 
 import { useMemo, useState, useEffect } from "react"
 import * as XLSX from "xlsx"
+import { useRouter } from "next/navigation"
 import { AppSidebar } from "@/components/layout/app-sidebar"
-import { PremiumNavbar } from "@/components/layout/premium-navbar"
 import { AppHeader } from "@/components/layout/app-header"
-import { AppHeaderWhite } from "@/components/layout/app-header-white"
 import { AppFooter } from "@/components/layout/app-footer"
 import { PageTransition } from "@/components/common/page-transition"
 import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar"
-import { ModernBreadcrumb } from "@/components/common/modern-breadcrumb"
 import { Breadcrumb, BreadcrumbItem, BreadcrumbLink, BreadcrumbList, BreadcrumbPage, BreadcrumbSeparator } from "@/components/ui/breadcrumb"
 import { Card, CardContent, CardHeader } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -18,19 +16,16 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Badge } from "@/components/ui/badge"
 import { Label } from "@/components/ui/label"
-import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet"
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog"
 import { useToast } from "@/hooks/common/use-toast"
-import { useFormValidation, ValidationPresets } from "@/hooks/common/use-form-validation"
-import { Switch } from "@/components/ui/switch"
 import Link from "next/link"
-import { PlusCircle, Edit, Trash2, Search, ChevronLeft, ChevronRight, ArrowUpDown, ArrowUp, ArrowDown, Building2, TrendingUp, FileSpreadsheet, RefreshCw, CheckCircle, XCircle, AlertTriangle, Home, Shield, Users, BookOpen, Calendar, FileText, Award, GraduationCap, School, LayoutGrid, Layers } from "lucide-react"
+import { PlusCircle, Edit, Trash2, Search, ChevronLeft, ChevronRight, ArrowUpDown, ArrowUp, ArrowDown, Building2, FileSpreadsheet, RefreshCw, XCircle, AlertTriangle, Download, Upload, FileJson, Eye } from "lucide-react"
 
 // Import types
-import type { Institution, DepartmentInfo, InstitutionFormData, InstitutionImportError } from "@/types/institutions"
+import type { Institution, InstitutionImportError } from "@/types/institutions"
 
 // Import services
-import { fetchInstitutions as fetchInstitutionsService, createInstitution, updateInstitution, deleteInstitution } from "@/services/master/institutions-service"
+import { fetchInstitutions as fetchInstitutionsService, deleteInstitution } from "@/services/master/institutions-service"
 
 // Import utilities
 import { validateInstitutionData } from "@/lib/utils/institution-validation"
@@ -41,6 +36,7 @@ import { PremiumInstitutionStats } from "@/components/stats/premium-institution-
 
 
 export default function InstitutionsPage() {
+  const router = useRouter()
   const { toast } = useToast()
   const [items, setItems] = useState<Institution[]>([])
   const [loading, setLoading] = useState(true)
@@ -48,10 +44,8 @@ export default function InstitutionsPage() {
   const [sortColumn, setSortColumn] = useState<string | null>(null)
   const [sortDirection, setSortDirection] = useState<"asc" | "desc">("asc")
   const [currentPage, setCurrentPage] = useState(1)
-  const itemsPerPage = 10
+  const [itemsPerPage, setItemsPerPage] = useState<number | "all">(10)
 
-  const [sheetOpen, setSheetOpen] = useState(false)
-  const [editing, setEditing] = useState<Institution | null>(null)
   const [statusFilter, setStatusFilter] = useState("all")
   const [errorPopupOpen, setErrorPopupOpen] = useState(false)
   const [importErrors, setImportErrors] = useState<InstitutionImportError[]>([])
@@ -60,40 +54,6 @@ export default function InstitutionsPage() {
     success: number
     failed: number
   }>({ total: 0, success: 0, failed: 0 })
-
-  const [formData, setFormData] = useState({
-    institution_code: "",
-    name: "",
-    phone: "",
-    email: "",
-    website: "",
-    counselling_code: "",
-    accredited_by: "",
-    address_line1: "",
-    address_line2: "",
-    address_line3: "",
-    city: "",
-    state: "",
-    country: "",
-    pin_code: "",
-    logo_url: "",
-    institution_type: "university",
-    timetable_type: "week_order",
-    transportation_dept: {} as DepartmentInfo,
-    administration_dept: {} as DepartmentInfo,
-    accounts_dept: {} as DepartmentInfo,
-    admission_dept: {} as DepartmentInfo,
-    placement_dept: {} as DepartmentInfo,
-    anti_ragging_dept: {} as DepartmentInfo,
-    is_active: true,
-  })
-
-  // Validation hook
-  const { errors, validate, clearErrors } = useFormValidation({
-    institution_code: [ValidationPresets.required('Institution code is required')],
-    name: [ValidationPresets.required('Institution name is required')],
-    email: [ValidationPresets.email('Invalid email address')],
-  })
 
   // Fetch data from API
   const fetchInstitutions = async () => {
@@ -114,36 +74,6 @@ export default function InstitutionsPage() {
     fetchInstitutions()
   }, [])
 
-  const resetForm = () => {
-    setFormData({
-      institution_code: "",
-      name: "",
-      phone: "",
-      email: "",
-      website: "",
-      counselling_code: "",
-      accredited_by: "",
-      address_line1: "",
-      address_line2: "",
-      address_line3: "",
-      city: "",
-      state: "",
-      country: "",
-      pin_code: "",
-      logo_url: "",
-      institution_type: "university",
-      timetable_type: "week_order",
-      transportation_dept: {} as DepartmentInfo,
-      administration_dept: {} as DepartmentInfo,
-      accounts_dept: {} as DepartmentInfo,
-      admission_dept: {} as DepartmentInfo,
-      placement_dept: {} as DepartmentInfo,
-      anti_ragging_dept: {} as DepartmentInfo,
-      is_active: true,
-    })
-    clearErrors()
-    setEditing(null)
-  }
 
   const handleSort = (column: string) => {
     if (sortColumn === column) {
@@ -176,98 +106,23 @@ export default function InstitutionsPage() {
     return sorted
   }, [items, searchTerm, sortColumn, sortDirection])
 
-  const totalPages = Math.ceil(filtered.length / itemsPerPage) || 1
-  const startIndex = (currentPage - 1) * itemsPerPage
-  const endIndex = startIndex + itemsPerPage
+  const totalPages = itemsPerPage === "all" ? 1 : Math.ceil(filtered.length / itemsPerPage) || 1
+  const startIndex = itemsPerPage === "all" ? 0 : (currentPage - 1) * itemsPerPage
+  const endIndex = itemsPerPage === "all" ? filtered.length : startIndex + itemsPerPage
   const pageItems = filtered.slice(startIndex, endIndex)
 
-  useEffect(() => setCurrentPage(1), [searchTerm, sortColumn, sortDirection])
+  useEffect(() => setCurrentPage(1), [searchTerm, sortColumn, sortDirection, itemsPerPage])
 
-  const openAdd = () => {
-    resetForm()
-    setSheetOpen(true)
-  }
-  const openEdit = (row: Institution) => {
-    setEditing(row)
-    setFormData({
-      institution_code: row.institution_code,
-      name: row.name,
-      phone: row.phone || "",
-      email: row.email || "",
-      website: row.website || "",
-      counselling_code: row.counselling_code || "",
-      accredited_by: row.accredited_by || "",
-      address_line1: row.address_line1 || "",
-      address_line2: row.address_line2 || "",
-      address_line3: row.address_line3 || "",
-      city: row.city || "",
-      state: row.state || "",
-      country: row.country || "",
-      pin_code: row.pin_code || "",
-      logo_url: row.logo_url || "",
-      institution_type: row.institution_type || "university",
-      timetable_type: row.timetable_type || "week_order",
-      transportation_dept: row.transportation_dept || {} as DepartmentInfo,
-      administration_dept: row.administration_dept || {} as DepartmentInfo,
-      accounts_dept: row.accounts_dept || {} as DepartmentInfo,
-      admission_dept: row.admission_dept || {} as DepartmentInfo,
-      placement_dept: row.placement_dept || {} as DepartmentInfo,
-      anti_ragging_dept: row.anti_ragging_dept || {} as DepartmentInfo,
-      is_active: row.is_active,
-    })
-    setSheetOpen(true)
+  const handleAdd = () => {
+    router.push('/master/institutions/add')
   }
 
-  const save = async () => {
-    if (!validate(formData)) {
-      toast({
-        title: "⚠️ Validation Error",
-        description: "Please fix all validation errors before submitting.",
-        variant: "destructive",
-        className: "bg-red-50 border-red-200 text-red-800 dark:bg-red-900/20 dark:border-red-800 dark:text-red-200",
-      })
-      return
-    }
+  const handleEdit = (id: string) => {
+    router.push(`/master/institutions/edit/${id}`)
+  }
 
-    try {
-      setLoading(true)
-
-      if (editing) {
-        // Update existing institution
-        const updatedInstitution = await updateInstitution(editing.id, formData as InstitutionFormData)
-        setItems((prev) => prev.map((p) => (p.id === editing.id ? updatedInstitution : p)))
-
-        toast({
-          title: "✅ Institution Updated",
-          description: `${updatedInstitution.name} has been successfully updated.`,
-          className: "bg-green-50 border-green-200 text-green-800 dark:bg-green-900/20 dark:border-green-800 dark:text-green-200",
-        })
-      } else {
-        // Create new institution
-        const newInstitution = await createInstitution(formData as InstitutionFormData)
-        setItems((prev) => [newInstitution, ...prev])
-
-        toast({
-          title: "✅ Institution Created",
-          description: `${newInstitution.name} has been successfully created.`,
-          className: "bg-green-50 border-green-200 text-green-800 dark:bg-green-900/20 dark:border-green-800 dark:text-green-200",
-        })
-      }
-
-      setSheetOpen(false)
-      resetForm()
-    } catch (error) {
-      console.error('Error saving institution:', error)
-      const errorMessage = error instanceof Error ? error.message : 'Failed to save institution. Please try again.'
-      toast({
-        title: "❌ Save Failed",
-        description: errorMessage,
-        variant: "destructive",
-        className: "bg-red-50 border-red-200 text-red-800 dark:bg-red-900/20 dark:border-red-800 dark:text-red-200",
-      })
-    } finally {
-      setLoading(false)
-    }
+  const handleView = (id: string) => {
+    router.push(`/master/institutions/view/${id}`)
   }
 
   const remove = async (id: string) => {
@@ -566,151 +421,152 @@ export default function InstitutionsPage() {
   return (
     <SidebarProvider>
       <AppSidebar />
-      <SidebarInset>
+      <SidebarInset className="flex flex-col min-h-screen">
         <AppHeader />
         <PageTransition>
-           
-            
-          <div className="flex flex-1 flex-col gap-1 p-1 md:p-1">
-          <div className="flex items-center gap-1">
-            <Breadcrumb>
-              <BreadcrumbList>
-                <BreadcrumbItem>
-                  <BreadcrumbLink asChild>
-                    <Link href="/dashboard">Dashboard</Link>
-                  </BreadcrumbLink>
-                </BreadcrumbItem>
-                <BreadcrumbSeparator />
-                <BreadcrumbItem>
-                  <BreadcrumbPage>Institutions</BreadcrumbPage>
-                </BreadcrumbItem>
-              </BreadcrumbList>
-            </Breadcrumb>
-          </div>
+          <div className="flex flex-1 flex-col gap-3 p-4 pt-0 overflow-y-auto">
+            <div className="flex items-center gap-2">
+              <Breadcrumb>
+                <BreadcrumbList>
+                  <BreadcrumbItem>
+                    <BreadcrumbLink asChild>
+                      <Link href="/dashboard">Dashboard</Link>
+                    </BreadcrumbLink>
+                  </BreadcrumbItem>
+                  <BreadcrumbSeparator />
+                  <BreadcrumbItem>
+                    <BreadcrumbPage>Institutions</BreadcrumbPage>
+                  </BreadcrumbItem>
+                </BreadcrumbList>
+              </Breadcrumb>
+            </div>
+
             {/* Premium Stats Cards */}
             <PremiumInstitutionStats items={items} loading={loading} />
 
-          <div className="card-premium overflow-hidden">
-            {/* Table Header */}
-            <Card className="flex-1 flex flex-col min-h-0">
-            <CardHeader className="flex-shrink-0 p-3"></CardHeader>
-            <div className="p-6 border-b border-slate-200 dark:border-slate-800">
-              <div className="flex flex-col lg:flex-row gap-4 items-start lg:items-center justify-between">
-              <div className="flex items-center gap-2">
-                 <div className="h-10 w-10 rounded-xl bg-emerald-50 dark:bg-emerald-900/20 flex items-center justify-center">
-                    <Building2 className="h-5 w-5 text-emerald-600 dark:text-emerald-400" />
+            <Card className="flex-1 flex flex-col min-h-0 border-slate-200 shadow-sm rounded-2xl">
+              <CardHeader className="flex-shrink-0 px-8 py-6 border-b border-slate-200">
+                <div className="space-y-4">
+                  {/* Row 1: Title (Left) & Action Buttons (Right) - Same Line */}
+                  <div className="flex items-center justify-between">
+                    {/* Title Section - Left */}
+                    <div className="flex items-center gap-3">
+                      <div className="h-12 w-12 rounded-xl bg-emerald-50 flex items-center justify-center ring-1 ring-emerald-100">
+                        <Building2 className="h-6 w-6 text-emerald-600" />
+                      </div>
+                      <div>
+                        <h2 className="text-xl font-bold text-slate-900 font-grotesk">All Institutions</h2>
+                        <p className="text-sm text-slate-600">Manage and organize institutions</p>
+                      </div>
+                    </div>
+
+                    {/* Action Buttons - Right (Icon Only) */}
+                    <div className="flex items-center gap-2">
+                      <Button variant="outline" size="sm" onClick={fetchInstitutions} disabled={loading} className="h-9 w-9 rounded-lg hover:bg-slate-100 text-slate-600 hover:text-slate-900 transition-colors border border-slate-300 p-0" title="Refresh">
+                        <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
+                      </Button>
+                      <Button variant="outline" size="sm" onClick={handleTemplateExport} className="h-9 w-9 rounded-lg hover:bg-slate-100 text-slate-600 hover:text-slate-900 transition-colors border border-slate-300 p-0" title="Download Template">
+                        <FileSpreadsheet className="h-4 w-4" />
+                      </Button>
+                      <Button variant="outline" size="sm" onClick={handleDownload} className="h-9 w-9 rounded-lg hover:bg-slate-100 text-slate-600 hover:text-slate-900 transition-colors border border-slate-300 p-0" title="Export JSON">
+                        <FileJson className="h-4 w-4" />
+                      </Button>
+                      <Button variant="outline" size="sm" onClick={handleExport} className="h-9 w-9 rounded-lg hover:bg-slate-100 text-slate-600 hover:text-slate-900 transition-colors border border-slate-300 p-0" title="Export Excel">
+                        <Download className="h-4 w-4" />
+                      </Button>
+                      <Button variant="outline" size="sm" onClick={handleImport} className="h-9 w-9 rounded-lg hover:bg-slate-100 text-slate-600 hover:text-slate-900 transition-colors border border-slate-300 p-0" title="Import File">
+                        <Upload className="h-4 w-4" />
+                      </Button>
+                      <Button size="sm" onClick={handleAdd} disabled={loading} className="h-9 px-4 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white transition-all duration-200 shadow-sm" title="Add Institution">
+                        <PlusCircle className="h-4 w-4 mr-2" />
+                        Add Institution
+                      </Button>
+                    </div>
                   </div>
-                  <div>
-                    <h2 className="text-lg font-semibold font-grotesk text-slate-900 dark:text-slate-100">All Institutions</h2>
-                    <p className="text-sm text-slate-600 dark:text-slate-400">Manage and organize institutions</p>
+
+                  {/* Row 2: Filter and Search Row */}
+                  <div className="flex items-center gap-2">
+                    <Select value={statusFilter} onValueChange={setStatusFilter}>
+                      <SelectTrigger className="h-9 rounded-lg border-slate-300 focus:border-emerald-500 w-[140px]">
+                        <SelectValue placeholder="All Status" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="all">All Status</SelectItem>
+                        <SelectItem value="active">Active</SelectItem>
+                        <SelectItem value="inactive">Inactive</SelectItem>
+                      </SelectContent>
+                    </Select>
+
+                    <div className="relative flex-1 max-w-sm">
+                      <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
+                      <Input
+                        value={searchTerm}
+                        onChange={(e) => setSearchTerm(e.target.value)}
+                        placeholder="Search institutions..."
+                        className="pl-8 h-9 rounded-lg border-slate-300 focus:border-emerald-500 focus:ring-emerald-500/20"
+                      />
+                    </div>
                   </div>
                 </div>
+              </CardHeader>
 
-                <div className="flex flex-wrap gap-2">
-                  <Select value={statusFilter} onValueChange={setStatusFilter}>
-                    <SelectTrigger className="w-[140px]">
-                      <SelectValue placeholder="All Status" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="all">All Status</SelectItem>
-                      <SelectItem value="active">Active</SelectItem>
-                      <SelectItem value="inactive">Inactive</SelectItem>
-                    </SelectContent>
-                  </Select>
-
-                  <div className="relative">
-                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
-                    <Input
-                      value={searchTerm}
-                      onChange={(e) => setSearchTerm(e.target.value)}
-                      placeholder="Search institutions..."
-                      className="pl-10 w-[240px] search-premium"
-                    />
-                  </div>
-
-                  <Button variant="outline" onClick={fetchInstitutions} disabled={loading} className="btn-premium-secondary">
-                    <RefreshCw className={`h-4 w-4 mr-2 ${loading ? 'animate-spin' : ''}`} />
-                    Refresh
-                  </Button>
-                  <Button variant="outline" onClick={handleTemplateExport} className="btn-premium-secondary">
-                    <FileSpreadsheet className="h-4 w-4 mr-2" />
-                    Template
-                  </Button>
-                  <Button variant="outline" onClick={handleDownload} className="btn-premium-secondary">
-                    Json
-                  </Button>
-                  <Button variant="outline" onClick={handleExport} className="btn-premium-secondary">
-                    Download
-                  </Button>
-                  <Button variant="outline" onClick={handleImport} className="btn-premium-secondary">
-                    Upload
-                  </Button>
-                  <Button onClick={openAdd} disabled={loading} className="btn-premium-primary">
-                    <PlusCircle className="h-4 w-4 mr-2" />
-                    Add Institution
-                  </Button>
-                </div>
-              </div>
-            </div>
-
-            {/* Table Content */}
-            <div className="p-6">
-              
-
-              <div className="rounded-xl border border-slate-200 dark:border-slate-800 overflow-hidden">
-                <div className="overflow-auto" style={{ maxHeight: "500px" }}>
-                  <table className="table-premium">
-                    <thead className="sticky top-0 z-10 bg-slate-50 dark:bg-slate-900">
-                      <tr>
-                        <th className="text-left font-semibold text-sm">
-                          <Button variant="ghost" size="sm" onClick={() => handleSort("institution_code")} className="hover:bg-slate-100 dark:hover:bg-slate-800">
+              <CardContent className="flex-1 overflow-auto px-8 py-6 bg-slate-50/50">
+                <div className="rounded-xl border border-slate-200 overflow-hidden bg-white">
+                  <Table>
+                    <TableHeader className="bg-slate-50 border-b border-slate-200">
+                      <TableRow>
+                        <TableHead className="text-sm font-semibold text-slate-700">
+                          <Button variant="ghost" size="sm" onClick={() => handleSort("institution_code")} className="px-2 hover:bg-slate-100 rounded-lg transition-colors">
                             College Code
                             <span className="ml-1">{getSortIcon("institution_code")}</span>
                           </Button>
-                        </th>
-                        <th className="text-left font-semibold text-sm">
-                          <Button variant="ghost" size="sm" onClick={() => handleSort("name")} className="hover:bg-slate-100 dark:hover:bg-slate-800">
+                        </TableHead>
+                        <TableHead className="text-sm font-semibold text-slate-700">
+                          <Button variant="ghost" size="sm" onClick={() => handleSort("name")} className="px-2 hover:bg-slate-100 rounded-lg transition-colors">
                             College Name
                             <span className="ml-1">{getSortIcon("name")}</span>
                           </Button>
-                        </th>
-                        <th className="text-left font-semibold text-sm">Email</th>
-                        <th className="text-left font-semibold text-sm">Mobile</th>
-                        <th className="text-left font-semibold text-sm">
-                          <Button variant="ghost" size="sm" onClick={() => handleSort("is_active")} className="hover:bg-slate-100 dark:hover:bg-slate-800">
+                        </TableHead>
+                        <TableHead className="text-sm font-semibold text-slate-700">Email</TableHead>
+                        <TableHead className="text-sm font-semibold text-slate-700">Mobile</TableHead>
+                        <TableHead className="text-sm font-semibold text-slate-700">
+                          <Button variant="ghost" size="sm" onClick={() => handleSort("is_active")} className="px-2 hover:bg-slate-100 rounded-lg transition-colors">
                             Status
                             <span className="ml-1">{getSortIcon("is_active")}</span>
                           </Button>
-                        </th>
-                        <th className="text-center font-semibold text-sm">Actions</th>
-                      </tr>
-                    </thead>
-                    <tbody>
+                        </TableHead>
+                        <TableHead className="text-center text-sm font-semibold text-slate-700">Actions</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
                       {loading ? (
-                        <tr>
-                          <td colSpan={6} className="h-24 text-center text-sm text-slate-500">Loading…</td>
-                        </tr>
+                        <TableRow>
+                          <TableCell colSpan={6} className="h-24 text-center text-sm text-slate-500">Loading…</TableCell>
+                        </TableRow>
                       ) : pageItems.length ? (
                         <>
                           {pageItems.map((row) => (
-                            <tr key={row.id}>
-                              <td className="font-medium text-sm">{row.institution_code}</td>
-                              <td className="text-sm">{row.name}</td>
-                              <td className="text-sm text-slate-600 dark:text-slate-400">{row.email || '-'}</td>
-                              <td className="text-sm text-slate-600 dark:text-slate-400">{row.phone || '-'}</td>
-                              <td>
-                                <span className={row.is_active ? 'pill-success' : 'pill-error'}>
+                            <TableRow key={row.id} className="border-b border-slate-200 hover:bg-slate-50 transition-colors">
+                              <TableCell className="font-medium text-sm text-slate-900 font-grotesk">{row.institution_code}</TableCell>
+                              <TableCell className="text-sm text-slate-900 font-grotesk">{row.name}</TableCell>
+                              <TableCell className="text-sm text-slate-600">{row.email || '-'}</TableCell>
+                              <TableCell className="text-sm text-slate-600">{row.phone || '-'}</TableCell>
+                              <TableCell>
+                                <Badge variant={row.is_active ? "default" : "secondary"} className={`text-xs ${row.is_active ? 'bg-emerald-100 text-emerald-700 border-emerald-200' : 'bg-red-100 text-red-700 border-red-200'}`}>
                                   {row.is_active ? "Active" : "Inactive"}
-                                </span>
-                              </td>
-                              <td className="text-center">
-                                <div className="flex items-center justify-center gap-2">
-                                  <Button variant="outline" size="sm" className="btn-premium-icon" onClick={() => openEdit(row)}>
+                                </Badge>
+                              </TableCell>
+                              <TableCell className="text-center">
+                                <div className="flex items-center justify-center gap-1">
+                                  <Button variant="ghost" size="sm" className="h-8 w-8 p-0 rounded-lg hover:bg-blue-100 text-blue-600 transition-colors" onClick={() => handleView(row.id)} title="View">
+                                    <Eye className="h-4 w-4" />
+                                  </Button>
+                                  <Button variant="ghost" size="sm" className="h-8 w-8 p-0 rounded-lg hover:bg-emerald-100 text-emerald-600 transition-colors" onClick={() => handleEdit(row.id)} title="Edit">
                                     <Edit className="h-4 w-4" />
                                   </Button>
                                   <AlertDialog>
                                     <AlertDialogTrigger asChild>
-                                      <Button variant="outline" size="sm" className="btn-premium-destructive">
+                                      <Button variant="ghost" size="sm" className="h-8 w-8 p-0 rounded-lg hover:bg-red-100 text-red-600 transition-colors" title="Delete">
                                         <Trash2 className="h-4 w-4" />
                                       </Button>
                                     </AlertDialogTrigger>
@@ -728,690 +584,86 @@ export default function InstitutionsPage() {
                                     </AlertDialogContent>
                                   </AlertDialog>
                                 </div>
-                              </td>
-                            </tr>
+                              </TableCell>
+                            </TableRow>
                           ))}
                         </>
                       ) : (
-                        <tr>
-                          <td colSpan={6} className="h-24 text-center text-sm text-slate-500">No data</td>
-                        </tr>
+                        <TableRow>
+                          <TableCell colSpan={6} className="h-24 text-center text-sm text-slate-500">No data</TableCell>
+                        </TableRow>
                       )}
-                    </tbody>
-                  </table>
+                    </TableBody>
+                  </Table>
                 </div>
-              </div>
 
-              {/* Pagination */}
-              <div className="flex items-center justify-between mt-4 pt-4 border-t border-slate-200 dark:border-slate-800">
-                <div className="text-sm text-slate-600 dark:text-slate-400">
-                  Showing {filtered.length === 0 ? 0 : startIndex + 1}-{Math.min(endIndex, filtered.length)} of {filtered.length} institutions
-                </div>
-                <div className="flex items-center gap-2">
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
-                    disabled={currentPage === 1}
-                    className="btn-premium-secondary"
-                  >
-                    <ChevronLeft className="h-4 w-4 mr-1" /> Previous
-                  </Button>
-                  <div className="text-sm text-slate-600 dark:text-slate-400 px-3">
-                    Page {currentPage} of {totalPages}
+                {/* Pagination */}
+                <div className="flex items-center justify-between mt-4 pt-4 border-t border-slate-200">
+                  <div className="flex items-center gap-4">
+                    <div className="text-sm text-slate-600">
+                      Showing {filtered.length === 0 ? 0 : startIndex + 1}-{Math.min(endIndex, filtered.length)} of {filtered.length} institutions
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Label htmlFor="page-size" className="text-sm text-slate-600">
+                        Rows per page:
+                      </Label>
+                      <Select
+                        value={String(itemsPerPage)}
+                        onValueChange={(value) => setItemsPerPage(value === "all" ? "all" : Number(value))}
+                      >
+                        <SelectTrigger id="page-size" className="h-9 rounded-lg border-slate-300 w-[100px]">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="10">10</SelectItem>
+                          <SelectItem value="20">20</SelectItem>
+                          <SelectItem value="50">50</SelectItem>
+                          <SelectItem value="100">100</SelectItem>
+                          <SelectItem value="all">All</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
                   </div>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
-                    disabled={currentPage >= totalPages}
-                    className="btn-premium-secondary"
-                  >
-                    Next <ChevronRight className="h-4 w-4 ml-1" />
-                  </Button>
+                  <div className="flex items-center gap-2">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                      disabled={currentPage === 1 || itemsPerPage === "all"}
+                      className="h-9 px-4 rounded-lg border-slate-300 hover:bg-slate-50 transition-colors disabled:opacity-50"
+                    >
+                      <ChevronLeft className="h-4 w-4 mr-1" /> Previous
+                    </Button>
+                    <div className="text-sm text-slate-600 px-2">
+                      Page {currentPage} of {totalPages}
+                    </div>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+                      disabled={currentPage >= totalPages || itemsPerPage === "all"}
+                      className="h-9 px-4 rounded-lg border-slate-300 hover:bg-slate-50 transition-colors disabled:opacity-50"
+                    >
+                      Next <ChevronRight className="h-4 w-4 ml-1" />
+                    </Button>
+                  </div>
                 </div>
-              </div>
-            </div>
-
-          </Card>
-
-          </div>
+              </CardContent>
+            </Card>
           </div>
         </PageTransition>
         <AppFooter />
-      </SidebarInset>
 
-      <Sheet open={sheetOpen} onOpenChange={(o) => { if (!o) resetForm(); setSheetOpen(o) }}>
-        <SheetContent className="sm:max-w-[800px] overflow-y-auto">
-          <SheetHeader className="pb-6 border-b bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-blue-950/20 dark:to-indigo-950/20">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                <div className="h-10 w-10 rounded-full bg-gradient-to-r from-blue-500 to-indigo-600 flex items-center justify-center">
-                  <Building2 className="h-5 w-5 text-white" />
-                </div>
-                <div>
-                  <SheetTitle className="text-2xl font-bold bg-gradient-to-r from-blue-600 to-indigo-600 bg-clip-text text-transparent">
-                    {editing ? "Edit Institution" : "Add Institution"}
-                  </SheetTitle>
-                  <p className="text-sm text-muted-foreground mt-1">
-                    {editing ? "Update institution information" : "Create a new institution record"}
-                  </p>
-                </div>
-              </div>
-            </div>
-          </SheetHeader>
-          
-          <div className="mt-6 space-y-8">
-            {/* Basic Information Section */}
-            <div className="space-y-4">
-              <div className="flex items-center gap-3 pb-3 border-b border-blue-200 dark:border-blue-800">
-                <div className="h-8 w-8 rounded-lg bg-gradient-to-r from-green-500 to-emerald-600 flex items-center justify-center">
-                  <Building2 className="h-4 w-4 text-white" />
-              </div>
-                <h3 className="text-lg font-bold bg-gradient-to-r from-green-600 to-emerald-600 bg-clip-text text-transparent">Basic Information</h3>
-            </div>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label htmlFor="institution_code" className="text-sm font-semibold">
-                    Institution Code <span className="text-red-500">*</span>
-                  </Label>
-                  <Input 
-                    id="institution_code" 
-                    value={formData.institution_code} 
-                    onChange={(e) => setFormData({ ...formData, institution_code: e.target.value })} 
-                    className={`h-10 ${errors.institution_code ? 'border-destructive' : ''}`} 
-                    placeholder="e.g., JKKN001"
-                  />
-                  {errors.institution_code && <p className="text-xs text-destructive">{errors.institution_code}</p>}
-            </div>
-                <div className="space-y-2">
-                  <Label htmlFor="name" className="text-sm font-semibold">
-                    Institution Name <span className="text-red-500">*</span>
-                  </Label>
-                  <Input 
-                    id="name" 
-                    value={formData.name} 
-                    onChange={(e) => setFormData({ ...formData, name: e.target.value })} 
-                    className={`h-10 ${errors.name ? 'border-destructive' : ''}`} 
-                    placeholder="e.g., JKKN University"
-                  />
-                  {errors.name && <p className="text-xs text-destructive">{errors.name}</p>}
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="email" className="text-sm font-medium">Email</Label>
-                  <Input 
-                    id="email" 
-                    type="email" 
-                    value={formData.email} 
-                    onChange={(e) => setFormData({ ...formData, email: e.target.value })} 
-                    className={`h-10 ${errors.email ? 'border-destructive' : ''}`} 
-                    placeholder="info@institution.edu"
-                  />
-                  {errors.email && <p className="text-xs text-destructive">{errors.email}</p>}
-              </div>
-                <div className="space-y-2">
-                  <Label htmlFor="phone" className="text-sm font-medium">Phone</Label>
-                  <Input 
-                    id="phone" 
-                    value={formData.phone} 
-                    onChange={(e) => setFormData({ ...formData, phone: e.target.value })} 
-                    className="h-10" 
-                    placeholder="+91 9876543210"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="website" className="text-sm font-medium">Website</Label>
-                  <Input 
-                    id="website" 
-                    value={formData.website} 
-                    onChange={(e) => setFormData({ ...formData, website: e.target.value })} 
-                    className="h-10" 
-                    placeholder="https://institution.edu"
-                  />
-              </div>
-                <div className="space-y-2">
-                  <Label htmlFor="logo_url" className="text-sm font-medium">Logo URL</Label>
-                  <Input 
-                    id="logo_url" 
-                    value={formData.logo_url} 
-                    onChange={(e) => setFormData({ ...formData, logo_url: e.target.value })} 
-                    className="h-10" 
-                    placeholder="https://example.com/logo.png"
-                  />
-            </div>
-              </div>
-            </div>
-
-            {/* Address Information Section */}
-            <div className="space-y-4">
-              <div className="flex items-center gap-3 pb-3 border-b border-purple-200 dark:border-purple-800">
-                <div className="h-8 w-8 rounded-lg bg-gradient-to-r from-purple-500 to-pink-600 flex items-center justify-center">
-                  <Building2 className="h-4 w-4 text-white" />
-                </div>
-                <h3 className="text-lg font-bold bg-gradient-to-r from-purple-600 to-pink-600 bg-clip-text text-transparent">Address Information</h3>
-              </div>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label htmlFor="address_line1" className="text-sm font-medium">Address Line 1</Label>
-                  <Input 
-                    id="address_line1" 
-                    value={formData.address_line1} 
-                    onChange={(e) => setFormData({ ...formData, address_line1: e.target.value })} 
-                    className="h-10" 
-                    placeholder="Street address"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="address_line2" className="text-sm font-medium">Address Line 2</Label>
-                  <Input 
-                    id="address_line2" 
-                    value={formData.address_line2} 
-                    onChange={(e) => setFormData({ ...formData, address_line2: e.target.value })} 
-                    className="h-10" 
-                    placeholder="Area/Locality"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="address_line3" className="text-sm font-medium">Address Line 3</Label>
-                  <Input 
-                    id="address_line3" 
-                    value={formData.address_line3} 
-                    onChange={(e) => setFormData({ ...formData, address_line3: e.target.value })} 
-                    className="h-10" 
-                    placeholder="Landmark"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="city" className="text-sm font-medium">City</Label>
-                  <Input 
-                    id="city" 
-                    value={formData.city} 
-                    onChange={(e) => setFormData({ ...formData, city: e.target.value })} 
-                    className="h-10" 
-                    placeholder="City name"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="state" className="text-sm font-medium">State</Label>
-                  <Input 
-                    id="state" 
-                    value={formData.state} 
-                    onChange={(e) => setFormData({ ...formData, state: e.target.value })} 
-                    className="h-10" 
-                    placeholder="State name"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="country" className="text-sm font-medium">Country</Label>
-                  <Input 
-                    id="country" 
-                    value={formData.country} 
-                    onChange={(e) => setFormData({ ...formData, country: e.target.value })} 
-                    className="h-10" 
-                    placeholder="Country name"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="pin_code" className="text-sm font-medium">PIN Code</Label>
-                  <Input 
-                    id="pin_code" 
-                    value={formData.pin_code} 
-                    onChange={(e) => setFormData({ ...formData, pin_code: e.target.value })} 
-                    className="h-10" 
-                    placeholder="123456"
-                  />
-                </div>
-              </div>
-            </div>
-
-            {/* Institutional Details Section */}
-            <div className="space-y-4">
-              <div className="flex items-center gap-3 pb-3 border-b border-orange-200 dark:border-orange-800">
-                <div className="h-8 w-8 rounded-lg bg-gradient-to-r from-orange-500 to-red-600 flex items-center justify-center">
-                  <Building2 className="h-4 w-4 text-white" />
-                </div>
-                <h3 className="text-lg font-bold bg-gradient-to-r from-orange-600 to-red-600 bg-clip-text text-transparent">Institutional Details</h3>
-              </div>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label htmlFor="counselling_code" className="text-sm font-medium">Counselling Code</Label>
-                  <Input 
-                    id="counselling_code" 
-                    value={formData.counselling_code} 
-                    onChange={(e) => setFormData({ ...formData, counselling_code: e.target.value })} 
-                    className="h-10" 
-                    placeholder="e.g., JKKN001"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="accredited_by" className="text-sm font-medium">Accredited By</Label>
-                  <Input 
-                    id="accredited_by" 
-                    value={formData.accredited_by} 
-                    onChange={(e) => setFormData({ ...formData, accredited_by: e.target.value })} 
-                    className="h-10" 
-                    placeholder="e.g., NAAC, AICTE"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="institution_type" className="text-sm font-medium">Institution Type</Label>
-                  <Select value={formData.institution_type} onValueChange={(value) => setFormData({ ...formData, institution_type: value })}>
-                    <SelectTrigger className="h-10">
-                      <SelectValue placeholder="Select type" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="university">University</SelectItem>
-                      <SelectItem value="college">College</SelectItem>
-                      <SelectItem value="school">School</SelectItem>
-                      <SelectItem value="institute">Institute</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="timetable_type" className="text-sm font-medium">Timetable Type</Label>
-                  <Select value={formData.timetable_type} onValueChange={(value) => setFormData({ ...formData, timetable_type: value })}>
-                    <SelectTrigger className="h-10">
-                      <SelectValue placeholder="Select timetable type" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="week_order">Week Order</SelectItem>
-                      <SelectItem value="day_order">Day Order</SelectItem>
-                      <SelectItem value="custom">Custom</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-              </div>
-            </div>
-
-            {/* Department Information Section */}
-            <div className="space-y-6">
-              <div className="flex items-center gap-3 pb-3 border-b border-cyan-200 dark:border-cyan-800">
-                <div className="h-8 w-8 rounded-lg bg-gradient-to-r from-cyan-500 to-blue-600 flex items-center justify-center">
-                  <Building2 className="h-4 w-4 text-white" />
-                </div>
-                <h3 className="text-lg font-bold bg-gradient-to-r from-cyan-600 to-blue-600 bg-clip-text text-transparent">Department Information</h3>
-              </div>
-              
-              {/* Transportation Department */}
-              <div className="space-y-3">
-                <h4 className="text-sm font-semibold bg-gradient-to-r from-blue-600 to-indigo-600 bg-clip-text text-transparent">Transportation Department</h4>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 p-4 bg-gray-50 dark:bg-gray-800/50 rounded-lg">
-                  <div className="space-y-2">
-                    <Label className="text-xs font-medium">Name</Label>
-                    <Input 
-                      value={formData.transportation_dept?.name || ''} 
-                      onChange={(e) => setFormData({ 
-                        ...formData, 
-                        transportation_dept: { ...formData.transportation_dept, name: e.target.value }
-                      })} 
-                      className="h-9 text-xs" 
-                      placeholder="Department Head Name"
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label className="text-xs font-medium">Designation</Label>
-                    <Input 
-                      value={formData.transportation_dept?.designation || ''} 
-                      onChange={(e) => setFormData({ 
-                        ...formData, 
-                        transportation_dept: { ...formData.transportation_dept, designation: e.target.value }
-                      })} 
-                      className="h-9 text-xs" 
-                      placeholder="e.g., Head of Transportation"
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label className="text-xs font-medium">Email</Label>
-                    <Input 
-                      value={formData.transportation_dept?.email || ''} 
-                      onChange={(e) => setFormData({ 
-                        ...formData, 
-                        transportation_dept: { ...formData.transportation_dept, email: e.target.value }
-                      })} 
-                      className="h-9 text-xs" 
-                      placeholder="transport@institution.edu"
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label className="text-xs font-medium">Mobile</Label>
-                    <Input 
-                      value={formData.transportation_dept?.mobile || ''} 
-                      onChange={(e) => setFormData({ 
-                        ...formData, 
-                        transportation_dept: { ...formData.transportation_dept, mobile: e.target.value }
-                      })} 
-                      className="h-9 text-xs" 
-                      placeholder="+91 9876543210"
-                    />
-                  </div>
-                </div>
-              </div>
-
-              {/* Administration Department */}
-              <div className="space-y-3">
-                <h4 className="text-sm font-semibold bg-gradient-to-r from-green-600 to-emerald-600 bg-clip-text text-transparent">Administration Department</h4>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 p-4 bg-gray-50 dark:bg-gray-800/50 rounded-lg">
-                  <div className="space-y-2">
-                    <Label className="text-xs font-medium">Name</Label>
-                    <Input 
-                      value={formData.administration_dept?.name || ''} 
-                      onChange={(e) => setFormData({ 
-                        ...formData, 
-                        administration_dept: { ...formData.administration_dept, name: e.target.value }
-                      })} 
-                      className="h-9 text-xs" 
-                      placeholder="Department Head Name"
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label className="text-xs font-medium">Designation</Label>
-                    <Input 
-                      value={formData.administration_dept?.designation || ''} 
-                      onChange={(e) => setFormData({ 
-                        ...formData, 
-                        administration_dept: { ...formData.administration_dept, designation: e.target.value }
-                      })} 
-                      className="h-9 text-xs" 
-                      placeholder="e.g., Administrative Head"
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label className="text-xs font-medium">Email</Label>
-                    <Input 
-                      value={formData.administration_dept?.email || ''} 
-                      onChange={(e) => setFormData({ 
-                        ...formData, 
-                        administration_dept: { ...formData.administration_dept, email: e.target.value }
-                      })} 
-                      className="h-9 text-xs" 
-                      placeholder="admin@institution.edu"
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label className="text-xs font-medium">Mobile</Label>
-                    <Input 
-                      value={formData.administration_dept?.mobile || ''} 
-                      onChange={(e) => setFormData({ 
-                        ...formData, 
-                        administration_dept: { ...formData.administration_dept, mobile: e.target.value }
-                      })} 
-                      className="h-9 text-xs" 
-                      placeholder="+91 9876543211"
-                    />
-                  </div>
-                </div>
-              </div>
-
-              {/* Accounts Department */}
-              <div className="space-y-3">
-                <h4 className="text-sm font-semibold bg-gradient-to-r from-purple-600 to-pink-600 bg-clip-text text-transparent">Accounts Department</h4>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 p-4 bg-gray-50 dark:bg-gray-800/50 rounded-lg">
-                  <div className="space-y-2">
-                    <Label className="text-xs font-medium">Name</Label>
-                    <Input 
-                      value={formData.accounts_dept?.name || ''} 
-                      onChange={(e) => setFormData({ 
-                        ...formData, 
-                        accounts_dept: { ...formData.accounts_dept, name: e.target.value }
-                      })} 
-                      className="h-9 text-xs" 
-                      placeholder="Department Head Name"
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label className="text-xs font-medium">Designation</Label>
-                    <Input 
-                      value={formData.accounts_dept?.designation || ''} 
-                      onChange={(e) => setFormData({ 
-                        ...formData, 
-                        accounts_dept: { ...formData.accounts_dept, designation: e.target.value }
-                      })} 
-                      className="h-9 text-xs" 
-                      placeholder="e.g., Finance Head"
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label className="text-xs font-medium">Email</Label>
-                    <Input 
-                      value={formData.accounts_dept?.email || ''} 
-                      onChange={(e) => setFormData({ 
-                        ...formData, 
-                        accounts_dept: { ...formData.accounts_dept, email: e.target.value }
-                      })} 
-                      className="h-9 text-xs" 
-                      placeholder="accounts@institution.edu"
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label className="text-xs font-medium">Mobile</Label>
-                    <Input 
-                      value={formData.accounts_dept?.mobile || ''} 
-                      onChange={(e) => setFormData({ 
-                        ...formData, 
-                        accounts_dept: { ...formData.accounts_dept, mobile: e.target.value }
-                      })} 
-                      className="h-9 text-xs" 
-                      placeholder="+91 9876543212"
-                    />
-                  </div>
-                </div>
-              </div>
-
-              {/* Admission Department */}
-              <div className="space-y-3">
-                <h4 className="text-sm font-semibold bg-gradient-to-r from-orange-600 to-red-600 bg-clip-text text-transparent">Admission Department</h4>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 p-4 bg-gray-50 dark:bg-gray-800/50 rounded-lg">
-                  <div className="space-y-2">
-                    <Label className="text-xs font-medium">Name</Label>
-                    <Input 
-                      value={formData.admission_dept?.name || ''} 
-                      onChange={(e) => setFormData({ 
-                        ...formData, 
-                        admission_dept: { ...formData.admission_dept, name: e.target.value }
-                      })} 
-                      className="h-9 text-xs" 
-                      placeholder="Department Head Name"
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label className="text-xs font-medium">Designation</Label>
-                    <Input 
-                      value={formData.admission_dept?.designation || ''} 
-                      onChange={(e) => setFormData({ 
-                        ...formData, 
-                        admission_dept: { ...formData.admission_dept, designation: e.target.value }
-                      })} 
-                      className="h-9 text-xs" 
-                      placeholder="e.g., Admission Head"
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label className="text-xs font-medium">Email</Label>
-                    <Input 
-                      value={formData.admission_dept?.email || ''} 
-                      onChange={(e) => setFormData({ 
-                        ...formData, 
-                        admission_dept: { ...formData.admission_dept, email: e.target.value }
-                      })} 
-                      className="h-9 text-xs" 
-                      placeholder="admission@institution.edu"
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label className="text-xs font-medium">Mobile</Label>
-                    <Input 
-                      value={formData.admission_dept?.mobile || ''} 
-                      onChange={(e) => setFormData({ 
-                        ...formData, 
-                        admission_dept: { ...formData.admission_dept, mobile: e.target.value }
-                      })} 
-                      className="h-9 text-xs" 
-                      placeholder="+91 9876543213"
-                    />
-                  </div>
-                </div>
-              </div>
-
-              {/* Placement Department */}
-              <div className="space-y-3">
-                <h4 className="text-sm font-semibold bg-gradient-to-r from-cyan-600 to-blue-600 bg-clip-text text-transparent">Placement Department</h4>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 p-4 bg-gray-50 dark:bg-gray-800/50 rounded-lg">
-                  <div className="space-y-2">
-                    <Label className="text-xs font-medium">Name</Label>
-                    <Input 
-                      value={formData.placement_dept?.name || ''} 
-                      onChange={(e) => setFormData({ 
-                        ...formData, 
-                        placement_dept: { ...formData.placement_dept, name: e.target.value }
-                      })} 
-                      className="h-9 text-xs" 
-                      placeholder="Department Head Name"
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label className="text-xs font-medium">Designation</Label>
-                    <Input 
-                      value={formData.placement_dept?.designation || ''} 
-                      onChange={(e) => setFormData({ 
-                        ...formData, 
-                        placement_dept: { ...formData.placement_dept, designation: e.target.value }
-                      })} 
-                      className="h-9 text-xs" 
-                      placeholder="e.g., Placement Head"
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label className="text-xs font-medium">Email</Label>
-                    <Input 
-                      value={formData.placement_dept?.email || ''} 
-                      onChange={(e) => setFormData({ 
-                        ...formData, 
-                        placement_dept: { ...formData.placement_dept, email: e.target.value }
-                      })} 
-                      className="h-9 text-xs" 
-                      placeholder="placement@institution.edu"
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label className="text-xs font-medium">Mobile</Label>
-                    <Input 
-                      value={formData.placement_dept?.mobile || ''} 
-                      onChange={(e) => setFormData({ 
-                        ...formData, 
-                        placement_dept: { ...formData.placement_dept, mobile: e.target.value }
-                      })} 
-                      className="h-9 text-xs" 
-                      placeholder="+91 9876543214"
-                    />
-                  </div>
-                </div>
-              </div>
-
-              {/* Anti-Ragging Department */}
-              <div className="space-y-3">
-                <h4 className="text-sm font-semibold bg-gradient-to-r from-teal-600 to-green-600 bg-clip-text text-transparent">Anti-Ragging Department</h4>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 p-4 bg-gray-50 dark:bg-gray-800/50 rounded-lg">
-                  <div className="space-y-2">
-                    <Label className="text-xs font-medium">Name</Label>
-                    <Input 
-                      value={formData.anti_ragging_dept?.name || ''} 
-                      onChange={(e) => setFormData({ 
-                        ...formData, 
-                        anti_ragging_dept: { ...formData.anti_ragging_dept, name: e.target.value }
-                      })} 
-                      className="h-9 text-xs" 
-                      placeholder="Department Head Name"
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label className="text-xs font-medium">Designation</Label>
-                    <Input 
-                      value={formData.anti_ragging_dept?.designation || ''} 
-                      onChange={(e) => setFormData({ 
-                        ...formData, 
-                        anti_ragging_dept: { ...formData.anti_ragging_dept, designation: e.target.value }
-                      })} 
-                      className="h-9 text-xs" 
-                      placeholder="e.g., Anti-Ragging Officer"
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label className="text-xs font-medium">Email</Label>
-                    <Input 
-                      value={formData.anti_ragging_dept?.email || ''} 
-                      onChange={(e) => setFormData({ 
-                        ...formData, 
-                        anti_ragging_dept: { ...formData.anti_ragging_dept, email: e.target.value }
-                      })} 
-                      className="h-9 text-xs" 
-                      placeholder="antiragging@institution.edu"
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label className="text-xs font-medium">Mobile</Label>
-                    <Input 
-                      value={formData.anti_ragging_dept?.mobile || ''} 
-                      onChange={(e) => setFormData({ 
-                        ...formData, 
-                        anti_ragging_dept: { ...formData.anti_ragging_dept, mobile: e.target.value }
-                      })} 
-                      className="h-9 text-xs" 
-                      placeholder="+91 9876543215"
-                    />
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            {/* Status Section */}
-            <div className="space-y-4">
-              <div className="flex items-center gap-3 pb-3 border-b border-teal-200 dark:border-teal-800">
-                <div className="h-8 w-8 rounded-lg bg-gradient-to-r from-teal-500 to-green-600 flex items-center justify-center">
-                  <Building2 className="h-4 w-4 text-white" />
-                </div>
-                <h3 className="text-lg font-bold bg-gradient-to-r from-teal-600 to-green-600 bg-clip-text text-transparent">Status</h3>
-              </div>
-              <div className="flex items-center gap-4">
-                <Label className="text-sm font-semibold">Institution Status</Label>
-                <Switch checked={formData.is_active} onCheckedChange={(v) => setFormData({ ...formData, is_active: v })} />
-                <span className={`text-sm font-medium ${formData.is_active ? 'text-green-600' : 'text-red-500'}`}>
-                  {formData.is_active ? 'Active' : 'Inactive'}
-                </span>
-              </div>
-            </div>
-
-            {/* Action Buttons */}
-            <div className="flex justify-end gap-3 pt-6 border-t">
-              <Button 
-                variant="outline" 
-                size="sm" 
-                className="h-10 px-6" 
-                onClick={() => { setSheetOpen(false); resetForm() }}
-              >
-                Cancel
-              </Button>
-              <Button 
-                size="sm" 
-                className="h-10 px-6" 
-                onClick={save}
-              >
-                {editing ? "Update Institution" : "Create Institution"}
-              </Button>
-            </div>
-          </div>
-        </SheetContent>
-      </Sheet>
-
-      {/* Error Popup Dialog */}
+        {/* Error Popup Dialog */}
       <AlertDialog open={errorPopupOpen} onOpenChange={setErrorPopupOpen}>
-        <AlertDialogContent className="max-w-4xl max-h-[80vh] overflow-y-auto">
+        <AlertDialogContent className="max-w-4xl max-h-[80vh] overflow-y-auto rounded-3xl border-slate-200">
           <AlertDialogHeader>
             <div className="flex items-center gap-3">
-              <div className="h-10 w-10 rounded-full bg-red-100 dark:bg-red-900/20 flex items-center justify-center">
-                <XCircle className="h-5 w-5 text-red-600 dark:text-red-400" />
+              <div className="h-10 w-10 rounded-full bg-red-100 flex items-center justify-center">
+                <XCircle className="h-5 w-5 text-red-600" />
               </div>
               <div>
-                <AlertDialogTitle className="text-xl font-bold text-red-600 dark:text-red-400">
+                <AlertDialogTitle className="text-xl font-bold text-red-600">
                   Data Validation Errors
                 </AlertDialogTitle>
                 <AlertDialogDescription className="text-sm text-muted-foreground mt-1">
@@ -1420,44 +672,44 @@ export default function InstitutionsPage() {
               </div>
             </div>
           </AlertDialogHeader>
-          
+
           <div className="space-y-4">
             {/* Upload Summary Cards */}
             {uploadSummary.total > 0 && (
               <div className="grid grid-cols-3 gap-3">
-                <div className="bg-blue-50 dark:bg-blue-900/10 border border-blue-200 dark:border-blue-800 rounded-lg p-3">
-                  <div className="text-xs text-blue-600 dark:text-blue-400 font-medium mb-1">Total Rows</div>
-                  <div className="text-2xl font-bold text-blue-700 dark:text-blue-300">{uploadSummary.total}</div>
+                <div className="bg-blue-50 border-blue-200 rounded-lg p-3">
+                  <div className="text-xs text-blue-600 font-medium mb-1">Total Rows</div>
+                  <div className="text-2xl font-bold text-blue-700">{uploadSummary.total}</div>
                 </div>
-                <div className="bg-green-50 dark:bg-green-900/10 border border-green-200 dark:border-green-800 rounded-lg p-3">
-                  <div className="text-xs text-green-600 dark:text-green-400 font-medium mb-1">Successful</div>
-                  <div className="text-2xl font-bold text-green-700 dark:text-green-300">{uploadSummary.success}</div>
+                <div className="bg-green-50 border-green-200 rounded-lg p-3">
+                  <div className="text-xs text-green-600 font-medium mb-1">Successful</div>
+                  <div className="text-2xl font-bold text-green-700">{uploadSummary.success}</div>
                 </div>
-                <div className="bg-red-50 dark:bg-red-900/10 border border-red-200 dark:border-red-800 rounded-lg p-3">
-                  <div className="text-xs text-red-600 dark:text-red-400 font-medium mb-1">Failed</div>
-                  <div className="text-2xl font-bold text-red-700 dark:text-red-300">{uploadSummary.failed}</div>
+                <div className="bg-red-50 border-red-200 rounded-lg p-3">
+                  <div className="text-xs text-red-600 font-medium mb-1">Failed</div>
+                  <div className="text-2xl font-bold text-red-700">{uploadSummary.failed}</div>
                 </div>
               </div>
             )}
 
-            <div className="bg-red-50 dark:bg-red-900/10 border border-red-200 dark:border-red-800 rounded-lg p-4">
+            <div className="bg-red-50 border border-red-200 rounded-lg p-4">
               <div className="flex items-center gap-2 mb-2">
-                <AlertTriangle className="h-4 w-4 text-red-600 dark:text-red-400" />
-                <span className="font-semibold text-red-800 dark:text-red-200">
+                <AlertTriangle className="h-4 w-4 text-red-600" />
+                <span className="font-semibold text-red-800">
                   {importErrors.length} row{importErrors.length > 1 ? 's' : ''} failed validation
                 </span>
               </div>
-              <p className="text-sm text-red-700 dark:text-red-300">
+              <p className="text-sm text-red-700">
                 Please correct these errors in your Excel file and try uploading again. Row numbers correspond to your Excel file (including header row).
               </p>
             </div>
 
             <div className="space-y-3">
               {importErrors.map((error, index) => (
-                <div key={index} className="border border-red-200 dark:border-red-800 rounded-lg p-4 bg-red-50/50 dark:bg-red-900/5">
+                <div key={index} className="border border-red-200 rounded-xl p-4 bg-red-50/50">
                   <div className="flex items-start justify-between mb-2">
                     <div className="flex items-center gap-2">
-                      <Badge variant="outline" className="text-xs bg-red-100 text-red-800 border-red-300 dark:bg-red-900/20 dark:text-red-200 dark:border-red-700">
+                      <Badge variant="outline" className="text-xs bg-red-100 text-red-800 border-red-300 rounded-lg">
                         Row {error.row}
                       </Badge>
                       <span className="font-medium text-sm">
@@ -1465,12 +717,12 @@ export default function InstitutionsPage() {
                       </span>
                     </div>
                   </div>
-                  
+
                   <div className="space-y-1">
                     {error.errors.map((err, errIndex) => (
                       <div key={errIndex} className="flex items-start gap-2 text-sm">
                         <XCircle className="h-3 w-3 text-red-500 mt-0.5 flex-shrink-0" />
-                        <span className="text-red-700 dark:text-red-300">{err}</span>
+                        <span className="text-red-700">{err}</span>
                       </div>
                     ))}
                   </div>
@@ -1478,14 +730,14 @@ export default function InstitutionsPage() {
               ))}
             </div>
 
-            <div className="bg-blue-50 dark:bg-blue-900/10 border border-blue-200 dark:border-blue-800 rounded-lg p-4">
+            <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
               <div className="flex items-start gap-2">
-                <div className="h-5 w-5 rounded-full bg-blue-100 dark:bg-blue-900/20 flex items-center justify-center mt-0.5">
-                  <span className="text-xs font-bold text-blue-600 dark:text-blue-400">i</span>
+                <div className="h-5 w-5 rounded-full bg-blue-100 flex items-center justify-center mt-0.5">
+                  <span className="text-xs font-bold text-blue-600">i</span>
                 </div>
                 <div>
-                  <h4 className="font-semibold text-blue-800 dark:text-blue-200 text-sm mb-1">Common Fixes:</h4>
-                  <ul className="text-xs text-blue-700 dark:text-blue-300 space-y-1">
+                  <h4 className="font-semibold text-blue-800 text-sm mb-1">Common Fixes:</h4>
+                  <ul className="text-xs text-blue-700 space-y-1">
                     <li>• Ensure Institution Code and Name are provided and not empty</li>
                     <li>• Use valid email format (e.g., user@domain.com)</li>
                     <li>• Use valid phone format (10-15 digits with optional +, spaces, hyphens)</li>
@@ -1500,10 +752,10 @@ export default function InstitutionsPage() {
           </div>
 
           <AlertDialogFooter>
-            <AlertDialogCancel className="bg-gray-100 hover:bg-gray-200 dark:bg-gray-800 dark:hover:bg-gray-700">
+            <AlertDialogCancel className="bg-gray-100 hover:bg-gray-200">
               Close
             </AlertDialogCancel>
-            <Button 
+            <Button
               onClick={() => {
                 setErrorPopupOpen(false)
                 setImportErrors([])
@@ -1515,6 +767,7 @@ export default function InstitutionsPage() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+      </SidebarInset>
     </SidebarProvider>
   )
 }

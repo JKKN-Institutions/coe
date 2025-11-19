@@ -45,6 +45,7 @@ import {
 	Key,
 	Crown,
 	Hash,
+	Package,
 } from "lucide-react"
 
 import { NavMain } from "@/components/layout/nav-main"
@@ -130,6 +131,7 @@ const data = {
 			roles: [], // COE and above
 			items: [
 				{ title: "Courses",        url: "/master/courses",                      icon: BookText },
+				{ title: "Courses (Temp)", url: "/master/courses-temp",                 icon: Database },
 				{ title: "Course Offering",url: "/course-management/course-offering",   icon: BookText },
 				{ title: "Course Mapping", url: "/course-management/course-mapping-index", icon: TableProperties },
 			],
@@ -185,6 +187,8 @@ const data = {
 			roles: [], // COE and above
 			items: [
 				{ title: "Dummy Numbers", url: "/utilities/dummy-numbers", icon: Hash },
+				{ title: "Answer Sheet Packets", url: "/post-exam/answer-sheet-packets", icon: Package },
+				{ title: "External Mark Entry", url: "/post-exam/external-mark-entry", icon: FileText },
 			],
 		},
 		{

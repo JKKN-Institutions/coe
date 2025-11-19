@@ -2,7 +2,6 @@
 
 import { useMemo, useState, useEffect } from "react"
 import * as XLSX from "xlsx"
-import supabaseAuthService from "@/services/auth/supabase-auth-service"
 import { AppSidebar } from "@/components/layout/app-sidebar"
 import { AppHeader } from "@/components/layout/app-header"
 import { AppFooter } from "@/components/layout/app-footer"
@@ -112,7 +111,8 @@ export default function DegreePage() {
           ? data.filter((i: any) => i?.institution_code).map((i: any) => ({
               id: i.id,
               institution_code: i.institution_code,
-              name: i.institution_name || i.name  // Support both field names
+              name: i.institution_name || i.name,  // Support both field names
+              is_active: i.is_active ?? i.status ?? true
             }))
           : []
         setInstitutions(mapped)
@@ -142,6 +142,7 @@ export default function DegreePage() {
     })
     clearErrors()
     setEditing(null)
+    setErrorPopupOpen(false)
   }
 
   const handleSort = (column: string) => {
@@ -175,7 +176,7 @@ export default function DegreePage() {
       return av < bv ? 1 : -1
     })
     return sorted
-  }, [items, searchTerm, sortColumn, sortDirection])
+  }, [items, searchTerm, sortColumn, sortDirection, statusFilter])
 
   const totalPages = Math.ceil(filtered.length / itemsPerPage) || 1
   const startIndex = (currentPage - 1) * itemsPerPage
@@ -491,48 +492,50 @@ export default function DegreePage() {
     XLSX.utils.book_append_sheet(wb, ws, 'Template')
 
     // Sheet 2: Institution Code References
-    const institutionReference = institutions.map(inst => ({
-      'Institution Code': inst.institution_code,
-      'Institution Name': inst.name || 'N/A',
-      'Status': inst.is_active ? 'Active' : 'Inactive'
-    }))
+    if (institutions.length > 0) {
+      const institutionReference = institutions.map(inst => ({
+        'Institution Code': inst.institution_code,
+        'Institution Name': inst.name || 'N/A',
+        'Status': inst.is_active ? 'Active' : 'Inactive'
+      }))
 
-    const wsRef = XLSX.utils.json_to_sheet(institutionReference)
+      const wsRef = XLSX.utils.json_to_sheet(institutionReference)
 
-    // Set column widths for reference sheet
-    const refColWidths = [
-      { wch: 20 }, // Institution Code
-      { wch: 40 }, // Institution Name
-      { wch: 10 }  // Status
-    ]
-    wsRef['!cols'] = refColWidths
+      // Set column widths for reference sheet
+      const refColWidths = [
+        { wch: 20 }, // Institution Code
+        { wch: 40 }, // Institution Name
+        { wch: 10 }  // Status
+      ]
+      wsRef['!cols'] = refColWidths
 
-    // Style the reference sheet header
-    const refRange = XLSX.utils.decode_range(wsRef['!ref'] || 'A1')
-    for (let col = refRange.s.c; col <= refRange.e.c; col++) {
-      const cellAddress = XLSX.utils.encode_cell({ r: 0, c: col })
-      if (wsRef[cellAddress]) {
-        wsRef[cellAddress].s = {
-          font: { bold: true, color: { rgb: '1F2937' } },
-          fill: { fgColor: { rgb: 'DBEAFE' } }
-        }
-      }
-    }
-
-    // Style data rows in reference sheet
-    for (let row = 1; row <= refRange.e.r; row++) {
+      // Style the reference sheet header
+      const refRange = XLSX.utils.decode_range(wsRef['!ref'] || 'A1')
       for (let col = refRange.s.c; col <= refRange.e.c; col++) {
-        const cellAddress = XLSX.utils.encode_cell({ r: row, c: col })
+        const cellAddress = XLSX.utils.encode_cell({ r: 0, c: col })
         if (wsRef[cellAddress]) {
           wsRef[cellAddress].s = {
-            fill: { fgColor: { rgb: 'F0F9FF' } },
-            font: { color: { rgb: '374151' } }
+            font: { bold: true, color: { rgb: '1F2937' } },
+            fill: { fgColor: { rgb: 'DBEAFE' } }
           }
         }
       }
-    }
 
-    XLSX.utils.book_append_sheet(wb, wsRef, 'Institution Codes')
+      // Style data rows in reference sheet
+      for (let row = 1; row <= refRange.e.r; row++) {
+        for (let col = refRange.s.c; col <= refRange.e.c; col++) {
+          const cellAddress = XLSX.utils.encode_cell({ r: row, c: col })
+          if (wsRef[cellAddress]) {
+            wsRef[cellAddress].s = {
+              fill: { fgColor: { rgb: 'F0F9FF' } },
+              font: { color: { rgb: '374151' } }
+            }
+          }
+        }
+      }
+
+      XLSX.utils.book_append_sheet(wb, wsRef, 'Institution Codes')
+    }
 
     XLSX.writeFile(wb, `degrees_template_${new Date().toISOString().split('T')[0]}.xlsx`)
   }

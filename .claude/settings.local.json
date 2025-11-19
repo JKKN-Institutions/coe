@@ -53,7 +53,16 @@
       "Bash(git checkout:*)",
       "Bash(git mv:*)",
       "Bash(rm:*)",
-      "Bash(powershell -ExecutionPolicy Bypass -File update-hooks-imports.ps1)"
+      "Bash(powershell -ExecutionPolicy Bypass -File update-hooks-imports.ps1)",
+      "Bash(NODE_OPTIONS='--trace-warnings' npm run dev:*)",
+      "Bash(powershell:*)",
+      "Bash(if exist external-mark-entry rmdir /s /q external-mark-entry)",
+      "Bash(move external-mark-entry-simple external-mark-entry)",
+      "Bash(for file in sessions courses)",
+      "Bash(do sed -i \"s/\\.eq(''.*\\..*'', .*)$/&\\n\\t\\t\\t.limit(100000)/\" $file/route.ts)",
+      "Bash(echo:*)",
+      "Bash(done)",
+      "Bash(psql:*)"
     ],
     "deny": [],
     "ask": []

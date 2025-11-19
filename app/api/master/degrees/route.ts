@@ -104,10 +104,33 @@ export async function POST(request: Request) {
 
     if (error) {
       console.error('Error creating degree:', error)
-      // Check if it's a foreign key constraint error
+
+      // Handle duplicate key constraint violation (23505)
+      if (error.code === '23505') {
+        return NextResponse.json({
+          error: 'Degree already exists. Please use different values.'
+        }, { status: 400 })
+      }
+
+      // Handle foreign key constraint violation (23503)
+      if (error.code === '23503') {
+        return NextResponse.json({
+          error: 'Invalid reference. Please select a valid institution.'
+        }, { status: 400 })
+      }
+
+      // Handle check constraint violation (23514)
+      if (error.code === '23514') {
+        return NextResponse.json({
+          error: 'Invalid value. Please check your input.'
+        }, { status: 400 })
+      }
+
+      // Legacy foreign key constraint error check
       if (error.message.includes('degrees_institution_code_fkey')) {
         return NextResponse.json({ error: 'Invalid institution code' }, { status: 400 })
       }
+
       return NextResponse.json({ error: 'Failed to create degree' }, { status: 500 })
     }
 
@@ -178,10 +201,33 @@ export async function PUT(request: Request) {
 
     if (error) {
       console.error('Error updating degree:', error)
-      // Check if it's a foreign key constraint error
+
+      // Handle duplicate key constraint violation (23505)
+      if (error.code === '23505') {
+        return NextResponse.json({
+          error: 'Degree already exists. Please use different values.'
+        }, { status: 400 })
+      }
+
+      // Handle foreign key constraint violation (23503)
+      if (error.code === '23503') {
+        return NextResponse.json({
+          error: 'Invalid reference. Please select a valid institution.'
+        }, { status: 400 })
+      }
+
+      // Handle check constraint violation (23514)
+      if (error.code === '23514') {
+        return NextResponse.json({
+          error: 'Invalid value. Please check your input.'
+        }, { status: 400 })
+      }
+
+      // Legacy foreign key constraint error check
       if (error.message.includes('degrees_institution_code_fkey')) {
         return NextResponse.json({ error: 'Invalid institution code' }, { status: 400 })
       }
+
       return NextResponse.json({ error: 'Failed to update degree' }, { status: 500 })
     }
 
