@@ -244,7 +244,7 @@ export default function CourseMappingIndexPage() {
 																asChild
 																className="h-7 text-[11px] px-2"
 															>
-																<Link href={`/course-mapping/edit?institution=${group.institution_code}&program=${group.program_code}&regulation=${group.regulation_code}`}>
+																<Link href={`/course-management/course-mapping/edit?institution=${group.institution_code}&program=${group.program_code}&regulation=${group.regulation_code}`}>
 																	<Edit2 className="h-3 w-3 mr-1" />
 																	Edit
 																</Link>

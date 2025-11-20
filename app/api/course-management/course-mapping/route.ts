@@ -22,7 +22,7 @@ export async function GET(request: Request) {
 					course:courses!course_mapping_course_id_fkey (
 						id,
 						course_code,
-						course_title
+						course_name
 					)
 				`)
 				.order('created_at', { ascending: false })
@@ -50,7 +50,7 @@ export async function GET(request: Request) {
 					course:courses!course_mapping_course_id_fkey (
 						id,
 						course_code,
-						course_title
+						course_name
 					)
 				`)
 				.order('course_order', { ascending: true })
@@ -67,6 +67,50 @@ export async function GET(request: Request) {
 			if (error) {
 				console.error('Error fetching course mappings:', error)
 				return NextResponse.json({ error: error.message }, { status: 500 })
+			}
+
+			// If we have mappings and program_code, fetch semesters to get display_order
+			if (data && data.length > 0 && programCode) {
+				// Fetch program_id first
+				const { data: programData } = await supabase
+					.from('programs')
+					.select('id')
+					.eq('program_code', programCode)
+					.single()
+
+				if (programData) {
+					// Fetch semesters for this program to get display_order mapping
+					const { data: semesters } = await supabase
+						.from('semesters')
+						.select('semester_name, display_order, institution_code')
+						.eq('program_id', programData.id)
+
+					if (semesters) {
+						// Create a map of semester_code to display_order
+						const semesterOrderMap: { [key: string]: number } = {}
+						semesters.forEach(sem => {
+							// Generate semester_code in the same format as stored in course_mapping
+							const semCode = `${sem.institution_code}-${programCode}-${sem.semester_name.replace(/\s+/g, '')}`
+							semesterOrderMap[semCode] = sem.display_order
+						})
+
+						// Add display_order to each mapping
+						const enrichedData = data.map(mapping => ({
+							...mapping,
+							semester_display_order: semesterOrderMap[mapping.semester_code] || 0
+						}))
+
+						// Sort by semester_display_order first, then by course_order
+						enrichedData.sort((a, b) => {
+							if (a.semester_display_order !== b.semester_display_order) {
+								return a.semester_display_order - b.semester_display_order
+							}
+							return (a.course_order || 0) - (b.course_order || 0)
+						})
+
+						return NextResponse.json(enrichedData)
+					}
+				}
 			}
 
 			return NextResponse.json(data || [])
@@ -217,7 +261,7 @@ export async function POST(request: Request) {
 						course:courses!course_mapping_course_id_fkey (
 							id,
 							course_code,
-							course_title
+							course_name
 						)
 					`)
 					.single()
@@ -412,7 +456,7 @@ export async function POST(request: Request) {
 				course:courses!course_mapping_course_id_fkey (
 					id,
 					course_code,
-					course_title
+					course_name
 				)
 			`)
 			.single()
@@ -492,7 +536,7 @@ export async function PUT(request: Request) {
 				course:courses!course_mapping_course_id_fkey (
 					id,
 					course_code,
-					course_title
+					course_name
 				)
 			`)
 			.single()

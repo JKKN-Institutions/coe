@@ -62,7 +62,8 @@
       "Bash(do sed -i \"s/\\.eq(''.*\\..*'', .*)$/&\\n\\t\\t\\t.limit(100000)/\" $file/route.ts)",
       "Bash(echo:*)",
       "Bash(done)",
-      "Bash(psql:*)"
+      "Bash(psql:*)",
+      "Bash(head:*)"
     ],
     "deny": [],
     "ask": []

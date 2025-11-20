@@ -189,6 +189,7 @@ const data = {
 				{ title: "Dummy Numbers", url: "/utilities/dummy-numbers", icon: Hash },
 				{ title: "Answer Sheet Packets", url: "/post-exam/answer-sheet-packets", icon: Package },
 				{ title: "External Mark Entry", url: "/post-exam/external-mark-entry", icon: FileText },
+				{ title: "External Mark Correction", url: "/post-exam/external-mark-correction", icon: Edit },
 			],
 		},
 		{

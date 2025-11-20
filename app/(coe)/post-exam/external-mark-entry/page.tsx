@@ -393,21 +393,55 @@ export default function ExternalMarkEntryPage() {
 			// Dynamic import for client-side only
 			const { generateExternalMarksPDF } = await import('@/lib/utils/generate-external-marks-pdf')
 
+			// Get current date for exam_month_year format
+			const now = new Date()
+			const monthNames = ['JANUARY', 'FEBRUARY', 'MARCH', 'APRIL', 'MAY', 'JUNE', 'JULY', 'AUGUST', 'SEPTEMBER', 'OCTOBER', 'NOVEMBER', 'DECEMBER']
+			const examMonthYear = `${monthNames[now.getMonth()]}, ${now.getFullYear()}`
+
+			// Get selected session for semester info
+			const selectedSession = sessions.find(s => s.id === selectedSessionId)
+
+			// Load logos as base64
+			const loadImageAsBase64 = async (url: string): Promise<string> => {
+				const response = await fetch(url)
+				const blob = await response.blob()
+				return new Promise((resolve, reject) => {
+					const reader = new FileReader()
+					reader.onloadend = () => resolve(reader.result as string)
+					reader.onerror = reject
+					reader.readAsDataURL(blob)
+				})
+			}
+
+			// Load both logos
+			const [leftLogo, rightLogo] = await Promise.all([
+				loadImageAsBase64('/jkkncas_logo.png'),
+				loadImageAsBase64('/jkkn_logo.png')
+			])
+
 			// Prepare PDF data
 			const pdfData = {
 				subject_code: courseDetails.subject_code,
 				subject_name: courseDetails.subject_name,
 				packet_no: courseDetails.packet_no,
+				bundle_no: courseDetails.packet_no, // Using packet_no as bundle_no for now
 				total_sheets: courseDetails.total_sheets,
 				maximum_marks: courseDetails.maximum_marks,
 				minimum_pass_marks: courseDetails.minimum_pass_marks,
 				exam_date: new Date().toLocaleDateString('en-GB'),
+				exam_month_year: examMonthYear,
+				program_code: courseDetails.subject_code.substring(0, 4) || '', // Extract from subject code
+				program_name: '',
+				semester: selectedSession?.session_name?.match(/Sem(?:ester)?\s*(\d+|[IVX]+)/i)?.[1] || 'I',
+				year: now.getFullYear().toString(),
 				students: students.map(s => ({
 					dummy_number: s.dummy_number,
 					total_marks_obtained: s.total_marks_obtained,
 					total_marks_in_words: s.total_marks_in_words,
 					remarks: s.remarks
-				}))
+				})),
+				logoImage: leftLogo,
+				rightLogoImage: rightLogo
 			}
 
 			// Generate PDF
@@ -419,6 +453,7 @@ export default function ExternalMarkEntryPage() {
 				className: "bg-green-50 border-green-200 text-green-800",
 			})
 		} catch (error) {
+			console.error('PDF generation error:', error)
 			toast({
 				title: "❌ PDF Generation Failed",
 				description: error instanceof Error ? error.message : 'Failed to generate PDF',
@@ -453,51 +488,50 @@ export default function ExternalMarkEntryPage() {
 					</Breadcrumb>
 				</AppHeader>
 
-				<div className="flex-1 p-6 space-y-6 overflow-auto">
-					<Card>
-						<CardHeader>
-							<CardTitle className="text-2xl font-bold flex items-center gap-2 font-grotesk">
-								<FileText className="h-6 w-6" />
+				<div className="flex-1 p-4 space-y-4 overflow-auto">
+					{/* Page Header */}
+					<div className="flex items-center gap-3">
+						<div className="h-10 w-10 rounded-lg bg-emerald-100 dark:bg-emerald-900/30 flex items-center justify-center">
+							<FileText className="h-5 w-5 text-emerald-600 dark:text-emerald-400" />
+						</div>
+						<div>
+							<h1 className="text-xl font-bold text-slate-900 dark:text-slate-100 font-grotesk">
 								External Mark Entry
-							</CardTitle>
-							<CardDescription>
-								Select institution, session, course, and packet to enter external marks
-							</CardDescription>
-						</CardHeader>
-					</Card>
+							</h1>
+							
+						</div>
+					</div>
 
 					{/* Cascading Dropdowns */}
-					<Card>
-						<CardHeader>
-							<CardTitle className="text-lg font-grotesk">Select Packet Details</CardTitle>
-						</CardHeader>
-						<CardContent className="space-y-4">
-							<div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+					<Card className="shadow-sm">
+						<CardContent className="p-2">
+					
+							<div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3">
 								{/* Institution Combobox */}
-								<div className="space-y-2">
-									<Label htmlFor="institution">Institution <span className="text-red-500">*</span></Label>
+								<div className="space-y-1.5">
+									<Label htmlFor="institution" className="text-xs font-medium">Institution <span className="text-red-500">*</span></Label>
 									<Popover open={institutionOpen} onOpenChange={setInstitutionOpen}>
 										<PopoverTrigger asChild>
 											<Button
 												variant="outline"
 												role="combobox"
 												aria-expanded={institutionOpen}
-												className="w-full justify-between h-auto min-h-[40px] whitespace-normal text-left"
+												className="w-full justify-between h-9 text-left text-xs truncate"
 												disabled={loadingInstitutions}
 											>
-												<span className="flex-1 pr-2">
+												<span className="flex-1 pr-2 truncate">
 													{selectedInstitutionId
 														? institutions.find((inst) => inst.id === selectedInstitutionId)?.name
 														: loadingInstitutions ? "Loading..." : "Select institution..."}
 												</span>
-												<ChevronsUpDown className="h-4 w-4 shrink-0 opacity-50" />
+												<ChevronsUpDown className="h-3.5 w-3.5 shrink-0 opacity-50" />
 											</Button>
 										</PopoverTrigger>
-										<PopoverContent className="w-[500px] p-0">
+										<PopoverContent className="w-[400px] p-0" align="start">
 											<Command>
-												<CommandInput placeholder="Search institution..." />
-												<CommandEmpty>No institution found.</CommandEmpty>
-												<CommandGroup className="max-h-64 overflow-auto">
+												<CommandInput placeholder="Search institution..." className="h-8 text-xs" />
+												<CommandEmpty className="text-xs py-4">No institution found.</CommandEmpty>
+												<CommandGroup className="max-h-56 overflow-auto">
 													{institutions.map((inst) => (
 														<CommandItem
 															key={inst.id}
@@ -506,15 +540,15 @@ export default function ExternalMarkEntryPage() {
 																setSelectedInstitutionId(inst.id)
 																setInstitutionOpen(false)
 															}}
-															className="whitespace-normal py-3"
+															className="py-2 text-xs"
 														>
 															<Check
 																className={cn(
-																	"mr-2 h-4 w-4 shrink-0",
+																	"mr-2 h-3.5 w-3.5 shrink-0",
 																	selectedInstitutionId === inst.id ? "opacity-100" : "opacity-0"
 																)}
 															/>
-															<span className="flex-1">{inst.institution_code} - {inst.name}</span>
+															<span className="flex-1 line-clamp-2">{inst.institution_code} - {inst.name}</span>
 														</CommandItem>
 													))}
 												</CommandGroup>
@@ -524,30 +558,30 @@ export default function ExternalMarkEntryPage() {
 								</div>
 
 								{/* Session Combobox */}
-								<div className="space-y-2">
-									<Label htmlFor="session">Examination Session <span className="text-red-500">*</span></Label>
+								<div className="space-y-1.5">
+									<Label htmlFor="session" className="text-xs font-medium">Exam Session <span className="text-red-500">*</span></Label>
 									<Popover open={sessionOpen} onOpenChange={setSessionOpen}>
 										<PopoverTrigger asChild>
 											<Button
 												variant="outline"
 												role="combobox"
 												aria-expanded={sessionOpen}
-												className="w-full justify-between h-auto min-h-[40px] whitespace-normal text-left"
+												className="w-full justify-between h-9 text-left text-xs truncate"
 												disabled={!selectedInstitutionId || loadingSessions}
 											>
-												<span className="flex-1 pr-2">
+												<span className="flex-1 pr-2 truncate">
 													{selectedSessionId
 														? sessions.find((s) => s.id === selectedSessionId)?.session_name
 														: loadingSessions ? "Loading..." : "Select session..."}
 												</span>
-												<ChevronsUpDown className="h-4 w-4 shrink-0 opacity-50" />
+												<ChevronsUpDown className="h-3.5 w-3.5 shrink-0 opacity-50" />
 											</Button>
 										</PopoverTrigger>
-										<PopoverContent className="w-[350px] p-0">
+										<PopoverContent className="w-[300px] p-0" align="start">
 											<Command>
-												<CommandInput placeholder="Search session..." />
-												<CommandEmpty>No session found.</CommandEmpty>
-												<CommandGroup className="max-h-64 overflow-auto">
+												<CommandInput placeholder="Search session..." className="h-8 text-xs" />
+												<CommandEmpty className="text-xs py-4">No session found.</CommandEmpty>
+												<CommandGroup className="max-h-56 overflow-auto">
 													{sessions.map((session) => (
 														<CommandItem
 															key={session.id}
@@ -556,15 +590,15 @@ export default function ExternalMarkEntryPage() {
 																setSelectedSessionId(session.id)
 																setSessionOpen(false)
 															}}
-															className="whitespace-normal py-3"
+															className="py-2 text-xs"
 														>
 															<Check
 																className={cn(
-																	"mr-2 h-4 w-4 shrink-0",
+																	"mr-2 h-3.5 w-3.5 shrink-0",
 																	selectedSessionId === session.id ? "opacity-100" : "opacity-0"
 																)}
 															/>
-															<span className="flex-1">{session.session_code} - {session.session_name}</span>
+															<span className="flex-1 line-clamp-2">{session.session_code} - {session.session_name}</span>
 														</CommandItem>
 													))}
 												</CommandGroup>
@@ -574,30 +608,30 @@ export default function ExternalMarkEntryPage() {
 								</div>
 
 								{/* Course Combobox */}
-								<div className="space-y-2">
-									<Label htmlFor="course">Course <span className="text-red-500">*</span></Label>
+								<div className="space-y-1.5">
+									<Label htmlFor="course" className="text-xs font-medium">Course <span className="text-red-500">*</span></Label>
 									<Popover open={courseOpen} onOpenChange={setCourseOpen}>
 										<PopoverTrigger asChild>
 											<Button
 												variant="outline"
 												role="combobox"
 												aria-expanded={courseOpen}
-												className="w-full justify-between h-auto min-h-[40px] whitespace-normal text-left"
+												className="w-full justify-between h-9 text-left text-xs truncate"
 												disabled={!selectedSessionId || loadingCourses}
 											>
-												<span className="flex-1 pr-2">
+												<span className="flex-1 pr-2 truncate">
 													{selectedCourseId
 														? courses.find((c) => c.id === selectedCourseId)?.course_name
 														: loadingCourses ? "Loading..." : "Select course..."}
 												</span>
-												<ChevronsUpDown className="h-4 w-4 shrink-0 opacity-50" />
+												<ChevronsUpDown className="h-3.5 w-3.5 shrink-0 opacity-50" />
 											</Button>
 										</PopoverTrigger>
-										<PopoverContent className="w-[500px] p-0">
+										<PopoverContent className="w-[400px] p-0" align="start">
 											<Command>
-												<CommandInput placeholder="Search course..." />
-												<CommandEmpty>No course found.</CommandEmpty>
-												<CommandGroup className="max-h-64 overflow-auto">
+												<CommandInput placeholder="Search course..." className="h-8 text-xs" />
+												<CommandEmpty className="text-xs py-4">No course found.</CommandEmpty>
+												<CommandGroup className="max-h-56 overflow-auto">
 													{courses.map((course) => (
 														<CommandItem
 															key={course.id}
@@ -606,15 +640,15 @@ export default function ExternalMarkEntryPage() {
 																setSelectedCourseId(course.id)
 																setCourseOpen(false)
 															}}
-															className="whitespace-normal py-3"
+															className="py-2 text-xs"
 														>
 															<Check
 																className={cn(
-																	"mr-2 h-4 w-4 shrink-0",
+																	"mr-2 h-3.5 w-3.5 shrink-0",
 																	selectedCourseId === course.id ? "opacity-100" : "opacity-0"
 																)}
 															/>
-															<span className="flex-1">{course.course_code} - {course.course_name}</span>
+															<span className="flex-1 line-clamp-2">{course.course_code} - {course.course_name}</span>
 														</CommandItem>
 													))}
 												</CommandGroup>
@@ -624,30 +658,30 @@ export default function ExternalMarkEntryPage() {
 								</div>
 
 								{/* Packet Number Combobox */}
-								<div className="space-y-2">
-									<Label htmlFor="packet">Packet Number <span className="text-red-500">*</span></Label>
+								<div className="space-y-1.5">
+									<Label htmlFor="packet" className="text-xs font-medium">Packet No <span className="text-red-500">*</span></Label>
 									<Popover open={packetOpen} onOpenChange={setPacketOpen}>
 										<PopoverTrigger asChild>
 											<Button
 												variant="outline"
 												role="combobox"
 												aria-expanded={packetOpen}
-												className="w-full justify-between h-auto min-h-[40px] whitespace-normal text-left"
+												className="w-full justify-between h-9 text-left text-xs"
 												disabled={!selectedCourseId || loadingPackets}
 											>
-												<span className="flex-1 pr-2">
+												<span className="flex-1 pr-2 truncate">
 													{selectedPacketId
 														? packets.find((p) => p.id === selectedPacketId)?.packet_no
 														: loadingPackets ? "Loading..." : "Select packet..."}
 												</span>
-												<ChevronsUpDown className="h-4 w-4 shrink-0 opacity-50" />
+												<ChevronsUpDown className="h-3.5 w-3.5 shrink-0 opacity-50" />
 											</Button>
 										</PopoverTrigger>
-										<PopoverContent className="w-[250px] p-0">
+										<PopoverContent className="w-[200px] p-0" align="start">
 											<Command>
-												<CommandInput placeholder="Search packet..." />
-												<CommandEmpty>No packet found.</CommandEmpty>
-												<CommandGroup className="max-h-64 overflow-auto">
+												<CommandInput placeholder="Search packet..." className="h-8 text-xs" />
+												<CommandEmpty className="text-xs py-4">No packet found.</CommandEmpty>
+												<CommandGroup className="max-h-56 overflow-auto">
 													{packets.map((packet) => (
 														<CommandItem
 															key={packet.id}
@@ -656,11 +690,11 @@ export default function ExternalMarkEntryPage() {
 																setSelectedPacketId(packet.id)
 																setPacketOpen(false)
 															}}
-															className="whitespace-normal py-3"
+															className="py-2 text-xs"
 														>
 															<Check
 																className={cn(
-																	"mr-2 h-4 w-4 shrink-0",
+																	"mr-2 h-3.5 w-3.5 shrink-0",
 																	selectedPacketId === packet.id ? "opacity-100" : "opacity-0"
 																)}
 															/>
@@ -674,12 +708,13 @@ export default function ExternalMarkEntryPage() {
 								</div>
 							</div>
 
-							<div className="flex justify-end">
+							<div className="flex justify-end mt-3">
 								<Button
 									onClick={loadStudents}
 									disabled={!selectedPacketId || loadingStudents}
+									className="bg-emerald-600 hover:bg-emerald-700 text-white h-8 text-xs"
 								>
-									{loadingStudents ? 'Loading Students...' : 'Load Students'}
+									{loadingStudents ? 'Loading...' : 'Load Students'}
 								</Button>
 							</div>
 						</CardContent>
@@ -687,74 +722,82 @@ export default function ExternalMarkEntryPage() {
 
 					{/* Mark Entry Section */}
 					{students.length > 0 && courseDetails && (
-						<Card>
-							<CardHeader>
-								<CardTitle className="flex items-center justify-between font-grotesk">
-									<span>Mark Entry - Packet {courseDetails.packet_no}</span>
+						<Card className="shadow-md">
+							<CardHeader className="pb-3">
+								<div className="flex items-center justify-between">
+									<CardTitle className="flex items-center gap-2 font-grotesk text-base">
+										<div className="h-2 w-2 rounded-full bg-emerald-500"></div>
+										Mark Entry - Packet {courseDetails.packet_no}
+									</CardTitle>
 									<div className="flex gap-2">
-										<Badge variant="outline">External Max Mark: {courseDetails.maximum_marks}</Badge>
-										<Badge variant="outline">External Pass Mark: {courseDetails.minimum_pass_marks}</Badge>
-										<Badge variant="outline">Total Marks: {getTotalMarks()}</Badge>
+										<Badge variant="outline" className="text-sm px-3 py-1 bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-900/20 dark:text-emerald-300 dark:border-emerald-800">Max: {courseDetails.maximum_marks}</Badge>
+										<Badge variant="outline" className="text-sm px-3 py-1 bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-900/20 dark:text-amber-300 dark:border-amber-800">Pass: {courseDetails.minimum_pass_marks}</Badge>
+										<Badge variant="outline" className="text-sm px-3 py-1 bg-blue-50 text-blue-700 border-blue-200 dark:bg-blue-900/20 dark:text-blue-300 dark:border-blue-800">Total: {getTotalMarks()}</Badge>
 									</div>
-								</CardTitle>
-								<CardDescription>
+								</div>
+								<CardDescription className="text-xs mt-1">
 									{courseDetails.subject_code} - {courseDetails.subject_name}
 								</CardDescription>
 
 								{/* View Mode Indicator */}
 								{isViewMode && (
-									<div className="mt-3 p-2 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg">
+									<div className="mt-2 p-2 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg">
 										<div className="flex items-center gap-2">
-											<AlertTriangle className="h-4 w-4 text-blue-600 dark:text-blue-400" />
-											<span className="text-sm font-medium text-blue-800 dark:text-blue-200">
+											<AlertTriangle className="h-3.5 w-3.5 text-blue-600 dark:text-blue-400" />
+											<span className="text-xs font-medium text-blue-800 dark:text-blue-200">
 												Marks have been saved and are in read-only mode
 											</span>
 										</div>
 									</div>
 								)}
 							</CardHeader>
-							<CardContent className="space-y-4">
-								<div className="border rounded-lg max-h-[500px] overflow-y-auto">
+							<CardContent className="space-y-2 pt-0">
+								<div className="border rounded-lg">
 									<Table>
 										<TableHeader>
-											<TableRow>
-												<TableHead className="w-12">#</TableHead>
-												<TableHead>Dummy No</TableHead>
-												<TableHead>Marks</TableHead>
-												<TableHead>Marks in Words</TableHead>
-												<TableHead>Result</TableHead>
+											<TableRow className="bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-600 hover:to-teal-600">
+												<TableHead className="w-12 text-white font-semibold text-sm">#</TableHead>
+												<TableHead className="text-white font-semibold text-sm">Dummy No</TableHead>
+												<TableHead className="text-white font-semibold text-sm">Marks</TableHead>
+												<TableHead className="text-white font-semibold text-sm">Marks in Words</TableHead>
+												<TableHead className="text-white font-semibold text-sm">Result</TableHead>
 											</TableRow>
 										</TableHeader>
 										<TableBody>
 											{students.map((student, index) => (
-												<TableRow key={student.student_dummy_id}>
-													<TableCell className="font-medium font-grotesk">{index + 1}</TableCell>
-													<TableCell className="font-mono font-semibold font-grotesk">{student.dummy_number}</TableCell>
-													<TableCell>
+												<TableRow key={student.student_dummy_id} className="hover:bg-emerald-50/50 dark:hover:bg-emerald-900/10">
+													<TableCell className="font-medium text-sm py-2">{index + 1}</TableCell>
+													<TableCell className="font-semibold text-sm py-2">{student.dummy_number}</TableCell>
+													<TableCell className="py-2">
 														<Input
-															type="number"
+															type="text"
+															inputMode="numeric"
+															pattern="[0-9]*"
 															value={student.total_marks_obtained ?? ''}
-															onChange={(e) => handleMarksChange(index, e.target.value)}
+															onChange={(e) => {
+																const val = e.target.value
+																if (val === '' || /^\d+$/.test(val)) {
+																	handleMarksChange(index, val)
+																}
+															}}
 															placeholder="00"
 															className={cn(
-																"h-8 w-20 text-center font-mono font-grotesk",
+																"h-8 w-20 text-center text-sm",
 																isViewMode && "bg-muted cursor-not-allowed"
 															)}
-															min={0}
-															max={courseDetails.maximum_marks}
 															disabled={isViewMode}
 														/>
 													</TableCell>
-													<TableCell className="font-mono text-sm font-grotesk">{student.total_marks_in_words || '-'}</TableCell>
-													<TableCell>
+													<TableCell className="text-sm py-2">{student.total_marks_in_words || '-'}</TableCell>
+													<TableCell className="py-2">
 														<Badge
 															className={cn(
-																"font-medium",
+																"font-medium text-sm",
 																student.remarks === 'PASS'
-																	? "bg-green-100 text-green-800 hover:bg-green-200"
+																	? "bg-green-100 text-green-800 hover:bg-green-200 dark:bg-green-900/30 dark:text-green-300"
 																	: student.remarks === 'FAIL'
-																		? "bg-red-100 text-red-800 hover:bg-red-200"
-																		: "bg-gray-100 text-gray-600"
+																		? "bg-red-100 text-red-800 hover:bg-red-200 dark:bg-red-900/30 dark:text-red-300"
+																		: "bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400"
 															)}
 														>
 															{student.remarks || '-'}
@@ -777,14 +820,16 @@ export default function ExternalMarkEntryPage() {
 												setIsViewMode(false)
 											}}
 											variant="outline"
+											className="h-8 text-xs"
 										>
 											Cancel
 										</Button>
 										<Button
 											onClick={handleSaveMarks}
 											disabled={saving}
+											className="bg-emerald-600 hover:bg-emerald-700 text-white h-8 text-xs"
 										>
-											<Save className="h-4 w-4 mr-2" />
+											<Save className="h-3.5 w-3.5 mr-1.5" />
 											{saving ? 'Saving...' : 'Save Marks'}
 										</Button>
 									</div>

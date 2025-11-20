@@ -88,6 +88,7 @@ export async function GET(request: NextRequest) {
 					course_type,
 					course_part_master,
 					credit,
+					exam_duration,
 					evaluation_type,
 					regulation_code
 				)
@@ -148,7 +149,7 @@ export async function GET(request: NextRequest) {
 				// Evaluation and credits (from courses table via FK join)
 				evaluation_pattern: course?.evaluation_type || '-',
 				credits: course?.credit || 0,
-				exam_hours: course?.duration_hours || 0,
+				exam_hours: course?.exam_duration || 0,
 
 				// Sort order
 				course_order: mapping.course_order || 0,
@@ -181,7 +182,7 @@ export async function GET(request: NextRequest) {
 		].filter(Boolean)
 		const institutionAddress = addressParts.join(', ')
 
-		// Load JKKN logo
+		// Load JKKN logo (left side)
 		let logoImage: string | undefined
 		try {
 			const logoPath = path.join(process.cwd(), 'public', 'jkkn_logo.png')
@@ -190,6 +191,17 @@ export async function GET(request: NextRequest) {
 		} catch (error) {
 			console.warn('Failed to load logo:', error)
 			logoImage = undefined
+		}
+
+		// Load right logo (JKKN text logo)
+		let rightLogoImage: string | undefined
+		try {
+			const rightLogoPath = path.join(process.cwd(), 'public', 'jkkn_text_logo.png')
+			const rightLogoBase64 = fs.readFileSync(rightLogoPath).toString('base64')
+			rightLogoImage = `data:image/png;base64,${rightLogoBase64}`
+		} catch (error) {
+			console.warn('Failed to load right logo:', error)
+			rightLogoImage = undefined
 		}
 
 		// Get regulation code from multiple sources (fallback chain)
@@ -208,6 +220,7 @@ export async function GET(request: NextRequest) {
 			regulationName: regulation?.regulation_name || finalRegulationCode,
 			regulationCode: finalRegulationCode,
 			logoImage,
+			rightLogoImage,
 			mappings: transformedMappings
 		}
 

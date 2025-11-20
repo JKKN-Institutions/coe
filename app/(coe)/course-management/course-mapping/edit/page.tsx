@@ -134,12 +134,12 @@ export default function CourseMappingEditPage() {
 		fetchCourses(institutionParam, programParam, regulationParam)
 	}, [institutionParam, programParam, regulationParam])
 
-	// Load existing mappings when semesters are loaded (NO BATCH)
+	// Load existing mappings when semesterTables are loaded (NO BATCH)
 	useEffect(() => {
-		if (semesters.length > 0 && selectedInstitution && selectedProgram && selectedRegulation) {
+		if (semesterTables.length > 0 && selectedInstitution && selectedProgram && selectedRegulation) {
 			loadExistingMappings()
 		}
-	}, [semesters, selectedInstitution, selectedProgram, selectedRegulation])
+	}, [semesterTables.length, selectedInstitution, selectedProgram, selectedRegulation])
 
 	const fetchInstitutionName = async (code: string) => {
 		try {
@@ -228,6 +228,14 @@ export default function CourseMappingEditPage() {
 			if (res.ok) {
 				const data = await res.json()
 				setExistingMappings(data)
+				console.log("=== DEBUG: Course Mapping Data ===")
+				console.log("Total mappings loaded:", data.length)
+				if (data.length > 0) {
+					const uniqueSemCodes = [...new Set(data.map((m: CourseMapping) => m.semester_code))]
+					console.log("DB semester_codes:", uniqueSemCodes)
+				}
+				console.log("Semester table codes:", semesterTables.map(t => t.semester.semester_code))
+				console.log("Semester table names:", semesterTables.map(t => t.semester.semester_name))
 
 				// Fetch full course details for all mapped courses to ensure they appear in dropdown
 				const mappedCourseIds = [...new Set(data.map((m: CourseMapping) => m.course_id).filter(Boolean))]
@@ -252,10 +260,58 @@ export default function CourseMappingEditPage() {
 
 				// Organize mappings by semester
 				const updatedTables = semesterTables.map(table => {
-					const semesterMappings = data.filter((m: CourseMapping) => m.semester_code === table.semester.semester_code)
+					const semesterName = table.semester.semester_name
+					const semesterCode = table.semester.semester_code
+
+					// Match by exact semester_code OR by semester_name (handle different formats)
+					// API generates: "JKKNCAS-UCS-SemesterI" but DB stores: "UCS-1", "UCS-2", etc.
+					const semesterMappings = data.filter((m: CourseMapping) => {
+						const dbCode = m.semester_code || ''
+
+						// Exact match
+						if (dbCode === semesterCode) return true
+
+						// Match by semester_name
+						if (dbCode === semesterName) return true
+
+						// Match without spaces
+						const dbCodeNoSpaces = dbCode.replace(/\s+/g, '')
+						const semesterNameNoSpaces = semesterName.replace(/\s+/g, '')
+						if (dbCodeNoSpaces === semesterNameNoSpaces) return true
+
+						// Extract semester number from semester_name (e.g., "Semester I" -> 1, "Semester II" -> 2)
+						const romanToNum: { [key: string]: string } = {
+							'I': '1', 'II': '2', 'III': '3', 'IV': '4', 'V': '5', 'VI': '6'
+						}
+						// Match Roman numerals at end (longer patterns first)
+						const semesterMatch = semesterName.match(/(VI|IV|III|II|I|V|\d+)$/i)
+						if (semesterMatch) {
+							const romanNum = semesterMatch[1].toUpperCase()
+							const arabicNum = romanToNum[romanNum] || romanNum
+
+							// Check if DB code matches pattern like "UCS-1", "UCS-2", etc.
+							// DB format: "{program_code}-{number}"
+							if (dbCode === `${selectedProgram}-${arabicNum}`) {
+								return true
+							}
+
+							// Also check if DB code ends with the number
+							if (dbCode.endsWith(`-${arabicNum}`) || dbCode.endsWith(arabicNum)) {
+								return true
+							}
+						}
+
+						return false
+					})
+
+					// Sort mappings by course_order
+					const sortedMappings = semesterMappings.sort((a: CourseMapping, b: CourseMapping) => {
+						return (a.course_order || 0) - (b.course_order || 0)
+					})
+
 					return {
 						...table,
-						mappings: semesterMappings.length > 0 ? semesterMappings : [{
+						mappings: sortedMappings.length > 0 ? sortedMappings : [{
 							course_id: "",
 							institution_code: selectedInstitution,
 							program_code: selectedProgram,
@@ -275,7 +331,7 @@ export default function CourseMappingEditPage() {
 							registration_based: false,
 							is_active: true
 						}],
-						isOpen: semesterMappings.length > 0
+						isOpen: sortedMappings.length > 0
 					}
 				})
 
@@ -450,26 +506,34 @@ export default function CourseMappingEditPage() {
 				return
 			}
 
-			// Delete existing mappings first
-			if (existingMappings.length > 0) {
-				for (const existing of existingMappings) {
-					if (existing.id) {
-						await fetch(`/api/course-management/course-mapping?id=${existing.id}`, {
-							method: 'DELETE'
-						})
-					}
-				}
+			// Separate existing mappings (with id) from new mappings (without id)
+			const mappingsToUpdate = allMappings.filter(m => m.id)
+			const mappingsToCreate = allMappings.filter(m => !m.id)
+
+			// Update existing mappings using PUT
+			for (const mapping of mappingsToUpdate) {
+				await fetch('/api/course-management/course-mapping', {
+					method: 'PUT',
+					headers: { 'Content-Type': 'application/json' },
+					body: JSON.stringify(mapping)
+				})
 			}
 
-			// Save new mappings
-			const res = await fetch('/api/course-management/course-mapping', {
-				method: 'POST',
-				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify({
-					bulk: true,
-					mappings: allMappings
+			// Create new mappings using POST
+			let res: any
+			if (mappingsToCreate.length > 0) {
+				res = await fetch('/api/course-management/course-mapping', {
+					method: 'POST',
+					headers: { 'Content-Type': 'application/json' },
+					body: JSON.stringify({
+						bulk: true,
+						mappings: mappingsToCreate
+					})
 				})
-			})
+			} else {
+				// If only updates, create a fake successful response
+				res = { ok: true, json: async () => ({ success: [], errors: [] }) }
+			}
 
 			if (res.ok) {
 				const result = await res.json()
@@ -477,13 +541,17 @@ export default function CourseMappingEditPage() {
 				if (result.errors && result.errors.length > 0) {
 					toast({
 						title: '⚠️ Partial Success',
-						description: `Saved ${result.successful.length} mappings, ${result.errors.length} failed.`,
+						description: `Updated ${mappingsToUpdate.length}, created ${mappingsToCreate.length - result.errors.length}, ${result.errors.length} failed.`,
 						variant: 'destructive'
 					})
 				} else {
+					const successMsg = []
+					if (mappingsToUpdate.length > 0) successMsg.push(`${mappingsToUpdate.length} updated`)
+					if (mappingsToCreate.length > 0) successMsg.push(`${mappingsToCreate.length} created`)
+
 					toast({
 						title: '✅ Success',
-						description: `All ${allMappings.length} course mappings saved successfully.`,
+						description: `Course mappings saved successfully: ${successMsg.join(', ')}.`,
 						className: 'bg-green-50 border-green-200 text-green-800'
 					})
 					await loadExistingMappings()
@@ -837,9 +905,10 @@ export default function CourseMappingEditPage() {
 																				<Input
 																					type="number"
 																					value={mapping.course_order || 1}
-																					onChange={(e) => updateCourseRow(semIndex, rowIndex, 'course_order', parseInt(e.target.value))}
+																					onChange={(e) => updateCourseRow(semIndex, rowIndex, 'course_order', parseFloat(e.target.value) || 1)}
 																					className="h-7 w-20 text-[11px] text-center"
-																					min={1}
+																					min={0.1}
+																					step={0.1}
 																				/>
 																			</TableCell>
 																			<TableCell className="py-2">
