@@ -15,6 +15,7 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
         institution_code,
         regulation_code,
         offering_department_code,
+        board_code,
         course_code,
         course_name,
         display_code,
@@ -71,6 +72,7 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
       institution_code: data.institution_code,
       regulation_code: data.regulation_code,
       offering_department_code: data.offering_department_code,
+      board_code: data.board_code,
       course_code: data.course_code,
       course_title: data.course_name,
       display_code: data.display_code,
@@ -184,6 +186,9 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
       data.offering_department_id = deptData.id
       data.offering_department_code = String(input.offering_department_code)
     }
+
+    // Add board_code if provided
+    if (input.board_code !== undefined) data.board_code = input.board_code ? String(input.board_code) : null
 
     // Add all other fields
     if (input.course_code !== undefined) data.course_code = String(input.course_code)

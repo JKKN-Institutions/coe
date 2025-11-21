@@ -7,6 +7,7 @@ export interface Course {
 	institution_code?: string
 	regulation_code?: string
 	offering_department_code?: string
+	board_code?: string
 	course_code: string
 	course_title: string
 	display_code?: string

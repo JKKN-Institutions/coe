@@ -138,16 +138,26 @@ export function generateExternalMarksPDF(data: ExternalMarksPDFData): string {
 	currentY += rowHeight
 
 	// Row 3: Subject Name | value | Minimum pass marks | value
-	doc.rect(margin, currentY - 4, col1Width, rowHeight)
-	doc.rect(margin + col1Width, currentY - 4, col2Width, rowHeight)
-	doc.rect(margin + col1Width + col2Width, currentY - 4, col3Width, rowHeight)
-	doc.rect(margin + col1Width + col2Width + col3Width, currentY - 4, col4Width, rowHeight)
+	// Calculate if we need extra height for subject name wrapping
+	doc.setFontSize(9)
+	const maxSubjectWidth = col2Width - (cellPadding * 2)
+	const subjectLines = doc.splitTextToSize(data.subject_name, maxSubjectWidth)
+	const subjectRowHeight = subjectLines.length > 1 ? rowHeight + (subjectLines.length - 1) * 4 : rowHeight
+
+	doc.setFontSize(10)
+	doc.rect(margin, currentY - 4, col1Width, subjectRowHeight)
+	doc.rect(margin + col1Width, currentY - 4, col2Width, subjectRowHeight)
+	doc.rect(margin + col1Width + col2Width, currentY - 4, col3Width, subjectRowHeight)
+	doc.rect(margin + col1Width + col2Width + col3Width, currentY - 4, col4Width, subjectRowHeight)
 	doc.text('Subject Name', margin + cellPadding, currentY)
-	// Handle long subject names - truncate if needed
-	const subjectText = data.subject_name.length > 20 ? data.subject_name.substring(0, 20) + '...' : data.subject_name
-	doc.text(subjectText, margin + col1Width + cellPadding, currentY)
+	// Handle long subject names - wrap text
+	doc.setFontSize(9)
+	doc.text(subjectLines, margin + col1Width + cellPadding, currentY)
+	doc.setFontSize(10)
 	doc.text('Minimum pass marks', margin + col1Width + col2Width + cellPadding, currentY)
 	doc.text(data.minimum_pass_marks.toString(), margin + col1Width + col2Width + col3Width + cellPadding, currentY)
+
+	currentY += subjectRowHeight - rowHeight // Adjust for extra height used
 
 	currentY += rowHeight
 

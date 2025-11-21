@@ -28,6 +28,7 @@ export async function createCourse(data: Partial<CourseFormData>): Promise<Cours
 		institution_code: data.institution_code,
 		regulation_code: data.regulation_code,
 		offering_department_code: data.offering_department_code || null,
+		board_code: data.board_code || null,
 		course_code: data.course_code,
 		course_title: data.course_title,
 		display_code: data.display_code || null,
@@ -92,6 +93,7 @@ export async function updateCourse(id: string, data: Partial<CourseFormData>): P
 		institution_code: data.institution_code,
 		regulation_code: data.regulation_code,
 		offering_department_code: data.offering_department_code || null,
+		board_code: data.board_code || null,
 		course_code: data.course_code,
 		course_title: data.course_title,
 		display_code: data.display_code || null,
@@ -165,10 +167,11 @@ export async function deleteCourse(id: string): Promise<void> {
 // Dropdown data services
 export async function fetchDropdownData() {
 	try {
-		const [instRes, deptRes, regRes] = await Promise.all([
+		const [instRes, deptRes, regRes, boardRes] = await Promise.all([
 			fetch('/api/master/institutions').catch(() => null),
 			fetch('/api/master/departments').catch(() => null),
 			fetch('/api/master/regulations').catch(() => null),
+			fetch('/api/master/boards').catch(() => null),
 		])
 
 		const institutions = instRes && instRes.ok
@@ -183,10 +186,14 @@ export async function fetchDropdownData() {
 			? (await regRes.json()).filter((r: any) => r?.regulation_code).map((r: any) => ({ id: r.id, regulation_code: r.regulation_code }))
 			: []
 
-		return { institutions, departments, regulations }
+		const boards = boardRes && boardRes.ok
+			? (await boardRes.json()).filter((b: any) => b?.board_code).map((b: any) => ({ id: b.id, board_code: b.board_code, board_name: b.board_name }))
+			: []
+
+		return { institutions, departments, regulations, boards }
 	} catch (error) {
 		console.error('Error loading dropdown codes:', error)
-		return { institutions: [], departments: [], regulations: [] }
+		return { institutions: [], departments: [], regulations: [], boards: [] }
 	}
 }
 

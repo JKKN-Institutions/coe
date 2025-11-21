@@ -171,7 +171,7 @@ export async function GET(request: Request) {
 					return NextResponse.json({ error: 'Packet not found' }, { status: 404 })
 				}
 
-				// Get student dummy numbers with program info
+				// Get student dummy numbers with program and semester info
 				// Note: Packets are course-based, but can contain students from multiple programs
 				const { data: studentData, error: studentError } = await supabase
 					.from('student_dummy_numbers')
@@ -184,7 +184,8 @@ export async function GET(request: Request) {
 							course_offering_id,
 							course_offerings (
 								id,
-								program_id
+								program_id,
+								semester
 							)
 						)
 					`)
@@ -200,14 +201,28 @@ export async function GET(request: Request) {
 					return NextResponse.json({ error: 'No students found for this packet' }, { status: 404 })
 				}
 
-				// Extract course details
+				// Extract semester info from first student (assuming all students in packet have same semester)
+				const firstStudent = studentData[0] as any
+				const semesterInt = firstStudent?.exam_registrations?.course_offerings?.semester || 1
+
+				// Convert semester number to Roman numeral
+				const romanNumerals = ['I', 'II', 'III', 'IV', 'V', 'VI', 'VII', 'VIII', 'IX', 'X', 'XI', 'XII']
+				const semesterNumber = romanNumerals[semesterInt - 1] || 'I'
+
+				// Calculate year group: Semester 1-2 = Year 1, Semester 3-4 = Year 2, etc.
+				const semesterType = Math.ceil(semesterInt / 2).toString()
+
+				// Extract course details with semester info
+				const courses = packetData.courses as any
 				const courseDetails = {
-					subject_code: packetData.courses.course_code,
-					subject_name: packetData.courses.course_name,
-					maximum_marks: packetData.courses.external_max_mark,
-					minimum_pass_marks: packetData.courses.external_pass_mark,
+					subject_code: courses.course_code,
+					subject_name: courses.course_name,
+					maximum_marks: courses.external_max_mark,
+					minimum_pass_marks: courses.external_pass_mark,
 					packet_no: packetData.packet_no,
 					total_sheets: packetData.total_sheets,
+					semester_number: semesterNumber,
+					semester_year: semesterType, // Year group (1, 2, 3)
 				}
 
 				// Format students data - extract program_id from nested relationship

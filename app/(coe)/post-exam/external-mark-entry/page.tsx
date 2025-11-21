@@ -64,6 +64,8 @@ interface CourseDetails {
 	minimum_pass_marks: number
 	packet_no: string
 	total_sheets: number
+	semester_number: string
+	semester_year: string
 }
 
 export default function ExternalMarkEntryPage() {
@@ -430,10 +432,10 @@ export default function ExternalMarkEntryPage() {
 				minimum_pass_marks: courseDetails.minimum_pass_marks,
 				exam_date: new Date().toLocaleDateString('en-GB'),
 				exam_month_year: examMonthYear,
-				program_code: courseDetails.subject_code.substring(0, 4) || '', // Extract from subject code
+				program_code: '', // Left blank as requested
 				program_name: '',
-				semester: selectedSession?.session_name?.match(/Sem(?:ester)?\s*(\d+|[IVX]+)/i)?.[1] || 'I',
-				year: now.getFullYear().toString(),
+				semester: courseDetails.semester_number || 'I', // From semester table
+				year: courseDetails.semester_year || '1', // Year group from semester table (1, 2, 3)
 				students: students.map(s => ({
 					dummy_number: s.dummy_number,
 					total_marks_obtained: s.total_marks_obtained,

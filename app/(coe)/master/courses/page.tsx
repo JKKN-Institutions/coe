@@ -114,6 +114,7 @@ export default function CoursesPage() {
   const [institutions, setInstitutions] = useState<Array<{ id: string, institution_code: string }>>([])
   const [departmentsSrc, setDepartmentsSrc] = useState<Array<{ id: string, department_code: string, department_name?: string }>>([])
   const [regulations, setRegulations] = useState<Array<{ id: string, regulation_code: string }>>([])
+  const [boardsSrc, setBoardsSrc] = useState<Array<{ id: string, board_code: string, board_name?: string }>>([])
   const [codesLoading, setCodesLoading] = useState(false)
   const [uploadErrors, setUploadErrors] = useState<string[]>([])
   const [showErrorDialog, setShowErrorDialog] = useState(false)
@@ -122,6 +123,7 @@ export default function CoursesPage() {
     institution_code: "",
     regulation_code: "",
     offering_department_code: "",
+    board_code: "",
     course_code: "",
     course_title: "",
     display_code: "",
@@ -189,10 +191,11 @@ export default function CoursesPage() {
     ;(async () => {
       try {
         setCodesLoading(true)
-        const { institutions, departments, regulations } = await fetchDropdownData()
+        const { institutions, departments, regulations, boards } = await fetchDropdownData()
         setInstitutions(institutions)
         setDepartmentsSrc(departments)
         setRegulations(regulations)
+        setBoardsSrc(boards)
       } catch (e) {
         console.error('Error loading codes:', e)
       } finally {
@@ -290,6 +293,7 @@ export default function CoursesPage() {
       institution_code: "",
       regulation_code: "",
       offering_department_code: "",
+      board_code: "",
       course_code: "",
       course_title: "",
       display_code: "",
@@ -344,6 +348,7 @@ export default function CoursesPage() {
       institution_code: row.institution_code || "",
       regulation_code: row.regulation_code || "",
       offering_department_code: row.offering_department_code || "",
+      board_code: row.board_code || "",
       course_code: row.course_code || "",
       course_title: row.course_title || "",
       display_code: row.display_code || (row.course_code || ''),
@@ -464,7 +469,7 @@ export default function CoursesPage() {
 
     // Validate required numeric fields for marks and hours
     const requiredNumericFields = [
-      { field: 'class_hours', label: 'Class Hours', max: 999 },
+      { field: 'class_hours', label: 'Total Class Hours', max: 999 },
       { field: 'theory_hours', label: 'Theory Hours', max: 999 },
       { field: 'practical_hours', label: 'Practical Hours', max: 999 },
       { field: 'internal_max_mark', label: 'Internal Max Mark', max: 999 },
@@ -583,6 +588,7 @@ export default function CoursesPage() {
       'Institution Code': c.institution_code || '',
       'Regulation Code': c.regulation_code || '',
       'Offering Department Code': c.offering_department_code || '',
+      'Board Code': c.board_code || '',
       'Course Code': c.course_code,
       'Course Name': c.course_title,
       'Display Code': c.display_code || '',
@@ -595,7 +601,7 @@ export default function CoursesPage() {
       'Practical Credit': c.practical_credit || 0,
       'QP Code': c.qp_code || '',
       'E-Code Name': c.e_code_name || '',
-      'Exam Duration (hours)': c.exam_duration || 0,
+      'Exam hours': c.exam_duration || 0,
       'Evaluation Type': c.evaluation_type || '',
       'Result Type': c.result_type || 'Mark',
       'Self Study Course': c.self_study_course ? 'TRUE' : 'FALSE',
@@ -610,7 +616,7 @@ export default function CoursesPage() {
       'Fee Exception': c.fee_exception ? 'TRUE' : 'FALSE',
       'Syllabus PDF URL': c.syllabus_pdf_url || '',
       'Description': c.description || '',
-      'Class Hours': c.class_hours || '',
+      'Total Class Hours': c.class_hours || '',
       'Theory Hours': c.theory_hours || '',
       'Practical Hours': c.practical_hours || '',
       'Internal Max Mark': c.internal_max_mark || '',
@@ -643,6 +649,7 @@ export default function CoursesPage() {
       institution_code: c.institution_code || '',
       regulation_code: c.regulation_code || '',
       offering_department_code: c.offering_department_code || '',
+      board_code: c.board_code || '',
       course_code: c.course_code,
       course_title: c.course_title,
       display_code: c.display_code || '',
@@ -767,6 +774,7 @@ export default function CoursesPage() {
             institution_code: row['Institution Code*'] || row['Institution Code'] || row.institution_code,
             regulation_code: row['Regulation Code*'] || row['Regulation Code'] || row.regulation_code,
             offering_department_code: row['Offering Department Code*'] || row['Offering Department Code'] || row.offering_department_code || null,
+            board_code: row['Board Code'] || row.board_code || null,
             course_code: row['Course Code*'] || row['Course Code'] || row.course_code,
             course_title: row['Course Name*'] || row['Course Name'] || row.course_title,
             display_code: row['Display Code*'] || row['Display Code'] || row.display_code,
@@ -779,7 +787,7 @@ export default function CoursesPage() {
             practical_credit: Number(row['Practical Credit'] || row.practical_credit) || 0,
             qp_code: row['QP Code*'] || row['QP Code'] || row.qp_code,
             e_code_name: row['E Code Name'] || row['E-Code Name'] || row['E-Code Name (Tamil/English/French/Malayalam/Hindi)'] || row.e_code_name || null,
-            exam_duration: Number(row['Exam Duration Hours'] || row['Exam Duration (hours)'] || row['Exam Duration'] || row.exam_duration) || 0,
+            exam_duration: Number(row['Exam Hours'] || row['Exam hours'] || row['Exam hours'] || row.exam_duration) || 0,
             evaluation_type: row['Evaluation Type*'] || row['Evaluation Type'] || row['Evaluation Type* (CA/ESE/CA + ESE)'] || row.evaluation_type,
             result_type: row['Result Type*'] || row['Result Type'] || row['Result Type* (Mark/Status)'] || row.result_type || 'Mark',
             self_study_course: typeof row.self_study_course === 'boolean' ? row.self_study_course : String(row['Self Study Course'] || row['Self Study Course (TRUE/FALSE)'] || '').toUpperCase() === 'TRUE',
@@ -794,7 +802,7 @@ export default function CoursesPage() {
             fee_exception: typeof row.fee_exception === 'boolean' ? row.fee_exception : String(row['Fee Exception'] || row['Fee Exception (TRUE/FALSE)'] || '').toUpperCase() === 'TRUE',
             syllabus_pdf_url: row['Syllabus PDF URL'] || row.syllabus_pdf_url || null,
             description: row['Description'] || row.description || null,
-            class_hours: Number(row['Class Hours'] || row.class_hours) || 0,
+            class_hours: Number(row['Total Class Hours'] || row.class_hours) || 0,
             theory_hours: Number(row['Theory Hours'] || row.theory_hours) || 0,
             practical_hours: Number(row['Practical Hours'] || row.practical_hours) || 0,
             internal_max_mark: Number(row['Internal Max Mark'] || row.internal_max_mark) || 0,
@@ -1148,7 +1156,7 @@ export default function CoursesPage() {
                             onClick={() => handleSort('exam_duration')}
                           >
                             <div className="flex items-center gap-1">
-                              Exam Duration
+                              Exam Hours
                               {sortField === 'exam_duration' ? (
                                 sortDirection === 'asc' ? <ArrowUp className="h-3 w-3" /> : <ArrowDown className="h-3 w-3" />
                               ) : <ArrowUpDown className="h-3 w-3 opacity-50" />}
@@ -1404,6 +1412,19 @@ export default function CoursesPage() {
                     </SelectContent>
                   </Select>
                 </div>
+                <div className="space-y-2">
+                  <Label className="text-sm font-semibold">Board Code</Label>
+                  <Select value={formData.board_code} onValueChange={(v) => setFormData({ ...formData, board_code: v })}>
+                    <SelectTrigger className="h-10">
+                      <SelectValue placeholder={codesLoading ? 'Loading...' : 'Select board'} />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {boardsSrc.map(b => (
+                        <SelectItem key={b.id} value={b.board_code}>{b.board_code}{b.board_name ? ` - ${b.board_name}` : ''}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
                 <div className="space-y-2 md:col-span-1">
                   <Label className="text-sm font-semibold">Course Code <span className="text-red-500">*</span></Label>
                   <Input value={formData.course_code} onChange={(e) => {
@@ -1542,7 +1563,7 @@ export default function CoursesPage() {
                   </Select>
                 </div>
                 <div className="space-y-2">
-                  <Label className="text-sm font-semibold">Duration (hours) <span className="text-red-500">*</span></Label>
+                  <Label className="text-sm font-semibold">Exam hours <span className="text-red-500">*</span></Label>
                   <Input type="number" step="1" value={formData.exam_duration} onChange={(e) => setFormData({ ...formData, exam_duration: e.target.value })} className={`h-10 ${errors.exam_duration ? 'border-destructive' : ''}`} />
                   {errors.exam_duration && <p className="text-xs text-destructive">{errors.exam_duration}</p>}
                 </div>
@@ -1595,7 +1616,7 @@ export default function CoursesPage() {
 
   <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
     <div className="space-y-2">
-      <Label className="text-sm font-semibold">Class Hours <span className="text-red-500">*</span></Label>
+      <Label className="text-sm font-semibold">Total Class Hours <span className="text-red-500">*</span></Label>
       <Input type="number" step="1" value={formData.class_hours} onChange={(e) => setFormData({ ...formData, class_hours: e.target.value })} className={`h-10 ${errors.class_hours ? 'border-destructive' : ''}`} placeholder="0" />
       {errors.class_hours && <p className="text-xs text-destructive">{errors.class_hours}</p>}
     </div>
