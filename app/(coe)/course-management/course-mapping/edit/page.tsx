@@ -640,7 +640,7 @@ export default function CourseMappingEditPage() {
 		}
 	}
 
-	const downloadBulkUpdateTemplate = () => {
+	const downloadBulkUpdateTemplate = async () => {
 		// Create template with current mappings data including all reference data
 		const templateData: any[] = []
 
@@ -696,9 +696,73 @@ export default function CourseMappingEditPage() {
 			})
 		}
 
+		// Create Reference Data sheet
+		const referenceData: any[][] = []
+
+		// Fetch reference data from APIs
+		try {
+			// Fetch institutions
+			const institutionsRes = await fetch('/api/master/institutions')
+			const institutions = institutionsRes.ok ? await institutionsRes.json() : []
+
+			// Fetch regulations
+			const regulationsRes = await fetch('/api/master/regulations')
+			const regulations = regulationsRes.ok ? await regulationsRes.json() : []
+
+			// Fetch programs
+			const programsRes = await fetch('/api/master/programs')
+			const programs = programsRes.ok ? await programsRes.json() : []
+
+			// Build reference data sheet
+			referenceData.push(['']) // Empty row
+			referenceData.push(['INSTITUTION CODES'])
+			referenceData.push(['Category', 'Code/Value', 'Name/Description'])
+			referenceData.push(['Institution Code', 'Institution Name', ''])
+			institutions.forEach((inst: any) => {
+				referenceData.push(['', inst.institution_code || '', inst.name || inst.institution_name || ''])
+			})
+
+			referenceData.push([''])
+			referenceData.push(['REGULATION CODES'])
+			referenceData.push(['Category', 'Code/Value', 'Name/Description'])
+			referenceData.push(['Regulation Code', 'Regulation Name', ''])
+			regulations.forEach((reg: any) => {
+				referenceData.push(['', reg.regulation_code || '', reg.regulation_name || ''])
+			})
+
+			referenceData.push([''])
+			referenceData.push(['PROGRAM CODES'])
+			referenceData.push(['Category', 'Code/Value', 'Name/Description'])
+			referenceData.push(['Program Code', 'Program Name', ''])
+			programs.forEach((prog: any) => {
+				referenceData.push(['', prog.program_code || '', prog.program_name || ''])
+			})
+
+			referenceData.push([''])
+			referenceData.push(['SEMESTER CODES'])
+			referenceData.push(['Category', 'Code/Value', 'Name/Description'])
+			referenceData.push(['Semester Code', 'Semester Name', ''])
+			semesters.forEach((sem: Semester) => {
+				referenceData.push(['', sem.semester_code || '', sem.semester_name || ''])
+			})
+
+			referenceData.push([''])
+			referenceData.push(['AVAILABLE COURSES'])
+			referenceData.push(['Category', 'Code/Value', 'Name/Description'])
+			referenceData.push(['Course Code', 'Course Name', 'Course Type'])
+			courses.forEach((course: any) => {
+				referenceData.push(['', course.course_code || '', course.course_title || '', course.course_type || ''])
+			})
+
+		} catch (err) {
+			console.error('Error fetching reference data:', err)
+		}
+
 		const ws = XLSX.utils.json_to_sheet(templateData)
+		const wsRef = XLSX.utils.aoa_to_sheet(referenceData)
 		const wb = XLSX.utils.book_new()
 		XLSX.utils.book_append_sheet(wb, ws, 'Course Mappings')
+		XLSX.utils.book_append_sheet(wb, wsRef, 'Reference Data')
 		XLSX.writeFile(wb, `course_mapping_${selectedProgram}_${selectedRegulation}_${new Date().toISOString().split('T')[0]}.xlsx`)
 
 		toast({
@@ -791,13 +855,20 @@ export default function CourseMappingEditPage() {
 					}
 
 					// Find existing mapping by course_id and semester_code (for update)
-					let existingMapping: CourseMapping | undefined
-					for (const table of semesterTables) {
-						existingMapping = table.mappings.find(m =>
-							m.course_id === course.id &&
-							(m.semester_code === semesterCode || table.semester.semester_code === semesterCode)
-						)
-						if (existingMapping) break
+					// First check in existingMappings from database
+					let existingMapping: CourseMapping | undefined = existingMappings.find(m =>
+						m.course_id === course.id && m.semester_code === semesterCode
+					)
+
+					// Also check in semesterTables if not found
+					if (!existingMapping) {
+						for (const table of semesterTables) {
+							existingMapping = table.mappings.find(m =>
+								m.course_id === course.id &&
+								(m.semester_code === semesterCode || table.semester.semester_code === semesterCode)
+							)
+							if (existingMapping) break
+						}
 					}
 
 					// Build mapping payload

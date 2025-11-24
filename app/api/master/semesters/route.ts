@@ -79,18 +79,12 @@ create table if not exists public.semesters (
 		}
 
 		// Map database fields to frontend expected fields
-		const mappedData = (data || []).map(semester => {
-			const programs = Array.isArray(semester.programs) ? semester.programs[0] : semester.programs
-			const programCode = programs?.program_code || null
-
-			return {
-				...semester,
-				program_code: programCode,  // Map from joined programs table
-				semester_code: `${semester.institution_code}-${programCode || 'UNKNOWN'}-${semester.semester_name.replace(/\s+/g, '')}`, // Generate semester_code
-				semester_group: semester.semester_type, // Use semester_type from database
-				programs: undefined // Remove the joined programs object from response
-			}
-		})
+		// semester_code and program_code are stored directly in semesters table
+		const mappedData = (data || []).map(semester => ({
+			...semester,
+			semester_group: semester.semester_group || semester.semester_type,
+			programs: undefined // Remove the joined programs object from response
+		}))
 
 		// Filter by program_code if specified (after mapping)
 		let filteredData = mappedData
@@ -192,14 +186,10 @@ export async function POST(req: NextRequest) {
 		}
 
 		// Map response to match frontend expectations
-		const programs = Array.isArray(data.programs) ? data.programs[0] : data.programs
-		const programCode = programs?.program_code || String(program_code)
-
+		// semester_code and program_code are stored directly in semesters table
 		const mappedResponse = {
 			...data,
-			program_code: programCode,
-			semester_code: `${data.institution_code}-${programCode}-${data.semester_name.replace(/\s+/g, '')}`,
-			semester_group: data.semester_type,
+			semester_group: data.semester_group || data.semester_type,
 			programs: undefined
 		}
 
