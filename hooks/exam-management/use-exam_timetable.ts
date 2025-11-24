@@ -1,29 +1,29 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useToast } from '@/hooks/common/use-toast'
-import type { Exam_timetable, Exam_timetableFormData } from '@/types/exam_timetable'
+import type { ExamTimetable, ExamTimetableFormData } from '@/types/exam_timetable'
 import {
-	fetchExam_timetables as fetchExam_timetablesService,
-	createExam_timetable,
-	updateExam_timetable,
-	deleteExam_timetable
+	fetchExamTimetables as fetchExamTimetablesService,
+	createExamTimetable,
+	updateExamTimetable,
+	deleteExamTimetable
 } from '@/services/exam-management/exam_timetable-service'
 
-export function useExam_timetables() {
+export function useExamTimetables() {
 	const { toast } = useToast()
-	const [exam_timetables, setExam_timetables] = useState<Exam_timetable[]>([])
+	const [examTimetables, setExamTimetables] = useState<ExamTimetable[]>([])
 	const [loading, setLoading] = useState(true)
 
-	// Fetch exam_timetable
-	const fetchExam_timetables = useCallback(async () => {
+	// Fetch exam timetables
+	const fetchExamTimetables = useCallback(async () => {
 		try {
 			setLoading(true)
-			const data = await fetchExam_timetablesService()
-			setExam_timetables(data)
+			const data = await fetchExamTimetablesService()
+			setExamTimetables(data)
 		} catch (error) {
-			console.error('Error fetching exam_timetable:', error)
+			console.error('Error fetching exam timetables:', error)
 			toast({
 				title: '❌ Fetch Failed',
-				description: 'Failed to load exam_timetable.',
+				description: 'Failed to load exam timetables.',
 				variant: 'destructive'
 			})
 		} finally {
@@ -31,22 +31,22 @@ export function useExam_timetables() {
 		}
 	}, [toast])
 
-	// Refresh exam_timetable
-	const refreshExam_timetables = useCallback(async () => {
+	// Refresh exam timetables
+	const refreshExamTimetables = useCallback(async () => {
 		try {
 			setLoading(true)
-			const data = await fetchExam_timetablesService()
-			setExam_timetables(data)
+			const data = await fetchExamTimetablesService()
+			setExamTimetables(data)
 			toast({
 				title: '✅ Refreshed',
-				description: `Loaded ${data.length} exam_timetable.`,
+				description: `Loaded ${data.length} exam timetables.`,
 				className: 'bg-green-50 border-green-200 text-green-800 dark:bg-green-900/20 dark:border-green-800 dark:text-green-200'
 			})
 		} catch (error) {
-			console.error('Error refreshing exam_timetable:', error)
+			console.error('Error refreshing exam timetables:', error)
 			toast({
 				title: '❌ Refresh Failed',
-				description: 'Failed to load exam_timetable.',
+				description: 'Failed to load exam timetables.',
 				variant: 'destructive'
 			})
 		} finally {
@@ -54,22 +54,22 @@ export function useExam_timetables() {
 		}
 	}, [toast])
 
-	// Save exam_timetable (create or update)
-	const saveExam_timetable = useCallback(async (data: Exam_timetableFormData, editing: Exam_timetable | null) => {
+	// Save exam timetable (create or update)
+	const saveExamTimetable = useCallback(async (data: ExamTimetableFormData, editing: ExamTimetable | null) => {
 		try {
-			let savedExam_timetable: Exam_timetable
+			let savedExamTimetable: ExamTimetable
 
 			if (editing) {
-				savedExam_timetable = await updateExam_timetable(editing.id, data)
-				setExam_timetables(prev => prev.map(item => item.id === editing.id ? savedExam_timetable : item))
+				savedExamTimetable = await updateExamTimetable(editing.id, data)
+				setExamTimetables(prev => prev.map(item => item.id === editing.id ? savedExamTimetable : item))
 				toast({
 					title: '✅ Record Updated',
 					description: 'Record has been updated successfully.',
 					className: 'bg-green-50 border-green-200 text-green-800 dark:bg-green-900/20 dark:border-green-800 dark:text-green-200'
 				})
 			} else {
-				savedExam_timetable = await createExam_timetable(data)
-				setExam_timetables(prev => [savedExam_timetable, ...prev])
+				savedExamTimetable = await createExamTimetable(data)
+				setExamTimetables(prev => [savedExamTimetable, ...prev])
 				toast({
 					title: '✅ Record Created',
 					description: 'Record has been created successfully.',
@@ -77,9 +77,9 @@ export function useExam_timetables() {
 				})
 			}
 
-			return savedExam_timetable
+			return savedExamTimetable
 		} catch (error) {
-			console.error('Save exam_timetable error:', error)
+			console.error('Save exam timetable error:', error)
 			toast({
 				title: '❌ Operation Failed',
 				description: error instanceof Error ? error.message : 'Failed to save record.',
@@ -89,18 +89,18 @@ export function useExam_timetables() {
 		}
 	}, [toast])
 
-	// Remove exam_timetable
-	const removeExam_timetable = useCallback(async (id: string) => {
+	// Remove exam timetable
+	const removeExamTimetable = useCallback(async (id: string) => {
 		try {
-			await deleteExam_timetable(id)
-			setExam_timetables(prev => prev.filter(item => item.id !== id))
+			await deleteExamTimetable(id)
+			setExamTimetables(prev => prev.filter(item => item.id !== id))
 			toast({
 				title: '✅ Record Deleted',
 				description: 'Record has been removed.',
 				className: 'bg-green-50 border-green-200 text-green-800 dark:bg-green-900/20 dark:border-green-800 dark:text-green-200'
 			})
 		} catch (error) {
-			console.error('Error deleting exam_timetable:', error)
+			console.error('Error deleting exam timetable:', error)
 			toast({
 				title: '❌ Delete Failed',
 				description: 'Failed to delete record.',
@@ -110,18 +110,18 @@ export function useExam_timetables() {
 		}
 	}, [toast])
 
-	// Load exam_timetable on mount
+	// Load exam timetables on mount
 	useEffect(() => {
-		fetchExam_timetables()
-	}, [fetchExam_timetables])
+		fetchExamTimetables()
+	}, [fetchExamTimetables])
 
 	return {
-		exam_timetables,
+		examTimetables,
 		loading,
 		setLoading,
-		fetchExam_timetables,
-		refreshExam_timetables,
-		saveExam_timetable,
-		removeExam_timetable,
+		fetchExamTimetables,
+		refreshExamTimetables,
+		saveExamTimetable,
+		removeExamTimetable,
 	}
 }

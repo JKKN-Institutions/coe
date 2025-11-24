@@ -15,7 +15,8 @@ import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { useToast } from "@/hooks/common/use-toast"
 import Link from "next/link"
-import { ArrowLeft, Save, RefreshCw, Calendar, Plus, X, FileText } from "lucide-react"
+import { ArrowLeft, Save, RefreshCw, Calendar, Plus, X, FileText, Upload, Download } from "lucide-react"
+import * as XLSX from 'xlsx'
 import { Checkbox } from "@/components/ui/checkbox"
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
 import { Badge } from "@/components/ui/badge"
@@ -32,18 +33,11 @@ type CourseMapping = {
 	program_code: string
 	regulation_code: string
 	regulation_id?: string
+	batch_code?: string
 	semester_code: string
 	course_group?: string
 	course_category?: string
 	course_order?: number
-	internal_max_mark?: number
-	internal_pass_mark?: number
-	internal_converted_mark?: number
-	external_max_mark?: number
-	external_pass_mark?: number
-	external_converted_mark?: number
-	total_pass_mark?: number
-	total_max_mark?: number
 	annual_semester?: boolean
 	registration_based?: boolean
 	is_active?: boolean
@@ -64,16 +58,6 @@ type SemesterTableData = {
 	isOpen: boolean
 }
 
-const COURSE_GROUPS = [
-	{ value: "General", label: "General" },
-	{ value: "Elective - I", label: "Elective - I" },
-	{ value: "Elective - II", label: "Elective - II" },
-	{ value: "Elective - III", label: "Elective - III" },
-	{ value: "Elective - IV", label: "Elective - IV" },
-	{ value: "Elective - V", label: "Elective - V" },
-	{ value: "Elective - VI", label: "Elective - VI" }
-]
-
 export default function CourseMappingEditPage() {
 	const searchParams = useSearchParams()
 	const router = useRouter()
@@ -91,6 +75,7 @@ export default function CourseMappingEditPage() {
 	const [selectedProgram, setSelectedProgram] = useState(programParam || "")
 	const [selectedRegulation, setSelectedRegulation] = useState(regulationParam || "")
 	const [selectedOfferingDepartment, setSelectedOfferingDepartment] = useState("")
+	const [batchCode, setBatchCode] = useState("") // Get from existing mappings
 
 	// Display names for locked fields
 	const [institutionName, setInstitutionName] = useState("")
@@ -114,6 +99,10 @@ export default function CourseMappingEditPage() {
 	// Popover open state
 	const [openPopovers, setOpenPopovers] = useState<{ [key: string]: boolean }>({})
 
+	// Bulk upload state
+	const [uploadSummary, setUploadSummary] = useState<{ total: number; success: number; failed: number }>({ total: 0, success: 0, failed: 0 })
+	const [uploadErrors, setUploadErrors] = useState<Array<{ row: number; course_code: string; semester: string; errors: string[] }>>([])
+
 	// Fetch initial data on mount
 	useEffect(() => {
 		if (!institutionParam || !programParam || !regulationParam) {
@@ -126,17 +115,22 @@ export default function CourseMappingEditPage() {
 			return
 		}
 
-		// Fetch all required data
-		fetchInstitutionName(institutionParam)
-		fetchProgramData(programParam)
-		fetchRegulationName(regulationParam)
-		fetchSemesters(programParam)
-		fetchCourses(institutionParam, programParam, regulationParam)
+		// Fetch all required data in parallel for faster loading
+		setLoading(true)
+		Promise.all([
+			fetchInstitutionName(institutionParam),
+			fetchProgramData(programParam),
+			fetchRegulationName(regulationParam),
+			fetchSemesters(programParam),
+			fetchCourses(institutionParam, programParam, regulationParam)
+		]).finally(() => {
+			setLoading(false)
+		})
 	}, [institutionParam, programParam, regulationParam])
 
 	// Load existing mappings when semesterTables are loaded (NO BATCH)
 	useEffect(() => {
-		if (semesterTables.length > 0 && selectedInstitution && selectedProgram && selectedRegulation) {
+		if (semesterTables.length > 0 && selectedInstitution && selectedProgram && selectedRegulation && existingMappings.length === 0) {
 			loadExistingMappings()
 		}
 	}, [semesterTables.length, selectedInstitution, selectedProgram, selectedRegulation])
@@ -233,28 +227,36 @@ export default function CourseMappingEditPage() {
 				if (data.length > 0) {
 					const uniqueSemCodes = [...new Set(data.map((m: CourseMapping) => m.semester_code))]
 					console.log("DB semester_codes:", uniqueSemCodes)
+					// Extract batch_code from first mapping (all mappings should have same batch_code)
+					const firstBatchCode = data[0].batch_code
+					if (firstBatchCode) {
+						setBatchCode(firstBatchCode)
+						console.log("Batch code:", firstBatchCode)
+					}
 				}
 				console.log("Semester table codes:", semesterTables.map(t => t.semester.semester_code))
 				console.log("Semester table names:", semesterTables.map(t => t.semester.semester_name))
 
-				// Fetch full course details for all mapped courses to ensure they appear in dropdown
+				// Check if mapped courses need to be fetched (only fetch missing ones in a single batch call)
 				const mappedCourseIds = [...new Set(data.map((m: CourseMapping) => m.course_id).filter(Boolean))]
 				if (mappedCourseIds.length > 0) {
-					try {
-						const coursePromises = mappedCourseIds.map(courseId =>
-							fetch(`/api/master/courses?id=${courseId}`).then(r => r.json())
-						)
-						const courseResults = await Promise.all(coursePromises)
-						const mappedCourses = courseResults.flat()
+					// Get current courses to check which ones are missing
+					const currentCourseIds = new Set(courses.map(c => c.id))
+					const missingCourseIds = mappedCourseIds.filter(id => !currentCourseIds.has(id))
 
-						// Merge with existing courses array, avoiding duplicates
-						setCourses(prevCourses => {
-							const existingIds = new Set(prevCourses.map(c => c.id))
-							const newCourses = mappedCourses.filter((c: any) => !existingIds.has(c.id))
-							return [...prevCourses, ...newCourses]
-						})
-					} catch (err) {
-						console.error('Error fetching mapped course details:', err)
+					if (missingCourseIds.length > 0) {
+						try {
+							// Fetch all missing courses in a single batch call using comma-separated IDs
+							const idsParam = missingCourseIds.join(',')
+							const res = await fetch(`/api/master/courses?ids=${idsParam}`)
+							if (res.ok) {
+								const mappedCourses = await res.json()
+								// Merge with existing courses array
+								setCourses(prevCourses => [...prevCourses, ...mappedCourses])
+							}
+						} catch (err) {
+							console.error('Error fetching mapped course details:', err)
+						}
 					}
 				}
 
@@ -309,7 +311,7 @@ export default function CourseMappingEditPage() {
 						return (a.course_order || 0) - (b.course_order || 0)
 					})
 
-					return {
+						return {
 						...table,
 						mappings: sortedMappings.length > 0 ? sortedMappings : [{
 							course_id: "",
@@ -319,14 +321,6 @@ export default function CourseMappingEditPage() {
 							semester_code: table.semester.semester_code,
 							course_group: "General",
 							course_order: 1,
-							internal_max_mark: 40,
-							internal_pass_mark: 14,
-							internal_converted_mark: 25,
-							external_max_mark: 60,
-							external_pass_mark: 26,
-							external_converted_mark: 75,
-							total_max_mark: 100,
-							total_pass_mark: 40,
 							annual_semester: false,
 							registration_based: false,
 							is_active: true
@@ -350,23 +344,28 @@ export default function CourseMappingEditPage() {
 	}
 
 	const addCourseRow = (semesterIndex: number) => {
+		// Get batch_code from existing mappings (any mapping in any semester should have it)
+		let existingBatchCode = batchCode
+		if (!existingBatchCode) {
+			for (const table of semesterTables) {
+				const mappingWithBatch = table.mappings.find(m => m.batch_code)
+				if (mappingWithBatch?.batch_code) {
+					existingBatchCode = mappingWithBatch.batch_code
+					break
+				}
+			}
+		}
+
 		const newRow: CourseMapping = {
 			course_id: "",
 			institution_code: selectedInstitution,
 			program_code: selectedProgram,
 			regulation_code: selectedRegulation,
+			batch_code: existingBatchCode,
 			semester_code: semesterTables[semesterIndex].semester.semester_code,
 			course_group: "General",
 			course_category: "",
 			course_order: semesterTables[semesterIndex].mappings.length + 1,
-			internal_max_mark: 40,
-			internal_pass_mark: 14,
-			internal_converted_mark: 25,
-			external_max_mark: 60,
-			external_pass_mark: 26,
-			external_converted_mark: 75,
-			total_max_mark: 100,
-			total_pass_mark: 40,
 			annual_semester: false,
 			registration_based: false,
 			is_active: true
@@ -482,16 +481,38 @@ export default function CourseMappingEditPage() {
 		try {
 			setSaving(true)
 
-			// Collect all mappings
+			// Get batch_code from existing mappings as fallback
+			let existingBatchCode = batchCode
+			if (!existingBatchCode) {
+				for (const table of semesterTables) {
+					const mappingWithBatch = table.mappings.find(m => m.batch_code)
+					if (mappingWithBatch?.batch_code) {
+						existingBatchCode = mappingWithBatch.batch_code
+						break
+					}
+				}
+			}
+
+			// Collect all mappings (clean them to remove any nested relations)
 			const allMappings = []
 			for (const table of semesterTables) {
 				for (const mapping of table.mappings) {
 					if (mapping.course_id) {
+						// Create a clean mapping object without nested relations
 						allMappings.push({
-							...mapping,
+							id: mapping.id,
+							course_id: mapping.course_id,
 							institution_code: selectedInstitution,
 							program_code: selectedProgram,
-							regulation_code: selectedRegulation
+							regulation_code: selectedRegulation,
+							batch_code: mapping.batch_code || existingBatchCode,
+							semester_code: mapping.semester_code,
+							course_group: mapping.course_group,
+							course_category: mapping.course_category,
+							course_order: mapping.course_order,
+							annual_semester: mapping.annual_semester,
+							registration_based: mapping.registration_based,
+							is_active: mapping.is_active
 						})
 					}
 				}
@@ -506,64 +527,67 @@ export default function CourseMappingEditPage() {
 				return
 			}
 
-			// Separate existing mappings (with id) from new mappings (without id)
-			const mappingsToUpdate = allMappings.filter(m => m.id)
-			const mappingsToCreate = allMappings.filter(m => !m.id)
-
-			// Update existing mappings using PUT
-			for (const mapping of mappingsToUpdate) {
-				await fetch('/api/course-management/course-mapping', {
-					method: 'PUT',
-					headers: { 'Content-Type': 'application/json' },
-					body: JSON.stringify(mapping)
+			// Send all mappings to API (handles UPSERT - insert or update)
+			console.log('Saving mappings (UPSERT):', allMappings)
+			const res = await fetch('/api/course-management/course-mapping', {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({
+					bulk: true,
+					mappings: allMappings
 				})
-			}
+			})
 
-			// Create new mappings using POST
-			let res: any
-			if (mappingsToCreate.length > 0) {
-				res = await fetch('/api/course-management/course-mapping', {
-					method: 'POST',
-					headers: { 'Content-Type': 'application/json' },
-					body: JSON.stringify({
-						bulk: true,
-						mappings: mappingsToCreate
-					})
-				})
-			} else {
-				// If only updates, create a fake successful response
-				res = { ok: true, json: async () => ({ success: [], errors: [] }) }
-			}
+			const result = await res.json()
+			console.log('Save result:', result)
+
+			let totalSuccess = 0
+			let totalErrors = 0
+			let errorMessages: string[] = []
 
 			if (res.ok) {
-				const result = await res.json()
-
+				totalSuccess = result.success?.length || 0
+				totalErrors = result.errors?.length || 0
 				if (result.errors && result.errors.length > 0) {
-					toast({
-						title: '⚠️ Partial Success',
-						description: `Updated ${mappingsToUpdate.length}, created ${mappingsToCreate.length - result.errors.length}, ${result.errors.length} failed.`,
-						variant: 'destructive'
-					})
-				} else {
-					const successMsg = []
-					if (mappingsToUpdate.length > 0) successMsg.push(`${mappingsToUpdate.length} updated`)
-					if (mappingsToCreate.length > 0) successMsg.push(`${mappingsToCreate.length} created`)
-
-					toast({
-						title: '✅ Success',
-						description: `Course mappings saved successfully: ${successMsg.join(', ')}.`,
-						className: 'bg-green-50 border-green-200 text-green-800'
-					})
-					await loadExistingMappings()
+					errorMessages = result.errors.map((e: any) => e.error || 'Unknown error')
 				}
 			} else {
-				const error = await res.json()
+				totalErrors = allMappings.length
+				errorMessages = [result.error || 'Failed to save mappings']
+			}
+
+			if (totalErrors > 0 && totalSuccess > 0) {
+				const errorDetail = errorMessages.length > 0 ? ` (${errorMessages[0]})` : ''
+				toast({
+					title: '⚠️ Partial Success',
+					description: `${totalSuccess} saved successfully, ${totalErrors} failed${errorDetail}.`,
+					variant: 'destructive',
+					className: 'bg-yellow-50 border-yellow-200 text-yellow-800 dark:bg-yellow-900/20 dark:border-yellow-800 dark:text-yellow-200',
+					duration: 6000
+				})
+			} else if (totalErrors > 0) {
+				const errorDetail = errorMessages.length > 0 ? `: ${errorMessages[0]}` : ''
 				toast({
 					title: '❌ Save Failed',
-					description: error.error || 'Failed to save mappings',
-					variant: 'destructive'
+					description: `Failed to save ${totalErrors} mapping(s)${errorDetail}.`,
+					variant: 'destructive',
+					className: 'bg-red-50 border-red-200 text-red-800 dark:bg-red-900/20 dark:border-red-800 dark:text-red-200',
+					duration: 6000
+				})
+			} else {
+				toast({
+					title: '✅ Success',
+					description: `${totalSuccess} course mapping(s) saved successfully.`,
+					className: 'bg-green-50 border-green-200 text-green-800 dark:bg-green-900/20 dark:border-green-800 dark:text-green-200',
+					duration: 5000
 				})
 			}
+
+			// Small delay to ensure database commits are complete
+			await new Promise(resolve => setTimeout(resolve, 300))
+
+			// Reload data to get fresh state from server
+			await loadExistingMappings()
 		} catch (err: any) {
 			toast({
 				title: '❌ Error',
@@ -616,6 +640,311 @@ export default function CourseMappingEditPage() {
 		}
 	}
 
+	const downloadBulkUpdateTemplate = () => {
+		// Create template with current mappings data including all reference data
+		const templateData: any[] = []
+
+		for (const table of semesterTables) {
+			for (const mapping of table.mappings) {
+				if (mapping.course_id) {
+					const course = courses.find(c => c.id === mapping.course_id)
+					templateData.push({
+						'Institution Code': selectedInstitution,
+						'Program Code': selectedProgram,
+						'Regulation Code': selectedRegulation,
+						'Batch Code': mapping.batch_code || batchCode || '',
+						'Semester Code': table.semester.semester_code,
+						'Semester Name': table.semester.semester_name,
+						'Course Code': course?.course_code || '',
+						'Course Name': course?.course_title || '',
+						'Display Code': course?.display_code || '',
+						'Course Type': course?.course_type || '',
+						'Course Part': course?.course_part_master || '',
+						'Credits': course?.credits || 0,
+						'Course Category': mapping.course_category || '',
+						'Course Group': mapping.course_group || 'General',
+						'Course Order': mapping.course_order || 1,
+						'Annual Semester (TRUE/FALSE)': mapping.annual_semester ? 'TRUE' : 'FALSE',
+						'Registration Based (TRUE/FALSE)': mapping.registration_based ? 'TRUE' : 'FALSE',
+						'Active (TRUE/FALSE)': mapping.is_active !== false ? 'TRUE' : 'FALSE'
+					})
+				}
+			}
+		}
+
+		if (templateData.length === 0) {
+			// Create empty template with headers for adding new mappings
+			templateData.push({
+				'Institution Code': selectedInstitution,
+				'Program Code': selectedProgram,
+				'Regulation Code': selectedRegulation,
+				'Batch Code': batchCode || '',
+				'Semester Code': '',
+				'Semester Name': '',
+				'Course Code': '',
+				'Course Name': '',
+				'Display Code': '',
+				'Course Type': '',
+				'Course Part': '',
+				'Credits': 0,
+				'Course Category': '',
+				'Course Group': 'General',
+				'Course Order': 1,
+				'Annual Semester (TRUE/FALSE)': 'FALSE',
+				'Registration Based (TRUE/FALSE)': 'FALSE',
+				'Active (TRUE/FALSE)': 'TRUE'
+			})
+		}
+
+		const ws = XLSX.utils.json_to_sheet(templateData)
+		const wb = XLSX.utils.book_new()
+		XLSX.utils.book_append_sheet(wb, ws, 'Course Mappings')
+		XLSX.writeFile(wb, `course_mapping_${selectedProgram}_${selectedRegulation}_${new Date().toISOString().split('T')[0]}.xlsx`)
+
+		toast({
+			title: '✅ Template Downloaded',
+			description: `${templateData.length} course mapping(s) exported to Excel with reference data.`,
+			className: 'bg-green-50 border-green-200 text-green-800 dark:bg-green-900/20 dark:border-green-800 dark:text-green-200'
+		})
+	}
+
+	const handleBulkUpdate = async (e: React.ChangeEvent<HTMLInputElement>) => {
+		const file = e.target.files?.[0]
+		if (!file) return
+
+		try {
+			setLoading(true)
+			let jsonData: any[] = []
+
+			// Parse file
+			if (file.name.endsWith('.json')) {
+				const text = await file.text()
+				const parsed = JSON.parse(text)
+				jsonData = Array.isArray(parsed) ? parsed : [parsed]
+			} else {
+				const data = await file.arrayBuffer()
+				const workbook = XLSX.read(data)
+				const worksheet = workbook.Sheets[workbook.SheetNames[0]]
+				jsonData = XLSX.utils.sheet_to_json(worksheet) as any[]
+			}
+
+			let successCount = 0
+			let errorCount = 0
+			let addedCount = 0
+			let updatedCount = 0
+			const errorDetails: Array<{ row: number; course_code: string; semester: string; errors: string[] }> = []
+
+			// Get batch_code from existing mappings or from file
+			let existingBatchCode = batchCode
+			if (!existingBatchCode) {
+				for (const table of semesterTables) {
+					const mappingWithBatch = table.mappings.find(m => m.batch_code)
+					if (mappingWithBatch?.batch_code) {
+						existingBatchCode = mappingWithBatch.batch_code
+						break
+					}
+				}
+			}
+
+			for (let i = 0; i < jsonData.length; i++) {
+				const row = jsonData[i]
+				const rowNumber = i + 2 // +2 for header row
+
+				try {
+					const courseCode = row['Course Code'] || row.course_code
+					const semesterCode = row['Semester Code'] || row.semester_code
+					const rowBatchCode = row['Batch Code'] || row.batch_code || existingBatchCode
+
+					if (!courseCode?.trim()) {
+						errorCount++
+						errorDetails.push({
+							row: rowNumber,
+							course_code: 'N/A',
+							semester: semesterCode || 'N/A',
+							errors: ['Course code is required']
+						})
+						continue
+					}
+
+					if (!semesterCode?.trim()) {
+						errorCount++
+						errorDetails.push({
+							row: rowNumber,
+							course_code: courseCode,
+							semester: 'N/A',
+							errors: ['Semester code is required']
+						})
+						continue
+					}
+
+					// Find the course by course_code
+					const course = courses.find(c => c.course_code === courseCode.trim())
+					if (!course) {
+						errorCount++
+						errorDetails.push({
+							row: rowNumber,
+							course_code: courseCode,
+							semester: semesterCode,
+							errors: [`Course "${courseCode}" not found in available courses`]
+						})
+						continue
+					}
+
+					// Find existing mapping by course_id and semester_code (for update)
+					let existingMapping: CourseMapping | undefined
+					for (const table of semesterTables) {
+						existingMapping = table.mappings.find(m =>
+							m.course_id === course.id &&
+							(m.semester_code === semesterCode || table.semester.semester_code === semesterCode)
+						)
+						if (existingMapping) break
+					}
+
+					// Build mapping payload
+					const mappingPayload: any = {
+						course_id: course.id,
+						institution_code: row['Institution Code'] || row.institution_code || selectedInstitution,
+						program_code: row['Program Code'] || row.program_code || selectedProgram,
+						regulation_code: row['Regulation Code'] || row.regulation_code || selectedRegulation,
+						batch_code: rowBatchCode,
+						semester_code: semesterCode,
+						course_category: row['Course Category'] || row.course_category || course.course_category || '',
+						course_group: row['Course Group'] || row.course_group || 'General',
+						course_order: Number(row['Course Order'] || row.course_order) || 1,
+						annual_semester: typeof row.annual_semester === 'boolean'
+							? row.annual_semester
+							: String(row['Annual Semester (TRUE/FALSE)'] || row.annual_semester || 'FALSE').toUpperCase() === 'TRUE',
+						registration_based: typeof row.registration_based === 'boolean'
+							? row.registration_based
+							: String(row['Registration Based (TRUE/FALSE)'] || row.registration_based || 'FALSE').toUpperCase() === 'TRUE',
+						is_active: typeof row.is_active === 'boolean'
+							? row.is_active
+							: String(row['Active (TRUE/FALSE)'] || row.is_active || 'TRUE').toUpperCase() !== 'FALSE'
+					}
+
+					// Track if this is an update or add
+					const isUpdate = !!existingMapping?.id
+
+					// If existing mapping found, include id for update
+					if (existingMapping?.id) {
+						mappingPayload.id = existingMapping.id
+					}
+
+					// Send to API
+					const res = await fetch('/api/course-management/course-mapping', {
+						method: 'POST',
+						headers: { 'Content-Type': 'application/json' },
+						body: JSON.stringify({
+							bulk: true,
+							mappings: [mappingPayload]
+						})
+					})
+
+					if (res.ok) {
+						const result = await res.json()
+						if (result.success && result.success.length > 0) {
+							successCount++
+							if (isUpdate) {
+								updatedCount++
+							} else {
+								addedCount++
+							}
+						} else if (result.errors && result.errors.length > 0) {
+							errorCount++
+							errorDetails.push({
+								row: rowNumber,
+								course_code: courseCode,
+								semester: semesterCode,
+								errors: result.errors.map((e: any) => e.error || 'Unknown error')
+							})
+						} else {
+							successCount++
+							if (isUpdate) {
+								updatedCount++
+							} else {
+								addedCount++
+							}
+						}
+					} else {
+						errorCount++
+						const errorData = await res.json().catch(() => ({}))
+						errorDetails.push({
+							row: rowNumber,
+							course_code: courseCode,
+							semester: semesterCode,
+							errors: [errorData.error || 'Failed to save mapping']
+						})
+					}
+				} catch (err) {
+					errorCount++
+					errorDetails.push({
+						row: rowNumber,
+						course_code: row['Course Code'] || row.course_code || 'N/A',
+						semester: row['Semester Code'] || row.semester_code || 'N/A',
+						errors: [err instanceof Error ? err.message : 'Unknown error']
+					})
+				}
+			}
+
+			// Update summary
+			setUploadSummary({
+				total: jsonData.length,
+				success: successCount,
+				failed: errorCount
+			})
+
+			// Build description with add/update counts
+			const successDescription = successCount > 0
+				? `${addedCount > 0 ? `${addedCount} added` : ''}${addedCount > 0 && updatedCount > 0 ? ', ' : ''}${updatedCount > 0 ? `${updatedCount} updated` : ''}`
+				: ''
+
+			// Show results
+			if (errorCount === 0) {
+				toast({
+					title: '✅ Bulk Import Complete',
+					description: `Successfully processed ${successCount} mapping(s): ${successDescription}.`,
+					className: 'bg-green-50 border-green-200 text-green-800 dark:bg-green-900/20 dark:border-green-800 dark:text-green-200',
+					duration: 5000
+				})
+			} else if (successCount > 0) {
+				setUploadErrors(errorDetails)
+				toast({
+					title: '⚠️ Partial Import Success',
+					description: `${successDescription}, ${errorCount} failed. Check console for details.`,
+					className: 'bg-yellow-50 border-yellow-200 text-yellow-800 dark:bg-yellow-900/20 dark:border-yellow-800 dark:text-yellow-200',
+					duration: 6000
+				})
+				console.error('Bulk import errors:', errorDetails)
+			} else {
+				setUploadErrors(errorDetails)
+				toast({
+					title: '❌ Bulk Import Failed',
+					description: `All ${errorCount} mapping(s) failed. Check console for details.`,
+					variant: 'destructive',
+					className: 'bg-red-50 border-red-200 text-red-800 dark:bg-red-900/20 dark:border-red-800 dark:text-red-200',
+					duration: 6000
+				})
+				console.error('Bulk import errors:', errorDetails)
+			}
+
+			// Reload data
+			await loadExistingMappings()
+
+			// Reset file input
+			e.target.value = ''
+		} catch (error) {
+			console.error('Bulk import error:', error)
+			toast({
+				title: '❌ Bulk Import Failed',
+				description: error instanceof Error ? error.message : 'Failed to process file.',
+				variant: 'destructive',
+				className: 'bg-red-50 border-red-200 text-red-800 dark:bg-red-900/20 dark:border-red-800 dark:text-red-200'
+			})
+		} finally {
+			setLoading(false)
+		}
+	}
+
 	return (
 		<SidebarProvider>
 			<AppSidebar />
@@ -652,7 +981,7 @@ export default function CourseMappingEditPage() {
 									<Button
 										size="sm"
 										asChild
-										className="bg-green-600 hover:bg-green-700 text-white h-8 text-[11px] px-2"
+										className="bg-green-600 hover:bg-green-700 text-white h-8 text-sm px-2"
 									>
 										<Link href="/course-mapping-index">
 											<ArrowLeft className="h-3 w-3 mr-1" />
@@ -666,15 +995,30 @@ export default function CourseMappingEditPage() {
 									</div>
 								</div>
 								<div className="flex gap-2">
-									<Button variant="outline" size="sm" className="h-8 text-[11px] px-2" onClick={handleGeneratePDF} disabled={loading}>
+									<Button variant="outline" size="sm" className="h-8 text-sm px-2" onClick={handleGeneratePDF} disabled={loading}>
 										<FileText className="h-3 w-3 mr-1" />
 										Generate PDF
 									</Button>
-									<Button variant="outline" size="sm" className="h-8 text-[11px] px-2" onClick={loadExistingMappings} disabled={loading}>
+									<Button variant="outline" size="sm" className="h-8 text-sm px-2" onClick={downloadBulkUpdateTemplate} disabled={loading}>
+										<Download className="h-3 w-3 mr-1" />
+										Export
+									</Button>
+									<Button variant="outline" size="sm" className="h-8 text-sm px-2" onClick={() => document.getElementById('bulk-update-file')?.click()} disabled={loading}>
+										<Upload className="h-3 w-3 mr-1" />
+										Import
+									</Button>
+									<input
+										id="bulk-update-file"
+										type="file"
+										accept=".xlsx,.xls,.json"
+										onChange={handleBulkUpdate}
+										className="hidden"
+									/>
+									<Button variant="outline" size="sm" className="h-8 text-sm px-2" onClick={loadExistingMappings} disabled={loading}>
 										<RefreshCw className={`h-3 w-3 mr-1 ${loading ? 'animate-spin' : ''}`} />
 										Refresh
 									</Button>
-									<Button size="sm" className="h-8 text-[11px] px-2" onClick={saveAllMappings} disabled={saving || loading}>
+									<Button size="sm" className="h-8 text-sm px-2" onClick={saveAllMappings} disabled={saving || loading}>
 										<Save className="h-3 w-3 mr-1" />
 										{saving ? 'Saving...' : 'Save All'}
 									</Button>
@@ -686,19 +1030,19 @@ export default function CourseMappingEditPage() {
 							<div className="bg-muted/50 border rounded-lg p-3">
 								<div className="grid grid-cols-1 md:grid-cols-3 gap-3">
 									<div>
-										<Label className="text-[10px] text-muted-foreground">Institution</Label>
-										<p className="font-medium mt-1 text-[11px]">{institutionName || selectedInstitution}</p>
-										<p className="text-[10px] text-muted-foreground">{selectedInstitution}</p>
+										<Label className="text-xs text-muted-foreground">Institution</Label>
+										<p className="font-medium mt-1 text-sm">{institutionName || selectedInstitution}</p>
+										<p className="text-xs text-muted-foreground">{selectedInstitution}</p>
 									</div>
 									<div>
-										<Label className="text-[10px] text-muted-foreground">Program</Label>
-										<p className="font-medium mt-1 text-[11px]">{programName || selectedProgram}</p>
-										<p className="text-[10px] text-muted-foreground">{selectedProgram}</p>
+										<Label className="text-xs text-muted-foreground">Program</Label>
+										<p className="font-medium mt-1 text-sm">{programName || selectedProgram}</p>
+										<p className="text-xs text-muted-foreground">{selectedProgram}</p>
 									</div>
 									<div>
-										<Label className="text-[10px] text-muted-foreground">Regulation</Label>
-										<p className="font-medium mt-1 text-[11px]">{regulationName || selectedRegulation}</p>
-										<p className="text-[10px] text-muted-foreground">{selectedRegulation}</p>
+										<Label className="text-xs text-muted-foreground">Regulation</Label>
+										<p className="font-medium mt-1 text-sm">{regulationName || selectedRegulation}</p>
+										<p className="text-xs text-muted-foreground">{selectedRegulation}</p>
 									</div>
 								</div>
 							</div>
@@ -711,7 +1055,7 @@ export default function CourseMappingEditPage() {
 							{courses.length > 0 && (
 								<div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg p-2">
 									<div className="flex items-center justify-between">
-										<span className="text-[11px] text-blue-600 dark:text-blue-400">
+										<span className="text-sm text-blue-600 dark:text-blue-400">
 											{courses.length} course{courses.length !== 1 ? 's' : ''} available for selection
 										</span>
 									</div>
@@ -730,14 +1074,13 @@ export default function CourseMappingEditPage() {
 														</Button>
 														<Calendar className="h-4 w-4 text-primary" />
 														<h3 className="text-sm font-semibold">{table.semester.semester_name}</h3>
-														<Badge variant="outline" className="ml-2 text-[10px] h-5">
+														<Badge variant="outline" className="ml-2 text-xs h-5">
 															{table.mappings.filter(m => m.course_id).length} courses mapped
 														</Badge>
 													</div>
 													<Button
 														size="sm"
-														variant="outline"
-														className="h-7 text-[11px] px-2"
+														className="h-7 text-sm px-2"
 														onClick={(e) => {
 															e.stopPropagation()
 															addCourseRow(semIndex)
@@ -755,19 +1098,17 @@ export default function CourseMappingEditPage() {
 														<Table>
 															<TableHeader className="sticky top-0 z-[5] bg-slate-50 dark:bg-slate-900/50">
 																<TableRow>
-																	<TableHead className="w-[50px] text-[11px] h-8">#</TableHead>
-																	<TableHead className="w-[180px] text-[11px] h-8">Course Code</TableHead>
-																	<TableHead className="w-[220px] text-[11px] h-8">Course Name</TableHead>
-																	<TableHead className="w-[150px] text-[11px] h-8">Category</TableHead>
-																	<TableHead className="w-[120px] text-[11px] h-8">Group</TableHead>
-																	<TableHead className="w-[80px] text-[11px] h-8">Order</TableHead>
-																	<TableHead className="text-center text-[11px] h-8" colSpan={3}>Internal Marks</TableHead>
-																	<TableHead className="text-center text-[11px] h-8" colSpan={3}>External Marks</TableHead>
-																	<TableHead className="text-center text-[11px] h-8" colSpan={2}>Total</TableHead>
-																	<TableHead className="text-center w-[100px] text-[11px] h-8">Annual</TableHead>
-																	<TableHead className="text-center w-[120px] text-[11px] h-8">
+																	<TableHead className="w-[50px] text-base font-semibold h-9">#</TableHead>
+																	<TableHead className="w-[180px] text-base font-semibold h-9">Course Code</TableHead>
+																	<TableHead className="w-[220px] text-base font-semibold h-9">Course Name</TableHead>
+																	<TableHead className="w-[100px] text-base font-semibold h-9">Type</TableHead>
+																	<TableHead className="w-[100px] text-base font-semibold h-9">Part</TableHead>
+																	<TableHead className="w-[150px] text-base font-semibold h-9">Category</TableHead>
+																	<TableHead className="w-[80px] text-base font-semibold h-9">Order</TableHead>
+																	<TableHead className="text-center w-[100px] text-base font-semibold h-9">Annual</TableHead>
+																	<TableHead className="text-center w-[120px] text-base font-semibold h-9">
 																		<div className="flex flex-col items-center gap-1">
-																			<span className="text-[10px]">Registration</span>
+																			<span className="text-sm">Registration</span>
 																			<Checkbox
 																				checked={selectAllRegistration[`semester_${semIndex}`] || false}
 																				onCheckedChange={() => toggleAllRegistration(semIndex)}
@@ -775,9 +1116,9 @@ export default function CourseMappingEditPage() {
 																			/>
 																		</div>
 																	</TableHead>
-																	<TableHead className="text-center w-[100px] text-[11px] h-8">
+																	<TableHead className="text-center w-[100px] text-base font-semibold h-9">
 																		<div className="flex flex-col items-center gap-1">
-																			<span className="text-[10px]">Active</span>
+																			<span className="text-sm">Active</span>
 																			<Checkbox
 																				checked={selectAllStatus[`semester_${semIndex}`] !== false}
 																				onCheckedChange={() => toggleAllStatus(semIndex)}
@@ -785,40 +1126,20 @@ export default function CourseMappingEditPage() {
 																			/>
 																		</div>
 																	</TableHead>
-																	<TableHead className="w-[80px] text-[11px] h-8">Action</TableHead>
-																</TableRow>
-																<TableRow>
-																	<TableHead></TableHead>
-																	<TableHead></TableHead>
-																	<TableHead></TableHead>
-																	<TableHead></TableHead>
-																	<TableHead></TableHead>
-																	<TableHead></TableHead>
-																	<TableHead className="text-[10px] text-center h-7">Pass</TableHead>
-																	<TableHead className="text-[10px] text-center h-7">Max</TableHead>
-																	<TableHead className="text-[10px] text-center h-7">Convert</TableHead>
-																	<TableHead className="text-[10px] text-center h-7">Pass</TableHead>
-																	<TableHead className="text-[10px] text-center h-7">Max</TableHead>
-																	<TableHead className="text-[10px] text-center h-7">Convert</TableHead>
-																	<TableHead className="text-[10px] text-center h-7">Pass</TableHead>
-																	<TableHead className="text-[10px] text-center h-7">Max</TableHead>
-																	<TableHead></TableHead>
-																	<TableHead></TableHead>
-																	<TableHead></TableHead>
-																	<TableHead></TableHead>
+																	<TableHead className="w-[80px] text-base font-semibold h-9">Action</TableHead>
 																</TableRow>
 															</TableHeader>
 															<TableBody>
 																{table.mappings.length === 0 ? (
 																	<TableRow>
-																		<TableCell colSpan={18} className="text-center text-[11px] text-muted-foreground py-4">
+																		<TableCell colSpan={11} className="text-center text-sm text-muted-foreground py-4">
 																			No courses mapped. Click "Add Course" to start.
 																		</TableCell>
 																	</TableRow>
 																) : (
 																	table.mappings.map((mapping, rowIndex) => (
 																		<TableRow key={rowIndex}>
-																			<TableCell className="py-2 text-[11px]">{rowIndex + 1}</TableCell>
+																			<TableCell className="py-2 text-sm">{rowIndex + 1}</TableCell>
 																			<TableCell className="py-2">
 																				<Popover
 																					open={openPopovers[`${semIndex}_${rowIndex}`] || false}
@@ -833,7 +1154,7 @@ export default function CourseMappingEditPage() {
 																						<Button
 																							variant="outline"
 																							role="combobox"
-																							className="h-7 w-full justify-between text-[11px]"
+																							className="h-7 w-full justify-between text-sm"
 																						>
 																							{mapping.course_id
 																								? courses.find(c => c.id === mapping.course_id)?.course_code || "Select"
@@ -843,9 +1164,9 @@ export default function CourseMappingEditPage() {
 																					</PopoverTrigger>
 																					<PopoverContent className="w-[400px] p-0">
 																						<Command>
-																							<CommandInput placeholder="Search course..." className="text-[11px]" />
+																							<CommandInput placeholder="Search course..." className="text-sm" />
 																							<CommandList>
-																								<CommandEmpty className="text-[11px]">No course found.</CommandEmpty>
+																								<CommandEmpty className="text-sm">No course found.</CommandEmpty>
 																								<CommandGroup>
 																									{courses.map((course) => (
 																										<CommandItem
@@ -858,11 +1179,11 @@ export default function CourseMappingEditPage() {
 																													[`${semIndex}_${rowIndex}`]: false
 																												}))
 																											}}
-																											className="text-[11px]"
+																											className="text-sm"
 																										>
 																											<div className="flex flex-col">
-																												<span className="font-medium text-[11px]">{course.course_code}</span>
-																												<span className="text-[10px] text-muted-foreground">
+																												<span className="font-medium text-sm">{course.course_code}</span>
+																												<span className="text-xs text-muted-foreground">
 																													{course.course_title || '-'}
 																												</span>
 																											</div>
@@ -880,107 +1201,24 @@ export default function CourseMappingEditPage() {
 																					</PopoverContent>
 																				</Popover>
 																			</TableCell>
-																			<TableCell className="text-[11px] py-2">
+																			<TableCell className="text-sm py-2">
 																				{courses.find(c => c.id === mapping.course_id)?.course_title || '-'}
 																			</TableCell>
-																			<TableCell className="text-[11px] py-2">{mapping.course_category || '-'}</TableCell>
-																			<TableCell className="py-2">
-																				<Select
-																					value={mapping.course_group || "General"}
-																					onValueChange={(v) => updateCourseRow(semIndex, rowIndex, 'course_group', v)}
-																				>
-																					<SelectTrigger className="h-7 text-[11px]">
-																						<SelectValue />
-																					</SelectTrigger>
-																					<SelectContent>
-																						{COURSE_GROUPS.map(group => (
-																							<SelectItem key={group.value} value={group.value} className="text-[11px]">
-																								{group.label}
-																							</SelectItem>
-																						))}
-																					</SelectContent>
-																				</Select>
+																			<TableCell className="text-sm py-2">
+																				{courses.find(c => c.id === mapping.course_id)?.course_type || '-'}
 																			</TableCell>
+																			<TableCell className="text-sm py-2">
+																				{courses.find(c => c.id === mapping.course_id)?.course_part_master || '-'}
+																			</TableCell>
+																			<TableCell className="text-sm py-2">{mapping.course_category || '-'}</TableCell>
 																			<TableCell className="py-2">
 																				<Input
 																					type="number"
 																					value={mapping.course_order || 1}
 																					onChange={(e) => updateCourseRow(semIndex, rowIndex, 'course_order', parseFloat(e.target.value) || 1)}
-																					className="h-7 w-20 text-[11px] text-center"
+																					className="h-7 w-20 text-sm text-center"
 																					min={0.1}
 																					step={0.1}
-																				/>
-																			</TableCell>
-																			<TableCell className="py-2">
-																				<Input
-																					type="number"
-																					value={mapping.internal_pass_mark || 0}
-																					onChange={(e) => updateCourseRow(semIndex, rowIndex, 'internal_pass_mark', parseInt(e.target.value))}
-																					className="h-7 w-16 text-[11px] text-center"
-																					min={0}
-																				/>
-																			</TableCell>
-																			<TableCell className="py-2">
-																				<Input
-																					type="number"
-																					value={mapping.internal_max_mark || 0}
-																					onChange={(e) => updateCourseRow(semIndex, rowIndex, 'internal_max_mark', parseInt(e.target.value))}
-																					className="h-7 w-16 text-[11px] text-center"
-																					min={0}
-																				/>
-																			</TableCell>
-																			<TableCell className="py-2">
-																				<Input
-																					type="number"
-																					value={mapping.internal_converted_mark || 0}
-																					onChange={(e) => updateCourseRow(semIndex, rowIndex, 'internal_converted_mark', parseInt(e.target.value))}
-																					className="h-7 w-16 text-[11px] text-center"
-																					min={0}
-																				/>
-																			</TableCell>
-																			<TableCell className="py-2">
-																				<Input
-																					type="number"
-																					value={mapping.external_pass_mark || 0}
-																					onChange={(e) => updateCourseRow(semIndex, rowIndex, 'external_pass_mark', parseInt(e.target.value))}
-																					className="h-7 w-16 text-[11px] text-center"
-																					min={0}
-																				/>
-																			</TableCell>
-																			<TableCell className="py-2">
-																				<Input
-																					type="number"
-																					value={mapping.external_max_mark || 0}
-																					onChange={(e) => updateCourseRow(semIndex, rowIndex, 'external_max_mark', parseInt(e.target.value))}
-																					className="h-7 w-16 text-[11px] text-center"
-																					min={0}
-																				/>
-																			</TableCell>
-																			<TableCell className="py-2">
-																				<Input
-																					type="number"
-																					value={mapping.external_converted_mark || 0}
-																					onChange={(e) => updateCourseRow(semIndex, rowIndex, 'external_converted_mark', parseInt(e.target.value))}
-																					className="h-7 w-16 text-[11px] text-center"
-																					min={0}
-																				/>
-																			</TableCell>
-																			<TableCell className="py-2">
-																				<Input
-																					type="number"
-																					value={mapping.total_pass_mark || 0}
-																					onChange={(e) => updateCourseRow(semIndex, rowIndex, 'total_pass_mark', parseInt(e.target.value))}
-																					className="h-7 w-16 text-[11px] text-center"
-																					min={0}
-																				/>
-																			</TableCell>
-																			<TableCell className="py-2">
-																				<Input
-																					type="number"
-																					value={mapping.total_max_mark || 0}
-																					onChange={(e) => updateCourseRow(semIndex, rowIndex, 'total_max_mark', parseInt(e.target.value))}
-																					className="h-7 w-16 text-[11px] text-center"
-																					min={0}
 																				/>
 																			</TableCell>
 																			<TableCell className="text-center py-2">

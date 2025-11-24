@@ -88,7 +88,7 @@ export { useCourseMappingService } from './course-management/use-course-mapping'
 export { useExamSchedule } from './exam-management/use-exam-schedule'
 export { useExamRooms } from './exam-management/use-exam-rooms'
 export { useExamRegistrations } from './exam-management/use-exam-registrations'
-export { useExamTimetable } from './exam-management/use-exam_timetable'
+export { useExamTimetables } from './exam-management/use-exam_timetable'
 
 // ============================================================================
 // GRADING HOOKS

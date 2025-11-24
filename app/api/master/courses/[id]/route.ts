@@ -260,7 +260,63 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
 
       throw error
     }
-    return NextResponse.json(updated)
+
+    // Map database fields to frontend expected fields
+    const mapped = {
+      id: updated.id,
+      institutions_id: updated.institutions_id,
+      regulation_id: updated.regulation_id,
+      offering_department_id: updated.offering_department_id,
+      institution_code: updated.institution_code,
+      regulation_code: updated.regulation_code,
+      offering_department_code: updated.offering_department_code,
+      board_code: updated.board_code,
+      course_code: updated.course_code,
+      course_title: updated.course_name,
+      display_code: updated.display_code,
+      course_category: updated.course_category,
+      course_type: updated.course_type,
+      course_part_master: updated.course_part_master,
+      credits: updated.credit ?? 0,
+      split_credit: updated.split_credit,
+      theory_credit: updated.theory_credit,
+      practical_credit: updated.practical_credit,
+      qp_code: updated.qp_code,
+      e_code_name: updated.e_code_name,
+      exam_duration: updated.exam_duration,
+      evaluation_type: updated.evaluation_type,
+      result_type: updated.result_type,
+      self_study_course: updated.self_study_course,
+      outside_class_course: updated.outside_class_course,
+      open_book: updated.open_book,
+      online_course: updated.online_course,
+      dummy_number_required: !updated.dummy_number_not_required,
+      annual_course: updated.annual_course,
+      multiple_qp_set: updated.multiple_qp_set,
+      no_of_qp_setter: updated.no_of_qp_setter,
+      no_of_scrutinizer: updated.no_of_scrutinizer,
+      fee_exception: updated.fee_exception,
+      syllabus_pdf_url: updated.syllabus_pdf_url,
+      description: updated.description,
+      is_active: updated.status ?? true,
+      created_at: updated.created_at,
+      updated_at: updated.updated_at,
+      class_hours: updated.class_hours ?? 0,
+      theory_hours: updated.theory_hours ?? 0,
+      practical_hours: updated.practical_hours ?? 0,
+      internal_max_mark: updated.internal_max_mark ?? 0,
+      internal_pass_mark: updated.internal_pass_mark ?? 0,
+      internal_converted_mark: updated.internal_converted_mark ?? 0,
+      external_max_mark: updated.external_max_mark ?? 0,
+      external_pass_mark: updated.external_pass_mark ?? 0,
+      external_converted_mark: updated.external_converted_mark ?? 0,
+      total_pass_mark: updated.total_pass_mark ?? 0,
+      total_max_mark: updated.total_max_mark ?? 0,
+      annual_semester: updated.annual_semester ?? false,
+      registration_based: updated.registration_based ?? false,
+    }
+
+    return NextResponse.json(mapped)
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Unknown error'
     return NextResponse.json({ error: 'Failed to update course', details: message }, { status: 500 })

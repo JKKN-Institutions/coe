@@ -90,7 +90,15 @@ export async function GET(request: NextRequest) {
 					credit,
 					exam_duration,
 					evaluation_type,
-					regulation_code
+					regulation_code,
+					internal_max_mark,
+					internal_pass_mark,
+					internal_converted_mark,
+					external_max_mark,
+					external_pass_mark,
+					external_converted_mark,
+					total_max_mark,
+					total_pass_mark
 				)
 			`)
 			.eq('institution_code', institutionCode)
@@ -155,19 +163,19 @@ export async function GET(request: NextRequest) {
 				course_order: mapping.course_order || 0,
 				sort_order: mapping.course_order || 0,
 
-				// Internal marks (from course_mapping)
-				internal_max_mark: mapping.internal_max_mark || 0,
-				internal_pass_mark: mapping.internal_pass_mark || 0,
-				internal_converted_mark: mapping.internal_converted_mark || 0,
+				// Internal marks (from courses table via FK join)
+				internal_max_mark: course?.internal_max_mark || 0,
+				internal_pass_mark: course?.internal_pass_mark || 0,
+				internal_converted_mark: course?.internal_converted_mark || 0,
 
-				// External/ESE marks (from course_mapping)
-				external_max_mark: mapping.external_max_mark || 0,
-				external_pass_mark: mapping.external_pass_mark || 0,
-				external_converted_mark: mapping.external_converted_mark || 0,
+				// External/ESE marks (from courses table via FK join)
+				external_max_mark: course?.external_max_mark || 0,
+				external_pass_mark: course?.external_pass_mark || 0,
+				external_converted_mark: course?.external_converted_mark || 0,
 
-				// Total marks (from course_mapping)
-				total_max_mark: mapping.total_max_mark || 0,
-				total_pass_mark: mapping.total_pass_mark || 0
+				// Total marks (from courses table via FK join)
+				total_max_mark: course?.total_max_mark || 0,
+				total_pass_mark: course?.total_pass_mark || 0
 			}
 		})
 

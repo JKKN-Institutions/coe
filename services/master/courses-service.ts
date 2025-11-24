@@ -56,7 +56,7 @@ export async function createCourse(data: Partial<CourseFormData>): Promise<Cours
 		fee_exception: Boolean(data.fee_exception),
 		syllabus_pdf_url: data.syllabus_pdf_url || null,
 		description: data.description || null,
-		is_active: Boolean(data.is_active),
+		is_active: data.is_active !== undefined ? Boolean(data.is_active) : true,
 		course_level: data.course_level,
 		// Required fields - always send as numbers (0 if empty)
 		class_hours: Number(data.class_hours) || 0,
@@ -121,7 +121,7 @@ export async function updateCourse(id: string, data: Partial<CourseFormData>): P
 		fee_exception: Boolean(data.fee_exception),
 		syllabus_pdf_url: data.syllabus_pdf_url || null,
 		description: data.description || null,
-		is_active: Boolean(data.is_active),
+		is_active: data.is_active !== undefined ? Boolean(data.is_active) : true,
 		course_level: data.course_level,
 		// Required fields
 		class_hours: Number(data.class_hours) || 0,

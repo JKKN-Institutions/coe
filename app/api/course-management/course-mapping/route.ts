@@ -224,47 +224,72 @@ export async function POST(request: Request) {
 					regulationId = regulationData.id
 				}
 
-				// Check for duplicate mapping (NO BATCH)
+				// Check for existing mapping and use UPSERT
 				const { data: existing } = await supabase
 					.from('course_mapping')
 					.select('id')
 					.eq('course_id', mapping.course_id)
 					.eq('institution_code', mapping.institution_code)
 					.eq('program_code', mapping.program_code)
+					.eq('batch_code', mapping.batch_code || '')
 					.eq('regulation_code', mapping.regulation_code)
 					.eq('semester_code', mapping.semester_code || '')
 					.eq('is_active', true)
 					.single()
 
-				if (existing) {
-					errors.push({
-						semester_code: mapping.semester_code,
-						course_id: mapping.course_id,
-						error: 'Duplicate mapping exists'
-					})
-					continue
-				}
+				let data, error
 
-				const { data, error } = await supabase
-					.from('course_mapping')
-					.insert([{
-						...mapping,
-						course_code: courseData.course_code,
-						institutions_id: institutionData.id,  // Add institution ID
-						program_id: programData.id,           // Add program ID
-						regulation_id: regulationId,          // Add regulation ID if provided
-						created_at: new Date().toISOString(),
-						updated_at: new Date().toISOString()
-					}])
-					.select(`
-						*,
-						course:courses!course_mapping_course_id_fkey (
-							id,
-							course_code,
-							course_name
-						)
-					`)
-					.single()
+				if (existing) {
+					// UPDATE existing mapping
+					const updateResult = await supabase
+						.from('course_mapping')
+						.update({
+							course_code: courseData.course_code,
+							course_group: mapping.course_group,
+							course_category: mapping.course_category,
+							course_order: mapping.course_order,
+							annual_semester: mapping.annual_semester,
+							registration_based: mapping.registration_based,
+							is_active: mapping.is_active,
+							updated_at: new Date().toISOString()
+						})
+						.eq('id', existing.id)
+						.select(`
+							*,
+							course:courses!course_mapping_course_id_fkey (
+								id,
+								course_code,
+								course_name
+							)
+						`)
+						.single()
+					data = updateResult.data
+					error = updateResult.error
+				} else {
+					// INSERT new mapping
+					const insertResult = await supabase
+						.from('course_mapping')
+						.insert([{
+							...mapping,
+							course_code: courseData.course_code,
+							institutions_id: institutionData.id,
+							program_id: programData.id,
+							regulation_id: regulationId,
+							created_at: new Date().toISOString(),
+							updated_at: new Date().toISOString()
+						}])
+						.select(`
+							*,
+							course:courses!course_mapping_course_id_fkey (
+								id,
+								course_code,
+								course_name
+							)
+						`)
+						.single()
+					data = insertResult.data
+					error = insertResult.error
+				}
 
 				if (error) {
 					console.error('Error creating course mapping:', error)

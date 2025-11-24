@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useMemo } from "react"
 import Link from "next/link"
 import {
   Breadcrumb,
@@ -23,7 +23,7 @@ import {
 } from "@/components/ui/select"
 import { Card, CardContent, CardHeader } from "@/components/ui/card"
 import { AppSidebar } from "@/components/layout/app-sidebar"
-import { PremiumNavbar } from "@/components/layout/premium-navbar"
+import { AppHeader } from "@/components/layout/app-header"
 import { AppFooter } from "@/components/layout/app-footer"
 import { PageTransition } from "@/components/common/page-transition"
 import { SidebarProvider, SidebarInset } from "@/components/ui/sidebar"
@@ -44,15 +44,10 @@ import {
   Download,
   Upload,
   PlusCircle,
-  Settings,
   Search,
   ChevronLeft,
   ChevronRight,
   BookText,
-  BookOpen,
-  GraduationCap,
-  Clock,
-  TrendingUp,
   Edit,
   Trash2,
   FileSpreadsheet,
@@ -62,10 +57,9 @@ import {
   ArrowUp,
   ArrowDown,
   AlertTriangle,
-  Home,
-  Database,
-  Shield,
-  Users,
+  XCircle,
+  Eye,
+  FileUp,
 } from "lucide-react"
 import { Switch } from "@/components/ui/switch"
 import { Badge } from "@/components/ui/badge"
@@ -87,8 +81,7 @@ import {
   fetchDropdownData,
   downloadTemplate,
 } from '@/services/master/courses-service'
-
-// Navigation data
+import { PremiumCourseStats } from '@/components/stats/premium-course-stats'
 
 export default function CoursesPage() {
   const [courses, setCourses] = useState<Course[]>([])
@@ -96,13 +89,11 @@ export default function CoursesPage() {
   const [searchTerm, setSearchTerm] = useState("")
   const [statusFilter, setStatusFilter] = useState("all")
   const [typeFilter, setTypeFilter] = useState("all")
-  const [sortField, setSortField] = useState<'course_code' | 'course_title' | 'course_category' | 'credits' | 'exam_duration' | 'is_active' | null>(null)
+  const [sortField, setSortField] = useState<'course_code' | 'course_title' | 'course_category' | 'credits' | 'exam_duration' | 'is_active' | 'qp_code' | null>(null)
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc')
 
   const [currentPage, setCurrentPage] = useState(1)
-  const [currentTime, setCurrentTime] = useState<Date | null>(null)
-  const [deleteCourseId, setDeleteCourseId] = useState<string | null>(null)
-  const itemsPerPage = 10
+  const [itemsPerPage, setItemsPerPage] = useState<number | "all">(10)
 
   // Single-page add/edit state
   const [sheetOpen, setSheetOpen] = useState(false)
@@ -116,8 +107,11 @@ export default function CoursesPage() {
   const [regulations, setRegulations] = useState<Array<{ id: string, regulation_code: string }>>([])
   const [boardsSrc, setBoardsSrc] = useState<Array<{ id: string, board_code: string, board_name?: string }>>([])
   const [codesLoading, setCodesLoading] = useState(false)
-  const [uploadErrors, setUploadErrors] = useState<string[]>([])
-  const [showErrorDialog, setShowErrorDialog] = useState(false)
+
+  // Import error handling
+  const [errorPopupOpen, setErrorPopupOpen] = useState(false)
+  const [importErrors, setImportErrors] = useState<CourseImportError[]>([])
+  const [uploadSummary, setUploadSummary] = useState<UploadSummary>({ total: 0, success: 0, failed: 0 })
 
   const [formData, setFormData] = useState({
     institution_code: "",
@@ -204,19 +198,8 @@ export default function CoursesPage() {
     })()
   }, [])
 
-  // Update time every second (client-side only)
-  useEffect(() => {
-    setCurrentTime(new Date())
-    
-    const timer = setInterval(() => {
-      setCurrentTime(new Date())
-    }, 1000)
-
-    return () => clearInterval(timer)
-  }, [])
-
-  // Filter courses based on search and filters
-  const handleSort = (field: 'course_code' | 'course_title' | 'course_category' | 'credits' | 'exam_duration' | 'is_active') => {
+  // Handle sorting
+  const handleSort = (field: 'course_code' | 'course_title' | 'course_category' | 'credits' | 'exam_duration' | 'is_active' | 'qp_code') => {
     if (sortField === field) {
       setSortDirection(sortDirection === 'asc' ? 'desc' : 'asc')
     } else {
@@ -225,20 +208,29 @@ export default function CoursesPage() {
     }
   }
 
-  const filteredCourses = courses
-    .filter((course) => {
-      const matchesSearch = course.course_code.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                           course.course_title.toLowerCase().includes(searchTerm.toLowerCase())
-      const matchesStatus = statusFilter === "all" ||
-                           (statusFilter === "active" && course.is_active) ||
-                           (statusFilter === "inactive" && !course.is_active)
-      const matchesType = typeFilter === "all" || course.course_type === typeFilter
+  const getSortIcon = (column: string) => {
+    if (sortField !== column) return <ArrowUpDown className="h-3 w-3 text-muted-foreground" />
+    return sortDirection === "asc" ? <ArrowUp className="h-3 w-3" /> : <ArrowDown className="h-3 w-3" />
+  }
 
-      return matchesSearch && matchesStatus && matchesType
-    })
-    .sort((a, b) => {
-      if (!sortField) return 0
+  // Memoized filtering and sorting
+  const filteredCourses = useMemo(() => {
+    const q = searchTerm.toLowerCase()
+    const data = courses
+      .filter((course) => {
+        const matchesSearch = [course.course_code, course.course_title, course.qp_code]
+          .filter(Boolean)
+          .some((v) => String(v).toLowerCase().includes(q))
+        const matchesStatus = statusFilter === "all" ||
+                             (statusFilter === "active" && course.is_active) ||
+                             (statusFilter === "inactive" && !course.is_active)
+        const matchesType = typeFilter === "all" || course.course_type === typeFilter
+        return matchesSearch && matchesStatus && matchesType
+      })
 
+    if (!sortField) return data
+
+    return [...data].sort((a, b) => {
       let aValue: any = a[sortField]
       let bValue: any = b[sortField]
 
@@ -261,13 +253,23 @@ export default function CoursesPage() {
       // Handle string values
       if (typeof aValue === 'string') {
         aValue = aValue.toLowerCase()
-        bValue = bValue.toLowerCase()
+        bValue = String(bValue).toLowerCase()
       }
 
       if (aValue < bValue) return sortDirection === 'asc' ? -1 : 1
       if (aValue > bValue) return sortDirection === 'asc' ? 1 : -1
       return 0
     })
+  }, [courses, searchTerm, statusFilter, typeFilter, sortField, sortDirection])
+
+  // Pagination calculations
+  const totalPages = itemsPerPage === "all" ? 1 : Math.ceil(filteredCourses.length / itemsPerPage) || 1
+  const startIndex = itemsPerPage === "all" ? 0 : (currentPage - 1) * (itemsPerPage as number)
+  const endIndex = itemsPerPage === "all" ? filteredCourses.length : startIndex + (itemsPerPage as number)
+  const pageItems = filteredCourses.slice(startIndex, endIndex)
+
+  // Reset page when filters change
+  useEffect(() => setCurrentPage(1), [searchTerm, sortField, sortDirection, itemsPerPage, statusFilter, typeFilter])
 
   const getStatusBadgeVariant = (course: Course) => {
     return course.is_active ? "default" : "secondary"
@@ -376,7 +378,7 @@ export default function CoursesPage() {
       fee_exception: Boolean(row.fee_exception) || false,
       syllabus_pdf_url: row.syllabus_pdf_url || "",
       description: row.description || "",
-      is_active: row.is_active,
+      is_active: row.is_active ?? true,
       // Required fields for marks and hours
       class_hours: String(row.class_hours ?? 0),
       theory_hours: String(row.theory_hours ?? 0),
@@ -558,9 +560,19 @@ export default function CoursesPage() {
     try {
       await deleteCourseService(courseId)
       setCourses(courses.filter(course => course.id !== courseId))
-      setDeleteCourseId(null)
+      toast({
+        title: '✅ Course Deleted',
+        description: 'The course has been successfully deleted.',
+        className: 'bg-green-50 border-green-200 text-green-800 dark:bg-green-900/20 dark:border-green-800 dark:text-green-200'
+      })
     } catch (error) {
       console.error('Error deleting course:', error)
+      toast({
+        title: '❌ Delete Failed',
+        description: error instanceof Error ? error.message : 'Failed to delete course',
+        variant: 'destructive',
+        className: 'bg-red-50 border-red-200 text-red-800 dark:bg-red-900/20 dark:border-red-800 dark:text-red-200'
+      })
     }
   }
 
@@ -763,7 +775,7 @@ export default function CoursesPage() {
 
       let successCount = 0
       let errorCount = 0
-      const errorDetails: string[] = []
+      const errorDetails: CourseImportError[] = []
 
       for (let i = 0; i < jsonData.length; i++) {
         const row = jsonData[i]
@@ -841,28 +853,57 @@ export default function CoursesPage() {
 
           if (validationErrors.length > 0) {
             errorCount++
-            errorDetails.push(`Row ${rowNumber}: ${validationErrors.join(', ')}`)
+            errorDetails.push({
+              row: rowNumber,
+              course_code: payload.course_code || 'N/A',
+              course_title: payload.course_title || 'N/A',
+              errors: validationErrors
+            })
             continue
           }
 
-          const res = await fetch('/api/master/courses', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(payload)
-          })
+          // Check if course already exists by course_code
+          const existingCourse = courses.find(c => c.course_code === payload.course_code?.trim())
+
+          let res: Response
+          if (existingCourse) {
+            // Update existing course using PUT
+            res = await fetch(`/api/master/courses/${existingCourse.id}`, {
+              method: 'PUT',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(payload)
+            })
+          } else {
+            // Create new course using POST
+            res = await fetch('/api/master/courses', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(payload)
+            })
+          }
 
           if (res.ok) {
             successCount++
           } else {
             errorCount++
             const errorData = await res.json().catch(() => ({}))
-            const errorMsg = errorData.error || errorData.details || 'Failed to save'
-            errorDetails.push(`Row ${rowNumber}: ${errorMsg}`)
+            const errorMsg = errorData.error || errorData.details || (existingCourse ? 'Failed to update' : 'Failed to save')
+            errorDetails.push({
+              row: rowNumber,
+              course_code: payload.course_code || 'N/A',
+              course_title: payload.course_title || 'N/A',
+              errors: [errorMsg]
+            })
           }
         } catch (err) {
           errorCount++
           const errorMsg = err instanceof Error ? err.message : 'Unknown error'
-          errorDetails.push(`Row ${rowNumber}: ${errorMsg}`)
+          errorDetails.push({
+            row: rowNumber,
+            course_code: row['Course Code*'] || row['Course Code'] || row.course_code || 'N/A',
+            course_title: row['Course Name*'] || row['Course Name'] || row.course_title || 'N/A',
+            errors: [errorMsg]
+          })
         }
       }
 
@@ -873,29 +914,39 @@ export default function CoursesPage() {
         setCourses(data)
       }
 
+      // Update upload summary
+      setUploadSummary({
+        total: jsonData.length,
+        success: successCount,
+        failed: errorCount
+      })
+
       // Show detailed results
       if (errorCount === 0) {
         toast({
           title: '✅ Upload Complete',
-          description: `${successCount} courses uploaded successfully!`,
-          className: 'bg-green-50 border-green-200 text-green-800 dark:bg-green-900/20 dark:border-green-800 dark:text-green-200'
+          description: `Successfully uploaded all ${successCount} row${successCount > 1 ? 's' : ''} to the database.`,
+          className: 'bg-green-50 border-green-200 text-green-800 dark:bg-green-900/20 dark:border-green-800 dark:text-green-200',
+          duration: 5000
         })
       } else if (successCount > 0) {
-        setUploadErrors(errorDetails)
-        setShowErrorDialog(true)
+        setImportErrors(errorDetails)
+        setErrorPopupOpen(true)
         toast({
-          title: '⚠️ Partial Upload',
-          description: `${successCount} succeeded, ${errorCount} failed. Click to view errors.`,
-          className: 'bg-yellow-50 border-yellow-200 text-yellow-800 dark:bg-yellow-900/20 dark:border-yellow-800 dark:text-yellow-200'
+          title: '⚠️ Partial Upload Success',
+          description: `Processed ${jsonData.length} row${jsonData.length > 1 ? 's' : ''}: ${successCount} successful, ${errorCount} failed. View error details below.`,
+          className: 'bg-yellow-50 border-yellow-200 text-yellow-800 dark:bg-yellow-900/20 dark:border-yellow-800 dark:text-yellow-200',
+          duration: 6000
         })
       } else {
-        setUploadErrors(errorDetails)
-        setShowErrorDialog(true)
+        setImportErrors(errorDetails)
+        setErrorPopupOpen(true)
         toast({
           title: '❌ Upload Failed',
-          description: `All ${errorCount} rows failed. Click to view errors.`,
+          description: `Processed ${jsonData.length} row${jsonData.length > 1 ? 's' : ''}: 0 successful, ${errorCount} failed. View error details below.`,
           variant: 'destructive',
-          className: 'bg-red-50 border-red-200 text-red-800 dark:bg-red-900/20 dark:border-red-800 dark:text-red-200'
+          className: 'bg-red-50 border-red-200 text-red-800 dark:bg-red-900/20 dark:border-red-800 dark:text-red-200',
+          duration: 6000
         })
       }
 
@@ -905,6 +956,294 @@ export default function CoursesPage() {
       console.error('Upload error:', error)
       toast({
         title: '❌ Upload Failed',
+        description: error instanceof Error ? error.message : 'Failed to process file.',
+        variant: 'destructive',
+        className: 'bg-red-50 border-red-200 text-red-800 dark:bg-red-900/20 dark:border-red-800 dark:text-red-200'
+      })
+    }
+  }
+
+  const handleBulkUpdate = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+
+    try {
+      let jsonData: any[] = []
+
+      // Check file type
+      if (file.name.endsWith('.json')) {
+        // Handle JSON file
+        const text = await file.text()
+        const parsed = JSON.parse(text)
+        jsonData = Array.isArray(parsed) ? parsed : [parsed]
+      } else {
+        // Handle Excel file
+        const data = await file.arrayBuffer()
+        const workbook = XLSX.read(data)
+        const worksheet = workbook.Sheets[workbook.SheetNames[0]]
+        jsonData = XLSX.utils.sheet_to_json(worksheet) as any[]
+      }
+
+      let successCount = 0
+      let errorCount = 0
+      let notFoundCount = 0
+      const errorDetails: CourseImportError[] = []
+
+      for (let i = 0; i < jsonData.length; i++) {
+        const row = jsonData[i]
+        const rowNumber = i + 2 // +2 because row 1 is headers and array is 0-indexed
+
+        try {
+          // Get course_code from various possible column names
+          const courseCode = row['Course Code*'] || row['Course Code'] || row.course_code
+
+          if (!courseCode?.trim()) {
+            errorCount++
+            errorDetails.push({
+              row: rowNumber,
+              course_code: 'N/A',
+              course_title: row['Course Name*'] || row['Course Name'] || row.course_title || 'N/A',
+              errors: ['Course code is required for bulk update']
+            })
+            continue
+          }
+
+          // Find the existing course by course_code
+          const existingCourse = courses.find(c => c.course_code === courseCode.trim())
+
+          if (!existingCourse) {
+            notFoundCount++
+            errorCount++
+            errorDetails.push({
+              row: rowNumber,
+              course_code: courseCode,
+              course_title: row['Course Name*'] || row['Course Name'] || row.course_title || 'N/A',
+              errors: [`Course with code "${courseCode}" not found in database`]
+            })
+            continue
+          }
+
+          // Build update payload - only include fields that are present in the Excel
+          const payload: Record<string, any> = {}
+
+          // Map Excel columns to API fields
+          if (row['Institution Code*'] || row['Institution Code'] || row.institution_code) {
+            payload.institution_code = row['Institution Code*'] || row['Institution Code'] || row.institution_code
+          }
+          if (row['Regulation Code*'] || row['Regulation Code'] || row.regulation_code) {
+            payload.regulation_code = row['Regulation Code*'] || row['Regulation Code'] || row.regulation_code
+          }
+          if (row['Offering Department Code*'] || row['Offering Department Code'] || row.offering_department_code) {
+            payload.offering_department_code = row['Offering Department Code*'] || row['Offering Department Code'] || row.offering_department_code
+          }
+          if (row['Board Code'] || row.board_code) {
+            payload.board_code = row['Board Code'] || row.board_code
+          }
+          if (row['Course Code*'] || row['Course Code'] || row.course_code) {
+            payload.course_code = row['Course Code*'] || row['Course Code'] || row.course_code
+          }
+          if (row['Course Name*'] || row['Course Name'] || row.course_title) {
+            payload.course_title = row['Course Name*'] || row['Course Name'] || row.course_title
+          }
+          if (row['Display Code*'] || row['Display Code'] || row.display_code) {
+            payload.display_code = row['Display Code*'] || row['Display Code'] || row.display_code
+          }
+          if (row['Course Category*'] || row['Course Category'] || row.course_category) {
+            payload.course_category = row['Course Category*'] || row['Course Category'] || row.course_category
+          }
+          if (row['Course Type'] || row.course_type) {
+            payload.course_type = row['Course Type'] || row.course_type
+          }
+          if (row['Course Part Master'] || row['Part'] || row.course_part_master) {
+            payload.course_part_master = row['Course Part Master'] || row['Part'] || row.course_part_master
+          }
+          if (row['Credit'] !== undefined || row.credits !== undefined) {
+            payload.credits = Number(row['Credit'] || row.credits) || 0
+          }
+          if (row['Split Credit'] !== undefined || row['Split Credit (TRUE/FALSE)'] !== undefined || row.split_credit !== undefined) {
+            payload.split_credit = typeof row.split_credit === 'boolean' ? row.split_credit : String(row['Split Credit'] || row['Split Credit (TRUE/FALSE)'] || '').toUpperCase() === 'TRUE'
+          }
+          if (row['Theory Credit'] !== undefined || row.theory_credit !== undefined) {
+            payload.theory_credit = Number(row['Theory Credit'] || row.theory_credit) || 0
+          }
+          if (row['Practical Credit'] !== undefined || row.practical_credit !== undefined) {
+            payload.practical_credit = Number(row['Practical Credit'] || row.practical_credit) || 0
+          }
+          if (row['QP Code*'] || row['QP Code'] || row.qp_code) {
+            payload.qp_code = row['QP Code*'] || row['QP Code'] || row.qp_code
+          }
+          if (row['E Code Name'] || row['E-Code Name'] || row['E-Code Name (Tamil/English/French/Malayalam/Hindi)'] || row.e_code_name) {
+            payload.e_code_name = row['E Code Name'] || row['E-Code Name'] || row['E-Code Name (Tamil/English/French/Malayalam/Hindi)'] || row.e_code_name
+          }
+          if (row['Exam Hours'] !== undefined || row['Exam hours'] !== undefined || row.exam_duration !== undefined) {
+            payload.exam_duration = Number(row['Exam Hours'] || row['Exam hours'] || row.exam_duration) || 0
+          }
+          if (row['Evaluation Type*'] || row['Evaluation Type'] || row['Evaluation Type* (CA/ESE/CA + ESE)'] || row.evaluation_type) {
+            payload.evaluation_type = row['Evaluation Type*'] || row['Evaluation Type'] || row['Evaluation Type* (CA/ESE/CA + ESE)'] || row.evaluation_type
+          }
+          if (row['Result Type*'] || row['Result Type'] || row['Result Type* (Mark/Status)'] || row.result_type) {
+            payload.result_type = row['Result Type*'] || row['Result Type'] || row['Result Type* (Mark/Status)'] || row.result_type
+          }
+          if (row['Self Study Course'] !== undefined || row['Self Study Course (TRUE/FALSE)'] !== undefined || row.self_study_course !== undefined) {
+            payload.self_study_course = typeof row.self_study_course === 'boolean' ? row.self_study_course : String(row['Self Study Course'] || row['Self Study Course (TRUE/FALSE)'] || '').toUpperCase() === 'TRUE'
+          }
+          if (row['Outside Class Course'] !== undefined || row['Outside Class Course (TRUE/FALSE)'] !== undefined || row.outside_class_course !== undefined) {
+            payload.outside_class_course = typeof row.outside_class_course === 'boolean' ? row.outside_class_course : String(row['Outside Class Course'] || row['Outside Class Course (TRUE/FALSE)'] || '').toUpperCase() === 'TRUE'
+          }
+          if (row['Open Book'] !== undefined || row['Open Book (TRUE/FALSE)'] !== undefined || row.open_book !== undefined) {
+            payload.open_book = typeof row.open_book === 'boolean' ? row.open_book : String(row['Open Book'] || row['Open Book (TRUE/FALSE)'] || '').toUpperCase() === 'TRUE'
+          }
+          if (row['Online Course'] !== undefined || row['Online Course (TRUE/FALSE)'] !== undefined || row.online_course !== undefined) {
+            payload.online_course = typeof row.online_course === 'boolean' ? row.online_course : String(row['Online Course'] || row['Online Course (TRUE/FALSE)'] || '').toUpperCase() === 'TRUE'
+          }
+          if (row['Dummy Number Not Required'] !== undefined || row['Dummy Number Required'] !== undefined || row['Dummy Number Required (TRUE/FALSE)'] !== undefined || row.dummy_number_required !== undefined) {
+            payload.dummy_number_required = typeof row.dummy_number_required === 'boolean' ? row.dummy_number_required : String(row['Dummy Number Not Required'] || row['Dummy Number Required'] || row['Dummy Number Required (TRUE/FALSE)'] || '').toUpperCase() === 'TRUE'
+          }
+          if (row['Annual Course'] !== undefined || row['Annual Course (TRUE/FALSE)'] !== undefined || row.annual_course !== undefined) {
+            payload.annual_course = typeof row.annual_course === 'boolean' ? row.annual_course : String(row['Annual Course'] || row['Annual Course (TRUE/FALSE)'] || '').toUpperCase() === 'TRUE'
+          }
+          if (row['Multiple QP Set'] !== undefined || row['Multiple QP Set (TRUE/FALSE)'] !== undefined || row.multiple_qp_set !== undefined) {
+            payload.multiple_qp_set = typeof row.multiple_qp_set === 'boolean' ? row.multiple_qp_set : String(row['Multiple QP Set'] || row['Multiple QP Set (TRUE/FALSE)'] || '').toUpperCase() === 'TRUE'
+          }
+          if (row['No of QP Setter'] !== undefined || row.no_of_qp_setter !== undefined) {
+            payload.no_of_qp_setter = Number(row['No of QP Setter'] || row.no_of_qp_setter) || null
+          }
+          if (row['No of Scrutinizer'] !== undefined || row.no_of_scrutinizer !== undefined) {
+            payload.no_of_scrutinizer = Number(row['No of Scrutinizer'] || row.no_of_scrutinizer) || null
+          }
+          if (row['Fee Exception'] !== undefined || row['Fee Exception (TRUE/FALSE)'] !== undefined || row.fee_exception !== undefined) {
+            payload.fee_exception = typeof row.fee_exception === 'boolean' ? row.fee_exception : String(row['Fee Exception'] || row['Fee Exception (TRUE/FALSE)'] || '').toUpperCase() === 'TRUE'
+          }
+          if (row['Syllabus PDF URL'] || row.syllabus_pdf_url) {
+            payload.syllabus_pdf_url = row['Syllabus PDF URL'] || row.syllabus_pdf_url
+          }
+          if (row['Description'] || row.description) {
+            payload.description = row['Description'] || row.description
+          }
+          if (row['Total Class Hours'] !== undefined || row.class_hours !== undefined) {
+            payload.class_hours = Number(row['Total Class Hours'] || row.class_hours) || 0
+          }
+          if (row['Theory Hours'] !== undefined || row.theory_hours !== undefined) {
+            payload.theory_hours = Number(row['Theory Hours'] || row.theory_hours) || 0
+          }
+          if (row['Practical Hours'] !== undefined || row.practical_hours !== undefined) {
+            payload.practical_hours = Number(row['Practical Hours'] || row.practical_hours) || 0
+          }
+          if (row['Internal Max Mark'] !== undefined || row.internal_max_mark !== undefined) {
+            payload.internal_max_mark = Number(row['Internal Max Mark'] || row.internal_max_mark) || 0
+          }
+          if (row['Internal Pass Mark'] !== undefined || row.internal_pass_mark !== undefined) {
+            payload.internal_pass_mark = Number(row['Internal Pass Mark'] || row.internal_pass_mark) || 0
+          }
+          if (row['Internal Converted Mark'] !== undefined || row.internal_converted_mark !== undefined) {
+            payload.internal_converted_mark = Number(row['Internal Converted Mark'] || row.internal_converted_mark) || 0
+          }
+          if (row['External Max Mark'] !== undefined || row.external_max_mark !== undefined) {
+            payload.external_max_mark = Number(row['External Max Mark'] || row.external_max_mark) || 0
+          }
+          if (row['External Pass Mark'] !== undefined || row.external_pass_mark !== undefined) {
+            payload.external_pass_mark = Number(row['External Pass Mark'] || row.external_pass_mark) || 0
+          }
+          if (row['External Converted Mark'] !== undefined || row.external_converted_mark !== undefined) {
+            payload.external_converted_mark = Number(row['External Converted Mark'] || row.external_converted_mark) || 0
+          }
+          if (row['Total Pass Mark'] !== undefined || row.total_pass_mark !== undefined) {
+            payload.total_pass_mark = Number(row['Total Pass Mark'] || row.total_pass_mark) || 0
+          }
+          if (row['Total Max Mark'] !== undefined || row.total_max_mark !== undefined) {
+            payload.total_max_mark = Number(row['Total Max Mark'] || row.total_max_mark) || 0
+          }
+          if (row['Annual Semester'] !== undefined || row['Annual Semester (TRUE/FALSE)'] !== undefined || row.annual_semester !== undefined) {
+            payload.annual_semester = typeof row.annual_semester === 'boolean' ? row.annual_semester : String(row['Annual Semester'] || row['Annual Semester (TRUE/FALSE)'] || 'FALSE').toUpperCase() === 'TRUE'
+          }
+          if (row['Registration Based'] !== undefined || row['Registration Based (TRUE/FALSE)'] !== undefined || row.registration_based !== undefined) {
+            payload.registration_based = typeof row.registration_based === 'boolean' ? row.registration_based : String(row['Registration Based'] || row['Registration Based (TRUE/FALSE)'] || 'FALSE').toUpperCase() === 'TRUE'
+          }
+          if (row['Status'] !== undefined || row['Status (TRUE/FALSE)'] !== undefined || row.is_active !== undefined) {
+            payload.is_active = typeof row.is_active === 'boolean' ? row.is_active : String(row['Status'] || row['Status (TRUE/FALSE)'] || 'TRUE').toUpperCase() !== 'FALSE'
+          }
+
+          // Send PUT request to update the course
+          const res = await fetch(`/api/master/courses/${existingCourse.id}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+          })
+
+          if (res.ok) {
+            successCount++
+          } else {
+            errorCount++
+            const errorData = await res.json().catch(() => ({}))
+            const errorMsg = errorData.error || errorData.details || 'Failed to update'
+            errorDetails.push({
+              row: rowNumber,
+              course_code: courseCode,
+              course_title: row['Course Name*'] || row['Course Name'] || row.course_title || 'N/A',
+              errors: [errorMsg]
+            })
+          }
+        } catch (err) {
+          errorCount++
+          const errorMsg = err instanceof Error ? err.message : 'Unknown error'
+          errorDetails.push({
+            row: rowNumber,
+            course_code: row['Course Code*'] || row['Course Code'] || row.course_code || 'N/A',
+            course_title: row['Course Name*'] || row['Course Name'] || row.course_title || 'N/A',
+            errors: [errorMsg]
+          })
+        }
+      }
+
+      // Refresh courses list
+      const response = await fetch('/api/master/courses')
+      if (response.ok) {
+        const data = await response.json()
+        setCourses(data)
+      }
+
+      // Update upload summary
+      setUploadSummary({
+        total: jsonData.length,
+        success: successCount,
+        failed: errorCount
+      })
+
+      // Show detailed results
+      if (errorCount === 0) {
+        toast({
+          title: '✅ Bulk Update Complete',
+          description: `Successfully updated all ${successCount} course${successCount > 1 ? 's' : ''}.`,
+          className: 'bg-green-50 border-green-200 text-green-800 dark:bg-green-900/20 dark:border-green-800 dark:text-green-200',
+          duration: 5000
+        })
+      } else if (successCount > 0) {
+        setImportErrors(errorDetails)
+        setErrorPopupOpen(true)
+        toast({
+          title: '⚠️ Partial Update Success',
+          description: `Processed ${jsonData.length} row${jsonData.length > 1 ? 's' : ''}: ${successCount} updated, ${errorCount} failed${notFoundCount > 0 ? ` (${notFoundCount} not found)` : ''}. View error details below.`,
+          className: 'bg-yellow-50 border-yellow-200 text-yellow-800 dark:bg-yellow-900/20 dark:border-yellow-800 dark:text-yellow-200',
+          duration: 6000
+        })
+      } else {
+        setImportErrors(errorDetails)
+        setErrorPopupOpen(true)
+        toast({
+          title: '❌ Bulk Update Failed',
+          description: `Processed ${jsonData.length} row${jsonData.length > 1 ? 's' : ''}: 0 updated, ${errorCount} failed${notFoundCount > 0 ? ` (${notFoundCount} not found)` : ''}. View error details below.`,
+          variant: 'destructive',
+          className: 'bg-red-50 border-red-200 text-red-800 dark:bg-red-900/20 dark:border-red-800 dark:text-red-200',
+          duration: 6000
+        })
+      }
+
+      // Reset file input
+      e.target.value = ''
+    } catch (error) {
+      console.error('Bulk update error:', error)
+      toast({
+        title: '❌ Bulk Update Failed',
         description: error instanceof Error ? error.message : 'Failed to process file.',
         variant: 'destructive',
         className: 'bg-red-50 border-red-200 text-red-800 dark:bg-red-900/20 dark:border-red-800 dark:text-red-200'
@@ -932,103 +1271,90 @@ export default function CoursesPage() {
   return (
     <SidebarProvider>
       <AppSidebar />
-      <SidebarInset>
-        <PremiumNavbar
-          title="Courses"
-          description="Manage courses and their details"
-          showSearch={true}
-        />
-
+      <SidebarInset className="flex flex-col min-h-screen">
+        <AppHeader />
         <PageTransition>
-          <div className="flex flex-1 flex-col gap-2 p-2 md:p-2 min-h-[calc(100vh-4rem)]">
-            {/* Breadcrumb Navigation */}
-            <Breadcrumb>
-              <BreadcrumbList>
-                <BreadcrumbItem>
-                  <BreadcrumbLink asChild>
-                    <Link href="/dashboard" className="hover:text-emerald-600">Dashboard</Link>
-                  </BreadcrumbLink>
-                </BreadcrumbItem>
-                <BreadcrumbSeparator />
-                <BreadcrumbItem>
-                  <BreadcrumbPage>Courses</BreadcrumbPage>
-                </BreadcrumbItem>
-              </BreadcrumbList>
-            </Breadcrumb>
-
-            {/* Premium Stats Cards */}
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-              {/* Total Courses */}
-              <div className="card-premium-hover p-6">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-sm text-slate-600 dark:text-slate-400">Total Courses</p>
-                    <p className="text-3xl font-bold text-slate-900 dark:text-slate-100 mt-1 font-grotesk">{courses.length}</p>
-                  </div>
-                  <div className="h-12 w-12 rounded-xl bg-blue-50 dark:bg-blue-900/20 flex items-center justify-center">
-                    <BookText className="h-6 w-6 text-blue-600 dark:text-blue-400" />
-                  </div>
-                </div>
-              </div>
-
-              {/* Active Courses */}
-              <div className="card-premium-hover p-6">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-sm text-slate-600 dark:text-slate-400">Active Courses</p>
-                    <p className="text-3xl font-bold text-emerald-600 dark:text-emerald-400 mt-1 font-grotesk">
-                      {courses.filter(course => course.is_active).length}
-                    </p>
-                  </div>
-                  <div className="h-12 w-12 rounded-xl bg-emerald-50 dark:bg-emerald-900/20 flex items-center justify-center">
-                    <GraduationCap className="h-6 w-6 text-emerald-600 dark:text-emerald-400" />
-                  </div>
-                </div>
-              </div>
-
-              {/* Inactive Courses */}
-              <div className="card-premium-hover p-6">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-sm text-slate-600 dark:text-slate-400">Inactive Courses</p>
-                    <p className="text-3xl font-bold text-red-600 dark:text-red-400 mt-1 font-grotesk">
-                      {courses.filter(course => !course.is_active).length}
-                    </p>
-                  </div>
-                  <div className="h-12 w-12 rounded-xl bg-red-50 dark:bg-red-900/20 flex items-center justify-center">
-                    <BookText className="h-6 w-6 text-red-600 dark:text-red-400" />
-                  </div>
-                </div>
-              </div>
-
-              {/* New This Month */}
-              <div className="card-premium-hover p-6">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-sm text-slate-600 dark:text-slate-400">New This Month</p>
-                    <p className="text-3xl font-bold text-purple-600 dark:text-purple-400 mt-1 font-grotesk">
-                      {courses.filter(course => {
-                        const courseDate = new Date(course.created_at)
-                        const now = new Date()
-                        return courseDate.getMonth() === now.getMonth() && courseDate.getFullYear() === now.getFullYear()
-                      }).length}
-                    </p>
-                  </div>
-                  <div className="h-12 w-12 rounded-xl bg-purple-50 dark:bg-purple-900/20 flex items-center justify-center">
-                    <TrendingUp className="h-6 w-6 text-purple-600 dark:text-purple-400" />
-                  </div>
-                </div>
-              </div>
+          <div className="flex flex-1 flex-col gap-3 p-4 pt-0 overflow-y-auto">
+            <div className="flex items-center gap-2">
+              <Breadcrumb>
+                <BreadcrumbList>
+                  <BreadcrumbItem>
+                    <BreadcrumbLink asChild>
+                      <Link href="/dashboard">Dashboard</Link>
+                    </BreadcrumbLink>
+                  </BreadcrumbItem>
+                  <BreadcrumbSeparator />
+                  <BreadcrumbItem>
+                    <BreadcrumbPage>Courses</BreadcrumbPage>
+                  </BreadcrumbItem>
+                </BreadcrumbList>
+              </Breadcrumb>
             </div>
 
-            {/* Action Bar */}
-            <div className="card-premium overflow-hidden flex-1 flex flex-col">
-              <div className="p-6 border-b border-slate-200 dark:border-slate-800">
-                <div className="flex flex-col lg:flex-row gap-4 items-start lg:items-center justify-between">
-                  <div className="flex flex-col sm:flex-row gap-2 w-full lg:w-auto">
-                    {/* Filter Dropdowns */}
+            {/* Premium Stats Cards */}
+            <PremiumCourseStats items={courses} loading={loading} />
+
+            <Card className="flex-1 flex flex-col min-h-0 border-slate-200 shadow-sm rounded-2xl">
+              <CardHeader className="flex-shrink-0 px-8 py-6 border-b border-slate-200">
+                <div className="space-y-4">
+                  {/* Row 1: Title (Left) & Action Buttons (Right) - Same Line */}
+                  <div className="flex items-center justify-between">
+                    {/* Title Section - Left */}
+                    <div className="flex items-center gap-3">
+                      <div className="h-12 w-12 rounded-xl bg-emerald-50 flex items-center justify-center ring-1 ring-emerald-100">
+                        <BookText className="h-6 w-6 text-emerald-600" />
+                      </div>
+                      <div>
+                        <h2 className="text-xl font-bold text-slate-900 font-grotesk">All Courses</h2>
+                        <p className="text-sm text-slate-600">Manage and organize courses</p>
+                      </div>
+                    </div>
+
+                    {/* Action Buttons - Right (Icon Only) */}
+                    <div className="flex items-center gap-2">
+                      <Button variant="outline" size="sm" onClick={refreshCourses} disabled={loading} className="h-9 w-9 rounded-lg hover:bg-blue-50 text-blue-600 hover:text-blue-700 transition-colors border border-blue-200 p-0" title="Refresh">
+                        <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
+                      </Button>
+                      <Button variant="outline" size="sm" onClick={handleDownloadTemplate} className="h-9 w-9 rounded-lg hover:bg-purple-50 text-purple-600 hover:text-purple-700 transition-colors border border-purple-200 p-0" title="Download Template">
+                        <FileSpreadsheet className="h-4 w-4" />
+                      </Button>
+                      <Button variant="outline" size="sm" onClick={downloadCoursesJSON} className="h-9 w-9 rounded-lg hover:bg-amber-50 text-amber-600 hover:text-amber-700 transition-colors border border-amber-200 p-0" title="Export JSON">
+                        <FileJson className="h-4 w-4" />
+                      </Button>
+                      <Button variant="outline" size="sm" onClick={downloadCoursesExcel} className="h-9 w-9 rounded-lg hover:bg-green-50 text-green-600 hover:text-green-700 transition-colors border border-green-200 p-0" title="Export Excel">
+                        <Download className="h-4 w-4" />
+                      </Button>
+                      <Button variant="outline" size="sm" onClick={() => document.getElementById('file-upload')?.click()} className="h-9 w-9 rounded-lg hover:bg-indigo-50 text-indigo-600 hover:text-indigo-700 transition-colors border border-indigo-200 p-0" title="Import File">
+                        <Upload className="h-4 w-4" />
+                      </Button>
+                      <input
+                        id="file-upload"
+                        type="file"
+                        accept=".xlsx,.xls,.json"
+                        onChange={handleFileUpload}
+                        className="hidden"
+                      />
+                      <Button variant="outline" size="sm" onClick={() => document.getElementById('bulk-update-upload')?.click()} className="h-9 w-9 rounded-lg hover:bg-orange-50 text-orange-600 hover:text-orange-700 transition-colors border border-orange-200 p-0" title="Bulk Update from Excel">
+                        <FileUp className="h-4 w-4" />
+                      </Button>
+                      <input
+                        id="bulk-update-upload"
+                        type="file"
+                        accept=".xlsx,.xls,.json"
+                        onChange={handleBulkUpdate}
+                        className="hidden"
+                      />
+                      <Button size="sm" onClick={openAdd} disabled={loading} className="h-9 px-4 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white transition-all duration-200 shadow-sm" title="Add Course">
+                        <PlusCircle className="h-4 w-4 mr-2" />
+                        Add Course
+                      </Button>
+                    </div>
+                  </div>
+
+                  {/* Row 2: Filter and Search Row */}
+                  <div className="flex items-center gap-2">
                     <Select value={statusFilter} onValueChange={setStatusFilter}>
-                      <SelectTrigger className="w-[140px]">
+                      <SelectTrigger className="h-9 rounded-lg border-slate-300 focus:border-emerald-500 w-[140px]">
                         <SelectValue placeholder="All Status" />
                       </SelectTrigger>
                       <SelectContent>
@@ -1039,335 +1365,316 @@ export default function CoursesPage() {
                     </Select>
 
                     <Select value={typeFilter} onValueChange={setTypeFilter}>
-                      <SelectTrigger className="w-[140px]">
+                      <SelectTrigger className="h-9 rounded-lg border-slate-300 focus:border-emerald-500 w-[140px]">
                         <SelectValue placeholder="All Types" />
                       </SelectTrigger>
                       <SelectContent>
                         <SelectItem value="all">All Types</SelectItem>
                         <SelectItem value="Core">Core</SelectItem>
-                        <SelectItem value="Elective">Elective</SelectItem>
-                        <SelectItem value="Practical">Practical</SelectItem>
-                        <SelectItem value="Project">Project</SelectItem>
+                        <SelectItem value="Generic Elective">Generic Elective</SelectItem>
+                        <SelectItem value="Skill Enhancement">Skill Enhancement</SelectItem>
+                        <SelectItem value="Ability Enhancement">Ability Enhancement</SelectItem>
+                        <SelectItem value="Language">Language</SelectItem>
                       </SelectContent>
                     </Select>
 
-                    {/* Search Bar */}
-                    <div className="relative w-full sm:w-[240px]">
-                      <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+                    <div className="relative flex-1 max-w-sm">
+                      <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
                       <Input
-                        placeholder="Search courses..."
                         value={searchTerm}
                         onChange={(e) => setSearchTerm(e.target.value)}
-                        className="pl-10 search-premium"
+                        placeholder="Search courses..."
+                        className="pl-8 h-9 rounded-lg border-slate-300 focus:border-emerald-500 focus:ring-emerald-500/20"
                       />
                     </div>
                   </div>
-
-                  {/* Action Buttons */}
-                  <div className="flex gap-2 flex-wrap">
-                    <Button variant="outline" onClick={refreshCourses} disabled={loading} className="btn-premium-secondary">
-                      <RefreshCw className={`h-4 w-4 mr-2 ${loading ? 'animate-spin' : ''}`} />
-                      Refresh
-                    </Button>
-                    <Button variant="outline" onClick={handleDownloadTemplate} className="btn-premium-secondary">
-                      <FileSpreadsheet className="h-4 w-4 mr-2" />
-                      Template
-                    </Button>
-                    <Button variant="outline" onClick={downloadCoursesExcel} className="btn-premium-secondary">
-                      <Download className="h-4 w-4 mr-2" />
-                      Download
-                    </Button>
-                    <Button variant="outline" onClick={downloadCoursesJSON} className="btn-premium-secondary">
-                      <FileJson className="h-4 w-4 mr-2" />
-                      JSON
-                    </Button>
-                    <Button variant="outline" onClick={() => document.getElementById('file-upload')?.click()} className="btn-premium-secondary">
-                      <Upload className="h-4 w-4 mr-2" />
-                      Upload
-                    </Button>
-                    <input
-                      id="file-upload"
-                      type="file"
-                      accept=".xlsx,.xls,.json"
-                      onChange={handleFileUpload}
-                      className="hidden"
-                    />
-                    <Button onClick={openAdd} className="btn-premium-primary">
-                      <PlusCircle className="h-4 w-4 mr-2" />
-                      Add Course
-                    </Button>
-                  </div>
                 </div>
-              </div>
+              </CardHeader>
 
-              <div className="p-6 flex-1 flex flex-col min-h-0">
-                {/* Data Table */}
-                <div className="rounded-md border overflow-hidden flex-1 min-h-[400px]">
-                  <div className="h-full overflow-auto">
-                    <Table>
-                      <TableHeader className="sticky top-0 z-10 bg-slate-50 dark:bg-slate-900/50">
+              <CardContent className="flex-1 overflow-auto px-8 py-6 bg-slate-50/50 dark:bg-transparent">
+                <div className="rounded-xl border border-slate-200 dark:border-slate-700 overflow-hidden bg-white dark:bg-slate-900">
+                  <Table>
+                    <TableHeader className="bg-slate-50 dark:bg-slate-800 border-b border-slate-200 dark:border-slate-700">
+                      <TableRow>
+                        <TableHead className="text-sm font-semibold text-slate-700 dark:text-slate-300">
+                          <Button variant="ghost" size="sm" onClick={() => handleSort('course_code')} className="px-2 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-lg transition-colors">
+                            Course Code
+                            <span className="ml-1">{getSortIcon('course_code')}</span>
+                          </Button>
+                        </TableHead>
+                        <TableHead className="text-sm font-semibold text-slate-700 dark:text-slate-300">
+                          <Button variant="ghost" size="sm" onClick={() => handleSort('course_title')} className="px-2 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-lg transition-colors">
+                            Course Name
+                            <span className="ml-1">{getSortIcon('course_title')}</span>
+                          </Button>
+                        </TableHead>
+                        <TableHead className="text-sm font-semibold text-slate-700 dark:text-slate-300">
+                          <Button variant="ghost" size="sm" onClick={() => handleSort('course_category')} className="px-2 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-lg transition-colors">
+                            Category
+                            <span className="ml-1">{getSortIcon('course_category')}</span>
+                          </Button>
+                        </TableHead>
+                        <TableHead className="text-sm font-semibold text-slate-700 dark:text-slate-300">
+                          <Button variant="ghost" size="sm" onClick={() => handleSort('credits')} className="px-2 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-lg transition-colors">
+                            Credit
+                            <span className="ml-1">{getSortIcon('credits')}</span>
+                          </Button>
+                        </TableHead>
+                        <TableHead className="text-sm font-semibold text-slate-700 dark:text-slate-300">
+                          <Button variant="ghost" size="sm" onClick={() => handleSort('qp_code')} className="px-2 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-lg transition-colors">
+                            QP Code
+                            <span className="ml-1">{getSortIcon('qp_code')}</span>
+                          </Button>
+                        </TableHead>
+                        <TableHead className="text-sm font-semibold text-slate-700 dark:text-slate-300">
+                          <Button variant="ghost" size="sm" onClick={() => handleSort('is_active')} className="px-2 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-lg transition-colors">
+                            Status
+                            <span className="ml-1">{getSortIcon('is_active')}</span>
+                          </Button>
+                        </TableHead>
+                        <TableHead className="text-center text-sm font-semibold text-slate-700 dark:text-slate-300">Actions</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {loading ? (
                         <TableRow>
-                          <TableHead
-                            className="w-[120px] text-[11px] cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-800"
-                            onClick={() => handleSort('course_code')}
-                          >
-                            <div className="flex items-center gap-1">
-                              Course Code
-                              {sortField === 'course_code' ? (
-                                sortDirection === 'asc' ? <ArrowUp className="h-3 w-3" /> : <ArrowDown className="h-3 w-3" />
-                              ) : <ArrowUpDown className="h-3 w-3 opacity-50" />}
-                            </div>
-                          </TableHead>
-                          <TableHead
-                            className="text-[11px] cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-800"
-                            onClick={() => handleSort('course_title')}
-                          >
-                            <div className="flex items-center gap-1">
-                              Course Name
-                              {sortField === 'course_title' ? (
-                                sortDirection === 'asc' ? <ArrowUp className="h-3 w-3" /> : <ArrowDown className="h-3 w-3" />
-                              ) : <ArrowUpDown className="h-3 w-3 opacity-50" />}
-                            </div>
-                          </TableHead>
-                          <TableHead
-                            className="w-[140px] text-[11px] cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-800"
-                            onClick={() => handleSort('course_category')}
-                          >
-                            <div className="flex items-center gap-1">
-                              Course Category
-                              {sortField === 'course_category' ? (
-                                sortDirection === 'asc' ? <ArrowUp className="h-3 w-3" /> : <ArrowDown className="h-3 w-3" />
-                              ) : <ArrowUpDown className="h-3 w-3 opacity-50" />}
-                            </div>
-                          </TableHead>
-                          <TableHead
-                            className="w-[80px] text-[11px] cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-800"
-                            onClick={() => handleSort('credits')}
-                          >
-                            <div className="flex items-center gap-1">
-                              Credit
-                              {sortField === 'credits' ? (
-                                sortDirection === 'asc' ? <ArrowUp className="h-3 w-3" /> : <ArrowDown className="h-3 w-3" />
-                              ) : <ArrowUpDown className="h-3 w-3 opacity-50" />}
-                            </div>
-                          </TableHead>
-                          <TableHead
-                            className="w-[120px] text-[11px] cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-800"
-                            onClick={() => handleSort('exam_duration')}
-                          >
-                            <div className="flex items-center gap-1">
-                              Exam Hours
-                              {sortField === 'exam_duration' ? (
-                                sortDirection === 'asc' ? <ArrowUp className="h-3 w-3" /> : <ArrowDown className="h-3 w-3" />
-                              ) : <ArrowUpDown className="h-3 w-3 opacity-50" />}
-                            </div>
-                          </TableHead>
-                          <TableHead
-                            className="w-[120px] text-[11px] cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-800"
-                            onClick={() => handleSort('qp_code')}
-                          >
-                            <div className="flex items-center gap-1">
-                              QP Code
-                              {sortField === 'qp_code' ? (
-                                sortDirection === 'asc' ? <ArrowUp className="h-3 w-3" /> : <ArrowDown className="h-3 w-3" />
-                              ) : <ArrowUpDown className="h-3 w-3 opacity-50" />}
-                            </div>
-                          </TableHead>
-                          <TableHead
-                            className="w-[100px] text-[11px] cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-800"
-                            onClick={() => handleSort('is_active')}
-                          >
-                            <div className="flex items-center gap-1">
-                              Status
-                              {sortField === 'is_active' ? (
-                                sortDirection === 'asc' ? <ArrowUp className="h-3 w-3" /> : <ArrowDown className="h-3 w-3" />
-                              ) : <ArrowUpDown className="h-3 w-3 opacity-50" />}
-                            </div>
-                          </TableHead>
-                          <TableHead className="w-[120px] text-[11px] text-center">Actions</TableHead>
+                          <TableCell colSpan={7} className="h-24 text-center text-sm text-slate-500 dark:text-slate-400">Loading...</TableCell>
                         </TableRow>
-                      </TableHeader>
-                      <TableBody>
-                        {loading ? (
-                          <TableRow>
-                            <TableCell colSpan={8} className="h-24 text-center text-[11px]">
-                              Loading courses...
-                            </TableCell>
-                          </TableRow>
-                        ) : filteredCourses.length > 0 ? (
-                          <>
-                            {filteredCourses.map((course) => (
-                              <TableRow key={course.id}>
-                                <TableCell className="font-medium text-[11px]">
-                                  {course.course_code}
-                                </TableCell>
-                                <TableCell className="font-medium text-[11px]">
-                                  {course.course_title}
-                                </TableCell>
-                                <TableCell className="text-[11px]">
-                                  {course.course_category || '-'}
-                                </TableCell>
-                                <TableCell className="text-[11px]">{course.credits}</TableCell>
-                                <TableCell className="text-[11px]">
-                                  {course.exam_duration ? `${course.exam_duration} hrs` : '-'}
-                                </TableCell>
-                                <TableCell className="text-[11px]">
-                                  {course.qp_code || '-'}
-                                </TableCell>
-                                <TableCell>
-                                  <Badge variant={getStatusBadgeVariant(course)} className="text-[11px]">
-                                    {getStatusText(course)}
-                                  </Badge>
-                                </TableCell>
-                                <TableCell>
-                                  <div className="flex items-center justify-center gap-1">
-                                    <Button
-                                      variant="outline"
-                                      size="sm"
-                                      onClick={() => openEdit(course)}
-                                      className="h-7 w-7 p-0"
-                                    >
-                                      <Edit className="h-3 w-3" />
-                                    </Button>
-                                    <AlertDialog>
-                                      <AlertDialogTrigger asChild>
-                                        <Button
-                                          variant="outline"
-                                          size="sm"
-                                          className="h-7 w-7 p-0 text-red-600 hover:text-red-700 hover:bg-red-50"
-                                        >
-                                          <Trash2 className="h-3 w-3" />
-                                        </Button>
-                                      </AlertDialogTrigger>
-                                      <AlertDialogContent>
-                                        <AlertDialogHeader>
-                                          <AlertDialogTitle>Delete Course</AlertDialogTitle>
-                                          <AlertDialogDescription>
-                                            Are you sure you want to delete this course? This action cannot be undone.
-                                          </AlertDialogDescription>
-                                        </AlertDialogHeader>
-                                        <AlertDialogFooter>
-                                          <AlertDialogCancel>Cancel</AlertDialogCancel>
-                                          <AlertDialogAction
-                                            onClick={() => handleDeleteCourse(course.id)}
-                                            className="bg-red-600 hover:bg-red-700"
-                                          >
-                                            Delete
-                                          </AlertDialogAction>
-                                        </AlertDialogFooter>
-                                      </AlertDialogContent>
-                                    </AlertDialog>
-                                  </div>
-                                </TableCell>
-                              </TableRow>
-                            ))}
-                            {/* Fill empty rows to maintain consistent height */}
-                            {Array.from({ length: Math.max(0, itemsPerPage - filteredCourses.length) }).map((_, index) => (
-                              <TableRow key={`empty-${index}`}>
-                                <TableCell>&nbsp;</TableCell>
-                                <TableCell>&nbsp;</TableCell>
-                                <TableCell>&nbsp;</TableCell>
-                                <TableCell>&nbsp;</TableCell>
-                                <TableCell>&nbsp;</TableCell>
-                                <TableCell>&nbsp;</TableCell>
-                                <TableCell>&nbsp;</TableCell>
-                                <TableCell>&nbsp;</TableCell>
-                              </TableRow>
-                            ))}
-                          </>
-                        ) : (
-                          <>
-                            <TableRow>
-                              <TableCell colSpan={8} className="text-center text-xs">
-                                No courses found.
+                      ) : pageItems.length ? (
+                        <>
+                          {pageItems.map((course) => (
+                            <TableRow key={course.id} className="border-b border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors">
+                              <TableCell className="font-medium text-sm text-slate-900 dark:text-slate-100 font-grotesk">{course.course_code}</TableCell>
+                              <TableCell className="text-sm text-slate-900 dark:text-slate-100 font-grotesk">{course.course_title}</TableCell>
+                              <TableCell className="text-sm text-slate-600 dark:text-slate-400">{course.course_category || '-'}</TableCell>
+                              <TableCell className="text-sm text-slate-600 dark:text-slate-400">{course.credits}</TableCell>
+                              <TableCell className="text-sm text-slate-600 dark:text-slate-400">{course.qp_code || '-'}</TableCell>
+                              <TableCell>
+                                <Badge variant={course.is_active ? "default" : "secondary"} className={`text-xs ${course.is_active ? 'bg-emerald-100 text-emerald-700 border-emerald-200' : 'bg-red-100 text-red-700 border-red-200'}`}>
+                                  {course.is_active ? "Active" : "Inactive"}
+                                </Badge>
+                              </TableCell>
+                              <TableCell className="text-center">
+                                <div className="flex items-center justify-center gap-1">
+                                  <Button variant="ghost" size="sm" className="h-8 w-8 p-0 rounded-lg hover:bg-blue-100 text-blue-600 transition-colors" onClick={() => openEdit(course)} title="View">
+                                    <Eye className="h-4 w-4" />
+                                  </Button>
+                                  <Button variant="ghost" size="sm" className="h-8 w-8 p-0 rounded-lg hover:bg-emerald-100 text-emerald-600 transition-colors" onClick={() => openEdit(course)} title="Edit">
+                                    <Edit className="h-4 w-4" />
+                                  </Button>
+                                  <AlertDialog>
+                                    <AlertDialogTrigger asChild>
+                                      <Button variant="ghost" size="sm" className="h-8 w-8 p-0 rounded-lg hover:bg-red-100 text-red-600 transition-colors" title="Delete">
+                                        <Trash2 className="h-4 w-4" />
+                                      </Button>
+                                    </AlertDialogTrigger>
+                                    <AlertDialogContent>
+                                      <AlertDialogHeader>
+                                        <AlertDialogTitle>Delete Course</AlertDialogTitle>
+                                        <AlertDialogDescription>
+                                          Are you sure you want to delete {course.course_title}? This action cannot be undone.
+                                        </AlertDialogDescription>
+                                      </AlertDialogHeader>
+                                      <AlertDialogFooter>
+                                        <AlertDialogCancel>Cancel</AlertDialogCancel>
+                                        <AlertDialogAction onClick={() => handleDeleteCourse(course.id)} className="bg-red-600 hover:bg-red-700">Delete</AlertDialogAction>
+                                      </AlertDialogFooter>
+                                    </AlertDialogContent>
+                                  </AlertDialog>
+                                </div>
                               </TableCell>
                             </TableRow>
-                            {/* Fill remaining rows */}
-                            {Array.from({ length: itemsPerPage - 1 }).map((_, index) => (
-                              <TableRow key={`empty-no-data-${index}`}>
-                                <TableCell>&nbsp;</TableCell>
-                                <TableCell>&nbsp;</TableCell>
-                                <TableCell>&nbsp;</TableCell>
-                                <TableCell>&nbsp;</TableCell>
-                                <TableCell>&nbsp;</TableCell>
-                                <TableCell>&nbsp;</TableCell>
-                                <TableCell>&nbsp;</TableCell>
-                                <TableCell>&nbsp;</TableCell>
-                              </TableRow>
-                            ))}
-                          </>
-                        )}
-                      </TableBody>
-                    </Table>
-                  </div>
+                          ))}
+                        </>
+                      ) : (
+                        <TableRow>
+                          <TableCell colSpan={7} className="h-24 text-center text-sm text-slate-500 dark:text-slate-400">No data</TableCell>
+                        </TableRow>
+                      )}
+                    </TableBody>
+                  </Table>
                 </div>
 
-                {/* Pagination Controls */}
-                <div className="flex items-center justify-between space-x-2 py-2 mt-2">
-                  <div className="text-xs text-muted-foreground">
-                    Showing {filteredCourses.length === 0 ? 0 : 1}-{Math.min(itemsPerPage, filteredCourses.length)} of {filteredCourses.length} courses
+                {/* Pagination */}
+                <div className="flex items-center justify-between mt-4 pt-4 border-t border-slate-200 dark:border-slate-700">
+                  <div className="flex items-center gap-4">
+                    <div className="text-sm text-slate-600 dark:text-slate-400">
+                      Showing {filteredCourses.length === 0 ? 0 : startIndex + 1}-{Math.min(endIndex, filteredCourses.length)} of {filteredCourses.length} courses
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Label htmlFor="page-size" className="text-sm text-slate-600 dark:text-slate-400">
+                        Rows per page:
+                      </Label>
+                      <Select
+                        value={String(itemsPerPage)}
+                        onValueChange={(value) => setItemsPerPage(value === "all" ? "all" : Number(value))}
+                      >
+                        <SelectTrigger id="page-size" className="h-9 rounded-lg border-slate-300 w-[100px]">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="10">10</SelectItem>
+                          <SelectItem value="20">20</SelectItem>
+                          <SelectItem value="50">50</SelectItem>
+                          <SelectItem value="100">100</SelectItem>
+                          <SelectItem value="all">All</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
                   </div>
                   <div className="flex items-center gap-2">
                     <Button
                       variant="outline"
                       size="sm"
-                      onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
-                      disabled={currentPage === 1}
-                      className="h-7 px-2 text-xs"
+                      onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                      disabled={currentPage === 1 || itemsPerPage === "all"}
+                      className="h-9 px-4 rounded-lg border-slate-300 dark:border-slate-600 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors disabled:opacity-50"
                     >
-                      <ChevronLeft className="h-3 w-3 mr-1" />
-                      Previous
+                      <ChevronLeft className="h-4 w-4 mr-1" /> Previous
                     </Button>
-                    <div className="text-xs text-muted-foreground px-2">
-                      Page {currentPage} of {Math.ceil(filteredCourses.length / itemsPerPage) || 1}
+                    <div className="text-sm text-slate-600 dark:text-slate-400 px-2">
+                      Page {currentPage} of {totalPages}
                     </div>
                     <Button
                       variant="outline"
                       size="sm"
-                      onClick={() => setCurrentPage(prev => Math.min(Math.ceil(filteredCourses.length / itemsPerPage), prev + 1))}
-                      disabled={currentPage >= Math.ceil(filteredCourses.length / itemsPerPage)}
-                      className="h-7 px-2 text-xs"
+                      onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+                      disabled={currentPage >= totalPages || itemsPerPage === "all"}
+                      className="h-9 px-4 rounded-lg border-slate-300 dark:border-slate-600 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors disabled:opacity-50"
                     >
-                      Next
-                      <ChevronRight className="h-3 w-3 ml-1" />
+                      Next <ChevronRight className="h-4 w-4 ml-1" />
                     </Button>
                   </div>
                 </div>
-              </div>
-            </div>
+              </CardContent>
+            </Card>
           </div>
         </PageTransition>
         <AppFooter />
       </SidebarInset>
 
-      {/* Sheet for Add/Edit - Outside Sidebar */}
-      <Sheet open={sheetOpen} onOpenChange={(o) => { if (!o) resetForm(); setSheetOpen(o) }}>
-        <SheetContent className="sm:max-w-[1000px] overflow-y-auto">
-          <SheetHeader className="pb-6 border-b bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-blue-950/20 dark:to-indigo-950/20">
-            <div className="flex items-center justify-between">
+      {/* Error Popup Dialog */}
+        <AlertDialog open={errorPopupOpen} onOpenChange={setErrorPopupOpen}>
+          <AlertDialogContent className="max-w-4xl max-h-[80vh] overflow-y-auto rounded-3xl border-slate-200">
+            <AlertDialogHeader>
               <div className="flex items-center gap-3">
-                <div className="h-10 w-10 rounded-full bg-gradient-to-r from-blue-500 to-indigo-600 flex items-center justify-center">
-                  <BookText className="h-5 w-5 text-white" />
+                <div className="h-10 w-10 rounded-full bg-red-100 flex items-center justify-center">
+                  <XCircle className="h-5 w-5 text-red-600" />
                 </div>
                 <div>
-                  <SheetTitle className="text-2xl font-bold bg-gradient-to-r from-blue-600 to-indigo-600 bg-clip-text text-transparent">
-                    {editing ? 'Edit Course' : 'Add Course'}
-                  </SheetTitle>
-                  <p className="text-sm text-muted-foreground mt-1">
-                    {editing ? 'Update course information' : 'Create a new course'}
-                  </p>
+                  <AlertDialogTitle className="text-xl font-bold text-red-600">
+                    Data Validation Errors
+                  </AlertDialogTitle>
+                  <AlertDialogDescription className="text-sm text-muted-foreground mt-1">
+                    Please fix the following errors before importing the data
+                  </AlertDialogDescription>
                 </div>
               </div>
-            </div>
-          </SheetHeader>
+            </AlertDialogHeader>
 
-          <div className="mt-6 space-y-8">
             <div className="space-y-4">
-              <div className="flex items-center gap-3 pb-3 border-b border-blue-200 dark:border-blue-800">
-                <div className="h-8 w-8 rounded-lg bg-gradient-to-r from-green-500 to-emerald-600 flex items-center justify-center">
-                  <BookText className="h-4 w-4 text-white" />
+              {/* Upload Summary Cards */}
+              {uploadSummary.total > 0 && (
+                <div className="grid grid-cols-3 gap-3">
+                  <div className="bg-blue-50 border-blue-200 rounded-lg p-3">
+                    <div className="text-xs text-blue-600 font-medium mb-1">Total Rows</div>
+                    <div className="text-2xl font-bold text-blue-700">{uploadSummary.total}</div>
+                  </div>
+                  <div className="bg-green-50 border-green-200 rounded-lg p-3">
+                    <div className="text-xs text-green-600 font-medium mb-1">Successful</div>
+                    <div className="text-2xl font-bold text-green-700">{uploadSummary.success}</div>
+                  </div>
+                  <div className="bg-red-50 border-red-200 rounded-lg p-3">
+                    <div className="text-xs text-red-600 font-medium mb-1">Failed</div>
+                    <div className="text-2xl font-bold text-red-700">{uploadSummary.failed}</div>
+                  </div>
                 </div>
-                <h3 className="text-lg font-bold bg-gradient-to-r from-green-600 to-emerald-600 bg-clip-text text-transparent">Basic Information</h3>
+              )}
+
+              <div className="bg-red-50 border border-red-200 rounded-lg p-4">
+                <div className="flex items-center gap-2 mb-2">
+                  <AlertTriangle className="h-4 w-4 text-red-600" />
+                  <span className="font-semibold text-red-800">
+                    {importErrors.length} row{importErrors.length > 1 ? 's' : ''} failed validation
+                  </span>
+                </div>
+                <p className="text-sm text-red-700">
+                  Please correct these errors in your Excel file and try uploading again.
+                </p>
+              </div>
+
+              <div className="space-y-3">
+                {importErrors.map((error, index) => (
+                  <div key={index} className="border border-red-200 rounded-xl p-4 bg-red-50/50">
+                    <div className="flex items-start justify-between mb-2">
+                      <div className="flex items-center gap-2">
+                        <Badge variant="outline" className="text-xs bg-red-100 text-red-800 border-red-300 rounded-lg">
+                          Row {error.row}
+                        </Badge>
+                        <span className="font-medium text-sm">
+                          {error.course_code} - {error.course_title}
+                        </span>
+                      </div>
+                    </div>
+
+                    <div className="space-y-1">
+                      {error.errors.map((err, errIndex) => (
+                        <div key={errIndex} className="flex items-start gap-2 text-sm">
+                          <XCircle className="h-3 w-3 text-red-500 mt-0.5 flex-shrink-0" />
+                          <span className="text-red-700">{err}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <AlertDialogFooter>
+              <AlertDialogCancel className="bg-gray-100 hover:bg-gray-200">
+                Close
+              </AlertDialogCancel>
+              <Button
+                onClick={() => {
+                  setErrorPopupOpen(false)
+                  setImportErrors([])
+                }}
+                className="bg-blue-600 hover:bg-blue-700 text-white"
+              >
+                Try Again
+              </Button>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
+
+        {/* Sheet for Add/Edit */}
+        <Sheet open={sheetOpen} onOpenChange={(o) => { if (!o) resetForm(); setSheetOpen(o) }}>
+          <SheetContent className="sm:max-w-[1000px] overflow-y-auto">
+            <SheetHeader className="pb-6 border-b bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-blue-950/20 dark:to-indigo-950/20">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="h-10 w-10 rounded-full bg-gradient-to-r from-blue-500 to-indigo-600 flex items-center justify-center">
+                    <BookText className="h-5 w-5 text-white" />
+                  </div>
+                  <div>
+                    <SheetTitle className="text-2xl font-bold bg-gradient-to-r from-blue-600 to-indigo-600 bg-clip-text text-transparent">
+                      {editing ? 'Edit Course' : 'Add Course'}
+                    </SheetTitle>
+                    <p className="text-sm text-muted-foreground mt-1">
+                      {editing ? 'Update course information' : 'Create a new course'}
+                    </p>
+                  </div>
+                </div>
+              </div>
+            </SheetHeader>
+
+            <div className="mt-6 space-y-8">
+              <div className="space-y-4">
+                <div className="flex items-center gap-3 pb-3 border-b border-blue-200 dark:border-blue-800">
+                  <div className="h-8 w-8 rounded-lg bg-gradient-to-r from-green-500 to-emerald-600 flex items-center justify-center">
+                    <BookText className="h-4 w-4 text-white" />
+                  </div>
+                  <h3 className="text-lg font-bold bg-gradient-to-r from-green-600 to-emerald-600 bg-clip-text text-transparent">Basic Information</h3>
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -1475,19 +1782,33 @@ export default function CoursesPage() {
                       <SelectValue placeholder="Select type" />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="Core">Core</SelectItem>
-                      <SelectItem value="Generic Elective">Generic Elective</SelectItem>
-                      <SelectItem value="Skill Enhancement">Skill Enhancement</SelectItem>
                       <SelectItem value="Ability Enhancement">Ability Enhancement</SelectItem>
-                      <SelectItem value="Language">Language</SelectItem>
-                      <SelectItem value="English">English</SelectItem>
-                      <SelectItem value="Advance learner course">Advance learner course</SelectItem>
                       <SelectItem value="Additional Credit course">Additional Credit course</SelectItem>
-                      <SelectItem value="Discipline Specific elective">Discipline Specific elective</SelectItem>
+                      <SelectItem value="Advance learner course">Advance learner course</SelectItem>
                       <SelectItem value="Audit Course">Audit Course</SelectItem>
                       <SelectItem value="Bridge course">Bridge course</SelectItem>
-                      <SelectItem value="Non Academic">Non Academic</SelectItem>
+                      <SelectItem value="Core Practical">Core Practical</SelectItem>
+                      <SelectItem value="Core">Core</SelectItem>
+                      <SelectItem value="Discipline Specific elective Practical">Discipline Specific elective Practical</SelectItem>
+                      <SelectItem value="Discipline Specific elective">Discipline Specific elective</SelectItem>
+                      <SelectItem value="Elective Practical">Elective Practical</SelectItem>
+                      <SelectItem value="Elective">Elective</SelectItem>
+                      <SelectItem value="English">English</SelectItem>
+                      <SelectItem value="Extra Disciplinary Elective Practical">Extra Disciplinary Elective Practical</SelectItem>
+                      <SelectItem value="Extra Disciplinary">Extra Disciplinary</SelectItem>
+                      <SelectItem value="Foundation Course">Foundation Course</SelectItem>
+                      <SelectItem value="Generic Elective Practical">Generic Elective Practical</SelectItem>
+                      <SelectItem value="Generic Elective">Generic Elective</SelectItem>
+                      <SelectItem value="Internship">Internship</SelectItem>
+                      <SelectItem value="Language">Language</SelectItem>
                       <SelectItem value="Naanmuthalvan">Naanmuthalvan</SelectItem>
+                      <SelectItem value="Non Academic">Non Academic</SelectItem>
+                      <SelectItem value="Non Major Elective Practical">Non Major Elective Practical</SelectItem>
+                      <SelectItem value="Non Major Elective">Non Major Elective</SelectItem>
+                      <SelectItem value="Practical">Practical</SelectItem>
+                      <SelectItem value="Project">Project</SelectItem>
+                      <SelectItem value="Skill Enhancement Practical">Skill Enhancement Practical</SelectItem>
+                      <SelectItem value="Skill Enhancement">Skill Enhancement</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
@@ -1778,43 +2099,6 @@ export default function CoursesPage() {
           </div>
         </SheetContent>
       </Sheet>
-
-      {/* Upload Error Dialog */}
-      <AlertDialog open={showErrorDialog} onOpenChange={setShowErrorDialog}>
-        <AlertDialogContent className="max-w-3xl max-h-[80vh] overflow-hidden flex flex-col">
-          <AlertDialogHeader>
-            <AlertDialogTitle className="flex items-center gap-2 text-red-600">
-              <AlertTriangle className="h-5 w-5" />
-              Upload Errors ({uploadErrors.length} rows failed)
-            </AlertDialogTitle>
-            <AlertDialogDescription>
-              The following rows could not be imported. Please fix these errors and try again.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-
-          <div className="flex-1 overflow-y-auto border rounded-lg p-4 bg-muted/30 my-4">
-            <div className="space-y-2">
-              {uploadErrors.map((error, index) => (
-                <div key={index} className="p-3 bg-background border border-red-200 rounded-md">
-                  <p className="text-sm font-mono text-red-600 dark:text-red-400">{error}</p>
-                </div>
-              ))}
-            </div>
-          </div>
-
-          <AlertDialogFooter>
-            <AlertDialogAction
-              onClick={() => {
-                setShowErrorDialog(false)
-                setUploadErrors([])
-              }}
-              className="bg-primary"
-            >
-              Close
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
     </SidebarProvider>
   )
 }

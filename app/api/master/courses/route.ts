@@ -5,6 +5,7 @@ export async function GET(req: NextRequest) {
   try {
     const { searchParams } = new URL(req.url)
     const id = searchParams.get('id')
+    const ids = searchParams.get('ids') // Support batch fetching with comma-separated IDs
     const search = searchParams.get('search')
     const program_id = searchParams.get('program_id')
     const institution_code = searchParams.get('institution_code')
@@ -78,6 +79,13 @@ export async function GET(req: NextRequest) {
     // Apply filters against the real column names
     if (id) {
       query = query.eq('id', id)
+    }
+    if (ids) {
+      // Support batch fetching with comma-separated IDs
+      const idArray = ids.split(',').map(id => id.trim()).filter(Boolean)
+      if (idArray.length > 0) {
+        query = query.in('id', idArray)
+      }
     }
     if (search) {
       query = query.or(`course_code.ilike.%${search}%,course_name.ilike.%${search}%`)
@@ -344,7 +352,7 @@ export async function POST(req: NextRequest) {
       fee_exception: input.fee_exception !== undefined ? Boolean(input.fee_exception) : false,
       syllabus_pdf_url: input.syllabus_pdf_url ? String(input.syllabus_pdf_url) : null,
       description: input.description ? String(input.description) : null,
-      status: input.is_active !== undefined ? Boolean(input.is_active) : false,
+      status: input.is_active !== undefined ? Boolean(input.is_active) : true,
       // Required fields for marks and hours
       class_hours: input.class_hours !== undefined ? Number(input.class_hours) : 0,
       theory_hours: input.theory_hours !== undefined ? Number(input.theory_hours) : 0,

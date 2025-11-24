@@ -100,12 +100,15 @@ export async function GET(request: NextRequest) {
 				return NextResponse.json([])
 			}
 
-			// Get packets that have marks entered
-			const packetIds = allPackets.map(p => p.id)
+			// Get marks entries for this course to find which packets have marks
 			const { data: marksData, error: marksError } = await supabase
 				.from('marks_entry')
-				.select('student_dummy_number_id, student_dummy_numbers!inner(packet_id)')
-				.in('student_dummy_numbers.packet_id', packetIds)
+				.select(`
+					student_dummy_number_id,
+					student_dummy_numbers:student_dummy_number_id (
+						packet_id
+					)
+				`)
 				.eq('institutions_id', institutionId)
 				.eq('examination_session_id', sessionId)
 				.eq('course_id', courseId)
@@ -116,8 +119,10 @@ export async function GET(request: NextRequest) {
 			}
 
 			// Extract packet IDs that have marks
+			const packetIds = allPackets.map(p => p.id)
 			const packetsWithMarks = new Set(
-				marksData?.map((mark: any) => mark.student_dummy_numbers?.packet_id).filter(Boolean) || []
+				marksData?.map((mark: any) => mark.student_dummy_numbers?.packet_id)
+					.filter((id: string) => id && packetIds.includes(id)) || []
 			)
 
 			// Filter to only packets that HAVE marks (opposite of mark entry)
@@ -158,10 +163,20 @@ export async function GET(request: NextRequest) {
 				return NextResponse.json({ error: 'Packet not found' }, { status: 404 })
 			}
 
-			// Get dummy numbers for this packet
+			// Get dummy numbers for this packet with exam_registration -> course_offering to get program_id
 			const { data: dummyNumbers, error: dummyError } = await supabase
 				.from('student_dummy_numbers')
-				.select('id, dummy_number, exam_registration_id, program_id')
+				.select(`
+					id,
+					dummy_number,
+					exam_registration_id,
+					exam_registrations:exam_registration_id (
+						course_offering_id,
+						course_offerings:course_offering_id (
+							program_id
+						)
+					)
+				`)
 				.eq('packet_id', packetId)
 				.order('dummy_number')
 
@@ -191,11 +206,13 @@ export async function GET(request: NextRequest) {
 			// Build students array with marks
 			const students = dummyNumbers?.map(dn => {
 				const marks = marksMap.get(dn.id)
+				const examReg = dn.exam_registrations as any
+				const courseOffering = examReg?.course_offerings as any
 				return {
 					student_dummy_id: dn.id,
 					dummy_number: dn.dummy_number,
 					exam_registration_id: dn.exam_registration_id,
-					program_id: dn.program_id,
+					program_id: courseOffering?.program_id || null,
 					marks_entry_id: marks?.id || null,
 					total_marks_obtained: marks?.total_marks_obtained ?? null,
 					total_marks_in_words: marks?.total_marks_in_words || '',
