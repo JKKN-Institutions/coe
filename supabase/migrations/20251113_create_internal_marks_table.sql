@@ -3,6 +3,16 @@
 -- =====================================================
 -- Date: 2025-11-13
 -- Purpose: Track internal assessment marks for continuous evaluation
+--
+-- Update History:
+-- 2025-11-17 - Added test_1_mark, test_2_mark, test_3_mark columns and their max fields
+--            - Changed all mark fields from DECIMAL(5,2) to INTEGER
+--            - Updated internal_percentage to NUMERIC GENERATED column
+--            - Added check constraints and indexes for test marks
+-- 2025-11-24 - Fixed student_id foreign key to reference students table (not users)
+-- 2025-11-25 - Made faculty_id nullable
+--            - Updated all views to join with students table using CONCAT for student_name
+--            - Synced migration file with current database schema
 -- =====================================================
 
 -- =====================================================
@@ -20,41 +30,51 @@ CREATE TABLE IF NOT EXISTS public.internal_marks (
 	program_id UUID NOT NULL,
 	course_id UUID NOT NULL,
 	student_id UUID NOT NULL,
-	faculty_id UUID NOT NULL,
+	faculty_id UUID,
 	
 	-- Component Marks (Individual Assessment Types)
-	assignment_marks DECIMAL(5,2) DEFAULT 0,
-	quiz_marks DECIMAL(5,2) DEFAULT 0,
-	mid_term_marks DECIMAL(5,2) DEFAULT 0,
-	presentation_marks DECIMAL(5,2) DEFAULT 0,
-	attendance_marks DECIMAL(5,2) DEFAULT 0,
-	lab_marks DECIMAL(5,2) DEFAULT 0,
-	project_marks DECIMAL(5,2) DEFAULT 0,
-	seminar_marks DECIMAL(5,2) DEFAULT 0,
-	viva_marks DECIMAL(5,2) DEFAULT 0,
-	other_marks DECIMAL(5,2) DEFAULT 0,
-	
+	assignment_marks INTEGER DEFAULT 0,
+	quiz_marks INTEGER DEFAULT 0,
+	mid_term_marks INTEGER DEFAULT 0,
+	presentation_marks INTEGER DEFAULT 0,
+	attendance_marks INTEGER DEFAULT 0,
+	lab_marks INTEGER DEFAULT 0,
+	project_marks INTEGER DEFAULT 0,
+	seminar_marks INTEGER DEFAULT 0,
+	viva_marks INTEGER DEFAULT 0,
+	other_marks INTEGER DEFAULT 0,
+
 	-- Calculated Totals
-	total_internal_marks DECIMAL(5,2) NOT NULL,
-	max_internal_marks DECIMAL(5,2) NOT NULL,
-	internal_percentage DECIMAL(5,2) GENERATED ALWAYS AS (
-		CASE 
-			WHEN max_internal_marks > 0 THEN ROUND((total_internal_marks / max_internal_marks) * 100, 2)
-			ELSE 0
+	total_internal_marks INTEGER NOT NULL,
+	max_internal_marks INTEGER NOT NULL,
+
+	-- Component Maximums (Configuration)
+	max_assignment_marks INTEGER,
+	max_quiz_marks INTEGER,
+	max_mid_term_marks INTEGER,
+	max_presentation_marks INTEGER,
+	max_attendance_marks INTEGER,
+	max_lab_marks INTEGER,
+	max_project_marks INTEGER,
+	max_seminar_marks INTEGER,
+	max_viva_marks INTEGER,
+	max_other_marks INTEGER,
+
+	-- Test Marks (Additional Assessment Types)
+	test_1_mark INTEGER DEFAULT 0,
+	test_2_mark INTEGER DEFAULT 0,
+	test_3_mark INTEGER DEFAULT 0,
+	max_test_1_mark INTEGER,
+	max_test_2_mark INTEGER,
+	max_test_3_mark INTEGER,
+
+	-- Calculated Percentage (Generated Column)
+	internal_percentage NUMERIC GENERATED ALWAYS AS (
+		CASE
+			WHEN max_internal_marks > 0 THEN ROUND((total_internal_marks::numeric / max_internal_marks::numeric) * 100, 2)
+			ELSE 0::numeric
 		END
 	) STORED,
-	
-	-- Component Maximums (Configuration)
-	max_assignment_marks DECIMAL(5,2),
-	max_quiz_marks DECIMAL(5,2),
-	max_mid_term_marks DECIMAL(5,2),
-	max_presentation_marks DECIMAL(5,2),
-	max_attendance_marks DECIMAL(5,2),
-	max_lab_marks DECIMAL(5,2),
-	max_project_marks DECIMAL(5,2),
-	max_seminar_marks DECIMAL(5,2),
-	max_viva_marks DECIMAL(5,2),
-	max_other_marks DECIMAL(5,2),
 	
 	-- Submission Details
 	submission_date DATE NOT NULL,
@@ -104,8 +124,8 @@ CREATE TABLE IF NOT EXISTS public.internal_marks (
 		FOREIGN KEY (program_id) REFERENCES programs(id) ON DELETE RESTRICT,
 	CONSTRAINT internal_marks_course_id_fkey 
 		FOREIGN KEY (course_id) REFERENCES courses(id) ON DELETE RESTRICT,
-	CONSTRAINT internal_marks_student_id_fkey 
-		FOREIGN KEY (student_id) REFERENCES users(id) ON DELETE CASCADE,
+	CONSTRAINT internal_marks_student_id_fkey
+		FOREIGN KEY (student_id) REFERENCES students(id) ON DELETE CASCADE,
 	CONSTRAINT internal_marks_faculty_id_fkey 
 		FOREIGN KEY (faculty_id) REFERENCES users(id) ON DELETE RESTRICT,
 	CONSTRAINT internal_marks_submitted_by_fkey 
@@ -166,7 +186,25 @@ CREATE TABLE IF NOT EXISTS public.internal_marks (
 			(max_viva_marks IS NULL OR viva_marks <= max_viva_marks) AND
 			(max_other_marks IS NULL OR other_marks <= max_other_marks)
 		),
-	CONSTRAINT check_valid_marks_status 
+	CONSTRAINT check_test_marks_non_negative
+		CHECK (
+			test_1_mark >= 0 AND
+			test_2_mark >= 0 AND
+			test_3_mark >= 0
+		),
+	CONSTRAINT check_test_max_marks_non_negative
+		CHECK (
+			(max_test_1_mark IS NULL OR max_test_1_mark >= 0) AND
+			(max_test_2_mark IS NULL OR max_test_2_mark >= 0) AND
+			(max_test_3_mark IS NULL OR max_test_3_mark >= 0)
+		),
+	CONSTRAINT check_test_marks_within_max
+		CHECK (
+			(max_test_1_mark IS NULL OR test_1_mark <= max_test_1_mark) AND
+			(max_test_2_mark IS NULL OR test_2_mark <= max_test_2_mark) AND
+			(max_test_3_mark IS NULL OR test_3_mark <= max_test_3_mark)
+		),
+	CONSTRAINT check_valid_marks_status
 		CHECK (marks_status IN ('Draft', 'Submitted', 'Approved', 'Verified', 'Locked', 'Rejected', 'Pending Review')),
 	CONSTRAINT check_approval_consistency 
 		CHECK (
@@ -240,10 +278,18 @@ CREATE INDEX IF NOT EXISTS idx_internal_marks_created_at
 	ON public.internal_marks(created_at DESC);
 
 -- Marks Range Indexes
-CREATE INDEX IF NOT EXISTS idx_internal_marks_total 
+CREATE INDEX IF NOT EXISTS idx_internal_marks_total
 	ON public.internal_marks(total_internal_marks);
-CREATE INDEX IF NOT EXISTS idx_internal_marks_percentage 
+CREATE INDEX IF NOT EXISTS idx_internal_marks_percentage
 	ON public.internal_marks(internal_percentage);
+
+-- Test Marks Indexes
+CREATE INDEX IF NOT EXISTS idx_internal_marks_test_1
+	ON public.internal_marks(test_1_mark);
+CREATE INDEX IF NOT EXISTS idx_internal_marks_test_2
+	ON public.internal_marks(test_2_mark);
+CREATE INDEX IF NOT EXISTS idx_internal_marks_test_3
+	ON public.internal_marks(test_3_mark);
 
 -- Composite Indexes for Common Queries
 CREATE INDEX IF NOT EXISTS idx_internal_marks_session_status 
@@ -310,8 +356,11 @@ BEGIN
 	   NEW.project_marks != OLD.project_marks OR
 	   NEW.seminar_marks != OLD.seminar_marks OR
 	   NEW.viva_marks != OLD.viva_marks OR
-	   NEW.other_marks != OLD.other_marks THEN
-		
+	   NEW.other_marks != OLD.other_marks OR
+	   NEW.test_1_mark != OLD.test_1_mark OR
+	   NEW.test_2_mark != OLD.test_2_mark OR
+	   NEW.test_3_mark != OLD.test_3_mark THEN
+
 		NEW.total_internal_marks = COALESCE(NEW.assignment_marks, 0) +
 									COALESCE(NEW.quiz_marks, 0) +
 									COALESCE(NEW.mid_term_marks, 0) +
@@ -321,7 +370,10 @@ BEGIN
 									COALESCE(NEW.project_marks, 0) +
 									COALESCE(NEW.seminar_marks, 0) +
 									COALESCE(NEW.viva_marks, 0) +
-									COALESCE(NEW.other_marks, 0);
+									COALESCE(NEW.other_marks, 0) +
+									COALESCE(NEW.test_1_mark, 0) +
+									COALESCE(NEW.test_2_mark, 0) +
+									COALESCE(NEW.test_3_mark, 0);
 	END IF;
 	
 	RETURN NEW;
@@ -348,7 +400,10 @@ BEGIN
 									COALESCE(NEW.project_marks, 0) +
 									COALESCE(NEW.seminar_marks, 0) +
 									COALESCE(NEW.viva_marks, 0) +
-									COALESCE(NEW.other_marks, 0);
+									COALESCE(NEW.other_marks, 0) +
+									COALESCE(NEW.test_1_mark, 0) +
+									COALESCE(NEW.test_2_mark, 0) +
+									COALESCE(NEW.test_3_mark, 0);
 	END IF;
 	
 	RETURN NEW;
@@ -435,6 +490,9 @@ BEGIN
 		NEW.seminar_marks != OLD.seminar_marks OR
 		NEW.viva_marks != OLD.viva_marks OR
 		NEW.other_marks != OLD.other_marks OR
+		NEW.test_1_mark != OLD.test_1_mark OR
+		NEW.test_2_mark != OLD.test_2_mark OR
+		NEW.test_3_mark != OLD.test_3_mark OR
 		NEW.total_internal_marks != OLD.total_internal_marks
 	) THEN
 		RAISE EXCEPTION 'Cannot modify locked internal marks. Unlock first.';
@@ -510,8 +568,8 @@ SELECT
 	
 	-- Student Details
 	im.student_id,
-	s.full_name AS student_name,
-	s.email AS student_email,
+	CONCAT(s.first_name, ' ', COALESCE(s.last_name, '')) AS student_name,
+	s.student_email,
 	
 	-- Faculty Details
 	im.faculty_id,
@@ -556,7 +614,7 @@ SELECT
 	im.updated_by,
 	cu.full_name AS created_by_name
 FROM public.internal_marks im
-LEFT JOIN public.users s ON im.student_id = s.id
+LEFT JOIN public.students s ON im.student_id = s.id
 LEFT JOIN public.users f ON im.faculty_id = f.id
 LEFT JOIN public.users abu ON im.approved_by = abu.id
 LEFT JOIN public.users vbu ON im.verified_by = vbu.id
@@ -615,7 +673,7 @@ SELECT
 	p.program_code,
 	c.course_code,
 	c.course_name,
-	s.full_name AS student_name,
+	CONCAT(s.first_name, ' ', COALESCE(s.last_name, '')) AS student_name,
 	er.stu_register_no,
 	f.full_name AS faculty_name,
 	im.total_internal_marks,
@@ -628,7 +686,7 @@ LEFT JOIN public.institutions i ON im.institutions_id = i.id
 LEFT JOIN public.examination_sessions es ON im.examination_session_id = es.id
 LEFT JOIN public.programs p ON im.program_id = p.id
 LEFT JOIN public.courses c ON im.course_id = c.id
-LEFT JOIN public.users s ON im.student_id = s.id
+LEFT JOIN public.students s ON im.student_id = s.id
 LEFT JOIN public.users f ON im.faculty_id = f.id
 LEFT JOIN public.exam_registrations er ON im.exam_registration_id = er.id
 WHERE im.marks_status = 'Submitted'
@@ -673,7 +731,7 @@ GROUP BY
 CREATE OR REPLACE VIEW public.student_internal_marks_view AS
 SELECT
 	s.id AS student_id,
-	s.full_name AS student_name,
+	CONCAT(s.first_name, ' ', COALESCE(s.last_name, '')) AS student_name,
 	er.stu_register_no,
 	i.institution_code,
 	es.session_code,
@@ -688,7 +746,7 @@ SELECT
 	im.is_verified,
 	f.full_name AS faculty_name
 FROM public.internal_marks im
-LEFT JOIN public.users s ON im.student_id = s.id
+LEFT JOIN public.students s ON im.student_id = s.id
 LEFT JOIN public.users f ON im.faculty_id = f.id
 LEFT JOIN public.exam_registrations er ON im.exam_registration_id = er.id
 LEFT JOIN public.institutions i ON im.institutions_id = i.id
@@ -1188,6 +1246,9 @@ COMMENT ON COLUMN public.internal_marks.marks_status IS 'Current status: Draft, 
 COMMENT ON COLUMN public.internal_marks.is_approved IS 'Indicates if marks have been approved by authorized personnel';
 COMMENT ON COLUMN public.internal_marks.is_verified IS 'Indicates if marks have been verified';
 COMMENT ON COLUMN public.internal_marks.is_locked IS 'Indicates if marks are locked and cannot be modified';
+
+COMMENT ON CONSTRAINT internal_marks_student_id_fkey ON public.internal_marks IS
+'References students table to be consistent with exam_registrations and exam_attendance';
 
 COMMENT ON FUNCTION submit_internal_marks(UUID) IS 'Submits draft internal marks for approval';
 COMMENT ON FUNCTION approve_internal_marks(UUID, UUID, TEXT) IS 'Approves submitted internal marks';

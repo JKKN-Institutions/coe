@@ -89,6 +89,7 @@ export default function CoursesPage() {
   const [searchTerm, setSearchTerm] = useState("")
   const [statusFilter, setStatusFilter] = useState("all")
   const [typeFilter, setTypeFilter] = useState("all")
+  const [evaluationTypeFilter, setEvaluationTypeFilter] = useState("all")
   const [sortField, setSortField] = useState<'course_code' | 'course_title' | 'course_category' | 'credits' | 'exam_duration' | 'is_active' | 'qp_code' | null>(null)
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc')
 
@@ -225,7 +226,8 @@ export default function CoursesPage() {
                              (statusFilter === "active" && course.is_active) ||
                              (statusFilter === "inactive" && !course.is_active)
         const matchesType = typeFilter === "all" || course.course_type === typeFilter
-        return matchesSearch && matchesStatus && matchesType
+        const matchesEvaluationType = evaluationTypeFilter === "all" || course.evaluation_type === evaluationTypeFilter
+        return matchesSearch && matchesStatus && matchesType && matchesEvaluationType
       })
 
     if (!sortField) return data
@@ -260,7 +262,7 @@ export default function CoursesPage() {
       if (aValue > bValue) return sortDirection === 'asc' ? 1 : -1
       return 0
     })
-  }, [courses, searchTerm, statusFilter, typeFilter, sortField, sortDirection])
+  }, [courses, searchTerm, statusFilter, typeFilter, evaluationTypeFilter, sortField, sortDirection])
 
   // Pagination calculations
   const totalPages = itemsPerPage === "all" ? 1 : Math.ceil(filteredCourses.length / itemsPerPage) || 1
@@ -269,7 +271,7 @@ export default function CoursesPage() {
   const pageItems = filteredCourses.slice(startIndex, endIndex)
 
   // Reset page when filters change
-  useEffect(() => setCurrentPage(1), [searchTerm, sortField, sortDirection, itemsPerPage, statusFilter, typeFilter])
+  useEffect(() => setCurrentPage(1), [searchTerm, sortField, sortDirection, itemsPerPage, statusFilter, typeFilter, evaluationTypeFilter])
 
   const getStatusBadgeVariant = (course: Course) => {
     return course.is_active ? "default" : "secondary"
@@ -409,7 +411,13 @@ export default function CoursesPage() {
     if (!formData.qp_code.trim()) e.qp_code = 'QP code is required'
     if (!formData.course_category) e.course_category = 'Course category is required'
     if (!formData.evaluation_type) e.evaluation_type = 'Evaluation type is required'
+    if (formData.evaluation_type && !['CIA', 'ESE', 'CIA + ESE'].includes(formData.evaluation_type)) {
+      e.evaluation_type = 'Evaluation type must be CIA, ESE, or CIA + ESE'
+    }
     if (!formData.result_type) e.result_type = 'Result type is required'
+    if (formData.result_type && !['Mark', 'Status'].includes(formData.result_type)) {
+      e.result_type = 'Result type must be Mark or Status'
+    }
 
     // Course code validation (alphanumeric and special characters)
     if (formData.course_code && !/^[A-Za-z0-9\-_]+$/.test(formData.course_code)) {
@@ -628,19 +636,19 @@ export default function CoursesPage() {
       'Fee Exception': c.fee_exception ? 'TRUE' : 'FALSE',
       'Syllabus PDF URL': c.syllabus_pdf_url || '',
       'Description': c.description || '',
-      'Total Class Hours': c.class_hours || '',
-      'Theory Hours': c.theory_hours || '',
-      'Practical Hours': c.practical_hours || '',
-      'Internal Max Mark': c.internal_max_mark || '',
-      'Internal Pass Mark': c.internal_pass_mark || '',
-      'Internal Converted Mark': c.internal_converted_mark || '',
-      'External Max Mark': c.external_max_mark || '',
-      'External Pass Mark': c.external_pass_mark || '',
-      'External Converted Mark': c.external_converted_mark || 0,
-      'Total Pass Mark': c.total_pass_mark || 0,
-      'Total Max Mark': c.total_max_mark || 0,
-      'Annual Semester': c.annual_semester ? 'TRUE' : 'FALSE',
-      'Registration Based': c.registration_based ? 'TRUE' : 'FALSE',
+      'Class Hours*': c.class_hours || 0,
+      'Theory Hours*': c.theory_hours || 0,
+      'Practical Hours*': c.practical_hours || 0,
+      'Internal Max Mark*': c.internal_max_mark || 0,
+      'Internal Pass Mark*': c.internal_pass_mark || 0,
+      'Internal Converted Mark*': c.internal_converted_mark || 0,
+      'External Max Mark*': c.external_max_mark || 0,
+      'External Pass Mark*': c.external_pass_mark || 0,
+      'External Converted Mark*': c.external_converted_mark || 0,
+      'Total Pass Mark*': c.total_pass_mark || 0,
+      'Total Max Mark*': c.total_max_mark || 0,
+      'Annual Semester*': c.annual_semester ? 'TRUE' : 'FALSE',
+      'Registration Based*': c.registration_based ? 'TRUE' : 'FALSE',
       'Status': c.is_active ? 'TRUE' : 'FALSE',
     }))
 
@@ -800,7 +808,7 @@ export default function CoursesPage() {
             qp_code: row['QP Code*'] || row['QP Code'] || row.qp_code,
             e_code_name: row['E Code Name'] || row['E-Code Name'] || row['E-Code Name (Tamil/English/French/Malayalam/Hindi)'] || row.e_code_name || null,
             exam_duration: Number(row['Exam Hours'] || row['Exam hours'] || row['Exam hours'] || row.exam_duration) || 0,
-            evaluation_type: row['Evaluation Type*'] || row['Evaluation Type'] || row['Evaluation Type* (CA/ESE/CA + ESE)'] || row.evaluation_type,
+            evaluation_type: row['Evaluation Type*'] || row['Evaluation Type'] || row['Evaluation Type* (CIA/ESE/CIA + ESE)'] || row.evaluation_type,
             result_type: row['Result Type*'] || row['Result Type'] || row['Result Type* (Mark/Status)'] || row.result_type || 'Mark',
             self_study_course: typeof row.self_study_course === 'boolean' ? row.self_study_course : String(row['Self Study Course'] || row['Self Study Course (TRUE/FALSE)'] || '').toUpperCase() === 'TRUE',
             outside_class_course: typeof row.outside_class_course === 'boolean' ? row.outside_class_course : String(row['Outside Class Course'] || row['Outside Class Course (TRUE/FALSE)'] || '').toUpperCase() === 'TRUE',
@@ -814,19 +822,19 @@ export default function CoursesPage() {
             fee_exception: typeof row.fee_exception === 'boolean' ? row.fee_exception : String(row['Fee Exception'] || row['Fee Exception (TRUE/FALSE)'] || '').toUpperCase() === 'TRUE',
             syllabus_pdf_url: row['Syllabus PDF URL'] || row.syllabus_pdf_url || null,
             description: row['Description'] || row.description || null,
-            class_hours: Number(row['Total Class Hours'] || row.class_hours) || 0,
-            theory_hours: Number(row['Theory Hours'] || row.theory_hours) || 0,
-            practical_hours: Number(row['Practical Hours'] || row.practical_hours) || 0,
-            internal_max_mark: Number(row['Internal Max Mark'] || row.internal_max_mark) || 0,
-            internal_pass_mark: Number(row['Internal Pass Mark'] || row.internal_pass_mark) || 0,
-            internal_converted_mark: Number(row['Internal Converted Mark'] || row.internal_converted_mark) || 0,
-            external_max_mark: Number(row['External Max Mark'] || row.external_max_mark) || 0,
-            external_pass_mark: Number(row['External Pass Mark'] || row.external_pass_mark) || 0,
-            external_converted_mark: Number(row['External Converted Mark'] || row.external_converted_mark) || 0,
-            total_pass_mark: Number(row['Total Pass Mark'] || row.total_pass_mark) || 0,
-            total_max_mark: Number(row['Total Max Mark'] || row.total_max_mark) || 0,
-            annual_semester: typeof row.annual_semester === 'boolean' ? row.annual_semester : String(row['Annual Semester'] || row['Annual Semester (TRUE/FALSE)'] || 'FALSE').toUpperCase() === 'TRUE',
-            registration_based: typeof row.registration_based === 'boolean' ? row.registration_based : String(row['Registration Based'] || row['Registration Based (TRUE/FALSE)'] || 'FALSE').toUpperCase() === 'TRUE',
+            class_hours: Number(row['Class Hours*'] || row['Class Hours'] || row['Total Class Hours'] || row.class_hours) || 0,
+            theory_hours: Number(row['Theory Hours*'] || row['Theory Hours'] || row.theory_hours) || 0,
+            practical_hours: Number(row['Practical Hours*'] || row['Practical Hours'] || row.practical_hours) || 0,
+            internal_max_mark: Number(row['Internal Max Mark*'] || row['Internal Max Mark'] || row.internal_max_mark) || 0,
+            internal_pass_mark: Number(row['Internal Pass Mark*'] || row['Internal Pass Mark'] || row.internal_pass_mark) || 0,
+            internal_converted_mark: Number(row['Internal Converted Mark*'] || row['Internal Converted Mark'] || row.internal_converted_mark) || 0,
+            external_max_mark: Number(row['External Max Mark*'] || row['External Max Mark'] || row.external_max_mark) || 0,
+            external_pass_mark: Number(row['External Pass Mark*'] || row['External Pass Mark'] || row.external_pass_mark) || 0,
+            external_converted_mark: Number(row['External Converted Mark*'] || row['External Converted Mark'] || row.external_converted_mark) || 0,
+            total_pass_mark: Number(row['Total Pass Mark*'] || row['Total Pass Mark'] || row.total_pass_mark) || 0,
+            total_max_mark: Number(row['Total Max Mark*'] || row['Total Max Mark'] || row.total_max_mark) || 0,
+            annual_semester: typeof row.annual_semester === 'boolean' ? row.annual_semester : String(row['Annual Semester*'] || row['Annual Semester'] || row['Annual Semester (TRUE/FALSE)'] || 'FALSE').toUpperCase() === 'TRUE',
+            registration_based: typeof row.registration_based === 'boolean' ? row.registration_based : String(row['Registration Based*'] || row['Registration Based'] || row['Registration Based (TRUE/FALSE)'] || 'FALSE').toUpperCase() === 'TRUE',
             is_active: typeof row.is_active === 'boolean' ? row.is_active : String(row['Status'] || row['Status (TRUE/FALSE)'] || 'TRUE').toUpperCase() !== 'FALSE'
           }
 
@@ -841,7 +849,29 @@ export default function CoursesPage() {
           if (!payload.qp_code?.trim()) validationErrors.push('QP code required')
           if (!payload.course_category) validationErrors.push('Course category required')
           if (!payload.evaluation_type) validationErrors.push('Evaluation type required')
+          if (payload.evaluation_type && !['CIA', 'ESE', 'CIA + ESE'].includes(payload.evaluation_type)) {
+            validationErrors.push('Evaluation type must be CIA, ESE, or CIA + ESE')
+          }
           if (!payload.result_type) validationErrors.push('Result type required')
+          if (payload.result_type && !['Mark', 'Status'].includes(payload.result_type)) {
+            validationErrors.push('Result type must be Mark or Status')
+          }
+
+          // Validate course_type against allowed values
+          const allowedCourseTypes = [
+            'Ability Enhancement', 'Additional Credit course', 'Advance learner course',
+            'Audit Course', 'Bridge course', 'Core Practical', 'Core',
+            'Discipline Specific elective Practical', 'Discipline Specific elective',
+            'Elective Practical', 'Elective', 'English',
+            'Extra Disciplinary Elective Practical', 'Extra Disciplinary',
+            'Foundation Course', 'Generic Elective Practical', 'Generic Elective',
+            'Internship', 'Language', 'Naanmuthalvan', 'Non Academic',
+            'Non Major Elective Practical', 'Non Major Elective',
+            'Practical', 'Project', 'Skill Enhancement Practical', 'Skill Enhancement'
+          ]
+          if (payload.course_type && !allowedCourseTypes.includes(payload.course_type)) {
+            validationErrors.push(`Invalid course type. Must be one of: ${allowedCourseTypes.join(', ')}`)
+          }
 
           if (payload.course_code && !/^[A-Za-z0-9\-_]+$/.test(payload.course_code)) {
             validationErrors.push('Invalid course code format')
@@ -1078,8 +1108,8 @@ export default function CoursesPage() {
           if (row['Exam Hours'] !== undefined || row['Exam hours'] !== undefined || row.exam_duration !== undefined) {
             payload.exam_duration = Number(row['Exam Hours'] || row['Exam hours'] || row.exam_duration) || 0
           }
-          if (row['Evaluation Type*'] || row['Evaluation Type'] || row['Evaluation Type* (CA/ESE/CA + ESE)'] || row.evaluation_type) {
-            payload.evaluation_type = row['Evaluation Type*'] || row['Evaluation Type'] || row['Evaluation Type* (CA/ESE/CA + ESE)'] || row.evaluation_type
+          if (row['Evaluation Type*'] || row['Evaluation Type'] || row['Evaluation Type* (CIA/ESE/CIA + ESE)'] || row.evaluation_type) {
+            payload.evaluation_type = row['Evaluation Type*'] || row['Evaluation Type'] || row['Evaluation Type* (CIA/ESE/CIA + ESE)'] || row.evaluation_type
           }
           if (row['Result Type*'] || row['Result Type'] || row['Result Type* (Mark/Status)'] || row.result_type) {
             payload.result_type = row['Result Type*'] || row['Result Type'] || row['Result Type* (Mark/Status)'] || row.result_type
@@ -1120,44 +1150,44 @@ export default function CoursesPage() {
           if (row['Description'] || row.description) {
             payload.description = row['Description'] || row.description
           }
-          if (row['Total Class Hours'] !== undefined || row.class_hours !== undefined) {
-            payload.class_hours = Number(row['Total Class Hours'] || row.class_hours) || 0
+          if (row['Class Hours*'] !== undefined || row['Class Hours'] !== undefined || row['Total Class Hours'] !== undefined || row.class_hours !== undefined) {
+            payload.class_hours = Number(row['Class Hours*'] || row['Class Hours'] || row['Total Class Hours'] || row.class_hours) || 0
           }
-          if (row['Theory Hours'] !== undefined || row.theory_hours !== undefined) {
-            payload.theory_hours = Number(row['Theory Hours'] || row.theory_hours) || 0
+          if (row['Theory Hours*'] !== undefined || row['Theory Hours'] !== undefined || row.theory_hours !== undefined) {
+            payload.theory_hours = Number(row['Theory Hours*'] || row['Theory Hours'] || row.theory_hours) || 0
           }
-          if (row['Practical Hours'] !== undefined || row.practical_hours !== undefined) {
-            payload.practical_hours = Number(row['Practical Hours'] || row.practical_hours) || 0
+          if (row['Practical Hours*'] !== undefined || row['Practical Hours'] !== undefined || row.practical_hours !== undefined) {
+            payload.practical_hours = Number(row['Practical Hours*'] || row['Practical Hours'] || row.practical_hours) || 0
           }
-          if (row['Internal Max Mark'] !== undefined || row.internal_max_mark !== undefined) {
-            payload.internal_max_mark = Number(row['Internal Max Mark'] || row.internal_max_mark) || 0
+          if (row['Internal Max Mark*'] !== undefined || row['Internal Max Mark'] !== undefined || row.internal_max_mark !== undefined) {
+            payload.internal_max_mark = Number(row['Internal Max Mark*'] || row['Internal Max Mark'] || row.internal_max_mark) || 0
           }
-          if (row['Internal Pass Mark'] !== undefined || row.internal_pass_mark !== undefined) {
-            payload.internal_pass_mark = Number(row['Internal Pass Mark'] || row.internal_pass_mark) || 0
+          if (row['Internal Pass Mark*'] !== undefined || row['Internal Pass Mark'] !== undefined || row.internal_pass_mark !== undefined) {
+            payload.internal_pass_mark = Number(row['Internal Pass Mark*'] || row['Internal Pass Mark'] || row.internal_pass_mark) || 0
           }
-          if (row['Internal Converted Mark'] !== undefined || row.internal_converted_mark !== undefined) {
-            payload.internal_converted_mark = Number(row['Internal Converted Mark'] || row.internal_converted_mark) || 0
+          if (row['Internal Converted Mark*'] !== undefined || row['Internal Converted Mark'] !== undefined || row.internal_converted_mark !== undefined) {
+            payload.internal_converted_mark = Number(row['Internal Converted Mark*'] || row['Internal Converted Mark'] || row.internal_converted_mark) || 0
           }
-          if (row['External Max Mark'] !== undefined || row.external_max_mark !== undefined) {
-            payload.external_max_mark = Number(row['External Max Mark'] || row.external_max_mark) || 0
+          if (row['External Max Mark*'] !== undefined || row['External Max Mark'] !== undefined || row.external_max_mark !== undefined) {
+            payload.external_max_mark = Number(row['External Max Mark*'] || row['External Max Mark'] || row.external_max_mark) || 0
           }
-          if (row['External Pass Mark'] !== undefined || row.external_pass_mark !== undefined) {
-            payload.external_pass_mark = Number(row['External Pass Mark'] || row.external_pass_mark) || 0
+          if (row['External Pass Mark*'] !== undefined || row['External Pass Mark'] !== undefined || row.external_pass_mark !== undefined) {
+            payload.external_pass_mark = Number(row['External Pass Mark*'] || row['External Pass Mark'] || row.external_pass_mark) || 0
           }
-          if (row['External Converted Mark'] !== undefined || row.external_converted_mark !== undefined) {
-            payload.external_converted_mark = Number(row['External Converted Mark'] || row.external_converted_mark) || 0
+          if (row['External Converted Mark*'] !== undefined || row['External Converted Mark'] !== undefined || row.external_converted_mark !== undefined) {
+            payload.external_converted_mark = Number(row['External Converted Mark*'] || row['External Converted Mark'] || row.external_converted_mark) || 0
           }
-          if (row['Total Pass Mark'] !== undefined || row.total_pass_mark !== undefined) {
-            payload.total_pass_mark = Number(row['Total Pass Mark'] || row.total_pass_mark) || 0
+          if (row['Total Pass Mark*'] !== undefined || row['Total Pass Mark'] !== undefined || row.total_pass_mark !== undefined) {
+            payload.total_pass_mark = Number(row['Total Pass Mark*'] || row['Total Pass Mark'] || row.total_pass_mark) || 0
           }
-          if (row['Total Max Mark'] !== undefined || row.total_max_mark !== undefined) {
-            payload.total_max_mark = Number(row['Total Max Mark'] || row.total_max_mark) || 0
+          if (row['Total Max Mark*'] !== undefined || row['Total Max Mark'] !== undefined || row.total_max_mark !== undefined) {
+            payload.total_max_mark = Number(row['Total Max Mark*'] || row['Total Max Mark'] || row.total_max_mark) || 0
           }
-          if (row['Annual Semester'] !== undefined || row['Annual Semester (TRUE/FALSE)'] !== undefined || row.annual_semester !== undefined) {
-            payload.annual_semester = typeof row.annual_semester === 'boolean' ? row.annual_semester : String(row['Annual Semester'] || row['Annual Semester (TRUE/FALSE)'] || 'FALSE').toUpperCase() === 'TRUE'
+          if (row['Annual Semester*'] !== undefined || row['Annual Semester'] !== undefined || row['Annual Semester (TRUE/FALSE)'] !== undefined || row.annual_semester !== undefined) {
+            payload.annual_semester = typeof row.annual_semester === 'boolean' ? row.annual_semester : String(row['Annual Semester*'] || row['Annual Semester'] || row['Annual Semester (TRUE/FALSE)'] || 'FALSE').toUpperCase() === 'TRUE'
           }
-          if (row['Registration Based'] !== undefined || row['Registration Based (TRUE/FALSE)'] !== undefined || row.registration_based !== undefined) {
-            payload.registration_based = typeof row.registration_based === 'boolean' ? row.registration_based : String(row['Registration Based'] || row['Registration Based (TRUE/FALSE)'] || 'FALSE').toUpperCase() === 'TRUE'
+          if (row['Registration Based*'] !== undefined || row['Registration Based'] !== undefined || row['Registration Based (TRUE/FALSE)'] !== undefined || row.registration_based !== undefined) {
+            payload.registration_based = typeof row.registration_based === 'boolean' ? row.registration_based : String(row['Registration Based*'] || row['Registration Based'] || row['Registration Based (TRUE/FALSE)'] || 'FALSE').toUpperCase() === 'TRUE'
           }
           if (row['Status'] !== undefined || row['Status (TRUE/FALSE)'] !== undefined || row.is_active !== undefined) {
             payload.is_active = typeof row.is_active === 'boolean' ? row.is_active : String(row['Status'] || row['Status (TRUE/FALSE)'] || 'TRUE').toUpperCase() !== 'FALSE'
@@ -1375,6 +1405,18 @@ export default function CoursesPage() {
                         <SelectItem value="Skill Enhancement">Skill Enhancement</SelectItem>
                         <SelectItem value="Ability Enhancement">Ability Enhancement</SelectItem>
                         <SelectItem value="Language">Language</SelectItem>
+                      </SelectContent>
+                    </Select>
+
+                    <Select value={evaluationTypeFilter} onValueChange={setEvaluationTypeFilter}>
+                      <SelectTrigger className="h-9 rounded-lg border-slate-300 focus:border-emerald-500 w-[160px]">
+                        <SelectValue placeholder="All Evaluations" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="all">All Evaluations</SelectItem>
+                        <SelectItem value="CIA">CIA</SelectItem>
+                        <SelectItem value="ESE">ESE</SelectItem>
+                        <SelectItem value="CIA + ESE">CIA + ESE</SelectItem>
                       </SelectContent>
                     </Select>
 
@@ -1895,9 +1937,9 @@ export default function CoursesPage() {
                       <SelectValue placeholder="Select evaluation type" />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="CA">CA</SelectItem>
+                      <SelectItem value="CIA">CIA</SelectItem>
                       <SelectItem value="ESE">ESE</SelectItem>
-                      <SelectItem value="CA + ESE">CA + ESE</SelectItem>
+                      <SelectItem value="CIA + ESE">CIA + ESE</SelectItem>
                     </SelectContent>
                   </Select>
                   {errors.evaluation_type && <p className="text-xs text-destructive">{errors.evaluation_type}</p>}

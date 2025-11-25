@@ -80,7 +80,7 @@ export function generateCourseTemplate(referenceData: CourseReferenceData): XLSX
 		'QP-2025-CS101',                 // QP Code*
 		'English',                       // E Code Name (must be from CHECK constraint)
 		3,                              // Exam Duration Hours
-		'CA + ESE',                      // Evaluation Type* (must be: CA, ESE, or CA + ESE)
+		'CIA + ESE',                     // Evaluation Type* (must be: CIA, ESE, or CIA + ESE)
 		'Mark',                          // Result Type* (must be: Mark or Status)
 		'FALSE',                         // Self Study Course
 		'FALSE',                         // Outside Class Course
