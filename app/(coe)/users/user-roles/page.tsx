@@ -107,7 +107,7 @@ export default function UserRolesPage() {
         // Fetch users and roles
         const [usersResponse, rolesResponse] = await Promise.all([
           fetch('/api/users/users-list'),
-          fetch('/api/users/users-list/roles')
+          fetch('/api/users/roles')
         ])
 
         if (usersResponse.ok) {

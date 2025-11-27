@@ -1,135 +1,91 @@
-import { NextRequest, NextResponse } from 'next/server';
-import { createClient } from '@supabase/supabase-js';
-
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-  {
-    auth: {
-      autoRefreshToken: true,
-      persistSession: true,
-      detectSessionInUrl: true
-    }
-  }
-);
+import { NextRequest, NextResponse } from 'next/server'
 
 export async function GET(request: NextRequest) {
-  const requestUrl = new URL(request.url);
-  const code = requestUrl.searchParams.get('code');
-  const state = requestUrl.searchParams.get('state');
-  const error = requestUrl.searchParams.get('error');
-  const errorDescription = requestUrl.searchParams.get('error_description');
+	const requestUrl = new URL(request.url)
+	const code = requestUrl.searchParams.get('code')
+	const state = requestUrl.searchParams.get('state')
+	const error = requestUrl.searchParams.get('error')
+	const errorDescription = requestUrl.searchParams.get('error_description')
 
-  console.log('Supabase OAuth Callback Route:', { 
-    code: !!code, 
-    state: !!state,
-    error, 
-    errorDescription,
-    url: requestUrl.toString()
-  });
+	const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000'
 
-  if (error) {
-    console.error('OAuth error:', error, errorDescription);
-    
-    // Handle specific OAuth errors
-    if (error === 'invalid_request' && errorDescription?.includes('bad_oauth_state')) {
-      console.error('OAuth state validation failed - this usually indicates a CSRF attack or expired state');
-      // Redirect to login with a more specific error
-      const loginUrl = new URL('/login', request.url);
-      loginUrl.searchParams.set('error', 'oauth_state_invalid');
-      loginUrl.searchParams.set('error_description', 'Authentication session expired. Please try logging in again.');
-      return NextResponse.redirect(loginUrl);
-    }
-    
-    // Redirect to login with error
-    const loginUrl = new URL('/login', request.url);
-    loginUrl.searchParams.set('error', error);
-    if (errorDescription) {
-      loginUrl.searchParams.set('error_description', errorDescription);
-    }
-    return NextResponse.redirect(loginUrl);
-  }
+	console.log('OAuth Callback:', {
+		code: !!code,
+		state: !!state,
+		error,
+		errorDescription,
+	})
 
-  if (code) {
-    try {
-      console.log('Exchanging code for session...');
-      
-      // Exchange code for session
-      const { data, error: exchangeError } = await supabase.auth.exchangeCodeForSession(code);
-      
-      if (exchangeError) {
-        console.error('Code exchange error:', exchangeError);
-        
-        // Handle specific OAuth errors
-        if (exchangeError.message?.includes('invalid_grant') || exchangeError.message?.includes('code_expired')) {
-          const loginUrl = new URL('/login', request.url);
-          loginUrl.searchParams.set('error', 'oauth_code_expired');
-          loginUrl.searchParams.set('error_description', 'Authentication code expired. Please try logging in again.');
-          return NextResponse.redirect(loginUrl);
-        }
-        
-        if (exchangeError.message?.includes('invalid_request')) {
-          const loginUrl = new URL('/login', request.url);
-          loginUrl.searchParams.set('error', 'oauth_invalid_request');
-          loginUrl.searchParams.set('error_description', 'Invalid authentication request. Please try logging in again.');
-          return NextResponse.redirect(loginUrl);
-        }
-        
-        const loginUrl = new URL('/login', request.url);
-        loginUrl.searchParams.set('error', 'authentication_failed');
-        return NextResponse.redirect(loginUrl);
-      }
+	// Handle OAuth errors
+	if (error) {
+		console.error('OAuth error:', error, errorDescription)
 
-      if (data.session) {
-        console.log('OAuth session created successfully:', {
-          userId: data.session.user?.id,
-          email: data.session.user?.email
-        });
-        
-        // Check if user is active in our database
-        try {
-          const { data: userData, error: userError } = await supabase
-            .from('users')
-            .select('is_active')
-            .eq('email', data.session.user?.email)
-            .single();
+		if (error === 'invalid_request' && errorDescription?.includes('bad_oauth_state')) {
+			const loginUrl = new URL('/login', siteUrl)
+			loginUrl.searchParams.set('error', 'oauth_state_invalid')
+			loginUrl.searchParams.set('error_description', 'Authentication session expired. Please try logging in again.')
+			return NextResponse.redirect(loginUrl)
+		}
 
-          if (userError || !userData) {
-            console.log('User not found in database, redirecting to contact admin');
-            const contactUrl = new URL('/contact-admin', request.url);
-            return NextResponse.redirect(contactUrl);
-          }
+		const loginUrl = new URL('/login', siteUrl)
+		loginUrl.searchParams.set('error', error)
+		if (errorDescription) {
+			loginUrl.searchParams.set('error_description', errorDescription)
+		}
+		return NextResponse.redirect(loginUrl)
+	}
 
-          if (!userData.is_active) {
-            console.log('User account is inactive, redirecting to contact admin');
-            const contactUrl = new URL('/contact-admin', request.url);
-            return NextResponse.redirect(contactUrl);
-          }
+	// Validate required params
+	if (!code) {
+		console.log('No code found, redirecting to login')
+		const loginUrl = new URL('/login', siteUrl)
+		loginUrl.searchParams.set('error', 'missing_code')
+		loginUrl.searchParams.set('error_description', 'Authorization code not received')
+		return NextResponse.redirect(loginUrl)
+	}
 
-          // User is active, redirect to dashboard
-          console.log('User is active, redirecting to dashboard');
-          const dashboardUrl = new URL('/dashboard', request.url);
-          return NextResponse.redirect(dashboardUrl);
-        } catch (dbError) {
-          console.error('Database check error:', dbError);
-          const contactUrl = new URL('/contact-admin', request.url);
-          return NextResponse.redirect(contactUrl);
-        }
-      } else {
-        console.error('No session returned from code exchange');
-        const loginUrl = new URL('/login', request.url);
-        loginUrl.searchParams.set('error', 'no_session');
-        return NextResponse.redirect(loginUrl);
-      }
-    } catch (error) {
-      console.error('OAuth callback error:', error);
-      const loginUrl = new URL('/login', request.url);
-      loginUrl.searchParams.set('error', 'authentication_failed');
-      return NextResponse.redirect(loginUrl);
-    }
-  }
+	try {
+		// Exchange code for tokens via internal API
+		const tokenResponse = await fetch(`${siteUrl}/api/auth/token`, {
+			method: 'POST',
+			headers: { 'Content-Type': 'application/json' },
+			body: JSON.stringify({ code, state }),
+		})
 
-  // If no code or error, redirect to login
-  console.log('No code or error found, redirecting to login');
-  return NextResponse.redirect(new URL('/login', request.url));
+		if (!tokenResponse.ok) {
+			const errorData = await tokenResponse.json()
+			console.error('Token exchange failed:', errorData)
+			const loginUrl = new URL('/login', siteUrl)
+			loginUrl.searchParams.set('error', errorData.error || 'token_exchange_failed')
+			loginUrl.searchParams.set('error_description', errorData.error_description || 'Failed to exchange code for tokens')
+			return NextResponse.redirect(loginUrl)
+		}
+
+		const { access_token, refresh_token, user } = await tokenResponse.json()
+
+		console.log('Token exchange successful:', {
+			hasAccessToken: !!access_token,
+			hasRefreshToken: !!refresh_token,
+			hasUser: !!user,
+		})
+
+		// Redirect to dashboard with tokens in URL params
+		// (AuthProvider will handle storing them and cleaning the URL)
+		const dashboardUrl = new URL('/dashboard', siteUrl)
+		dashboardUrl.searchParams.set('token', access_token)
+		if (refresh_token) {
+			dashboardUrl.searchParams.set('refresh_token', refresh_token)
+		}
+		if (user) {
+			dashboardUrl.searchParams.set('user', encodeURIComponent(JSON.stringify(user)))
+		}
+
+		return NextResponse.redirect(dashboardUrl)
+	} catch (err) {
+		console.error('Callback error:', err)
+		const loginUrl = new URL('/login', siteUrl)
+		loginUrl.searchParams.set('error', 'server_error')
+		loginUrl.searchParams.set('error_description', 'An unexpected error occurred')
+		return NextResponse.redirect(loginUrl)
+	}
 }

@@ -64,7 +64,7 @@ export default function PermissionsPage() {
   const fetchPermissions = async () => {
     try {
       setLoading(true)
-      const response = await fetch('/api/users/users-list/permissions')
+      const response = await fetch('/api/users/permissions')
       if (!response.ok) {
         throw new Error('Failed to fetch permissions')
       }
@@ -172,7 +172,7 @@ export default function PermissionsPage() {
       
       if (editing) {
         // Update existing permission
-        const response = await fetch(`/api/users/users-list/permissions/${editing.id}`, {
+        const response = await fetch(`/api/users/permissions/${editing.id}`, {
           method: 'PUT',
           headers: {
             'Content-Type': 'application/json',
@@ -195,7 +195,7 @@ export default function PermissionsPage() {
         })
       } else {
         // Create new permission
-        const response = await fetch('/api/users/users-list/permissions', {
+        const response = await fetch('/api/users/permissions', {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -237,7 +237,7 @@ export default function PermissionsPage() {
     try {
       setLoading(true)
       
-      const response = await fetch(`/api/users/users-list/permissions/${id}`, {
+      const response = await fetch(`/api/users/permissions/${id}`, {
         method: 'DELETE',
       })
       
@@ -331,7 +331,7 @@ export default function PermissionsPage() {
   const handleDownload = async () => {
     try {
       // Fetch fresh data from API for export
-      const response = await fetch('/api/users/users-list/permissions')
+      const response = await fetch('/api/users/permissions')
       if (!response.ok) {
         throw new Error('Failed to fetch permissions for export')
       }
@@ -376,7 +376,7 @@ export default function PermissionsPage() {
   const handleExport = async () => {
     try {
       // Fetch fresh data from API for export
-      const response = await fetch('/api/users/users-list/permissions')
+      const response = await fetch('/api/users/permissions')
       if (!response.ok) {
         throw new Error('Failed to fetch permissions for export')
       }
@@ -597,7 +597,7 @@ export default function PermissionsPage() {
         
         for (const permission of mapped) {
           try {
-            const response = await fetch('/api/users/users-list/permissions', {
+            const response = await fetch('/api/users/permissions', {
               method: 'POST',
               headers: {
                 'Content-Type': 'application/json',

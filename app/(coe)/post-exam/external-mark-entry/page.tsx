@@ -357,6 +357,7 @@ export default function ExternalMarkEntryPage() {
 						marks_out_of: courseDetails.maximum_marks,
 						evaluation_date: new Date().toISOString().split('T')[0],
 						evaluator_remarks: student.remarks,
+						source: 'Manual Entry',
 					})
 				})
 			)

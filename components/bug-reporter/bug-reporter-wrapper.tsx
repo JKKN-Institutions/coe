@@ -1,7 +1,7 @@
 'use client'
 
 import { BugReporterProvider } from '@boobalan_jkkn/bug-reporter-sdk'
-import { useAuth } from '@/context/auth-context'
+import { useAuth } from '@/lib/auth/auth-context-parent'
 import { ReactNode, useEffect, useMemo } from 'react'
 
 export function BugReporterWrapper({
@@ -9,7 +9,7 @@ export function BugReporterWrapper({
 }: {
 	children: ReactNode
 }) {
-	const { user, isAuthenticated, hasRole } = useAuth()
+	const { user, isAuthenticated } = useAuth()
 
 	// Determine if bug reporter should be enabled
 	const isBugReporterEnabled = useMemo(() => {
@@ -24,13 +24,12 @@ export function BugReporterWrapper({
 		}
 
 		// Enable for specific roles
-		// You can customize this list based on your needs
 		const allowedRoles = ['admin', 'super_admin', 'beta-tester', 'developer']
-		const hasAllowedRole = allowedRoles.some((role) => hasRole(role))
+		const hasAllowedRole = allowedRoles.includes(user.role)
 
 		// Enable if user has an allowed role OR if explicitly enabled via env variable
 		return hasAllowedRole || process.env.NEXT_PUBLIC_BUG_REPORTER_FORCE_ENABLE === 'true'
-	}, [isAuthenticated, user, hasRole])
+	}, [isAuthenticated, user])
 
 	useEffect(() => {
 		// Add custom CSS to reposition the bug report button to bottom-left
@@ -67,7 +66,7 @@ export function BugReporterWrapper({
 				isAuthenticated && user
 					? {
 							userId: user.id,
-							name: user.user_metadata?.full_name || user.email?.split('@')[0],
+							name: user.full_name || user.email?.split('@')[0],
 							email: user.email || undefined
 						}
 					: undefined

@@ -20,7 +20,7 @@ import { useToast } from "@/hooks/common/use-toast"
 import { Loader2, Search, Edit, AlertTriangle, CheckCircle, Check, ChevronsUpDown } from "lucide-react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
-import { useAuth } from "@/context/auth-context"
+import { useAuth } from "@/lib/auth/auth-context-parent"
 import { cn } from "@/lib/utils"
 
 interface Course {

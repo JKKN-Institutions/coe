@@ -11,7 +11,7 @@ import { ModernBreadcrumb } from "@/components/common/modern-breadcrumb"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Users, BookOpen, UserCheck, BarChart3, GraduationCap, TrendingUp, Calendar, Clock, Home, Database, Shield } from "lucide-react"
-import { useAuth } from "@/context/auth-context"
+import { useAuth } from "@/lib/auth/auth-context-parent"
 import { useToast } from "@/hooks/common/use-toast"
 
 
@@ -67,11 +67,16 @@ export default function Page() {
   useEffect(() => {
     // Fetch dashboard stats
     const fetchStats = async () => {
-      if (!user?.id) return
+      if (!user?.id && !user?.email) return
 
       try {
         setLoading(true)
-        const response = await fetch(`/api/dashboard/stats?user_id=${user.id}`)
+        // Pass both user_id and email for flexibility (parent app auth may not have matching local ID)
+        const params = new URLSearchParams()
+        if (user?.id) params.set('user_id', user.id)
+        if (user?.email) params.set('email', user.email)
+
+        const response = await fetch(`/api/dashboard/stats?${params.toString()}`)
 
         if (!response.ok) {
           throw new Error('Failed to fetch dashboard stats')

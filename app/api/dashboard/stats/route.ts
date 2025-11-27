@@ -6,20 +6,56 @@ export async function GET(request: Request) {
 		const supabase = getSupabaseServer()
 		const { searchParams } = new URL(request.url)
 		const userId = searchParams.get('user_id')
+		const userEmail = searchParams.get('email')
 
-		if (!userId) {
-			return NextResponse.json({ error: 'User ID is required' }, { status: 400 })
+		if (!userId && !userEmail) {
+			return NextResponse.json({ error: 'User ID or email is required' }, { status: 400 })
 		}
 
-		// Get user details to check if super_admin and get institution_id
-		const { data: userData, error: userError } = await supabase
-			.from('users')
-			.select('id, is_super_admin, institution_id, email, role')
-			.eq('id', userId)
-			.single()
+		// Get user details - try by email first (for parent app OAuth), then by ID
+		let userData = null
+		let userError = null
 
+		if (userEmail) {
+			const result = await supabase
+				.from('users')
+				.select('id, is_super_admin, institution_id, email, role')
+				.eq('email', userEmail)
+				.single()
+			userData = result.data
+			userError = result.error
+		}
+
+		// If not found by email, try by ID
+		if (!userData && userId) {
+			const result = await supabase
+				.from('users')
+				.select('id, is_super_admin, institution_id, email, role')
+				.eq('id', userId)
+				.single()
+			userData = result.data
+			userError = result.error
+		}
+
+		// If still not found, return default stats (user not in local DB yet)
 		if (userError || !userData) {
-			return NextResponse.json({ error: 'User not found' }, { status: 404 })
+			// Return default stats for users not yet in local database
+			return NextResponse.json({
+				totalStudents: 0,
+				activeCourses: 0,
+				totalPrograms: 0,
+				facultyMembers: 0,
+				attendanceRatio: '0.0%',
+				attendanceDetails: { total: 0, present: 0, absent: 0 },
+				upcomingExams: [],
+				isSuperAdmin: false,
+				institutionId: null,
+				userRole: 'user',
+				userRoleName: 'User',
+				userRoleDescription: 'Standard user - contact admin to assign roles',
+				userRoles: [],
+				userEmail: userEmail || ''
+			})
 		}
 
 		const isSuperAdmin = userData.is_super_admin

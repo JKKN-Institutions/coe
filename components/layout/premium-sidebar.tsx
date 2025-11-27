@@ -12,7 +12,7 @@ import {
 	SidebarRail,
 } from "@/components/ui/sidebar"
 import { ChevronRight, type LucideIcon } from "lucide-react"
-import { useAuth } from "@/context/auth-context"
+import { useAuth } from "@/lib/auth/auth-context-parent"
 import {
 	Collapsible,
 	CollapsibleContent,

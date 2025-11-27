@@ -28,7 +28,7 @@ export default function EditPermissionPage() {
   useEffect(() => {
     const load = async () => {
       try {
-        const res = await fetch('/api/users/users-list/permissions')
+        const res = await fetch('/api/users/permissions')
         if (res.ok) {
           const all: Permission[] = await res.json()
           const item = all.find(p => p.id === id)
@@ -52,7 +52,7 @@ export default function EditPermissionPage() {
     setLoading(true)
     setError(null)
     try {
-      const res = await fetch(`/api/users/users-list/permissions/${id}`, {
+      const res = await fetch(`/api/users/permissions/${id}`, {
         method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(form)
       })
       if (res.ok) {

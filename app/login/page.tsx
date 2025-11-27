@@ -2,7 +2,7 @@
 
 import { useEffect, useState, Suspense } from 'react';
 import Image from 'next/image';
-import { useAuth } from '@/context/auth-context';
+import { useAuth } from '@/lib/auth/auth-context-parent';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -18,7 +18,7 @@ import {
 import { AppFooter } from '@/components/layout/app-footer';
 
 function LoginContent() {
-  const { loginWithGoogle, isAuthenticated, isLoading, error } = useAuth();
+  const { loginWithGoogle, isAuthenticated, loading: isLoading, error } = useAuth();
   const router = useRouter();
   const searchParams = useSearchParams();
   const [formError, setFormError] = useState<string | null>(null);
@@ -31,8 +31,11 @@ function LoginContent() {
   const [emailError, setEmailError] = useState<string | null>(null);
   const [isEmailLoading, setIsEmailLoading] = useState(false);
 
+  // Check if we're processing OAuth callback (token in URL)
+  const hasTokenInUrl = searchParams.get('token') !== null;
+
   useEffect(() => {
-		if (isAuthenticated) {
+		if (isAuthenticated && !hasTokenInUrl) {
 			const redirectParam = searchParams.get('redirect');
 			if (typeof window !== 'undefined') {
 				window.location.replace(redirectParam || '/dashboard');
@@ -40,7 +43,7 @@ function LoginContent() {
 				router.replace(redirectParam || '/dashboard');
 			}
 		}
-  }, [isAuthenticated, router, searchParams]);
+  }, [isAuthenticated, router, searchParams, hasTokenInUrl]);
 
 	useEffect(() => {
 		// Prefetch dashboard to speed up post-login navigation
@@ -84,13 +87,10 @@ function LoginContent() {
     }
   }, [searchParams, router]);
 
-  const handleGoogleLogin = async () => {
+  const handleGoogleLogin = () => {
     setFormError(null);
-    const result = await loginWithGoogle();
-
-    if (!result.success) {
-      setFormError(result.error || 'Google login failed');
-    }
+    const redirectParam = searchParams.get('redirect');
+    loginWithGoogle(redirectParam || undefined);
   };
 
   const handleEmailSubmit = async (e: React.FormEvent) => {
@@ -130,6 +130,18 @@ function LoginContent() {
   // Don't show loading screen if user is already authenticated
   if (isAuthenticated) {
     return null;
+  }
+
+  // Show fast loading screen when processing OAuth callback (token in URL)
+  if (hasTokenInUrl) {
+    return (
+      <div className='flex items-center justify-center min-h-screen bg-gradient-to-br from-slate-50 via-green-50 to-emerald-100 dark:from-slate-900 dark:via-slate-800 dark:to-green-900/20'>
+        <div className='flex flex-col items-center space-y-4'>
+          <div className='animate-spin rounded-full h-12 w-12 border-4 border-green-500 border-t-transparent'></div>
+          <p className='text-sm text-muted-foreground animate-pulse'>Completing authentication...</p>
+        </div>
+      </div>
+    );
   }
 
   // Only show loading screen during actual login process, not during initial auth check

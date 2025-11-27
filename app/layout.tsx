@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { Inter, Space_Grotesk } from "next/font/google";
 import "@/styles/globals.css";
-import { AuthProvider } from "@/context/auth-context";
+import { AuthProvider } from "@/lib/auth/auth-context-parent";
 import { ThemeProvider } from "@/components/common/theme-provider";
 import { SessionTimeoutProvider } from "@/components/common/session-timeout-provider";
 import { RegisterServiceWorker } from "./register-sw";
@@ -40,26 +40,16 @@ export default function RootLayout({
     <html lang="en" suppressHydrationWarning className={`${inter.variable} ${spaceGrotesk.variable}`}>
       <head>
         {/* Performance: preconnect/dns-prefetch for auth providers */}
-        <link rel="preconnect" href={process.env.NEXT_PUBLIC_SUPABASE_URL} crossOrigin="anonymous" />
-        <link rel="dns-prefetch" href={process.env.NEXT_PUBLIC_SUPABASE_URL} />
-        <link rel="preconnect" href="https://accounts.google.com" crossOrigin="anonymous" />
-        <link rel="dns-prefetch" href="https://accounts.google.com" />
-        <link rel="preconnect" href="https://oauth2.googleapis.com" crossOrigin="anonymous" />
-        <link rel="dns-prefetch" href="https://oauth2.googleapis.com" />
+        <link rel="preconnect" href={process.env.NEXT_PUBLIC_PARENT_APP_URL} crossOrigin="anonymous" />
+        <link rel="dns-prefetch" href={process.env.NEXT_PUBLIC_PARENT_APP_URL} />
         {/* Preconnect to Google Fonts */}
         <link rel="preconnect" href="https://fonts.googleapis.com" crossOrigin="anonymous" />
         <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
       </head>
-      <body className={`${inter.className} ${spaceGrotesk.variable} font-inter antialiased`}>
+      <body className={`${inter.className} ${spaceGrotesk.variable} font-inter antialiased`} suppressHydrationWarning>
         <RegisterServiceWorker />
         <ThemeProvider attribute="class" defaultTheme="system" enableSystem disableTransitionOnChange>
-          <AuthProvider
-            autoValidate={true}
-            autoRefresh={true}
-            refreshInterval={10 * 60 * 1000} // 10 minutes
-            sessionTimeout={15} // 15 minutes
-            sessionWarning={2} // 2 minutes warning
-          >
+          <AuthProvider autoValidate={false}>
             <BugReporterWrapper>
               <SessionTimeoutProvider
                 timeoutDuration={15} // 15 minutes

@@ -28,7 +28,7 @@ export default function AddPermissionPage() {
     setLoading(true)
     setError(null)
     try {
-      const res = await fetch('/api/users/users-list/permissions', {
+      const res = await fetch('/api/users/permissions', {
         method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(form)
       })
       if (res.ok) router.push('/permissions')

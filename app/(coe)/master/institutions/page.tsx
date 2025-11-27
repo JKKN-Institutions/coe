@@ -3,6 +3,7 @@
 import { useMemo, useState, useEffect } from "react"
 import * as XLSX from "xlsx"
 import { useRouter } from "next/navigation"
+import { useAuth } from "@/lib/auth/auth-context-parent"
 import { AppSidebar } from "@/components/layout/app-sidebar"
 import { AppHeader } from "@/components/layout/app-header"
 import { AppFooter } from "@/components/layout/app-footer"
@@ -38,6 +39,14 @@ import { PremiumInstitutionStats } from "@/components/stats/premium-institution-
 export default function InstitutionsPage() {
   const router = useRouter()
   const { toast } = useToast()
+  const { hasPermission } = useAuth()
+
+  // Permission checks for actions (using dot notation to match database: resource.action)
+  const canEdit = hasPermission('institutions.edit') || hasPermission('institutions.update')
+  const canDelete = hasPermission('institutions.delete')
+  const canCreate = hasPermission('institutions.create') || hasPermission('institutions.add')
+  const canView = hasPermission('institutions.view') || hasPermission('institutions.read')
+
   const [items, setItems] = useState<Institution[]>([])
   const [loading, setLoading] = useState(true)
   const [searchTerm, setSearchTerm] = useState("")
@@ -477,7 +486,7 @@ export default function InstitutionsPage() {
                       <Button variant="outline" size="sm" onClick={handleImport} className="h-9 w-9 rounded-lg hover:bg-slate-100 text-slate-600 hover:text-slate-900 transition-colors border border-slate-300 p-0" title="Import File">
                         <Upload className="h-4 w-4" />
                       </Button>
-                      <Button size="sm" onClick={handleAdd} disabled={loading} className="h-9 px-4 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white transition-all duration-200 shadow-sm" title="Add Institution">
+                      <Button size="sm" onClick={handleAdd} disabled={loading || !canCreate} className="h-9 px-4 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white transition-all duration-200 shadow-sm disabled:opacity-50 disabled:cursor-not-allowed" title={canCreate ? "Add Institution" : "You don't have permission to add institutions"}>
                         <PlusCircle className="h-4 w-4 mr-2" />
                         Add Institution
                       </Button>
@@ -558,15 +567,35 @@ export default function InstitutionsPage() {
                               </TableCell>
                               <TableCell className="text-center">
                                 <div className="flex items-center justify-center gap-1">
-                                  <Button variant="ghost" size="sm" className="h-8 w-8 p-0 rounded-lg hover:bg-blue-100 text-blue-600 transition-colors" onClick={() => handleView(row.id)} title="View">
+                                  <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    className="h-8 w-8 p-0 rounded-lg hover:bg-blue-100 text-blue-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                                    onClick={() => handleView(row.id)}
+                                    disabled={!canView}
+                                    title={canView ? "View" : "No permission to view"}
+                                  >
                                     <Eye className="h-4 w-4" />
                                   </Button>
-                                  <Button variant="ghost" size="sm" className="h-8 w-8 p-0 rounded-lg hover:bg-emerald-100 text-emerald-600 transition-colors" onClick={() => handleEdit(row.id)} title="Edit">
+                                  <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    className="h-8 w-8 p-0 rounded-lg hover:bg-emerald-100 text-emerald-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                                    onClick={() => handleEdit(row.id)}
+                                    disabled={!canEdit}
+                                    title={canEdit ? "Edit" : "No permission to edit"}
+                                  >
                                     <Edit className="h-4 w-4" />
                                   </Button>
                                   <AlertDialog>
                                     <AlertDialogTrigger asChild>
-                                      <Button variant="ghost" size="sm" className="h-8 w-8 p-0 rounded-lg hover:bg-red-100 text-red-600 transition-colors" title="Delete">
+                                      <Button
+                                        variant="ghost"
+                                        size="sm"
+                                        className="h-8 w-8 p-0 rounded-lg hover:bg-red-100 text-red-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                                        disabled={!canDelete}
+                                        title={canDelete ? "Delete" : "No permission to delete"}
+                                      >
                                         <Trash2 className="h-4 w-4" />
                                       </Button>
                                     </AlertDialogTrigger>

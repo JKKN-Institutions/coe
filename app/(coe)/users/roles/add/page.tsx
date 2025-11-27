@@ -28,7 +28,7 @@ export default function AddRolePage() {
     setLoading(true)
     setError(null)
     try {
-      const res = await fetch('/api/users/users-list/roles', {
+      const res = await fetch('/api/users/roles', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

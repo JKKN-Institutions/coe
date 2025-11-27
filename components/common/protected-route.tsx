@@ -1,225 +1,211 @@
-'use client';
+'use client'
 
-import { ReactNode, useEffect } from 'react';
-import { useRouter } from 'next/navigation';
-import { useAuth } from '@/context/auth-context';
+import { ReactNode, useEffect } from 'react'
+import { useRouter } from 'next/navigation'
+import { useAuth } from '@/lib/auth/auth-context-parent'
 
 interface ProtectedRouteProps {
-  children: ReactNode;
-  fallback?: ReactNode;
-  redirectTo?: string;
-  requiredPermissions?: string[];
-  requiredRoles?: string[];
-  requireAnyRole?: boolean;
-  onUnauthorized?: () => void;
-  loadingComponent?: ReactNode;
+	children: ReactNode
+	fallback?: ReactNode
+	redirectTo?: string
+	requiredPermissions?: string[]
+	requiredRoles?: string[]
+	requireAnyRole?: boolean
+	onUnauthorized?: () => void
+	loadingComponent?: ReactNode
 }
 
 const DefaultLoading = () => (
-  <div className="flex items-center justify-center min-h-screen">
-    <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary"></div>
-  </div>
-);
+	<div className="flex items-center justify-center min-h-screen">
+		<div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary"></div>
+	</div>
+)
 
 export function ProtectedRoute({
-  children,
-  fallback,
-  redirectTo,
-  requiredPermissions = [],
-  requiredRoles = [],
-  requireAnyRole = true,
-  onUnauthorized,
-  loadingComponent
+	children,
+	fallback,
+	redirectTo,
+	requiredPermissions = [],
+	requiredRoles = [],
+	requireAnyRole = true,
+	onUnauthorized,
+	loadingComponent,
 }: ProtectedRouteProps) {
-  const { user, isLoading, isAuthenticated, hasPermission, hasRole, hasAnyRole } = useAuth();
-  const router = useRouter();
+	const { user, loading: isLoading, isAuthenticated } = useAuth()
+	const router = useRouter()
 
-  useEffect(() => {
-    // Don't redirect while loading - this prevents race conditions
-    if (isLoading) return;
+	// Helper functions for permission/role checking
+	const hasPermission = (permission: string): boolean => {
+		return user?.permissions?.includes(permission) || false
+	}
 
-    // Add a small delay to prevent immediate redirects during page refresh
-    const redirectTimer = setTimeout(() => {
-      if (!isAuthenticated) {
-        if (redirectTo) {
-          router.push(redirectTo);
-        } else if (onUnauthorized) {
-          onUnauthorized();
-        }
-        return;
-      }
+	const hasRole = (role: string): boolean => {
+		return user?.role === role
+	}
 
-      // Check authorization
-      const isAuthorized = checkAuthorization();
-      if (!isAuthorized) {
-        if (onUnauthorized) {
-          onUnauthorized();
-        } else if (fallback) {
-          // Will be rendered below
-        } else {
-          router.push('/unauthorized');
-        }
-      }
-    }, 50); // Small delay to prevent race conditions
+	const hasAnyRole = (roles: string[]): boolean => {
+		return roles.includes(user?.role || '')
+	}
 
-    return () => clearTimeout(redirectTimer);
-  }, [isLoading, isAuthenticated, user, router, redirectTo, onUnauthorized]);
+	const checkAuthorization = (): boolean => {
+		if (!user) return false
 
-  const checkAuthorization = (): boolean => {
-    if (!user) return false;
+		// Check permissions
+		if (requiredPermissions.length > 0) {
+			const hasAllPermissions = requiredPermissions.every((permission) => hasPermission(permission))
+			if (!hasAllPermissions) return false
+		}
 
-    // Check permissions
-    if (requiredPermissions.length > 0) {
-      const hasAllPermissions = requiredPermissions.every(permission =>
-        hasPermission(permission)
-      );
-      if (!hasAllPermissions) return false;
-    }
+		// Check roles
+		if (requiredRoles.length > 0) {
+			if (requireAnyRole) {
+				const hasAnyRequiredRole = hasAnyRole(requiredRoles)
+				if (!hasAnyRequiredRole) return false
+			} else {
+				const hasAllRoles = requiredRoles.every((role) => hasRole(role))
+				if (!hasAllRoles) return false
+			}
+		}
 
-    // Check roles
-    if (requiredRoles.length > 0) {
-      if (requireAnyRole) {
-        const hasAnyRequiredRole = hasAnyRole(requiredRoles);
-        if (!hasAnyRequiredRole) return false;
-      } else {
-        const hasAllRoles = requiredRoles.every(role => hasRole(role));
-        if (!hasAllRoles) return false;
-      }
-    }
+		return true
+	}
 
-    return true;
-  };
+	useEffect(() => {
+		// Don't redirect while loading
+		if (isLoading) return
 
-  if (isLoading) {
-    return loadingComponent ? <>{loadingComponent}</> : <DefaultLoading />;
-  }
+		// Add a small delay to prevent immediate redirects during page refresh
+		const redirectTimer = setTimeout(() => {
+			if (!isAuthenticated) {
+				if (redirectTo) {
+					router.push(redirectTo)
+				} else if (onUnauthorized) {
+					onUnauthorized()
+				}
+				return
+			}
 
-  if (!isAuthenticated) {
-    return fallback ? <>{fallback}</> : null;
-  }
+			// Check authorization
+			const isAuthorized = checkAuthorization()
+			if (!isAuthorized) {
+				if (onUnauthorized) {
+					onUnauthorized()
+				} else if (!fallback) {
+					router.push('/unauthorized')
+				}
+			}
+		}, 50)
 
-  if (!checkAuthorization()) {
-    return fallback ? <>{fallback}</> : null;
-  }
+		return () => clearTimeout(redirectTimer)
+	}, [isLoading, isAuthenticated, user, router, redirectTo, onUnauthorized, fallback])
 
-  return <>{children}</>;
+	if (isLoading) {
+		return loadingComponent ? <>{loadingComponent}</> : <DefaultLoading />
+	}
+
+	if (!isAuthenticated) {
+		return fallback ? <>{fallback}</> : null
+	}
+
+	if (!checkAuthorization()) {
+		return fallback ? <>{fallback}</> : null
+	}
+
+	return <>{children}</>
 }
 
 // Higher-order component wrapper
 export function withAuth<P extends object>(
-  Component: React.ComponentType<P>,
-  options?: Omit<ProtectedRouteProps, 'children'>
+	Component: React.ComponentType<P>,
+	options?: Omit<ProtectedRouteProps, 'children'>
 ) {
-  return function AuthenticatedComponent(props: P) {
-    return (
-      <ProtectedRoute {...options}>
-        <Component {...props} />
-      </ProtectedRoute>
-    );
-  };
+	return function AuthenticatedComponent(props: P) {
+		return (
+			<ProtectedRoute {...options}>
+				<Component {...props} />
+			</ProtectedRoute>
+		)
+	}
 }
 
 // Convenience components
-export function RequireAuth({
-  children,
-  redirectTo
-}: {
-  children: ReactNode;
-  redirectTo?: string;
-}) {
-  return (
-    <ProtectedRoute redirectTo={redirectTo || '/login'}>
-      {children}
-    </ProtectedRoute>
-  );
+export function RequireAuth({ children, redirectTo }: { children: ReactNode; redirectTo?: string }) {
+	return <ProtectedRoute redirectTo={redirectTo || '/login'}>{children}</ProtectedRoute>
 }
 
 export function RequirePermission({
-  children,
-  permission,
-  fallback
+	children,
+	permission,
+	fallback,
 }: {
-  children: ReactNode;
-  permission: string | string[];
-  fallback?: ReactNode;
+	children: ReactNode
+	permission: string | string[]
+	fallback?: ReactNode
 }) {
-  const permissions = Array.isArray(permission) ? permission : [permission];
+	const permissions = Array.isArray(permission) ? permission : [permission]
 
-  return (
-    <ProtectedRoute
-      requiredPermissions={permissions}
-      fallback={fallback}
-    >
-      {children}
-    </ProtectedRoute>
-  );
+	return (
+		<ProtectedRoute requiredPermissions={permissions} fallback={fallback}>
+			{children}
+		</ProtectedRoute>
+	)
 }
 
 export function RequireRole({
-  children,
-  role,
-  requireAll = false,
-  fallback
+	children,
+	role,
+	requireAll = false,
+	fallback,
 }: {
-  children: ReactNode;
-  role: string | string[];
-  requireAll?: boolean;
-  fallback?: ReactNode;
+	children: ReactNode
+	role: string | string[]
+	requireAll?: boolean
+	fallback?: ReactNode
 }) {
-  const roles = Array.isArray(role) ? role : [role];
+	const roles = Array.isArray(role) ? role : [role]
 
-  return (
-    <ProtectedRoute
-      requiredRoles={roles}
-      requireAnyRole={!requireAll}
-      fallback={fallback}
-    >
-      {children}
-    </ProtectedRoute>
-  );
+	return (
+		<ProtectedRoute requiredRoles={roles} requireAnyRole={!requireAll} fallback={fallback}>
+			{children}
+		</ProtectedRoute>
+	)
 }
 
-export function GuestOnly({
-  children,
-  redirectTo = '/'
-}: {
-  children: ReactNode;
-  redirectTo?: string;
-}) {
-  const { isAuthenticated, isLoading } = useAuth();
-  const router = useRouter();
+export function GuestOnly({ children, redirectTo = '/' }: { children: ReactNode; redirectTo?: string }) {
+	const { isAuthenticated, loading: isLoading } = useAuth()
+	const router = useRouter()
 
-  useEffect(() => {
-    if (!isLoading && isAuthenticated) {
-      router.push(redirectTo);
-    }
-  }, [isAuthenticated, isLoading, router, redirectTo]);
+	useEffect(() => {
+		if (!isLoading && isAuthenticated) {
+			router.push(redirectTo)
+		}
+	}, [isAuthenticated, isLoading, router, redirectTo])
 
-  if (isLoading) {
-    return <DefaultLoading />;
-  }
+	if (isLoading) {
+		return <DefaultLoading />
+	}
 
-  if (isAuthenticated) {
-    return null;
-  }
+	if (isAuthenticated) {
+		return null
+	}
 
-  return <>{children}</>;
+	return <>{children}</>
 }
 
 export function ConditionalAuth({
-  authenticated,
-  unauthenticated,
-  loading
+	authenticated,
+	unauthenticated,
+	loading,
 }: {
-  authenticated: ReactNode;
-  unauthenticated: ReactNode;
-  loading?: ReactNode;
+	authenticated: ReactNode
+	unauthenticated: ReactNode
+	loading?: ReactNode
 }) {
-  const { isAuthenticated, isLoading } = useAuth();
+	const { isAuthenticated, loading: isLoading } = useAuth()
 
-  if (isLoading) {
-    return loading ? <>{loading}</> : <DefaultLoading />;
-  }
+	if (isLoading) {
+		return loading ? <>{loading}</> : <DefaultLoading />
+	}
 
-  return isAuthenticated ? <>{authenticated}</> : <>{unauthenticated}</>;
+	return isAuthenticated ? <>{authenticated}</> : <>{unauthenticated}</>
 }

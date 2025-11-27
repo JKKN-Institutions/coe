@@ -28,7 +28,7 @@ export default function EditRolePage() {
   useEffect(() => {
     const load = async () => {
       try {
-        const res = await fetch('/api/users/users-list/roles')
+        const res = await fetch('/api/users/roles')
         if (res.ok) {
           const all: Role[] = await res.json()
           const role = all.find(r => r.id === id)
@@ -56,7 +56,7 @@ export default function EditRolePage() {
     setLoading(true)
     setError(null)
     try {
-      const res = await fetch(`/api/users/users-list/roles/${id}`, {
+      const res = await fetch(`/api/users/roles/${id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

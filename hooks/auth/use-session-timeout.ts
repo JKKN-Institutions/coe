@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { useAuth } from '@/context/auth-context';
+import { useAuth } from '@/lib/auth/auth-context-parent';
 import SessionTimeoutService from '@/services/auth/session-timeout-service';
 
 interface UseSessionTimeoutOptions {

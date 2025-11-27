@@ -13,61 +13,59 @@ export async function POST(request: NextRequest) {
     }
 
     // Validate required environment variables
-    const requiredEnvVars = {
-      NEXT_PUBLIC_PARENT_APP_URL: process.env.NEXT_PUBLIC_PARENT_APP_URL,
-      NEXT_PUBLIC_API_KEY: process.env.NEXT_PUBLIC_API_KEY,
-      NEXT_PUBLIC_APP_ID: process.env.NEXT_PUBLIC_APP_ID,
-      NEXT_PUBLIC_REDIRECT_URI: process.env.NEXT_PUBLIC_REDIRECT_URI
-    };
+    const parentAppUrl = process.env.NEXT_PUBLIC_PARENT_APP_URL
+    const appId = process.env.NEXT_PUBLIC_APP_ID
+    const apiKey = process.env.API_KEY // Server-side only key
+    const redirectUri = process.env.NEXT_PUBLIC_REDIRECT_URI
 
-    const missingVars = Object.entries(requiredEnvVars)
-      .filter(([_, value]) => !value)
-      .map(([key]) => key);
-
-    if (missingVars.length > 0) {
-      console.error('Missing environment variables:', missingVars);
+    if (!parentAppUrl || !appId || !apiKey || !redirectUri) {
+      console.error('Missing environment variables:', {
+        parentAppUrl: !!parentAppUrl,
+        appId: !!appId,
+        apiKey: !!apiKey,
+        redirectUri: !!redirectUri,
+      })
       return NextResponse.json(
         { error: 'Authentication configuration error' },
         { status: 500 }
-      );
+      )
     }
 
     // Exchange code with parent app
     const tokenResponse = await fetch(
-      `${process.env.NEXT_PUBLIC_PARENT_APP_URL}/api/auth/child-app/token`,
+      `${parentAppUrl}/api/auth/token`,
       {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'x-api-key': process.env.NEXT_PUBLIC_API_KEY || ''
         },
         body: JSON.stringify({
           grant_type: 'authorization_code',
           code,
-          app_id: process.env.NEXT_PUBLIC_APP_ID,
-          redirect_uri: process.env.NEXT_PUBLIC_REDIRECT_URI
-        })
+          app_id: appId,
+          api_key: apiKey, // In request body, not header
+          redirect_uri: redirectUri,
+        }),
       }
-    );
+    )
 
     if (!tokenResponse.ok) {
-      const error = await tokenResponse.json();
+      const error = await tokenResponse.json()
       console.error('Token exchange failed:', {
         status: tokenResponse.status,
         statusText: tokenResponse.statusText,
         error,
         requestDetails: {
-          url: `${process.env.NEXT_PUBLIC_PARENT_APP_URL}/api/auth/child-app/token`,
-          app_id: process.env.NEXT_PUBLIC_APP_ID,
-          redirect_uri: process.env.NEXT_PUBLIC_REDIRECT_URI,
-          hasApiKey: !!process.env.NEXT_PUBLIC_API_KEY
-        }
-      });
+          url: `${parentAppUrl}/api/auth/token`,
+          app_id: appId,
+          redirect_uri: redirectUri,
+          hasApiKey: !!apiKey,
+        },
+      })
       return NextResponse.json(
-        // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
-        { error: error.error || 'Token exchange failed' },
+        { error: error.error || error.error_description || 'Token exchange failed' },
         { status: tokenResponse.status }
-      );
+      )
     }
 
     const tokenData = await tokenResponse.json();

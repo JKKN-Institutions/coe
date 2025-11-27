@@ -41,7 +41,7 @@ export default function RolesPage() {
   useEffect(() => {
     const fetchRoles = async () => {
       try {
-        const response = await fetch('/api/users/users-list/roles')
+        const response = await fetch('/api/users/roles')
         if (response.ok) {
           const data = await response.json()
           setRoles(data)
@@ -111,7 +111,7 @@ export default function RolesPage() {
 
   const handleDelete = async (id: string) => {
     try {
-      const res = await fetch(`/api/users/users-list/roles/${id}`, { method: 'DELETE' })
+      const res = await fetch(`/api/users/roles/${id}`, { method: 'DELETE' })
       if (res.ok) {
         setRoles(prev => prev.filter(r => r.id !== id))
       }
@@ -209,7 +209,7 @@ export default function RolesPage() {
         let fail = 0
         for (const item of items) {
           try {
-            const res = await fetch('/api/users/users-list/roles', {
+            const res = await fetch('/api/users/roles', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({
@@ -226,7 +226,7 @@ export default function RolesPage() {
           }
         }
 
-        const refresh = await fetch('/api/users/users-list/roles')
+        const refresh = await fetch('/api/users/roles')
         if (refresh.ok) setRoles(await refresh.json())
         alert(`Import completed. Success: ${success}, Failed: ${fail}`)
       } catch (err) {

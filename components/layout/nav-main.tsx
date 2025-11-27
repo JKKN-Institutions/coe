@@ -27,7 +27,8 @@ import {
   SidebarMenuSubItem,
   useSidebar,
 } from "@/components/ui/sidebar"
-import { useAuth } from "@/context/auth-context"
+import { useAuth } from "@/lib/auth/auth-context-parent"
+import { useNavigationLog } from "@/hooks/use-transaction-log"
 
 export function NavMain({
   items,
@@ -51,6 +52,7 @@ export function NavMain({
   const { state } = useSidebar()
   const isCollapsed = state === "collapsed"
   const { hasAnyRole } = useAuth()
+  const { logNavigation } = useNavigationLog()
 
   const [openMap, setOpenMap] = useState<Record<string, boolean>>(() => {
     // Ensure SSR and first client render are identical: start all closed
@@ -81,9 +83,17 @@ export function NavMain({
     router.prefetch(url)
   }
 
-  // Handle navigation with loading state
-  const handleNavigation = (url: string) => {
+  // Handle navigation with loading state and logging
+  const handleNavigation = (url: string, menuTitle?: string, menuSection?: string) => {
     setLoadingRoutes(prev => new Set(prev).add(url))
+
+    // Log the navigation event
+    logNavigation({
+      to_path: url,
+      menu_title: menuTitle,
+      menu_section: menuSection,
+    })
+
     // Clear loading state after a short delay
     setTimeout(() => {
       setLoadingRoutes(prev => {
@@ -204,7 +214,7 @@ export function NavMain({
                       // Always provide immediate feedback
                       handleMenuClick(item.title)
                       if (item.url) {
-                        handleNavigation(item.url)
+                        handleNavigation(item.url, item.title)
                       } else {
                         // Prevent navigation if no URL
                         e.preventDefault()
@@ -298,7 +308,7 @@ export function NavMain({
                                       tabIndex={0}
                                       aria-label={subItem.title}
                                       onMouseEnter={() => handleMouseEnter(subItem.url)}
-                                      onClick={() => handleNavigation(subItem.url)}
+                                      onClick={() => handleNavigation(subItem.url, subItem.title, item.title)}
                                     >
                               {loadingRoutes.has(subItem.url) ? (
                                 <Loader2 className="h-4 w-4 animate-spin text-[#ffc20d]" />
@@ -384,7 +394,7 @@ export function NavMain({
                                             // Always provide immediate feedback
                                             handleMenuClick(subItem.title)
                                             if (subItem.url) {
-                                              handleNavigation(subItem.url)
+                                              handleNavigation(subItem.url, subItem.title, item.title)
                                             } else {
                                               // Prevent navigation if no URL
                                               e.preventDefault()

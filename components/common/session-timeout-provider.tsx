@@ -3,7 +3,7 @@
 import { ReactNode } from 'react';
 import { useSessionTimeout } from '@/hooks/auth/use-session-timeout';
 import { SessionTimeoutWarning } from '@/components/common/session-timeout-warning';
-import { useAuth } from '@/context/auth-context';
+import { useAuth } from '@/lib/auth/auth-context-parent';
 
 interface SessionTimeoutProviderProps {
   children: ReactNode;

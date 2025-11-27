@@ -17,7 +17,7 @@ import { Checkbox } from "@/components/ui/checkbox"
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog"
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { useToast } from "@/hooks/common/use-toast"
-import { useAuth } from "@/context/auth-context"
+import { useAuth } from "@/lib/auth/auth-context-parent"
 import Link from "next/link"
 import {
 	Trash2,
@@ -195,7 +195,7 @@ export default function BulkInternalMarksPage() {
 
 	const fetchInstitutions = async () => {
 		try {
-			const res = await fetch('/api/post-exam/internal-marks?action=institutions')
+			const res = await fetch('/api/pre-exam/internal-marks?action=institutions')
 			if (res.ok) {
 				const data = await res.json()
 				setInstitutions(data)
@@ -207,7 +207,7 @@ export default function BulkInternalMarksPage() {
 
 	const fetchSessions = async (institutionId: string) => {
 		try {
-			const res = await fetch(`/api/post-exam/internal-marks?action=sessions&institutionId=${institutionId}`)
+			const res = await fetch(`/api/pre-exam/internal-marks?action=sessions&institutionId=${institutionId}`)
 			if (res.ok) {
 				const data = await res.json()
 				setSessions(data)
@@ -219,7 +219,7 @@ export default function BulkInternalMarksPage() {
 
 	const fetchPrograms = async (institutionId: string) => {
 		try {
-			const res = await fetch(`/api/post-exam/internal-marks?action=programs&institutionId=${institutionId}`)
+			const res = await fetch(`/api/pre-exam/internal-marks?action=programs&institutionId=${institutionId}`)
 			if (res.ok) {
 				const data = await res.json()
 				setPrograms(data)
@@ -231,7 +231,7 @@ export default function BulkInternalMarksPage() {
 
 	const fetchCourses = async (institutionId: string) => {
 		try {
-			const res = await fetch(`/api/post-exam/internal-marks?action=courses&institutionId=${institutionId}`)
+			const res = await fetch(`/api/pre-exam/internal-marks?action=courses&institutionId=${institutionId}`)
 			if (res.ok) {
 				const data = await res.json()
 				setCourses(data)
@@ -244,7 +244,7 @@ export default function BulkInternalMarksPage() {
 	const fetchMarks = async () => {
 		try {
 			setLoading(true)
-			let url = `/api/post-exam/internal-marks?action=marks&institutionId=${selectedInstitution}`
+			let url = `/api/pre-exam/internal-marks?action=marks&institutionId=${selectedInstitution}`
 			if (selectedSession) url += `&sessionId=${selectedSession}`
 			if (selectedProgram) url += `&programId=${selectedProgram}`
 			if (selectedCourse) url += `&courseId=${selectedCourse}`
@@ -889,7 +889,7 @@ export default function BulkInternalMarksPage() {
 				remarks: row.remarks
 			}))
 
-			const response = await fetch('/api/post-exam/internal-marks', {
+			const response = await fetch('/api/pre-exam/internal-marks', {
 				method: 'POST',
 				headers: { 'Content-Type': 'application/json' },
 				body: JSON.stringify({
@@ -976,7 +976,7 @@ export default function BulkInternalMarksPage() {
 
 		setLoading(true)
 		try {
-			const response = await fetch('/api/post-exam/internal-marks', {
+			const response = await fetch('/api/pre-exam/internal-marks', {
 				method: 'POST',
 				headers: { 'Content-Type': 'application/json' },
 				body: JSON.stringify({
@@ -1033,7 +1033,7 @@ export default function BulkInternalMarksPage() {
 								<BreadcrumbSeparator />
 								<BreadcrumbItem>
 									<BreadcrumbLink asChild>
-										<Link href="#">Post Exam</Link>
+										<Link href="#">Pre Exam</Link>
 									</BreadcrumbLink>
 								</BreadcrumbItem>
 								<BreadcrumbSeparator />

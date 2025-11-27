@@ -36,6 +36,8 @@ import { AppSidebar } from "@/components/layout/app-sidebar"
 import { AppHeader } from "@/components/layout/app-header"
 import { SidebarProvider, SidebarInset } from "@/components/ui/sidebar"
 import { ProtectedRoute } from "@/components/common/protected-route"
+import { useAuth } from "@/context/auth-context"
+import { useToast } from "@/hooks/use-toast"
 import { Separator } from "@/components/ui/separator"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Skeleton } from "@/components/ui/skeleton"
@@ -96,6 +98,8 @@ interface Permission {
 // Permissions will be loaded from API
 
 export default function RolePermissionsPage() {
+  const { refreshPermissions } = useAuth()
+  const { toast } = useToast()
   const [roles, setRoles] = useState<Role[]>([])
   const [loading, setLoading] = useState(true)
   const [permissionsLoading, setPermissionsLoading] = useState(false)
@@ -120,7 +124,7 @@ export default function RolePermissionsPage() {
     const fetchRoles = async () => {
       try {
         setLoading(true)
-        const response = await fetch('/api/users/users-list/roles')
+        const response = await fetch('/api/users/roles')
         if (response.ok) {
           const data = await response.json()
           setRoles(data)
@@ -137,7 +141,7 @@ export default function RolePermissionsPage() {
     const fetchPermissions = async () => {
       try {
         setPermissionsLoading(true)
-        const res = await fetch('/api/users/users-list/permissions')
+        const res = await fetch('/api/users/permissions')
         if (res.ok) setPermissions(await res.json())
       } catch (e) {
         console.error('Failed to fetch permissions', e)
@@ -293,7 +297,7 @@ export default function RolePermissionsPage() {
 
     try {
       setSaving(true)
-      const response = await fetch('/api/users/users-list/role-permissions', {
+      const response = await fetch('/api/users/role-permissions', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ role_id: selectedRole.id, permission_ids: Array.from(selectedPermissionIds) })
@@ -301,10 +305,28 @@ export default function RolePermissionsPage() {
 
       if (response.ok) {
         setModified(false)
-        // Show success feedback
+
+        // Refresh permissions for the current logged-in user
+        // This ensures their UI reflects the updated permissions immediately
+        await refreshPermissions()
+
+        toast({
+          title: "Permissions Updated",
+          description: `Permissions for "${getRoleName(selectedRole)}" have been saved successfully.`,
+          className: "bg-green-50 border-green-200 text-green-800 dark:bg-green-900/20 dark:border-green-800 dark:text-green-200",
+        })
+      } else {
+        const errorData = await response.json().catch(() => ({}))
+        throw new Error(errorData.error || 'Failed to update permissions')
       }
     } catch (error) {
       console.error('Error updating permissions:', error)
+      toast({
+        title: "Update Failed",
+        description: error instanceof Error ? error.message : 'Failed to save permissions. Please try again.',
+        variant: "destructive",
+        className: "bg-red-50 border-red-200 text-red-800 dark:bg-red-900/20 dark:border-red-800 dark:text-red-200",
+      })
     } finally {
       setSaving(false)
     }

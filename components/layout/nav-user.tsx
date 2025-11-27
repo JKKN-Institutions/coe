@@ -9,7 +9,7 @@ import {
   AvatarImage,
 } from "@/components/ui/avatar"
 import { Badge } from "@/components/ui/badge"
-import { useAuth } from "@/context/auth-context"
+import { useAuth } from "@/lib/auth/auth-context-parent"
 import { useBugReporter } from "@/hooks"
 import {
   DropdownMenu,
@@ -45,6 +45,7 @@ export function NavUser({ variant = "compact" }: NavUserProps) {
   const isActive = user?.is_active ?? true
   const isSuperAdmin = user?.is_super_admin ?? false
   const lastLogin = user?.last_login
+  const [localAvatarUrl, setLocalAvatarUrl] = useState<string | null>(null)
 
   const initials = (displayName || "U")
     .split(" ")
@@ -53,25 +54,71 @@ export function NavUser({ variant = "compact" }: NavUserProps) {
     .slice(0, 2)
     .toUpperCase()
 
-  // Use the actual avatar URL, fallback to placeholder if empty
-  const finalAvatarUrl = avatarUrl || `https://ui-avatars.com/api/?name=${encodeURIComponent(displayName)}&background=16a34a&color=ffffff&size=32`
+  // Generate fallback avatar URL using DiceBear (more reliable than ui-avatars)
+  const getFallbackAvatarUrl = (name: string) => {
+    // Use DiceBear's initials style for a nice generated avatar
+    const seed = encodeURIComponent(name.toLowerCase().trim())
+    return `https://api.dicebear.com/7.x/initials/svg?seed=${seed}&backgroundColor=059669&textColor=ffffff&fontSize=40`
+  }
+
+  // Use the actual avatar URL, fallback to local DB avatar, then DiceBear generated
+  const finalAvatarUrl = avatarUrl || localAvatarUrl || getFallbackAvatarUrl(displayName)
+
+  // Fetch avatar from local database if not available from parent app
+  useEffect(() => {
+    if (!email || avatarUrl) return
+
+    const abortController = new AbortController()
+
+    const fetchLocalAvatar = async () => {
+      try {
+        const response = await fetch(
+          `/api/users/avatar?email=${encodeURIComponent(email)}`,
+          { signal: abortController.signal }
+        )
+        if (response.ok) {
+          const data = await response.json()
+          if (data.avatar_url) {
+            setLocalAvatarUrl(data.avatar_url)
+          }
+        }
+      } catch (error) {
+        // Ignore abort errors (component unmounted)
+        if (error instanceof Error && error.name === 'AbortError') return
+        console.error('Error fetching local avatar:', error)
+      }
+    }
+
+    fetchLocalAvatar()
+
+    return () => abortController.abort()
+  }, [avatarUrl, email])
 
   // Fetch institution name
   useEffect(() => {
+    if (!user?.institution_id) return
+
+    const abortController = new AbortController()
+
     const fetchInstitution = async () => {
-      if (user?.institution_id) {
-        try {
-          const response = await fetch(`/api/institutions/${user.institution_id}`)
-          if (response.ok) {
-            const data = await response.json()
-            setInstitutionName(data.institution_name)
-          }
-        } catch (error) {
-          console.error('Error fetching institution:', error)
+      try {
+        const response = await fetch(
+          `/api/institutions/${user.institution_id}`,
+          { signal: abortController.signal }
+        )
+        if (response.ok) {
+          const data = await response.json()
+          setInstitutionName(data.institution_name)
         }
+      } catch (error) {
+        if (error instanceof Error && error.name === 'AbortError') return
+        console.error('Error fetching institution:', error)
       }
     }
+
     fetchInstitution()
+
+    return () => abortController.abort()
   }, [user?.institution_id])
 
   // Format last login as relative time

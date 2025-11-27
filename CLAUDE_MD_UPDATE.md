@@ -176,6 +176,118 @@ This update significantly improves AI assistant effectiveness by providing compr
 
 ---
 
-**Last Updated**: October 13, 2025
+**Last Updated**: November 27, 2025
 **Updated By**: AI Assistant (Claude Code)
 **Approved By**: [Pending Review]
+
+---
+
+## Update: November 27, 2025 - Session Storage Documentation
+
+### Session Details Saved After Login
+
+Added comprehensive documentation of what data is stored during authentication.
+
+#### 1. Browser Cookies (via `js-cookie`)
+
+| Cookie | Description | Expiry |
+|--------|-------------|--------|
+| `access_token` | JWT access token from parent app | Based on `expires_in` (default 1 hour) |
+| `refresh_token` | Token for refreshing session | 30 days |
+
+#### 2. localStorage (Client-side)
+
+| Key | Description |
+|-----|-------------|
+| `user_data` | JSON object with user details (ParentAppUser) |
+| `auth_timestamp` | Login timestamp |
+| `oauth_state` | OAuth state for CSRF protection |
+| `post_login_redirect` | Redirect URL after login |
+
+#### 3. ParentAppUser Interface
+
+**File:** [lib/auth/config.ts](lib/auth/config.ts)
+
+```typescript
+interface ParentAppUser {
+  id: string              // User UUID
+  email: string           // Email address
+  full_name: string       // Display name
+  first_name?: string     // First name
+  last_name?: string      // Last name
+  role: string            // Primary role
+  roles?: string[]        // Array of roles
+  avatar_url?: string     // Profile picture URL
+  permissions?: string[]  // List of permissions
+  institution_id?: string // Institution UUID
+  institution_code?: string // Institution code
+  department_code?: string // Department code
+  is_active?: boolean     // Account active status
+  is_super_admin?: boolean // Super admin flag
+  last_login?: string     // Last login timestamp
+}
+```
+
+#### 4. Database Tables Updated on Login
+
+**Via:** [app/api/auth/sync-session/route.ts](app/api/auth/sync-session/route.ts)
+
+##### `users` table:
+- `last_login` - Updated on each login
+- `avatar_url` - Synced if provided
+
+##### `sessions` table:
+| Field | Description |
+|-------|-------------|
+| `user_id` | User UUID |
+| `session_token` | Access token |
+| `refresh_token` | Refresh token |
+| `device_info` | `{ browser, os, device, raw }` |
+| `ip_address` | Client IP address |
+| `user_agent` | Browser user agent |
+| `is_active` | Session active status |
+| `expires_at` | Token expiry time |
+
+##### `user_sessions` table (legacy):
+| Field | Description |
+|-------|-------------|
+| `user_id` | User UUID |
+| `access_token` | Access token |
+| `refresh_token` | Refresh token |
+| `expires_at` | Token expiry time |
+
+#### 5. Auth Context Helper Functions
+
+**File:** [lib/auth/auth-context-parent.tsx](lib/auth/auth-context-parent.tsx)
+
+```typescript
+const { user, hasPermission, hasRole, hasAnyRole } = useAuth()
+
+// Check specific permission
+hasPermission('courses:read')     // returns boolean
+
+// Check specific role
+hasRole('admin')                  // returns boolean
+
+// Check if user has any of the roles
+hasAnyRole(['admin', 'teacher'])  // returns boolean
+
+// Direct access to user data
+user.role          // Primary role
+user.roles         // Array of roles
+user.permissions   // Array of permissions
+```
+
+### Key Auth Files Updated
+
+| File | Purpose |
+|------|---------|
+| [lib/auth/config.ts](lib/auth/config.ts) | Auth configuration & ParentAppUser interface |
+| [lib/auth/parent-auth-service.ts](lib/auth/parent-auth-service.ts) | OAuth flow, token management, session storage |
+| [lib/auth/auth-context-parent.tsx](lib/auth/auth-context-parent.tsx) | React context provider with auth hooks |
+| [app/api/auth/sync-session/route.ts](app/api/auth/sync-session/route.ts) | Syncs session to database on login |
+| [app/api/auth/logout/route.ts](app/api/auth/logout/route.ts) | Invalidates sessions on logout |
+
+### Migration Note
+
+The auth context has been migrated from `context/auth-context.tsx` to `lib/auth/auth-context-parent.tsx`. The old file now re-exports for backwards compatibility but should be migrated to use the new path directly.

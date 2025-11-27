@@ -21,8 +21,8 @@ import type {
 export async function fetchUsers(searchTerm?: string): Promise<User[]> {
 	try {
 		const url = searchTerm
-			? `/api/users?q=${encodeURIComponent(searchTerm)}`
-			: '/api/users'
+			? `/api/users/users-list?q=${encodeURIComponent(searchTerm)}`
+			: '/api/users/users-list'
 
 		const response = await fetch(url, {
 			cache: 'no-store',
@@ -78,7 +78,7 @@ export async function fetchInstitutions(): Promise<Institution[]> {
  */
 export async function fetchRoles(): Promise<Role[]> {
 	try {
-		const response = await fetch('/api/roles')
+		const response = await fetch('/api/users/roles')
 		if (!response.ok) {
 			throw new Error('Failed to fetch roles')
 		}
@@ -106,7 +106,7 @@ export async function fetchRoles(): Promise<Role[]> {
 export async function createUser(
 	payload: UserPayload
 ): Promise<User> {
-	const response = await fetch('/api/users', {
+	const response = await fetch('/api/users/users-list', {
 		method: 'POST',
 		headers: {
 			'Content-Type': 'application/json',
@@ -132,7 +132,7 @@ export async function updateUser(
 	id: string,
 	payload: UserPayload
 ): Promise<User> {
-	const response = await fetch(`/api/users/${id}`, {
+	const response = await fetch(`/api/users/users-list/${id}`, {
 		method: 'PUT',
 		headers: {
 			'Content-Type': 'application/json',
@@ -154,7 +154,7 @@ export async function updateUser(
  * @returns Promise<void>
  */
 export async function deleteUser(id: string): Promise<void> {
-	const response = await fetch(`/api/users/${id}`, {
+	const response = await fetch(`/api/users/users-list/${id}`, {
 		method: 'DELETE',
 	})
 
@@ -174,7 +174,7 @@ export async function toggleUserStatus(
 	id: string,
 	isActive: boolean
 ): Promise<User> {
-	const response = await fetch(`/api/users/${id}`, {
+	const response = await fetch(`/api/users/users-list/${id}`, {
 		method: 'PUT',
 		headers: {
 			'Content-Type': 'application/json',

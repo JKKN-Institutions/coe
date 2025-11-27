@@ -1,7 +1,13 @@
 {
   "permissions": {
     "allow": [
-      "Bash(node fetch-schema.js:*)"
+      "Bash(node fetch-schema.js:*)",
+      "Bash(ls:*)",
+      "Bash(mkdir:*)",
+      "Bash(mv:*)",
+      "Bash(powershell -Command \"Get-ChildItem -Recurse -Include *.tsx,*.ts | Where-Object { $_FullName -notmatch ''node_modules|\\.next|test-|docs\\'' } | ForEach-Object { (Get-Content $_FullName -Raw) -replace \"\"from [''\"\"]@/context/auth-context[''\"\"]\"\", \"\"from ''@/lib/auth/auth-context-parent''\"\" | Set-Content $_FullName }\")",
+      "Bash(npx tsc:*)",
+      "Bash(npm run lint:*)"
     ],
     "deny": [],
     "ask": []

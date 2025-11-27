@@ -49,7 +49,7 @@ import {
 } from "lucide-react"
 
 import { NavMain } from "@/components/layout/nav-main"
-import { useAuth } from "@/context/auth-context"
+import { useAuth } from "@/lib/auth/auth-context-parent"
 import {
   Sidebar,
   SidebarContent,
@@ -102,7 +102,8 @@ const data = {
 			url: "#",
 			icon: Database,
 			isActive: false,
-			roles: [], // Super admin only
+			roles: ["super_admin"], // Super admin only
+			
 			items: [
 				{ title: "Institutions",          url: "/master/institutions",    icon: School },
 				{ title: "Degree",                url: "/master/degrees",         icon: GraduationCap },
@@ -128,7 +129,7 @@ const data = {
 			url: "#",
 			icon: BookText,
 			isActive: false,
-			roles: [], // COE and above
+			roles: ["super_admin", "coe"], // Super admin only
 			items: [
 				{ title: "Courses",        url: "/master/courses",                      icon: BookText },
 				{ title: "Courses (Temp)", url: "/master/courses-temp",                 icon: Database },
@@ -140,7 +141,7 @@ const data = {
 			title: "Student",
 			url: "#",
 			icon: GraduationCap,
-			roles: [], // Available to all authenticated users
+			roles: ["super_admin", "coe"],
 			items: [
 				{ title: "Student List",      url: "/users/students-list", icon: GraduationCap },
 				{ title: "Student Promotion", url: "#" },
@@ -150,7 +151,7 @@ const data = {
 			title: "Grading",
 			url: "#",
 			icon: Database,
-			roles: [], // COE and above
+			roles: ["super_admin", "coe"],
 			items: [
 				{ title: "Grades",       url: "/grading/grades",       icon: BookText },
 				{ title: "Grade System", url: "/grading/grade-system", icon: CalendarDays },
@@ -160,19 +161,20 @@ const data = {
 			title: "Pre-Exam",
 			url: "#",
 			icon: CalendarClock,
-			roles: [], // COE and above
+			roles: ["super_admin", "coe"],
 			items: [
 				{ title: "Exam Types",            url: "/exam-management/exam-types",           icon: Tags },
 				{ title: "Examination Sessions",  url: "/exam-management/examination-sessions", icon: CalendarDays },
 				{ title: "Exam Registrations",    url: "/exam-management/exam-registrations",   icon: UserPlus },
 				{ title: "Exam Timetable",        url: "/exam-management/exam-timetables",      icon: Calendar },
+				{ title: "Bulk Internal Marks",   url: "/pre-exam/bulk-internal-marks",         icon: FileText },
 			],
 		},
 		{
 			title: "During-Exam",
 			url: "#",
 			icon: Play,
-			roles: [],
+			roles: ["super_admin", "coe"],
 			items: [
 				// Granular access: coe_office can mark attendance but cannot correct it
 				{ title: "Exam Attendance",        url: "/exam-management/exam-attendance",       icon: ClipboardCheck, roles: [] },
@@ -184,12 +186,12 @@ const data = {
 			title: "Post-Exam",
 			url: "#",
 			icon: CheckSquare,
-			roles: [], // COE and above
+			roles: ["super_admin", "coe"],
 			items: [
 				{ title: "Dummy Numbers", url: "/utilities/dummy-numbers", icon: Hash },
 				{ title: "Answer Sheet Packets", url: "/post-exam/answer-sheet-packets", icon: Package },
-				{ title: "Bulk Internal Marks", url: "/post-exam/bulk-internal-marks", icon: FileText },
 				{ title: "External Mark Entry", url: "/post-exam/external-mark-entry", icon: FileText },
+				{ title: "External Mark Bulk Upload", url: "/post-exam/external-mark-bulk-upload", icon: FileText },
 				{ title: "External Mark Correction", url: "/post-exam/external-mark-correction", icon: Edit },
 			],
 		},
@@ -197,7 +199,7 @@ const data = {
 			title: "Reports",
 			url: "#",
 			icon: PieChart,
-			roles: [],
+			roles: ["super_admin", "coe"],
 			items: [
 				{ title: "Attendance Report", url: "/exam-management/reports/attendance", icon: PieChart },
 			],
