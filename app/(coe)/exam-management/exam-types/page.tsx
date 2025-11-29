@@ -26,14 +26,20 @@ interface ExamType {
 	institutions_id: string
 	examination_code: string
 	examination_name: string
-	grade_system_id: string
-	grade_system_code: string
+	grade_system_code: string | null
+	regulation_id: string | null
 	description: string | null
 	exam_type: 'quizzes' | 'online' | 'offline'
 	is_coe: boolean
 	is_active: boolean
 	created_at: string
 	updated_at: string
+}
+
+interface Regulation {
+	id: string
+	regulation_code: string
+	regulation_name: string
 }
 
 export default function ExamTypesPage() {
@@ -72,7 +78,8 @@ export default function ExamTypesPage() {
 		institutions_id: "",
 		examination_code: "",
 		examination_name: "",
-		grade_system_code: "",
+		grade_system_code: "" as string,
+		regulation_id: "",
 		description: "",
 		exam_type: "offline" as 'quizzes' | 'online' | 'offline',
 		is_coe: true,
@@ -82,7 +89,7 @@ export default function ExamTypesPage() {
 
 	// Foreign Key Dropdown Data
 	const [institutions, setInstitutions] = useState<Array<{ id: string; institution_code: string; institution_name: string }>>([])
-	const [gradeSystems, setGradeSystems] = useState<Array<{ id: string; grade_system_code: string; grade_system_name: string }>>([])
+	const [regulations, setRegulations] = useState<Regulation[]>([])
 
 	// Fetch Data
 	const fetchExamTypes = async () => {
@@ -121,29 +128,29 @@ export default function ExamTypesPage() {
 		}
 	}
 
-	const fetchGradeSystems = async () => {
+	const fetchRegulations = async () => {
 		try {
-			const res = await fetch('/api/grading/grade-system')
+			const res = await fetch('/api/master/regulations')
 			if (res.ok) {
 				const data = await res.json()
 				const mapped = Array.isArray(data)
-					? data.filter((i: any) => i?.grade_system_code).map((i: any) => ({
+					? data.filter((i: any) => i?.regulation_code).map((i: any) => ({
 						id: i.id,
-						grade_system_code: i.grade_system_code,
-						grade_system_name: i.grade_system_name || i.name
+						regulation_code: i.regulation_code,
+						regulation_name: i.regulation_name || i.name
 					}))
 					: []
-				setGradeSystems(mapped)
+				setRegulations(mapped)
 			}
 		} catch (e) {
-			console.error('Failed to load grade systems:', e)
+			console.error('Failed to load regulations:', e)
 		}
 	}
 
 	useEffect(() => {
 		fetchExamTypes()
 		fetchInstitutions()
-		fetchGradeSystems()
+		fetchRegulations()
 	}, [])
 
 	// Form Validation
@@ -154,7 +161,11 @@ export default function ExamTypesPage() {
 		if (!formData.institutions_id) e.institutions_id = "Institution is required"
 		if (!formData.examination_code.trim()) e.examination_code = "Examination code is required"
 		if (!formData.examination_name.trim()) e.examination_name = "Examination name is required"
-		if (!formData.grade_system_code.trim()) e.grade_system_code = "Grade system is required"
+
+		// Grade system code validation (optional but must be UG or PG if provided)
+		if (formData.grade_system_code && !['UG', 'PG'].includes(formData.grade_system_code)) {
+			e.grade_system_code = "Grade system must be UG or PG"
+		}
 
 		// Format validation
 		if (formData.examination_code && !/^[A-Za-z0-9\-_]+$/.test(formData.examination_code)) {
@@ -181,22 +192,10 @@ export default function ExamTypesPage() {
 		try {
 			setLoading(true)
 
-			// Foreign key resolution
-			const selectedGradeSystem = gradeSystems.find(item => item.grade_system_code === formData.grade_system_code)
-
-			if (!selectedGradeSystem) {
-				toast({
-					title: "❌ Error",
-					description: "Selected grade system not found. Please refresh and try again.",
-					variant: "destructive",
-				})
-				setLoading(false)
-				return
-			}
-
 			let payload = {
 				...formData,
-				grade_system_id: selectedGradeSystem.id
+				grade_system_code: formData.grade_system_code || null,
+				regulation_id: formData.regulation_id || null,
 			}
 
 			if (editing) {
@@ -305,6 +304,7 @@ export default function ExamTypesPage() {
 			examination_code: "",
 			examination_name: "",
 			grade_system_code: "",
+			regulation_id: "",
 			description: "",
 			exam_type: "offline",
 			is_coe: true,
@@ -331,8 +331,11 @@ export default function ExamTypesPage() {
 			errors.push('Examination name must be 100 characters or less')
 		}
 
-		if (!data.grade_system_code || data.grade_system_code.trim() === '') {
-			errors.push('Grade system code is required')
+		// Grade system code validation (optional but must be UG or PG if provided)
+		if (data.grade_system_code && data.grade_system_code.trim() !== '') {
+			if (!['UG', 'PG'].includes(data.grade_system_code.toUpperCase())) {
+				errors.push('Grade system code must be UG or PG')
+			}
 		}
 
 		// Status validation
@@ -355,16 +358,21 @@ export default function ExamTypesPage() {
 
 	// Export to JSON
 	const handleDownload = () => {
-		const exportData = filtered.map(item => ({
-			examination_code: item.examination_code,
-			examination_name: item.examination_name,
-			grade_system_code: item.grade_system_code,
-			description: item.description,
-			exam_type: item.exam_type,
-			is_coe: item.is_coe,
-			is_active: item.is_active,
-			created_at: item.created_at
-		}))
+		const exportData = filtered.map(item => {
+			// Find regulation name from regulation_id
+			const regulation = regulations.find(r => r.id === item.regulation_id)
+			return {
+				examination_code: item.examination_code,
+				examination_name: item.examination_name,
+				grade_system_code: item.grade_system_code,
+				regulation_code: regulation?.regulation_code || '',
+				description: item.description,
+				exam_type: item.exam_type,
+				is_coe: item.is_coe,
+				is_active: item.is_active,
+				created_at: item.created_at
+			}
+		})
 
 		const json = JSON.stringify(exportData, null, 2)
 		const blob = new Blob([json], { type: 'application/json' })
@@ -380,16 +388,20 @@ export default function ExamTypesPage() {
 
 	// Export to Excel
 	const handleExport = () => {
-		const excelData = filtered.map((r) => ({
-			'Examination Code': r.examination_code,
-			'Examination Name': r.examination_name,
-			'Grade System Code': r.grade_system_code,
-			'Description': r.description || '',
-			'Exam Type': r.exam_type,
-			'Is CoE': r.is_coe ? 'Yes' : 'No',
-			'Status': r.is_active ? 'Active' : 'Inactive',
-			'Created': new Date(r.created_at).toISOString().split('T')[0],
-		}))
+		const excelData = filtered.map((r) => {
+			const regulation = regulations.find(reg => reg.id === r.regulation_id)
+			return {
+				'Examination Code': r.examination_code,
+				'Examination Name': r.examination_name,
+				'Grade System Code': r.grade_system_code || '',
+				'Regulation Code': regulation?.regulation_code || '',
+				'Description': r.description || '',
+				'Exam Type': r.exam_type,
+				'Is CoE': r.is_coe ? 'Yes' : 'No',
+				'Status': r.is_active ? 'Active' : 'Inactive',
+				'Created': new Date(r.created_at).toISOString().split('T')[0],
+			}
+		})
 
 		const ws = XLSX.utils.json_to_sheet(excelData)
 
@@ -398,6 +410,7 @@ export default function ExamTypesPage() {
 			{ wch: 20 }, // Examination Code
 			{ wch: 30 }, // Examination Name
 			{ wch: 20 }, // Grade System Code
+			{ wch: 20 }, // Regulation Code
 			{ wch: 40 }, // Description
 			{ wch: 15 }, // Exam Type
 			{ wch: 10 }, // Is CoE
@@ -419,7 +432,8 @@ export default function ExamTypesPage() {
 		const sample = [{
 			'Examination Code *': 'MTE',
 			'Examination Name *': 'Mid Term Examination',
-			'Grade System Code *': 'GS001',
+			'Grade System Code': 'UG',
+			'Regulation Code': 'REG2024',
 			'Description': 'Mid term examination for all courses',
 			'Exam Type': 'offline',
 			'Is CoE': 'Yes',
@@ -433,6 +447,7 @@ export default function ExamTypesPage() {
 			{ wch: 20 }, // Examination Code
 			{ wch: 30 }, // Examination Name
 			{ wch: 20 }, // Grade System Code
+			{ wch: 20 }, // Regulation Code
 			{ wch: 40 }, // Description
 			{ wch: 15 }, // Exam Type
 			{ wch: 10 }, // Is CoE
@@ -442,7 +457,7 @@ export default function ExamTypesPage() {
 
 		// Style mandatory field headers red with asterisk
 		const range = XLSX.utils.decode_range(ws['!ref'] || 'A1')
-		const mandatoryFields = ['Examination Code *', 'Examination Name *', 'Grade System Code *']
+		const mandatoryFields = ['Examination Code *', 'Examination Name *']
 
 		for (let col = range.s.c; col <= range.e.c; col++) {
 			const cellAddress = XLSX.utils.encode_cell({ r: 0, c: col })
@@ -466,20 +481,35 @@ export default function ExamTypesPage() {
 
 		XLSX.utils.book_append_sheet(wb, ws, 'Template')
 
-		// Sheet 2: Grade Systems Reference
-		const gradeSystemsRef = gradeSystems.map(item => ({
-			'Grade System Code': item.grade_system_code,
-			'Grade System Name': item.grade_system_name || 'N/A',
+		// Sheet 2: Regulations Reference
+		const regulationsRef = regulations.map(item => ({
+			'Regulation Code': item.regulation_code,
+			'Regulation Name': item.regulation_name || 'N/A',
 		}))
 
-		const wsRef = XLSX.utils.json_to_sheet(gradeSystemsRef)
+		const wsRef = XLSX.utils.json_to_sheet(regulationsRef)
 		const refColWidths = [
 			{ wch: 20 },
 			{ wch: 40 },
 		]
 		wsRef['!cols'] = refColWidths
 
-		XLSX.utils.book_append_sheet(wb, wsRef, 'Grade Systems')
+		XLSX.utils.book_append_sheet(wb, wsRef, 'Regulations')
+
+		// Sheet 3: Grade System Codes Reference (UG/PG)
+		const gradeSystemRef = [
+			{ 'Grade System Code': 'UG', 'Description': 'Undergraduate' },
+			{ 'Grade System Code': 'PG', 'Description': 'Postgraduate' },
+		]
+
+		const wsGradeRef = XLSX.utils.json_to_sheet(gradeSystemRef)
+		const gradeRefColWidths = [
+			{ wch: 20 },
+			{ wch: 30 },
+		]
+		wsGradeRef['!cols'] = gradeRefColWidths
+
+		XLSX.utils.book_append_sheet(wb, wsGradeRef, 'Grade Systems')
 
 		XLSX.writeFile(wb, `exam_types_template_${new Date().toISOString().split('T')[0]}.xlsx`)
 	}
@@ -523,29 +553,45 @@ export default function ExamTypesPage() {
 						return row
 					})
 
-					rows = dataRows.map(j => ({
-						examination_code: String(j['Examination Code *'] || j['Examination Code'] || ''),
-						examination_name: String(j['Examination Name *'] || j['Examination Name'] || ''),
-						grade_system_code: String(j['Grade System Code *'] || j['Grade System Code'] || ''),
-						description: String(j['Description'] || ''),
-						exam_type: String(j['Exam Type'] || 'offline') as 'quizzes' | 'online' | 'offline',
-						is_coe: String(j['Is CoE'] || '').toLowerCase() === 'yes',
-						is_active: String(j['Status'] || '').toLowerCase() === 'active'
-					}))
+					rows = dataRows.map(j => {
+						// Map regulation_code to regulation_id
+						const regulationCode = String(j['Regulation Code'] || '')
+						const regulation = regulations.find(r => r.regulation_code === regulationCode)
+						const gradeSystemCode = String(j['Grade System Code'] || '').toUpperCase()
+
+						return {
+							examination_code: String(j['Examination Code *'] || j['Examination Code'] || ''),
+							examination_name: String(j['Examination Name *'] || j['Examination Name'] || ''),
+							grade_system_code: ['UG', 'PG'].includes(gradeSystemCode) ? gradeSystemCode : null,
+							regulation_id: regulation?.id || null,
+							description: String(j['Description'] || ''),
+							exam_type: String(j['Exam Type'] || 'offline') as 'quizzes' | 'online' | 'offline',
+							is_coe: String(j['Is CoE'] || '').toLowerCase() === 'yes',
+							is_active: String(j['Status'] || '').toLowerCase() === 'active'
+						}
+					})
 				} else if (file.name.endsWith('.xlsx') || file.name.endsWith('.xls')) {
 					const data = new Uint8Array(await file.arrayBuffer())
 					const wb = XLSX.read(data, { type: 'array' })
 					const ws = wb.Sheets[wb.SheetNames[0]]
 					const json = XLSX.utils.sheet_to_json(ws) as Record<string, unknown>[]
-					rows = json.map(j => ({
-						examination_code: String(j['Examination Code *'] || j['Examination Code'] || ''),
-						examination_name: String(j['Examination Name *'] || j['Examination Name'] || ''),
-						grade_system_code: String(j['Grade System Code *'] || j['Grade System Code'] || ''),
-						description: String(j['Description'] || ''),
-						exam_type: String(j['Exam Type'] || 'offline') as 'quizzes' | 'online' | 'offline',
-						is_coe: String(j['Is CoE'] || '').toLowerCase() === 'yes',
-						is_active: String(j['Status'] || '').toLowerCase() === 'active'
-					}))
+					rows = json.map(j => {
+						// Map regulation_code to regulation_id
+						const regulationCode = String(j['Regulation Code'] || '')
+						const regulation = regulations.find(r => r.regulation_code === regulationCode)
+						const gradeSystemCode = String(j['Grade System Code'] || '').toUpperCase()
+
+						return {
+							examination_code: String(j['Examination Code *'] || j['Examination Code'] || ''),
+							examination_name: String(j['Examination Name *'] || j['Examination Name'] || ''),
+							grade_system_code: ['UG', 'PG'].includes(gradeSystemCode) ? gradeSystemCode : null,
+							regulation_id: regulation?.id || null,
+							description: String(j['Description'] || ''),
+							exam_type: String(j['Exam Type'] || 'offline') as 'quizzes' | 'online' | 'offline',
+							is_coe: String(j['Is CoE'] || '').toLowerCase() === 'yes',
+							is_active: String(j['Status'] || '').toLowerCase() === 'active'
+						}
+					})
 				}
 
 				const now = new Date().toISOString()
@@ -565,8 +611,8 @@ export default function ExamTypesPage() {
 						institutions_id: defaultInstitutionId,
 						examination_code: r.examination_code!,
 						examination_name: r.examination_name!,
-						grade_system_code: r.grade_system_code!,
-						grade_system_id: '',
+						grade_system_code: r.grade_system_code || null,
+						regulation_id: r.regulation_id || null,
 						description: r.description || null,
 						exam_type: r.exam_type || 'offline',
 						is_coe: r.is_coe ?? true,
@@ -723,7 +769,7 @@ export default function ExamTypesPage() {
 				(item) =>
 					item.examination_code.toLowerCase().includes(lower) ||
 					item.examination_name.toLowerCase().includes(lower) ||
-					item.grade_system_code.toLowerCase().includes(lower)
+					(item.grade_system_code && item.grade_system_code.toLowerCase().includes(lower))
 			)
 		}
 
@@ -966,7 +1012,7 @@ export default function ExamTypesPage() {
 														<TableRow key={item.id}>
 															<TableCell className="text-[11px] font-medium">{item.examination_code}</TableCell>
 															<TableCell className="text-[11px]">{item.examination_name}</TableCell>
-															<TableCell className="text-[11px] text-muted-foreground">{item.grade_system_code}</TableCell>
+															<TableCell className="text-[11px] text-muted-foreground">{item.grade_system_code || '-'}</TableCell>
 															<TableCell>
 																<Badge
 																	variant="outline"
@@ -1011,7 +1057,8 @@ export default function ExamTypesPage() {
 																			institutions_id: item.institutions_id,
 																			examination_code: item.examination_code,
 																			examination_name: item.examination_name,
-																			grade_system_code: item.grade_system_code,
+																			grade_system_code: item.grade_system_code || "",
+																			regulation_id: item.regulation_id || "",
 																			description: item.description || "",
 																			exam_type: item.exam_type,
 																			is_coe: item.is_coe,
@@ -1161,24 +1208,42 @@ export default function ExamTypesPage() {
 
 								<div className="space-y-2">
 									<Label htmlFor="grade_system_code" className="text-sm font-semibold">
-										Grade System <span className="text-red-500">*</span>
+										Grade System
 									</Label>
 									<Select
 										value={formData.grade_system_code}
 										onValueChange={(v) => setFormData({ ...formData, grade_system_code: v })}
 									>
 										<SelectTrigger className={`h-10 ${errors.grade_system_code ? 'border-destructive' : ''}`}>
-											<SelectValue placeholder="Select grade system" />
+											<SelectValue placeholder="Select grade system (optional)" />
 										</SelectTrigger>
 										<SelectContent>
-											{gradeSystems.map((gs) => (
-												<SelectItem key={gs.id} value={gs.grade_system_code}>
-													{gs.grade_system_code}
+											<SelectItem value="UG">UG - Undergraduate</SelectItem>
+											<SelectItem value="PG">PG - Postgraduate</SelectItem>
+										</SelectContent>
+									</Select>
+									{errors.grade_system_code && <p className="text-xs text-destructive">{errors.grade_system_code}</p>}
+								</div>
+
+								<div className="space-y-2">
+									<Label htmlFor="regulation_id" className="text-sm font-semibold">
+										Regulation
+									</Label>
+									<Select
+										value={formData.regulation_id}
+										onValueChange={(v) => setFormData({ ...formData, regulation_id: v })}
+									>
+										<SelectTrigger className="h-10">
+											<SelectValue placeholder="Select regulation (optional)" />
+										</SelectTrigger>
+										<SelectContent>
+											{regulations.map((reg) => (
+												<SelectItem key={reg.id} value={reg.id}>
+													{reg.regulation_code} - {reg.regulation_name}
 												</SelectItem>
 											))}
 										</SelectContent>
 									</Select>
-									{errors.grade_system_code && <p className="text-xs text-destructive">{errors.grade_system_code}</p>}
 								</div>
 
 								<div className="space-y-2">
@@ -1375,7 +1440,8 @@ export default function ExamTypesPage() {
 									<ul className="text-xs text-blue-700 dark:text-blue-300 space-y-1">
 										<li>• Ensure examination code is 20 characters or less</li>
 										<li>• Ensure examination name is 100 characters or less</li>
-										<li>• Grade system code must reference an existing grade system</li>
+										<li>• Grade system code must be UG or PG (optional)</li>
+										<li>• Regulation code must reference an existing regulation (optional)</li>
 										<li>• Exam type must be one of: offline, online, quizzes</li>
 										<li>• Status: true/false or Active/Inactive</li>
 									</ul>

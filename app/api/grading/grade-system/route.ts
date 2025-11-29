@@ -65,6 +65,14 @@ export async function POST(request: Request) {
 			}, { status: 400 })
 		}
 
+		// Validate grade_system_code is UG or PG
+		const gradeSystemCode = String(body.grade_system_code).toUpperCase().trim()
+		if (gradeSystemCode !== 'UG' && gradeSystemCode !== 'PG') {
+			return NextResponse.json({
+				error: 'Grade system code must be either "UG" (Undergraduate) or "PG" (Postgraduate)'
+			}, { status: 400 })
+		}
+
 		if (!body.grade_id) {
 			return NextResponse.json({
 				error: 'Grade is required'
@@ -128,32 +136,32 @@ export async function POST(request: Request) {
 			}
 		}
 
-		// Validate min_mark and max_mark are numeric
+		// Validate min_mark and max_mark are numeric (allow -1 for absent cases)
 		const minMark = Number(body.min_mark)
-		if (isNaN(minMark) || minMark < 0 || minMark > 100) {
+		if (isNaN(minMark) || (minMark !== -1 && (minMark < 0 || minMark > 100))) {
 			return NextResponse.json({
-				error: 'Minimum mark must be a valid number between 0 and 100'
+				error: 'Minimum mark must be -1 (for absent) or a valid number between 0 and 100'
 			}, { status: 400 })
 		}
 
 		const maxMark = Number(body.max_mark)
-		if (isNaN(maxMark) || maxMark < 0 || maxMark > 100) {
+		if (isNaN(maxMark) || (maxMark !== -1 && (maxMark < 0 || maxMark > 100))) {
 			return NextResponse.json({
-				error: 'Maximum mark must be a valid number between 0 and 100'
+				error: 'Maximum mark must be -1 (for absent) or a valid number between 0 and 100'
 			}, { status: 400 })
 		}
 
-		// Validate min_mark < max_mark
-		if (minMark >= maxMark) {
+		// Validate min_mark <= max_mark (allow both to be -1 for absent cases)
+		if (minMark !== -1 && maxMark !== -1 && minMark > maxMark) {
 			return NextResponse.json({
-				error: 'Minimum mark must be less than maximum mark'
+				error: 'Minimum mark must be less than or equal to maximum mark'
 			}, { status: 400 })
 		}
 
 		const insertPayload: any = {
 			institutions_id: institutionData.id,
 			institutions_code: String(body.institutions_code).trim(),
-			grade_system_code: String(body.grade_system_code).trim(),
+			grade_system_code: gradeSystemCode, // Use validated UG/PG value
 			grade_id: body.grade_id,
 			grade: gradeData.grade,
 			grade_point: gradeData.grade_point,
@@ -229,6 +237,14 @@ export async function PUT(request: Request) {
 			}, { status: 400 })
 		}
 
+		// Validate grade_system_code is UG or PG
+		const gradeSystemCode = String(body.grade_system_code).toUpperCase().trim()
+		if (gradeSystemCode !== 'UG' && gradeSystemCode !== 'PG') {
+			return NextResponse.json({
+				error: 'Grade system code must be either "UG" (Undergraduate) or "PG" (Postgraduate)'
+			}, { status: 400 })
+		}
+
 		if (body.min_mark === undefined || body.min_mark === null || body.min_mark === '') {
 			return NextResponse.json({
 				error: 'Minimum mark is required'
@@ -291,30 +307,30 @@ export async function PUT(request: Request) {
 			}
 		}
 
-		// Validate min_mark and max_mark are numeric
+		// Validate min_mark and max_mark are numeric (allow -1 for absent cases)
 		const minMark = Number(body.min_mark)
-		if (isNaN(minMark) || minMark < 0 || minMark > 100) {
+		if (isNaN(minMark) || (minMark !== -1 && (minMark < 0 || minMark > 100))) {
 			return NextResponse.json({
-				error: 'Minimum mark must be a valid number between 0 and 100'
+				error: 'Minimum mark must be -1 (for absent) or a valid number between 0 and 100'
 			}, { status: 400 })
 		}
 
 		const maxMark = Number(body.max_mark)
-		if (isNaN(maxMark) || maxMark < 0 || maxMark > 100) {
+		if (isNaN(maxMark) || (maxMark !== -1 && (maxMark < 0 || maxMark > 100))) {
 			return NextResponse.json({
-				error: 'Maximum mark must be a valid number between 0 and 100'
+				error: 'Maximum mark must be -1 (for absent) or a valid number between 0 and 100'
 			}, { status: 400 })
 		}
 
-		// Validate min_mark < max_mark
-		if (minMark >= maxMark) {
+		// Validate min_mark <= max_mark (allow both to be -1 for absent cases)
+		if (minMark !== -1 && maxMark !== -1 && minMark > maxMark) {
 			return NextResponse.json({
-				error: 'Minimum mark must be less than maximum mark'
+				error: 'Minimum mark must be less than or equal to maximum mark'
 			}, { status: 400 })
 		}
 
 		const updatePayload: any = {
-			grade_system_code: String(body.grade_system_code).trim(),
+			grade_system_code: gradeSystemCode, // Use validated UG/PG value
 			min_mark: minMark,
 			max_mark: maxMark,
 			description: String(body.description).trim(),

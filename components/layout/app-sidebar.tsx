@@ -46,6 +46,7 @@ import {
 	Crown,
 	Hash,
 	Package,
+	Calculator,
 } from "lucide-react"
 
 import { NavMain } from "@/components/layout/nav-main"
@@ -153,8 +154,9 @@ const data = {
 			icon: Database,
 			roles: ["super_admin", "coe"],
 			items: [
-				{ title: "Grades",       url: "/grading/grades",       icon: BookText },
-				{ title: "Grade System", url: "/grading/grade-system", icon: CalendarDays },
+				{ title: "Grades",              url: "/grading/grades",               icon: BookText },
+				{ title: "Grade System",        url: "/grading/grade-system",         icon: CalendarDays },
+				{ title: "Generate Final Marks", url: "/grading/generate-final-marks", icon: Calculator },
 			],
 		},
 		{

@@ -7,7 +7,11 @@
       "Bash(mv:*)",
       "Bash(powershell -Command \"Get-ChildItem -Recurse -Include *.tsx,*.ts | Where-Object { $_FullName -notmatch ''node_modules|\\.next|test-|docs\\'' } | ForEach-Object { (Get-Content $_FullName -Raw) -replace \"\"from [''\"\"]@/context/auth-context[''\"\"]\"\", \"\"from ''@/lib/auth/auth-context-parent''\"\" | Set-Content $_FullName }\")",
       "Bash(npx tsc:*)",
-      "Bash(npm run lint:*)"
+      "Bash(npm run lint:*)",
+      "Bash(npm run build:*)",
+      "Bash(npm update:*)",
+      "Bash(claude --version:*)",
+      "Bash(powershell -Command \"Get-Content ''app/(coe)/grading/grades/page.tsx'' -Encoding UTF8 | Select-Object -Index (444..456)\")"
     ],
     "deny": [],
     "ask": []

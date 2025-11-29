@@ -1,6 +1,6 @@
 'use client'
 
-import { createContext, useContext, useEffect, useState, useCallback, ReactNode } from 'react'
+import { createContext, useContext, useEffect, useState, useCallback, ReactNode, Suspense } from 'react'
 import { useRouter, useSearchParams, usePathname } from 'next/navigation'
 import { parentAuthService } from './parent-auth-service'
 import { ParentAppUser } from './config'
@@ -29,10 +29,22 @@ interface AuthProviderProps {
 	autoValidate?: boolean
 }
 
-export function AuthProvider({ children, autoValidate = false }: AuthProviderProps) {
-	const [user, setUser] = useState<ParentAppUser | null>(null)
-	const [loading, setLoading] = useState(true)
-	const [error, setError] = useState<string | null>(null)
+// Inner component that uses useSearchParams - must be wrapped in Suspense
+interface AuthProviderInnerProps extends AuthProviderProps {
+	setUser: (user: ParentAppUser | null) => void
+	setLoading: (loading: boolean) => void
+	setError: (error: string | null) => void
+	user: ParentAppUser | null
+}
+
+function AuthProviderInner({
+	children,
+	autoValidate = false,
+	setUser,
+	setLoading,
+	setError,
+	user
+}: AuthProviderInnerProps) {
 	const router = useRouter()
 	const searchParams = useSearchParams()
 	const pathname = usePathname()
@@ -276,9 +288,9 @@ export function AuthProvider({ children, autoValidate = false }: AuthProviderPro
 		<AuthContext.Provider
 			value={{
 				user,
-				loading,
-				isLoading: loading,
-				error,
+				loading: false, // Inner component means loading is done
+				isLoading: false,
+				error: null,
 				isAuthenticated: !!user,
 				login,
 				loginWithGoogle,
@@ -293,6 +305,48 @@ export function AuthProvider({ children, autoValidate = false }: AuthProviderPro
 		>
 			{children}
 		</AuthContext.Provider>
+	)
+}
+
+// Main AuthProvider that wraps the inner component in Suspense
+export function AuthProvider({ children, autoValidate = false }: AuthProviderProps) {
+	const [user, setUser] = useState<ParentAppUser | null>(null)
+	const [loading, setLoading] = useState(true)
+	const [error, setError] = useState<string | null>(null)
+
+	return (
+		<Suspense fallback={
+			<AuthContext.Provider
+				value={{
+					user: null,
+					loading: true,
+					isLoading: true,
+					error: null,
+					isAuthenticated: false,
+					login: () => {},
+					loginWithGoogle: () => {},
+					logout: async () => {},
+					refreshSession: async () => false,
+					refreshPermissions: async () => {},
+					getAccessToken: () => null,
+					hasPermission: () => false,
+					hasRole: () => false,
+					hasAnyRole: () => false,
+				}}
+			>
+				{children}
+			</AuthContext.Provider>
+		}>
+			<AuthProviderInner
+				autoValidate={autoValidate}
+				setUser={setUser}
+				setLoading={setLoading}
+				setError={setError}
+				user={user}
+			>
+				{children}
+			</AuthProviderInner>
+		</Suspense>
 	)
 }
 

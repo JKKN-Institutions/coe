@@ -12,14 +12,14 @@ export interface GradeSystem {
 	id: string
 	institutions_id: string
 	institutions_code: string
-	grade_system_code: string
+	grade_system_code: 'UG' | 'PG'
 	grade_id: string
 	grade: string
 	grade_point: number
 	min_mark: number
 	max_mark: number
 	description: string
-	regulation_id: number
+	regulation_id: string // UUID
 	regulation_code?: string
 	is_active: boolean
 	created_at: string
@@ -72,9 +72,9 @@ export interface GradeSystemFormData {
  */
 export interface GradeSystemPayload {
 	institutions_code: string
-	grade_system_code: string
+	grade_system_code: 'UG' | 'PG'
 	grade_id: string
-	regulation_id: number
+	regulation_id: string // UUID
 	min_mark: number
 	max_mark: number
 	description: string

@@ -86,9 +86,12 @@ export default function GradeSystemPage() {
 	const [regulations, setRegulations] = useState<Array<{ id: string; regulation_code: string; name?: string }>>([])
 	const [grades, setGrades] = useState<Array<{ id: string; grade: string; grade_point: number }>>([])
 
+	// Grade system code options (UG/PG constraint)
+	const gradeSystemCodeOptions: Array<'UG' | 'PG'> = ['UG', 'PG']
+
 	const [formData, setFormData] = useState({
 		institutions_code: "",
-		grade_system_code: "",
+		grade_system_code: "" as '' | 'UG' | 'PG',
 		grade_id: "",
 		regulation_id: "",
 		min_mark: "",
@@ -150,7 +153,7 @@ export default function GradeSystemPage() {
 	const resetForm = () => {
 		setFormData({
 			institutions_code: "",
-			grade_system_code: "",
+			grade_system_code: "" as '' | 'UG' | 'PG',
 			grade_id: "",
 			regulation_id: "",
 			min_mark: "",
@@ -209,7 +212,7 @@ export default function GradeSystemPage() {
 		setEditing(row)
 		setFormData({
 			institutions_code: row.institutions_code,
-			grade_system_code: row.grade_system_code,
+			grade_system_code: row.grade_system_code as '' | 'UG' | 'PG',
 			grade_id: row.grade_id,
 			regulation_id: String(row.regulation_id),
 			min_mark: String(row.min_mark),
@@ -272,7 +275,7 @@ export default function GradeSystemPage() {
 				grade_point: selectedGrade.grade_point,
 				min_mark: Number(formData.min_mark),
 				max_mark: Number(formData.max_mark),
-				regulation_id: Number(formData.regulation_id)
+				regulation_id: formData.regulation_id // UUID string
 			}
 
 			if (editing) {
@@ -429,31 +432,37 @@ export default function GradeSystemPage() {
 						return row
 					})
 
-					rows = dataRows.map(j => ({
-						institutions_code: String(j['Institution Code *'] || j['Institution Code'] || ''),
-						grade_system_code: String(j['System Code *'] || j['System Code'] || ''),
-						grade_id: String(j['Grade ID *'] || j['Grade ID'] || ''),
-						regulation_id: Number(j['Regulation ID *'] || j['Regulation ID'] || 0),
-						min_mark: Number(j['Min Mark *'] || j['Min Mark'] || 0),
-						max_mark: Number(j['Max Mark *'] || j['Max Mark'] || 0),
-						description: String(j['Description *'] || j['Description'] || ''),
-						is_active: String(j['Status'] || '').toLowerCase() === 'active'
-					}))
+					rows = dataRows.map(j => {
+						const systemCode = String(j['System Code *'] || j['System Code'] || '').toUpperCase()
+						return {
+							institutions_code: String(j['Institution Code *'] || j['Institution Code'] || ''),
+							grade_system_code: (systemCode === 'UG' || systemCode === 'PG') ? systemCode as 'UG' | 'PG' : systemCode,
+							grade_id: String(j['Grade ID *'] || j['Grade ID'] || ''),
+							regulation_id: String(j['Regulation ID *'] || j['Regulation ID'] || ''), // UUID string
+							min_mark: Number(j['Min Mark *'] || j['Min Mark'] || 0),
+							max_mark: Number(j['Max Mark *'] || j['Max Mark'] || 0),
+							description: String(j['Description *'] || j['Description'] || ''),
+							is_active: String(j['Status'] || '').toLowerCase() === 'active'
+						}
+					})
 				} else if (file.name.endsWith('.xlsx') || file.name.endsWith('.xls')) {
 					const data = new Uint8Array(await file.arrayBuffer())
 					const wb = XLSX.read(data, { type: 'array' })
 					const ws = wb.Sheets[wb.SheetNames[0]]
 					const json = XLSX.utils.sheet_to_json(ws) as Record<string, unknown>[]
-					rows = json.map(j => ({
-						institutions_code: String(j['Institution Code *'] || j['Institution Code'] || ''),
-						grade_system_code: String(j['System Code *'] || j['System Code'] || ''),
-						grade_id: String(j['Grade ID *'] || j['Grade ID'] || ''),
-						regulation_id: Number(j['Regulation ID *'] || j['Regulation ID'] || 0),
-						min_mark: Number(j['Min Mark *'] || j['Min Mark'] || 0),
-						max_mark: Number(j['Max Mark *'] || j['Max Mark'] || 0),
-						description: String(j['Description *'] || j['Description'] || ''),
-						is_active: String(j['Status'] || '').toLowerCase() === 'active'
-					}))
+					rows = json.map(j => {
+						const systemCode = String(j['System Code *'] || j['System Code'] || '').toUpperCase()
+						return {
+							institutions_code: String(j['Institution Code *'] || j['Institution Code'] || ''),
+							grade_system_code: (systemCode === 'UG' || systemCode === 'PG') ? systemCode as 'UG' | 'PG' : systemCode,
+							grade_id: String(j['Grade ID *'] || j['Grade ID'] || ''),
+							regulation_id: String(j['Regulation ID *'] || j['Regulation ID'] || ''), // UUID string
+							min_mark: Number(j['Min Mark *'] || j['Min Mark'] || 0),
+							max_mark: Number(j['Max Mark *'] || j['Max Mark'] || 0),
+							description: String(j['Description *'] || j['Description'] || ''),
+							is_active: String(j['Status'] || '').toLowerCase() === 'active'
+						}
+					})
 				}
 
 				const now = new Date().toISOString()
@@ -935,15 +944,23 @@ export default function GradeSystemPage() {
 
 								<div className="space-y-2">
 									<Label htmlFor="grade_system_code" className="text-sm font-semibold">
-										System Code <span className="text-red-500">*</span>
+										System Code (UG/PG) <span className="text-red-500">*</span>
 									</Label>
-									<Input
-										id="grade_system_code"
+									<Select
 										value={formData.grade_system_code}
-										onChange={(e) => setFormData({ ...formData, grade_system_code: e.target.value })}
-										className={`h-10 ${errors.grade_system_code ? 'border-destructive' : ''}`}
-										placeholder="e.g., GS001"
-									/>
+										onValueChange={(value) => setFormData({ ...formData, grade_system_code: value as 'UG' | 'PG' })}
+									>
+										<SelectTrigger className={`h-10 ${errors.grade_system_code ? 'border-destructive' : ''}`}>
+											<SelectValue placeholder="Select System Code" />
+										</SelectTrigger>
+										<SelectContent>
+											{gradeSystemCodeOptions.map(code => (
+												<SelectItem key={code} value={code}>
+													{code} - {code === 'UG' ? 'Undergraduate' : 'Postgraduate'}
+												</SelectItem>
+											))}
+										</SelectContent>
+									</Select>
 									{errors.grade_system_code && <p className="text-xs text-destructive">{errors.grade_system_code}</p>}
 								</div>
 
@@ -999,34 +1016,34 @@ export default function GradeSystemPage() {
 
 								<div className="space-y-2">
 									<Label htmlFor="min_mark" className="text-sm font-semibold">
-										Min Mark (0-100) <span className="text-red-500">*</span>
+										Min Mark (-1 or 0-100) <span className="text-red-500">*</span>
 									</Label>
 									<Input
 										id="min_mark"
 										type="number"
-										min="0"
+										min="-1"
 										max="100"
 										value={formData.min_mark}
 										onChange={(e) => setFormData({ ...formData, min_mark: e.target.value })}
 										className={`h-10 ${errors.min_mark ? 'border-destructive' : ''}`}
-										placeholder="e.g., 90"
+										placeholder="e.g., 90 (-1 for absent)"
 									/>
 									{errors.min_mark && <p className="text-xs text-destructive">{errors.min_mark}</p>}
 								</div>
 
 								<div className="space-y-2">
 									<Label htmlFor="max_mark" className="text-sm font-semibold">
-										Max Mark (0-100) <span className="text-red-500">*</span>
+										Max Mark (-1 or 0-100) <span className="text-red-500">*</span>
 									</Label>
 									<Input
 										id="max_mark"
 										type="number"
-										min="0"
+										min="-1"
 										max="100"
 										value={formData.max_mark}
 										onChange={(e) => setFormData({ ...formData, max_mark: e.target.value })}
 										className={`h-10 ${errors.max_mark ? 'border-destructive' : ''}`}
-										placeholder="e.g., 100"
+										placeholder="e.g., 100 (-1 for absent)"
 									/>
 									{errors.max_mark && <p className="text-xs text-destructive">{errors.max_mark}</p>}
 								</div>

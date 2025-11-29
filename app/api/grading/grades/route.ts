@@ -145,6 +145,9 @@ export async function POST(request: Request) {
 			regulation_code: regulationCode,
 			qualify: body.qualify ?? false,
 			exclude_cgpa: body.exclude_cgpa ?? false,
+			order_index: body.order_index !== undefined && body.order_index !== null ? Number(body.order_index) : null,
+			is_absent: body.is_absent ?? false,
+			result_status: body.result_status || null,
 		}
 
 		const { data, error } = await supabase
@@ -285,6 +288,9 @@ export async function PUT(request: Request) {
 			description: String(body.description).trim(),
 			qualify: body.qualify,
 			exclude_cgpa: body.exclude_cgpa,
+			order_index: body.order_index !== undefined && body.order_index !== null ? Number(body.order_index) : null,
+			is_absent: body.is_absent ?? false,
+			result_status: body.result_status || null,
 		}
 
 		if (institutionsId) updatePayload.institutions_id = institutionsId

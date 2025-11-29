@@ -31,10 +31,13 @@ type Grade = {
 	min_mark: number
 	max_mark: number
 	description: string
-	regulation_id: number
+	regulation_id: string // UUID
 	regulation_code?: string
 	qualify: boolean
 	exclude_cgpa: boolean
+	order_index: number | null
+	is_absent: boolean
+	result_status: string | null
 	created_at: string
 	updated_at: string
 }
@@ -54,7 +57,9 @@ export default function GradesPage() {
 
 	// Dropdown data
 	const [institutions, setInstitutions] = useState<Array<{ id: string; institution_code: string; name: string }>>([])
-	const [regulations, setRegulations] = useState<Array<{ id: number; regulation_code: string; regulation_year: number }>>([])
+	// Result status options
+	const resultStatusOptions = ['Pass', 'Fail', 'Withheld', 'Absent', 'Debarred']
+	const [regulations, setRegulations] = useState<Array<{ id: string; regulation_code: string; regulation_year: number }>>([])
 
 	const [formData, setFormData] = useState({
 		institutions_code: "",
@@ -66,6 +71,9 @@ export default function GradesPage() {
 		description: "",
 		qualify: false,
 		exclude_cgpa: false,
+		order_index: "",
+		is_absent: false,
+		result_status: "",
 	})
 	const [errors, setErrors] = useState<Record<string, string>>({})
 
@@ -96,6 +104,9 @@ export default function GradesPage() {
 			description: "",
 			qualify: false,
 			exclude_cgpa: false,
+			order_index: "",
+			is_absent: false,
+			result_status: "",
 		})
 		setErrors({})
 		setEditing(null)
@@ -132,7 +143,7 @@ export default function GradesPage() {
 		setEditing(row)
 		setFormData({
 			institutions_code: row.institutions_code,
-			regulation_id: String(row.regulation_id),
+			regulation_id: row.regulation_id,
 			grade: row.grade,
 			grade_point: String(row.grade_point),
 			min_mark: String(row.min_mark),
@@ -140,6 +151,9 @@ export default function GradesPage() {
 			description: row.description,
 			qualify: row.qualify,
 			exclude_cgpa: row.exclude_cgpa,
+			order_index: row.order_index !== null ? String(row.order_index) : "",
+			is_absent: row.is_absent,
+			result_status: row.result_status || "",
 		})
 		setSheetOpen(true)
 	}
@@ -165,6 +179,14 @@ export default function GradesPage() {
 
 		if (!e.min_mark && !e.max_mark && minMark > maxMark) e.max_mark = "Max mark must be greater than or equal to min mark"
 
+		// Order index validation (optional but must be non-negative integer if provided)
+		if (formData.order_index !== '' && formData.order_index !== null && formData.order_index !== undefined) {
+			const orderIdx = Number(formData.order_index)
+			if (isNaN(orderIdx) || orderIdx < 0 || !Number.isInteger(orderIdx)) {
+				e.order_index = "Must be a non-negative integer"
+			}
+		}
+
 		setErrors(e)
 		return Object.keys(e).length === 0
 	}
@@ -176,7 +198,7 @@ export default function GradesPage() {
 			setSaving(true)
 			const payload = {
 				institutions_code: formData.institutions_code,
-				regulation_id: Number(formData.regulation_id),
+				regulation_id: formData.regulation_id,
 				grade: formData.grade,
 				grade_point: Number(formData.grade_point),
 				min_mark: Number(formData.min_mark),
@@ -184,6 +206,9 @@ export default function GradesPage() {
 				description: formData.description,
 				qualify: formData.qualify,
 				exclude_cgpa: formData.exclude_cgpa,
+				order_index: formData.order_index !== '' ? Number(formData.order_index) : null,
+				is_absent: formData.is_absent,
+				result_status: formData.result_status || null,
 			}
 			if (editing) {
 				const res = await fetch('/api/grading/grades', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: editing.id, ...payload }) })
@@ -327,7 +352,10 @@ export default function GradesPage() {
 			'Max Mark *': 100,
 			'Description *': 'Outstanding',
 			'Qualify': 'Pass',
-			'Exclude CGPA': 'No'
+			'Exclude CGPA': 'No',
+			'Order Index': 1,
+			'Is Absent': 'No',
+			'Result Status': 'Pass'
 		}]
 
 		const wsTemplate = XLSX.utils.json_to_sheet(sample)
@@ -340,7 +368,10 @@ export default function GradesPage() {
 			{ wch: 12 }, // Max Mark
 			{ wch: 35 }, // Description
 			{ wch: 12 }, // Qualify
-			{ wch: 15 }  // Exclude CGPA
+			{ wch: 15 }, // Exclude CGPA
+			{ wch: 12 }, // Order Index
+			{ wch: 12 }, // Is Absent
+			{ wch: 15 }  // Result Status
 		]
 		XLSX.utils.book_append_sheet(wb, wsTemplate, 'Template')
 
@@ -420,7 +451,10 @@ export default function GradesPage() {
 						max_mark: Number(j['Max Mark *'] || j['Max Mark'] || 0),
 						description: String(j['Description *'] || j['Description'] || ''),
 						qualify: String(j['Qualify'] || '').toLowerCase() === 'pass' || String(j['Qualify'] || '').toLowerCase() === 'true',
-						exclude_cgpa: String(j['Exclude CGPA'] || '').toLowerCase() === 'yes' || String(j['Exclude CGPA'] || '').toLowerCase() === 'true'
+						exclude_cgpa: String(j['Exclude CGPA'] || '').toLowerCase() === 'yes' || String(j['Exclude CGPA'] || '').toLowerCase() === 'true',
+						order_index: j['Order Index'] !== undefined && j['Order Index'] !== '' ? Number(j['Order Index']) : null,
+						is_absent: String(j['Is Absent'] || '').toLowerCase() === 'yes' || String(j['Is Absent'] || '').toLowerCase() === 'true',
+						result_status: String(j['Result Status'] || '') || null
 					}))
 				}
 
@@ -469,7 +503,10 @@ export default function GradesPage() {
 						max_mark: gradeItem.max_mark,
 						description: gradeItem.description,
 						qualify: gradeItem.qualify ?? false,
-						exclude_cgpa: gradeItem.exclude_cgpa ?? false
+						exclude_cgpa: gradeItem.exclude_cgpa ?? false,
+						order_index: (gradeItem as any).order_index ?? null,
+						is_absent: (gradeItem as any).is_absent ?? false,
+						result_status: (gradeItem as any).result_status ?? null
 					}
 
 					try {
@@ -587,7 +624,7 @@ export default function GradesPage() {
 			if (res.ok) {
 				const data = await res.json()
 				setRegulations(data.filter((r: any) => r.status).map((r: any) => ({
-					id: r.id,
+					id: String(r.id),
 					regulation_code: r.regulation_code,
 					regulation_year: r.regulation_year
 				})))
@@ -929,6 +966,36 @@ export default function GradesPage() {
 									<span className={`text-sm font-medium ${formData.exclude_cgpa ? 'text-orange-600' : 'text-gray-500'}`}>
 										{formData.exclude_cgpa ? 'Yes' : 'No'}
 									</span>
+								</div>
+								<div className="flex items-center gap-3">
+									<Label htmlFor="is_absent" className="text-sm font-semibold">Is Absent</Label>
+									<Switch
+										id="is_absent"
+										checked={formData.is_absent}
+										onCheckedChange={(v) => setFormData({ ...formData, is_absent: v })}
+									/>
+									<span className={`text-sm font-medium ${formData.is_absent ? 'text-orange-600' : 'text-gray-500'}`}>
+										{formData.is_absent ? 'Yes' : 'No'}
+									</span>
+								</div>
+								<div className="space-y-2">
+									<Label className="text-sm font-semibold">Order Index</Label>
+									<Input type="number" min="0" value={formData.order_index} onChange={(e) => setFormData({ ...formData, order_index: e.target.value })} className={`h-10 ${errors.order_index ? 'border-destructive' : ''}`} placeholder="e.g., 1, 2, 3" />
+									{errors.order_index && <p className="text-xs text-destructive">{errors.order_index}</p>}
+								</div>
+								<div className="space-y-2 md:col-span-2">
+									<Label className="text-sm font-semibold">Result Status</Label>
+									<Select value={formData.result_status} onValueChange={(v) => setFormData({ ...formData, result_status: v })}>
+										<SelectTrigger className="h-10">
+											<SelectValue placeholder="Select result status" />
+										</SelectTrigger>
+										<SelectContent>
+											<SelectItem value="">None</SelectItem>
+											{resultStatusOptions.map((status) => (
+												<SelectItem key={status} value={status}>{status}</SelectItem>
+											))}
+										</SelectContent>
+									</Select>
 								</div>
 							</div>
 						</div>
