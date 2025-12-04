@@ -1,3 +1,4 @@
+
 import { NextRequest, NextResponse } from 'next/server'
 
 export async function GET(request: NextRequest) {
@@ -7,6 +8,7 @@ export async function GET(request: NextRequest) {
 	const error = requestUrl.searchParams.get('error')
 	const errorDescription = requestUrl.searchParams.get('error_description')
 
+	// Use environment variable, fallback to request origin for production
 	// Use environment variable, fallback to request origin for production
 	const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || requestUrl.origin
 
