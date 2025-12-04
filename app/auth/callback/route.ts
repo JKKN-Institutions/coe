@@ -7,13 +7,17 @@ export async function GET(request: NextRequest) {
 	const error = requestUrl.searchParams.get('error')
 	const errorDescription = requestUrl.searchParams.get('error_description')
 
-	const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000'
+	// Use environment variable, fallback to request origin for production
+	const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || requestUrl.origin
 
 	console.log('OAuth Callback:', {
 		code: !!code,
 		state: !!state,
 		error,
 		errorDescription,
+		siteUrl,
+		requestOrigin: requestUrl.origin,
+		envSiteUrl: process.env.NEXT_PUBLIC_SITE_URL,
 	})
 
 	// Handle OAuth errors
