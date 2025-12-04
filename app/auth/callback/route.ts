@@ -61,7 +61,7 @@ export async function GET(request: NextRequest) {
 			return NextResponse.redirect(loginUrl)
 		}
 
-		const { access_token, refresh_token, user } = await tokenResponse.json()
+		const { access_token, refresh_token, user, expires_in } = await tokenResponse.json()
 
 		console.log('Token exchange successful:', {
 			hasAccessToken: !!access_token,
@@ -69,18 +69,46 @@ export async function GET(request: NextRequest) {
 			hasUser: !!user,
 		})
 
-		// Redirect to dashboard with tokens in URL params
-		// (AuthProvider will handle storing them and cleaning the URL)
-		const dashboardUrl = new URL('/dashboard', siteUrl)
-		dashboardUrl.searchParams.set('token', access_token)
+		// Redirect to login page with tokens in URL params
+		// The login page will handle storing tokens client-side and redirecting
+		// This avoids the middleware redirect loop since /login is a public route
+		const loginUrl = new URL('/login', siteUrl)
+		loginUrl.searchParams.set('token', access_token)
 		if (refresh_token) {
-			dashboardUrl.searchParams.set('refresh_token', refresh_token)
+			loginUrl.searchParams.set('refresh_token', refresh_token)
+		}
+		if (expires_in) {
+			loginUrl.searchParams.set('expires_in', expires_in.toString())
 		}
 		if (user) {
-			dashboardUrl.searchParams.set('user', encodeURIComponent(JSON.stringify(user)))
+			loginUrl.searchParams.set('user', encodeURIComponent(JSON.stringify(user)))
 		}
 
-		return NextResponse.redirect(dashboardUrl)
+		// Create response with redirect
+		const response = NextResponse.redirect(loginUrl)
+
+		// Set access_token cookie server-side to prevent middleware redirect loop
+		// Cookie will be available immediately on next request
+		const maxAge = expires_in || 3600 // Default 1 hour
+		response.cookies.set('access_token', access_token, {
+			path: '/',
+			maxAge: maxAge,
+			httpOnly: false, // Allow client-side access for auth checks
+			secure: process.env.NODE_ENV === 'production',
+			sameSite: 'lax',
+		})
+
+		if (refresh_token) {
+			response.cookies.set('refresh_token', refresh_token, {
+				path: '/',
+				maxAge: 30 * 24 * 60 * 60, // 30 days
+				httpOnly: false,
+				secure: process.env.NODE_ENV === 'production',
+				sameSite: 'lax',
+			})
+		}
+
+		return response
 	} catch (err) {
 		console.error('Callback error:', err)
 		const loginUrl = new URL('/login', siteUrl)

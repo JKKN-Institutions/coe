@@ -901,7 +901,8 @@ export default function BulkInternalMarksPage() {
 					marks_data: marksData,
 					file_name: 'bulk_upload.xlsx',
 					file_type: 'XLSX',
-					uploaded_by: user?.id
+					user_id: user?.id,
+					user_email: user?.email
 				})
 			})
 

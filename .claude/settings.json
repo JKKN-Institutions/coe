@@ -1,45 +1,36 @@
 {
-  "slashCommands": {
-    "commit": {
-      "commands": [
-        "git add .",
-        "git commit -m '{{commit_message}}'",
-        "git push origin {{branch}}"
-      ],
-      "preApproved": ["git commit", "git push", "gh"]
-    }
+  "env": {
+    "MAX_THINKING_TOKENS": "8000"
   },
-  "preApproved": {
-    "commands": [
-      "git status",
-      "git add",
-      "git commit",
-      "git push",
-      "npm test",
-      "npm run build",
-      "ls",
-      "cat",
-      "grep"
+  "permissions": {
+    "allow": [
+      "Bash(git status:*)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(git push:*)",
+      "Bash(npm test:*)",
+      "Bash(npm run build:*)",
+      "Bash(npm run lint:*)",
+      "Bash(ls:*)",
+      "Bash(cat:*)",
+      "Bash(grep:*)",
+      "Read(src/**/*.ts)",
+      "Read(src/**/*.tsx)",
+      "Read(tests/**/*)"
     ],
-    "filePatterns": [
-      "src/**/*.ts",
-      "src/**/*.tsx",
-      "tests/**/*"
+    "deny": [
+      "Bash(rm -rf:*)",
+      "Bash(sudo:*)",
+      "Bash(curl | bash:*)",
+      "Read(.env)",
+      "Read(.env.*)",
+      "Read(secrets/**/*)",
+      "Read(config/production.*)"
     ]
   },
-  "blocked": {
-    "commands": [
-      "rm -rf",
-      "sudo",
-      "curl | bash"
-    ],
-    "filePatterns": [
-      ".env",
-      "secrets/**/*",
-      "config/production.*"
-    ]
-  },
-  "stopHooks": {
-    "onTaskComplete": "npm test"
+  "statusLine": {
+    "type": "command",
+    "command": "C:/Users/Admin/.claude/statusline.sh",
+    "padding": 0
   }
 }

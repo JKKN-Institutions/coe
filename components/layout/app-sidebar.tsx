@@ -47,6 +47,9 @@ import {
 	Hash,
 	Package,
 	Calculator,
+	AlertTriangle,
+	BarChart3,
+	TestTube,
 } from "lucide-react"
 
 import { NavMain } from "@/components/layout/nav-main"
@@ -157,6 +160,9 @@ const data = {
 				{ title: "Grades",              url: "/grading/grades",               icon: BookText },
 				{ title: "Grade System",        url: "/grading/grade-system",         icon: CalendarDays },
 				{ title: "Generate Final Marks", url: "/grading/generate-final-marks", icon: Calculator },
+				{ title: "Semester Results",    url: "/grading/semester-results",     icon: BarChart3 },
+				{ title: "Student Backlogs",    url: "/grading/student-backlogs",     icon: AlertTriangle },
+				{ title: "Test GPA Workflow",   url: "/grading/test-gpa-workflow",    icon: TestTube },
 			],
 		},
 		{

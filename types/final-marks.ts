@@ -230,6 +230,9 @@ export interface CourseOfferingData {
 	section?: string
 	course_code?: string
 	course_name?: string
+	course_type?: string
+	credits?: number
+	is_saved?: boolean // True if final marks already saved for this course
 }
 
 /**
@@ -244,13 +247,18 @@ export interface StudentResultRow {
 	course_id: string
 	course_code: string
 	course_name: string
-	// Marks
+	// Internal Marks
 	internal_marks: number
 	internal_max: number
+	internal_pass_mark: number
+	// External Marks
 	external_marks: number
 	external_max: number
+	external_pass_mark: number
+	// Total Marks
 	total_marks: number
 	total_max: number
+	total_pass_mark: number
 	percentage: number
 	// Grade info (from grade system)
 	grade: string
@@ -263,6 +271,7 @@ export interface StudentResultRow {
 	pass_status: 'Pass' | 'Fail' | 'Reappear' | 'Absent' | 'Withheld' | 'Expelled'
 	is_pass: boolean
 	is_absent: boolean
+	fail_reason?: 'INTERNAL' | 'EXTERNAL' | 'TOTAL' | null
 	remarks?: string
 	// Source references
 	internal_marks_id?: string | null

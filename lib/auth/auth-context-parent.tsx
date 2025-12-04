@@ -1,7 +1,7 @@
 'use client'
 
 import { createContext, useContext, useEffect, useState, useCallback, ReactNode, Suspense } from 'react'
-import { useRouter, useSearchParams, usePathname } from 'next/navigation'
+import { useSearchParams, usePathname } from 'next/navigation'
 import { parentAuthService } from './parent-auth-service'
 import { ParentAppUser } from './config'
 
@@ -35,6 +35,8 @@ interface AuthProviderInnerProps extends AuthProviderProps {
 	setLoading: (loading: boolean) => void
 	setError: (error: string | null) => void
 	user: ParentAppUser | null
+	loading: boolean
+	error: string | null
 }
 
 function AuthProviderInner({
@@ -43,9 +45,10 @@ function AuthProviderInner({
 	setUser,
 	setLoading,
 	setError,
-	user
+	user,
+	loading,
+	error
 }: AuthProviderInnerProps) {
-	const router = useRouter()
 	const searchParams = useSearchParams()
 	const pathname = usePathname()
 
@@ -284,14 +287,17 @@ function AuthProviderInner({
 		return user.roles?.some(r => roles.includes(r)) ?? false
 	}, [user])
 
+	// Check if cookie exists - important to prevent redirect loops
+	const hasAccessToken = typeof window !== 'undefined' && !!parentAuthService.getAccessToken()
+
 	return (
 		<AuthContext.Provider
 			value={{
 				user,
-				loading: false, // Inner component means loading is done
-				isLoading: false,
-				error: null,
-				isAuthenticated: !!user,
+				loading,
+				isLoading: loading,
+				error,
+				isAuthenticated: !!user && hasAccessToken,
 				login,
 				loginWithGoogle,
 				logout,
@@ -343,6 +349,8 @@ export function AuthProvider({ children, autoValidate = false }: AuthProviderPro
 				setLoading={setLoading}
 				setError={setError}
 				user={user}
+				loading={loading}
+				error={error}
 			>
 				{children}
 			</AuthProviderInner>

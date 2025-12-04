@@ -242,7 +242,10 @@ export async function GET(request: Request) {
 				course_offerings(
 					id,
 					course_id,
-					course_mapping:course_id(id, course_code, course_title),
+					course_mapping:course_id(
+						id,
+						courses:course_id(course_code, course_name)
+					),
 					programs(id, program_code, program_name)
 				)
 			`)
@@ -277,8 +280,8 @@ export async function GET(request: Request) {
 			exam_mode: exam.exam_mode,
 			institution_name: exam.institutions?.name || 'N/A',
 			session_name: exam.examination_sessions?.session_name || 'N/A',
-			course_code: exam.course_offerings?.course_mapping?.course_code || 'N/A',
-			course_name: exam.course_offerings?.course_mapping?.course_title || 'N/A',
+			course_code: exam.course_offerings?.course_mapping?.courses?.course_code || 'N/A',
+			course_name: exam.course_offerings?.course_mapping?.courses?.course_name || 'N/A',
 			program_name: exam.course_offerings?.programs?.program_name || 'N/A'
 		}))
 

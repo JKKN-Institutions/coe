@@ -415,7 +415,8 @@ async function handleBulkUpload(supabase: any, body: any) {
 		file_name,
 		file_size,
 		file_type,
-		uploaded_by
+		user_id,
+		user_email
 	} = body
 
 	// Validate required fields
@@ -425,12 +426,45 @@ async function handleBulkUpload(supabase: any, body: any) {
 		}, { status: 400 })
 	}
 
-	// Validate uploaded_by (faculty_id) is provided
-	if (!uploaded_by) {
-		return NextResponse.json({
-			error: 'Missing required field: uploaded_by (faculty_id) is required'
-		}, { status: 400 })
+	// Look up local user - try by user_id first, then by email (optional - for tracking purposes)
+	let uploaded_by: string | null = null
+
+	if (user_id) {
+		// First try to find user by ID (most reliable)
+		const { data, error } = await supabase
+			.from('users')
+			.select('id')
+			.eq('id', user_id)
+			.maybeSingle()
+
+		if (!error && data) {
+			uploaded_by = data.id
+		}
 	}
+
+	// Fallback to email lookup if ID lookup failed
+	if (!uploaded_by && user_email) {
+		const { data, error } = await supabase
+			.from('users')
+			.select('id')
+			.eq('email', user_email)
+			.maybeSingle()
+
+		if (!error && data) {
+			uploaded_by = data.id
+		}
+	}
+
+	// Log if user not found (but don't block the upload)
+	if (!uploaded_by) {
+		console.warn('User not found in local users table (proceeding without tracking):', { user_id, user_email })
+	}
+
+	// Debug: Log the institutions_id being used
+	console.log('=== DEBUG: Bulk Upload Request ===')
+	console.log('institutions_id from request:', institutions_id)
+	console.log('Expected institutions_id for JKKN Arts:', '5aae1d9d-f4c3-4fa9-8806-d45c71ae35e4')
+	console.log('Match:', institutions_id === '5aae1d9d-f4c3-4fa9-8806-d45c71ae35e4')
 
 	// Generate file hash
 	const fileContent = JSON.stringify(marks_data)
@@ -764,14 +798,18 @@ async function handleBulkUpload(supabase: any, body: any) {
 
 			if (existing) {
 				// Update existing
-				const { error: updateError } = await supabase
+				const { data: updatedData, error: updateError } = await supabase
 					.from('internal_marks')
 					.update(marksDataObj)
 					.eq('id', existing.id)
+					.select('id')
+					.single()
 
 				if (updateError) {
+					console.error('Update error for row', rowNumber, ':', updateError)
 					throw updateError
 				}
+				console.log('Updated record:', existing.id, 'for student:', examReg.student_id)
 				results.successful++
 			} else {
 				// Insert new
@@ -784,13 +822,17 @@ async function handleBulkUpload(supabase: any, body: any) {
 					...marksDataObj
 				}
 
-				const { error: insertError } = await supabase
+				const { data: insertedData, error: insertError } = await supabase
 					.from('internal_marks')
 					.insert(insertData)
+					.select('id')
+					.single()
 
 				if (insertError) {
+					console.error('Insert error for row', rowNumber, ':', insertError)
 					throw insertError
 				}
+				console.log('Inserted new record:', insertedData?.id, 'for student:', examReg.student_id)
 				results.successful++
 			}
 		} catch (error: any) {

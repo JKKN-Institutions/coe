@@ -79,7 +79,7 @@ export { useSessionTimeout } from './auth/use-session-timeout'
 // COURSE MANAGEMENT HOOKS
 // ============================================================================
 
-export { useCourseMappingService } from './course-management/use-course-mapping'
+export { useCourseMappings } from './course-management/use-course-mapping'
 
 // ============================================================================
 // EXAM MANAGEMENT HOOKS

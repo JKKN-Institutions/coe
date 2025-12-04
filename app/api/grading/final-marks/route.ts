@@ -3,8 +3,7 @@ import { getSupabaseServer } from '@/lib/supabase-server'
 import type {
 	StudentResultRow,
 	GenerateFinalMarksPayload,
-	GenerateFinalMarksResponse,
-	GradeEntry
+	GenerateFinalMarksResponse
 } from '@/types/final-marks'
 
 /**
@@ -65,7 +64,6 @@ export async function GET(request: NextRequest) {
 						id,
 						program_code,
 						program_name,
-						regulation_id,
 						degree_id,
 						degrees (
 							id,
@@ -80,21 +78,6 @@ export async function GET(request: NextRequest) {
 				if (programsError) {
 					console.error('Error fetching programs:', programsError)
 					return NextResponse.json({ error: 'Failed to fetch programs' }, { status: 400 })
-				}
-
-				// Fetch regulations separately to avoid FK issues
-				const regulationIds = [...new Set(programsData?.map((p: any) => p.regulation_id).filter(Boolean) || [])]
-				let regulationsMap = new Map<string, any>()
-
-				if (regulationIds.length > 0) {
-					const { data: regulationsData } = await supabase
-						.from('regulations')
-						.select('id, regulation_code, regulation_year')
-						.in('id', regulationIds)
-
-					regulationsData?.forEach((r: any) => {
-						regulationsMap.set(r.id, r)
-					})
 				}
 
 				// Helper function to determine UG/PG from degree code/name
@@ -113,17 +96,13 @@ export async function GET(request: NextRequest) {
 
 				// Transform to include grade_system_code based on degree name/code
 				const transformed = programsData?.map((p: any) => {
-					const regulation = p.regulation_id ? regulationsMap.get(p.regulation_id) : null
 					const degreeCode = p.degrees?.degree_code || null
 					const degreeName = p.degrees?.degree_name || null
 					return {
 						id: p.id,
 						program_code: p.program_code,
 						program_name: p.program_name,
-						regulation_id: p.regulation_id,
 						degree_id: p.degree_id,
-						regulation_code: regulation?.regulation_code || null,
-						regulation_year: regulation?.regulation_year || null,
 						degree_code: degreeCode,
 						degree_name: degreeName,
 						grade_system_code: inferGradeSystem(degreeCode, degreeName)
@@ -134,6 +113,7 @@ export async function GET(request: NextRequest) {
 			}
 
 			case 'course-offerings': {
+				const institutionId = searchParams.get('institutionId')
 				const programId = searchParams.get('programId')
 				const sessionId = searchParams.get('sessionId')
 
@@ -152,11 +132,9 @@ export async function GET(request: NextRequest) {
 						courses:course_id (
 							id,
 							course_code,
-							course_title,
-							credits,
-							internal_max_mark,
-							external_max_mark,
-							total_max_mark
+							course_name,
+							course_type,
+							credit
 						)
 					`)
 					.eq('program_id', programId)
@@ -173,7 +151,25 @@ export async function GET(request: NextRequest) {
 					return NextResponse.json({ error: 'Failed to fetch course offerings' }, { status: 400 })
 				}
 
-				// Transform to flatten course data
+				// Check which courses already have final marks saved
+				let savedCourseIds: string[] = []
+				if (institutionId && sessionId && data && data.length > 0) {
+					const courseIds = data.map((co: any) => co.course_id)
+					const { data: savedMarks } = await supabase
+						.from('final_marks')
+						.select('course_id')
+						.eq('institutions_id', institutionId)
+						.eq('program_id', programId)
+						.eq('examination_session_id', sessionId)
+						.in('course_id', courseIds)
+						.eq('is_active', true)
+
+					if (savedMarks) {
+						savedCourseIds = [...new Set(savedMarks.map((m: any) => m.course_id))]
+					}
+				}
+
+				// Transform to flatten course data and mark saved courses
 				const transformed = data?.map((co: any) => ({
 					id: co.id,
 					course_id: co.course_id,
@@ -181,11 +177,10 @@ export async function GET(request: NextRequest) {
 					semester: co.semester,
 					section: co.section,
 					course_code: co.courses?.course_code,
-					course_name: co.courses?.course_title,
-					credits: co.courses?.credits,
-					internal_max_mark: co.courses?.internal_max_mark,
-					external_max_mark: co.courses?.external_max_mark,
-					total_max_mark: co.courses?.total_max_mark
+					course_name: co.courses?.course_name || co.courses?.course_code,
+					course_type: co.courses?.course_type,
+					credits: co.courses?.credit,
+					is_saved: savedCourseIds.includes(co.course_id)
 				})) || []
 
 				return NextResponse.json(transformed)
@@ -204,14 +199,8 @@ export async function GET(request: NextRequest) {
 					.select(`
 						id,
 						course_code,
-						course_title,
-						credits,
-						internal_max_mark,
-						internal_pass_mark,
-						external_max_mark,
-						external_pass_mark,
-						total_max_mark,
-						total_pass_mark
+						course_type,
+						credit
 					`)
 					.eq('institutions_id', institutionId)
 					.eq('is_active', true)
@@ -309,11 +298,8 @@ export async function GET(request: NextRequest) {
 							courses!inner (
 								id,
 								course_code,
-								course_title,
-								credits,
-								internal_max_mark,
-								external_max_mark,
-								total_max_mark
+								course_type,
+								credit
 							)
 						)
 					`)
@@ -363,23 +349,47 @@ export async function POST(request: NextRequest) {
 		} = body
 
 		// Validate required fields
-		if (!institutions_id || !program_id || !examination_session_id || !course_ids?.length || !regulation_id) {
+		if (!institutions_id || !program_id || !examination_session_id || !course_ids?.length) {
 			return NextResponse.json({
-				error: 'Missing required fields: institutions_id, program_id, examination_session_id, course_ids, regulation_id'
+				error: 'Missing required fields: institutions_id, program_id, examination_session_id, course_ids'
 			}, { status: 400 })
 		}
 
-		// 1. Fetch grades table for this regulation
-		const { data: grades, error: gradesError } = await supabase
-			.from('grades')
-			.select('*')
+		// 1. Fetch grade_system table with grades info for percentage-based grading
+		let gradesQuery = supabase
+			.from('grade_system')
+			.select(`
+				id,
+				grade_system_code,
+				grade,
+				grade_point,
+				min_mark,
+				max_mark,
+				description,
+				grades:grade_id (
+					id,
+					qualify,
+					is_absent,
+					exclude_cgpa,
+					result_status
+				)
+			`)
 			.eq('institutions_id', institutions_id)
-			.eq('regulation_id', regulation_id)
-			.order('min_mark', { ascending: false })
+			.eq('is_active', true)
+
+		if (regulation_id) {
+			gradesQuery = gradesQuery.eq('regulation_id', regulation_id)
+		}
+		if (grade_system_code) {
+			gradesQuery = gradesQuery.eq('grade_system_code', grade_system_code)
+		}
+
+		const { data: grades, error: gradesError } = await gradesQuery.order('min_mark', { ascending: false })
 
 		if (gradesError || !grades?.length) {
+			console.error('Grade system error:', gradesError)
 			return NextResponse.json({
-				error: 'No grade system found for this regulation. Please configure grades first.'
+				error: 'No grade system found. Please configure grades first.'
 			}, { status: 400 })
 		}
 
@@ -402,13 +412,16 @@ export async function POST(request: NextRequest) {
 					courses!inner (
 						id,
 						course_code,
-						course_title,
-						credits,
+						course_name,
+						course_type,
+						credit,
 						internal_max_mark,
-						external_max_mark,
-						total_max_mark,
 						internal_pass_mark,
+						internal_converted_mark,
+						external_max_mark,
 						external_pass_mark,
+						external_converted_mark,
+						total_max_mark,
 						total_pass_mark
 					)
 				)
@@ -498,46 +511,109 @@ export async function POST(request: NextRequest) {
 			const internalMark = internalMarksMap.get(internalKey)
 			const externalMark = externalMarksMap.get(examReg.id)
 
-			// Get marks values
-			const internalMarksObtained = internalMark?.total_internal_marks || 0
-			const internalMax = course.internal_max_mark || 40
-			const externalMarksObtained = externalMark?.total_marks_obtained || 0
-			const externalMax = course.external_max_mark || 60
+			// Get marks configuration from course table (exact values, no fallbacks)
+			const internalMax = Number(course.internal_max_mark) || 0
+			const internalPassMark = Number(course.internal_pass_mark) || 0
+			const externalMax = Number(course.external_max_mark) || 0
+			const externalPassMark = Number(course.external_pass_mark) || 0
+			const totalMax = Number(course.total_max_mark) || 0
+			const totalPassMark = Number(course.total_pass_mark) || 0
 			const isAbsent = externalMark?.is_absent || false
 
-			// Calculate total
-			const totalMarks = internalMarksObtained + externalMarksObtained
-			const totalMax = internalMax + externalMax
+			// Get marks obtained (cap at max values)
+			let internalMarksObtained = Number(internalMark?.total_internal_marks) || 0
+			let externalMarksObtained = Number(externalMark?.total_marks_obtained) || 0
+
+			// Validate: marks should not exceed max marks
+			if (internalMarksObtained > internalMax) {
+				internalMarksObtained = internalMax
+			}
+			if (externalMarksObtained > externalMax) {
+				externalMarksObtained = externalMax
+			}
+
+			// Calculate total (cap at total max)
+			let totalMarks = internalMarksObtained + externalMarksObtained
+			if (totalMarks > totalMax) {
+				totalMarks = totalMax
+			}
+
 			const percentage = totalMax > 0 ? Math.round((totalMarks / totalMax) * 100 * 100) / 100 : 0
 
-			// Determine grade based on percentage
-			let grade: GradeEntry | undefined
+			// Determine pass/fail based on course rules
+			let failReason: 'INTERNAL' | 'EXTERNAL' | 'TOTAL' | null = null
+			let isPass = true
+
+			// Case 1: Student is absent in external exam
 			if (isAbsent) {
-				// Find absent grade
-				grade = grades.find((g: any) => g.is_absent === true)
+				isPass = false
+				failReason = 'EXTERNAL'
 			}
-			if (!grade) {
-				// Find grade by percentage range
-				grade = grades.find((g: any) => percentage >= g.min_mark && percentage <= g.max_mark)
+			// Case 2: No external marks entry found (student didn't appear)
+			else if (!externalMark) {
+				isPass = false
+				failReason = 'EXTERNAL'
+			}
+			else {
+				// Check internal pass condition
+				if (internalPassMark > 0 && internalMarksObtained < internalPassMark) {
+					isPass = false
+					failReason = 'INTERNAL'
+				}
+				// Check external pass condition
+				else if (externalPassMark > 0 && externalMarksObtained < externalPassMark) {
+					isPass = false
+					failReason = 'EXTERNAL'
+				}
+				// Check total pass condition
+				else if (totalPassMark > 0 && totalMarks < totalPassMark) {
+					isPass = false
+					failReason = 'TOTAL'
+				}
 			}
 
-			const letterGrade = grade?.grade || 'RA'
-			const gradePoint = grade?.grade_point || 0
-			const gradeDescription = grade?.description || ''
-			const isPass = grade?.qualify || false
-			const credits = course.credits || 0
+			// Determine grade based on percentage
+			let gradeEntry: any = undefined
+			if (isAbsent || !externalMark) {
+				// Find absent grade (min_mark = -1 and max_mark = -1 for absent)
+				gradeEntry = grades.find((g: any) => g.grades?.is_absent === true || (g.min_mark === -1 && g.max_mark === -1))
+			}
+			if (!gradeEntry && !isPass) {
+				// Find fail/reappear grade (U grade)
+				gradeEntry = grades.find((g: any) => g.grade === 'U' || g.grades?.result_status === 'REAPPEAR')
+			}
+			if (!gradeEntry) {
+				// Find grade by percentage range
+				gradeEntry = grades.find((g: any) => percentage >= g.min_mark && percentage <= g.max_mark)
+			}
+
+			// If failed, override to U grade with 0 grade points and 'Re-Appear' description
+			const letterGrade = isPass ? (gradeEntry?.grade || 'RA') : 'U'
+			const gradePoint = isPass ? (gradeEntry?.grade_point || 0) : 0
+			const gradeDescription = isPass ? (gradeEntry?.description || '') : 'Re-Appear'
+			const credits = course.credit || 0
 			const creditPoints = gradePoint * credits
 
-			// Determine pass status
+			// Determine pass status based on course rules and grade system
 			let passStatus: 'Pass' | 'Fail' | 'Reappear' | 'Absent' | 'Withheld' | 'Expelled' = 'Fail'
-			if (isAbsent) {
+			if (isAbsent || !externalMark) {
 				passStatus = 'Absent'
 				summary.absent++
 			} else if (isPass) {
 				passStatus = 'Pass'
 				summary.passed++
-				if (percentage >= 75) summary.distinction++
-				if (percentage >= 60) summary.first_class++
+				// Check distinction/first class based on grade description
+				const gradeDesc = (gradeEntry?.description || '').toUpperCase()
+				const gradeLetter = (gradeEntry?.grade || '').toUpperCase()
+				// Distinction: D, D+ grades or description contains 'DISTINCTION'
+				if (gradeLetter === 'D' || gradeLetter === 'D+' || gradeDesc.includes('DISTINCTION')) {
+					summary.distinction++
+				}
+				// First class: A, A+, D, D+, O grades or description contains 'FIRST' or grade_point >= 6.0
+				if (gradeLetter === 'A' || gradeLetter === 'A+' || gradeLetter === 'D' || gradeLetter === 'D+' || gradeLetter === 'O' ||
+					gradeDesc.includes('FIRST') || (gradeEntry?.grade_point || 0) >= 6.0) {
+					summary.first_class++
+				}
 			} else {
 				passStatus = 'Reappear'
 				summary.failed++
@@ -552,13 +628,16 @@ export async function POST(request: NextRequest) {
 				course_offering_id: courseOffering.id,
 				course_id: course.id,
 				course_code: course.course_code,
-				course_name: course.course_title,
+				course_name: course.course_name || course.course_code,
 				internal_marks: internalMarksObtained,
 				internal_max: internalMax,
+				internal_pass_mark: internalPassMark,
 				external_marks: externalMarksObtained,
 				external_max: externalMax,
+				external_pass_mark: externalPassMark,
 				total_marks: totalMarks,
 				total_max: totalMax,
+				total_pass_mark: totalPassMark,
 				percentage,
 				grade: letterGrade,
 				grade_point: gradePoint,
@@ -568,6 +647,7 @@ export async function POST(request: NextRequest) {
 				pass_status: passStatus,
 				is_pass: isPass,
 				is_absent: isAbsent,
+				fail_reason: failReason,
 				internal_marks_id: internalMark?.id || null,
 				marks_entry_id: externalMark?.id || null
 			}

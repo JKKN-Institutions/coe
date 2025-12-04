@@ -207,7 +207,7 @@ export default function GenerateFinalMarksPage() {
 	const fetchCourseOfferings = async (programId: string, sessionId: string) => {
 		try {
 			setLoading(true)
-			const res = await fetch(`/api/grading/final-marks?action=course-offerings&programId=${programId}&sessionId=${sessionId}`)
+			const res = await fetch(`/api/grading/final-marks?action=course-offerings&institutionId=${selectedInstitution}&programId=${programId}&sessionId=${sessionId}`)
 			if (res.ok) {
 				const data = await res.json()
 				setCourseOfferings(data)
@@ -220,6 +220,10 @@ export default function GenerateFinalMarksPage() {
 	}
 
 	const handleCourseToggle = (courseId: string) => {
+		// Don't allow toggling saved courses
+		const course = courseOfferings.find(co => co.course_id === courseId)
+		if (course?.is_saved) return
+
 		setSelectedCourses(prev =>
 			prev.includes(courseId)
 				? prev.filter(id => id !== courseId)
@@ -228,10 +232,12 @@ export default function GenerateFinalMarksPage() {
 	}
 
 	const handleSelectAllCourses = () => {
-		if (selectedCourses.length === courseOfferings.length) {
+		// Only select unsaved courses
+		const unsavedCourses = courseOfferings.filter(co => !co.is_saved)
+		if (selectedCourses.length === unsavedCourses.length) {
 			setSelectedCourses([])
 		} else {
-			setSelectedCourses(courseOfferings.map(co => co.course_id))
+			setSelectedCourses(unsavedCourses.map(co => co.course_id))
 		}
 	}
 
@@ -375,16 +381,20 @@ export default function GenerateFinalMarksPage() {
 			'Course Name': r.course_name,
 			'Internal Marks': r.internal_marks,
 			'Internal Max': r.internal_max,
+			'Internal Pass': r.internal_pass_mark,
 			'External Marks': r.external_marks,
 			'External Max': r.external_max,
+			'External Pass': r.external_pass_mark,
 			'Total Marks': r.total_marks,
 			'Total Max': r.total_max,
+			'Total Pass': r.total_pass_mark,
 			'Percentage': r.percentage,
 			'Grade': r.grade,
 			'Grade Point': r.grade_point,
 			'Credits': r.credits,
 			'Credit Points': r.credit_points,
-			'Result': r.pass_status
+			'Result': r.pass_status,
+			'Fail Reason': r.fail_reason || ''
 		}))
 
 		const ws = XLSX.utils.json_to_sheet(excelData)
@@ -589,8 +599,13 @@ export default function GenerateFinalMarksPage() {
 											<CardDescription>Choose courses for final marks calculation</CardDescription>
 										</div>
 									</div>
-									<Button variant="outline" size="sm" onClick={handleSelectAllCourses}>
-										{selectedCourses.length === courseOfferings.length ? 'Deselect All' : 'Select All'}
+									<Button
+										variant="outline"
+										size="sm"
+										onClick={handleSelectAllCourses}
+										disabled={courseOfferings.filter(co => !co.is_saved).length === 0}
+									>
+										{selectedCourses.length === courseOfferings.filter(co => !co.is_saved).length && selectedCourses.length > 0 ? 'Deselect All' : 'Select All'}
 									</Button>
 								</div>
 							</CardHeader>
@@ -611,20 +626,33 @@ export default function GenerateFinalMarksPage() {
 											{courseOfferings.map(co => (
 												<div
 													key={co.id}
-													className={`p-3 border rounded-lg cursor-pointer transition-all ${
-														selectedCourses.includes(co.course_id)
-															? 'border-primary bg-primary/5'
-															: 'border-border hover:border-primary/50'
+													className={`p-3 border rounded-lg transition-all ${
+														co.is_saved
+															? 'border-green-300 bg-green-50 dark:bg-green-900/10 dark:border-green-700 cursor-not-allowed opacity-70'
+															: selectedCourses.includes(co.course_id)
+																? 'border-primary bg-primary/5 cursor-pointer'
+																: 'border-border hover:border-primary/50 cursor-pointer'
 													}`}
-													onClick={() => handleCourseToggle(co.course_id)}
+													onClick={() => !co.is_saved && handleCourseToggle(co.course_id)}
 												>
 													<div className="flex items-start gap-3">
 														<Checkbox
-															checked={selectedCourses.includes(co.course_id)}
-															onCheckedChange={() => handleCourseToggle(co.course_id)}
+															checked={co.is_saved || selectedCourses.includes(co.course_id)}
+															onCheckedChange={() => !co.is_saved && handleCourseToggle(co.course_id)}
+															onClick={(e) => e.stopPropagation()}
+															disabled={co.is_saved}
+															className={co.is_saved ? 'opacity-50' : ''}
 														/>
 														<div className="flex-1">
-															<div className="font-medium text-sm">{co.course_code}</div>
+															<div className="flex items-center gap-2">
+																<div className="font-medium text-sm">{co.course_code}</div>
+																{co.is_saved && (
+																	<Badge variant="outline" className="text-xs bg-green-100 text-green-700 border-green-300 dark:bg-green-900/20 dark:text-green-400 dark:border-green-700">
+																		<CheckCircle2 className="h-3 w-3 mr-1" />
+																		Saved
+																	</Badge>
+																)}
+															</div>
 															<div className="text-xs text-muted-foreground">{co.course_name}</div>
 															<div className="flex items-center gap-2 mt-1">
 																<Badge variant="secondary" className="text-xs">Sem {co.semester}</Badge>
@@ -637,8 +665,14 @@ export default function GenerateFinalMarksPage() {
 										</div>
 
 										<div className="flex items-center justify-between pt-4 border-t">
-											<div className="text-sm text-muted-foreground">
-												{selectedCourses.length} of {courseOfferings.length} course(s) selected
+											<div className="text-sm text-muted-foreground flex items-center gap-3">
+												<span>{selectedCourses.length} of {courseOfferings.filter(co => !co.is_saved).length} course(s) selected</span>
+												{courseOfferings.filter(co => co.is_saved).length > 0 && (
+													<span className="text-green-600 dark:text-green-400 flex items-center gap-1">
+														<CheckCircle2 className="h-3.5 w-3.5" />
+														{courseOfferings.filter(co => co.is_saved).length} already saved
+													</span>
+												)}
 											</div>
 											<div className="flex gap-2">
 												<Button variant="outline" onClick={() => setCurrentStep(0)}>
