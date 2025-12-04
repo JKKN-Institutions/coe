@@ -33,7 +33,8 @@
       "Bash(findstr:*)",
       "Bash(node scripts/run-trigger-fix.js:*)",
       "Bash(node scripts/verify-pass-status.js:*)",
-      "Bash(npx eslint:*)"
+      "Bash(npx eslint:*)",
+      "Bash(npm install:*)"
     ],
     "deny": [],
     "ask": []
