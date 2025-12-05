@@ -831,21 +831,33 @@ export default function GalleyReportPage() {
 
 							{/* Tabs for different sections */}
 							<Tabs defaultValue="students" className="space-y-4">
-								<TabsList className="grid w-full grid-cols-4">
-									<TabsTrigger value="students" className="text-xs">
-										<Users className="h-3 w-3 mr-1" />
+								<TabsList className="grid w-full grid-cols-4 h-11 p-1 bg-muted/50">
+									<TabsTrigger
+										value="students"
+										className="text-xs gap-1.5 data-[state=active]:bg-gradient-to-r data-[state=active]:from-violet-500 data-[state=active]:to-purple-600 data-[state=active]:text-white data-[state=active]:shadow-md data-[state=active]:shadow-purple-500/25 transition-all duration-200"
+									>
+										<Users className="h-3.5 w-3.5" />
 										Student Results
 									</TabsTrigger>
-									<TabsTrigger value="courses" className="text-xs">
-										<BookOpen className="h-3 w-3 mr-1" />
+									<TabsTrigger
+										value="courses"
+										className="text-xs gap-1.5 data-[state=active]:bg-gradient-to-r data-[state=active]:from-blue-500 data-[state=active]:to-indigo-600 data-[state=active]:text-white data-[state=active]:shadow-md data-[state=active]:shadow-blue-500/25 transition-all duration-200"
+									>
+										<BookOpen className="h-3.5 w-3.5" />
 										Course Analysis
 									</TabsTrigger>
-									<TabsTrigger value="charts" className="text-xs">
-										<BarChart3 className="h-3 w-3 mr-1" />
+									<TabsTrigger
+										value="charts"
+										className="text-xs gap-1.5 data-[state=active]:bg-gradient-to-r data-[state=active]:from-orange-500 data-[state=active]:to-amber-600 data-[state=active]:text-white data-[state=active]:shadow-md data-[state=active]:shadow-orange-500/25 transition-all duration-200"
+									>
+										<BarChart3 className="h-3.5 w-3.5" />
 										Charts
 									</TabsTrigger>
-									<TabsTrigger value="toppers" className="text-xs">
-										<Trophy className="h-3 w-3 mr-1" />
+									<TabsTrigger
+										value="toppers"
+										className="text-xs gap-1.5 data-[state=active]:bg-gradient-to-r data-[state=active]:from-amber-500 data-[state=active]:to-yellow-500 data-[state=active]:text-white data-[state=active]:shadow-md data-[state=active]:shadow-amber-500/25 transition-all duration-200"
+									>
+										<Trophy className="h-3.5 w-3.5" />
 										Top Performers
 									</TabsTrigger>
 								</TabsList>
