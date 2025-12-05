@@ -162,6 +162,7 @@ const data = {
 				{ title: "Generate Final Marks", url: "/grading/generate-final-marks", icon: Calculator },
 				{ title: "Semester Results",    url: "/grading/semester-results",     icon: BarChart3 },
 				{ title: "Student Backlogs",    url: "/grading/student-backlogs",     icon: AlertTriangle },
+				{ title: "Galley Report",       url: "/grading/galley-report",        icon: FileText },
 				{ title: "Test GPA Workflow",   url: "/grading/test-gpa-workflow",    icon: TestTube },
 			],
 		},

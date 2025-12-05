@@ -34,7 +34,10 @@
       "Bash(node scripts/run-trigger-fix.js:*)",
       "Bash(node scripts/verify-pass-status.js:*)",
       "Bash(npx eslint:*)",
-      "Bash(npm install:*)"
+      "Bash(npm install:*)",
+      "Bash(claude mcp get:*)",
+      "Bash(claude mcp remove:*)",
+      "Bash(claude mcp list:*)"
     ],
     "deny": [],
     "ask": []
