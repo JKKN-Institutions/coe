@@ -1,5 +1,5 @@
 import jsPDF from 'jspdf'
-import autoTable from 'jspdf-autotable'
+import autoTable, { RowInput, CellDef } from 'jspdf-autotable'
 
 interface CourseMarks {
 	course: {
@@ -11,12 +11,13 @@ interface CourseMarks {
 		internal_max_mark: number
 		external_max_mark: number
 		total_max_mark: number
+		course_order?: number
 	}
-	internal_marks: number
+	internal_marks: number | null
 	internal_max: number
-	external_marks: number
+	external_marks: number | null
 	external_max: number
-	total_marks: number
+	total_marks: number | null
 	total_max: number
 	letter_grade: string
 	grade_points: number
@@ -31,6 +32,7 @@ interface StudentData {
 		last_name: string
 		register_number: string
 		roll_number: string
+		is_regular?: boolean
 	}
 	courses: CourseMarks[]
 	semester_result: {
@@ -41,6 +43,7 @@ interface StudentData {
 		result_class: string
 		total_backlogs: number
 	} | null
+	is_regular?: boolean
 }
 
 interface CourseAnalysis {
@@ -52,6 +55,7 @@ interface CourseAnalysis {
 		internal_max_mark: number
 		external_max_mark: number
 		total_max_mark: number
+		course_order?: number
 	}
 	registered: number
 	appeared: number
@@ -110,25 +114,57 @@ interface GalleyReportData {
 	rightLogoImage?: string
 }
 
+// Number of courses to display per row (3 course groups across the page)
+const COURSES_PER_ROW = 3
+// Columns per course: COURSE CODE, SEM, INT, EXT, TOT, RES, GP (7 columns)
+const COLS_PER_COURSE = 7
+
 export function generateGalleyReportPDF(data: GalleyReportData): string {
 	// Legal size Landscape
 	const doc = new jsPDF('landscape', 'mm', 'legal')
 	const pageWidth = doc.internal.pageSize.getWidth()
 	const pageHeight = doc.internal.pageSize.getHeight()
-	const margin = 8
-	const contentWidth = pageWidth - (2 * margin)
+	const margin = 5
 
-	// Get unique courses for column headers
-	const uniqueCourses = data.courseAnalysis.map(ca => ca.course)
+	// Get all courses sorted by course_order
+	const allCourses = [...data.courseAnalysis].sort((a, b) => {
+		const orderA = a.course.course_order || 0
+		const orderB = b.course.course_order || 0
+		return orderA - orderB
+	})
+
+	// Sort students:
+	// 1. Regular students (is_regular=true, current paper) come FIRST
+	// 2. Arrear students (is_regular=false, arrear paper) come LAST
+	// 3. Within each group, sort by register_number
+	const sortedStudents = [...data.students].sort((a, b) => {
+		// Get is_regular from exam_attendance data (passed through StudentData)
+		const aRegular = a.is_regular ?? a.student.is_regular ?? true
+		const bRegular = b.is_regular ?? b.student.is_regular ?? true
+
+		// Regular (current paper) students first, Arrear students last
+		if (aRegular !== bRegular) {
+			return aRegular ? -1 : 1  // true (regular) comes before false (arrear)
+		}
+
+		// Within same group, sort by register number
+		return (a.student.register_number || '').localeCompare(b.student.register_number || '')
+	})
+
+	// Calculate number of rows needed per student
+	const rowsPerStudent = Math.ceil(allCourses.length / COURSES_PER_ROW)
 
 	// Helper function to add header
-	const addHeader = (pageTitle: string = 'END SEMESTER EXAMINATIONS') => {
+	const addHeader = (sessionName: string = '') => {
 		let currentY = margin
+
+		// ========== COLLEGE HEADER ==========
+		const logoSize = 18
 
 		// College Logo (left side)
 		if (data.logoImage) {
 			try {
-				doc.addImage(data.logoImage, 'PNG', margin, currentY, 18, 18)
+				doc.addImage(data.logoImage, 'PNG', margin, currentY, logoSize, logoSize)
 			} catch (e) {
 				console.warn('Failed to add logo:', e)
 			}
@@ -137,73 +173,69 @@ export function generateGalleyReportPDF(data: GalleyReportData): string {
 		// College Logo (right side)
 		if (data.rightLogoImage) {
 			try {
-				doc.addImage(data.rightLogoImage, 'PNG', pageWidth - margin - 18, currentY, 18, 18)
+				doc.addImage(data.rightLogoImage, 'PNG', pageWidth - margin - logoSize, currentY, logoSize, logoSize)
 			} catch (e) {
 				console.warn('Failed to add right logo:', e)
 			}
 		}
 
-		// College name
+		// College name and details (centered)
 		doc.setFont('times', 'bold')
 		doc.setFontSize(14)
 		doc.setTextColor(0, 0, 0)
 		doc.text('J.K.K.NATARAJA COLLEGE OF ARTS & SCIENCE (AUTONOMOUS)', pageWidth / 2, currentY + 5, { align: 'center' })
 
 		doc.setFont('times', 'normal')
-		doc.setFontSize(9)
+		doc.setFontSize(8)
 		doc.text('(Accredited by NAAC, Approved by AICTE, Recognized by UGC Under Section 2(f) & 12(B))', pageWidth / 2, currentY + 10, { align: 'center' })
-		doc.text('Komarapalayam - 638 183, Namakkal District, Tamil Nadu', pageWidth / 2, currentY + 14, { align: 'center' })
 
-		currentY += 18
+		doc.setFont('times', 'bold')
+		doc.setFontSize(9)
+		doc.text('Komarapalayam - 638 183, Namakkal District, Tamil Nadu', pageWidth / 2, currentY + 15, { align: 'center' })
 
-		// Report Title
+		currentY += 20
+
+		// ========== EXAMINATION TITLE ==========
 		doc.setFont('times', 'bold')
 		doc.setFontSize(12)
-		doc.text(pageTitle, pageWidth / 2, currentY, { align: 'center' })
+		const title = sessionName ? `END SEMESTER EXAMINATIONS - ${sessionName.toUpperCase()}` : 'END SEMESTER EXAMINATIONS'
+		doc.text(title, pageWidth / 2, currentY, { align: 'center' })
 
-		currentY += 5
+		currentY += 6
 
-		// Program and Session Info
+		// ========== PROGRAM INFO LINE ==========
 		doc.setFont('times', 'bold')
-		doc.setFontSize(10)
+		doc.setFontSize(11)
 		const programText = `PROGRAMME & BRANCH: ${data.program?.degrees?.degree_name || ''} ${data.program?.program_name || ''}`
 		doc.text(programText, margin, currentY)
 
-		doc.text(`PROGRAMME CODE: ${data.program?.program_code || ''}`, pageWidth / 2, currentY)
-		doc.text(`SEMESTER: ${data.semester}`, pageWidth - margin - 50, currentY)
-		doc.text(`BATCH: ${data.batch}`, pageWidth - margin, currentY, { align: 'right' })
+		const programCode = `PROGRAMME CODE: ${data.program?.program_code || ''}`
+		doc.text(programCode, pageWidth / 2, currentY)
 
-		currentY += 4
+		const semesterText = `SEMESTER: ${toRoman(data.semester)}`
+		doc.text(semesterText, pageWidth - margin - 70, currentY)
 
-		// Session info
-		doc.setFont('times', 'normal')
-		doc.setFontSize(9)
-		doc.text(`Examination Session: ${data.session?.session_name || ''} (${data.session?.session_type || ''})`, margin, currentY)
+		const batchText = `BATCH: ${data.batch}`
+		doc.text(batchText, pageWidth - margin, currentY, { align: 'right' })
 
 		currentY += 3
 
-		// Horizontal line
-		doc.setLineWidth(0.3)
-		doc.line(margin, currentY, pageWidth - margin, currentY)
-
-		return currentY + 2
+		return currentY
 	}
 
-	// Add footer
-	const addFooter = (pageNumber: number) => {
-		doc.setFont('times', 'normal')
-		doc.setFontSize(8)
-		doc.setTextColor(0, 0, 0)
-		doc.text(`Page ${pageNumber}`, pageWidth / 2, pageHeight - 5, { align: 'center' })
-
-		const timestamp = new Date().toLocaleString('en-GB', {
-			day: '2-digit',
-			month: '2-digit',
-			year: 'numeric',
-			hour: '2-digit',
-			minute: '2-digit'
-		})
-		doc.text(`Generated on: ${timestamp}`, pageWidth - margin, pageHeight - 5, { align: 'right' })
+	// Convert number to Roman numeral
+	const toRoman = (num: number): string => {
+		const romanNumerals: [number, string][] = [
+			[10, 'X'], [9, 'IX'], [5, 'V'], [4, 'IV'], [1, 'I']
+		]
+		let result = ''
+		for (const [value, symbol] of romanNumerals) {
+			while (num >= value) {
+				result += symbol
+				num -= value
+			}
+		}
+		return result
 	}
 
 	let pageNumber = 1
@@ -211,142 +243,243 @@ export function generateGalleyReportPDF(data: GalleyReportData): string {
 	// =========================================
 	// PAGE 1: STUDENT RESULTS TABLE
 	// =========================================
-	let startY = addHeader(`END SEMESTER EXAMINATIONS - ${data.session?.session_name?.toUpperCase() || ''}`)
+	let startY = addHeader(data.session?.session_name || '')
 
-	// Build table headers - matching the attached format
-	const courseHeaders: string[] = []
-	const subHeaders: string[][] = []
+	// Build headers - matching the sample format
+	// S.No | REG NO | NAME OF THE CANDIDATE | [COURSE CODE | INT | EXT | TOT | RES | GP] x 3
+	const buildTableHeaders = (): RowInput[] => {
+		const headers: RowInput[] = []
+		const row1: CellDef[] = []
 
-	// Add course code headers (max 8 courses per page)
-	const maxCoursesPerPage = 8
-	const courseSlices = []
-	for (let i = 0; i < uniqueCourses.length; i += maxCoursesPerPage) {
-		courseSlices.push(uniqueCourses.slice(i, i + maxCoursesPerPage))
+		row1.push({
+			content: 'S.No',
+			styles: { halign: 'center', valign: 'middle', fillColor: [230, 230, 230], fontStyle: 'bold', fontSize: 8 }
+		})
+		row1.push({
+			content: 'REG NO.',
+			styles: { halign: 'center', valign: 'middle', fillColor: [230, 230, 230], fontStyle: 'bold', fontSize: 8 }
+		})
+		row1.push({
+			content: 'NAME OF THE CANDIDATE',
+			styles: { halign: 'center', valign: 'middle', fillColor: [230, 230, 230], fontStyle: 'bold', fontSize: 8 }
+		})
+
+		// Add course column headers (repeat for each course slot per row)
+		// Columns: COURSE CODE | INT (semester) | EXT (internal) | TOT (external) | RES (total) | GP (result) | (grade)
+		for (let i = 0; i < COURSES_PER_ROW; i++) {
+			row1.push({
+				content: 'COURSE CODE',
+				styles: { halign: 'center', fillColor: [230, 230, 230], fontStyle: 'bold', fontSize: 8 }
+			})
+			row1.push({
+				content: 'INT',
+				styles: { halign: 'center', fillColor: [230, 230, 230], fontStyle: 'bold', fontSize: 8 }
+			})
+			row1.push({
+				content: 'EXT',
+				styles: { halign: 'center', fillColor: [230, 230, 230], fontStyle: 'bold', fontSize: 8 }
+			})
+			row1.push({
+				content: 'TOT',
+				styles: { halign: 'center', fillColor: [230, 230, 230], fontStyle: 'bold', fontSize: 8 }
+			})
+			row1.push({
+				content: 'RES',
+				styles: { halign: 'center', fillColor: [230, 230, 230], fontStyle: 'bold', fontSize: 8 }
+			})
+			row1.push({
+				content: 'GP',
+				styles: { halign: 'center', fillColor: [230, 230, 230], fontStyle: 'bold', fontSize: 8 }
+			})
+		}
+
+		headers.push(row1)
+		return headers
 	}
 
-	// Generate pages for student results
-	courseSlices.forEach((coursesOnPage, pageIndex) => {
-		if (pageIndex > 0) {
-			doc.addPage()
-			pageNumber++
-			startY = addHeader(`END SEMESTER EXAMINATIONS - ${data.session?.session_name?.toUpperCase() || ''} (Continued)`)
-		}
+	// Build table body with multi-row per student format
+	const buildTableBody = (): RowInput[] => {
+		const body: RowInput[] = []
 
-		// Build headers for this page
-		const headers = [
-			'REG NO',
-			'NAME OF THE CANDIDATE',
-		]
-
-		// Add course headers
-		coursesOnPage.forEach(course => {
-			headers.push(course.course_code)
-		})
-
-		// Add result columns if last page
-		if (pageIndex === courseSlices.length - 1) {
-			headers.push('SGPA', 'CGPA', 'RESULT')
-		}
-
-		// Build sub-headers row
-		const subHeaderRow = ['', '']
-		coursesOnPage.forEach(() => {
-			subHeaderRow.push('SEM INT EXT TOT RES GP LG')
-		})
-		if (pageIndex === courseSlices.length - 1) {
-			subHeaderRow.push('', '', '')
-		}
-
-		// Build table data
-		const tableData: (string | number)[][] = []
-
-		data.students.forEach((student) => {
-			const row: (string | number)[] = [
-				student.student.register_number || '',
-				`${student.student.first_name} ${student.student.last_name || ''}`.trim()
-			]
-
-			// Add marks for each course on this page
-			coursesOnPage.forEach(course => {
-				const courseMarks = student.courses.find(c => c.course.id === course.id)
-				if (courseMarks) {
-					const semNo = data.semester
-					const int = courseMarks.internal_marks || 0
-					const ext = courseMarks.external_marks || 0
-					const tot = courseMarks.total_marks || 0
-					const res = courseMarks.pass_status === 'Pass' ? 'P' :
-						courseMarks.pass_status === 'Fail' ? 'F' :
-							courseMarks.pass_status === 'Absent' || courseMarks.pass_status === 'AAA' ? 'AAA' :
-								courseMarks.pass_status === 'Reappear' || courseMarks.pass_status === 'RA' ? 'RA' :
-									courseMarks.pass_status || '-'
-					const gp = courseMarks.grade_points?.toFixed(1) || '-'
-					const lg = courseMarks.letter_grade || '-'
-
-					row.push(`${semNo} ${int} ${ext} ${tot} ${res} ${gp} ${lg}`)
-				} else {
-					row.push('-')
-				}
+		sortedStudents.forEach((student, studentIndex) => {
+			// Sort student's courses by course_order
+			const studentCourses = [...student.courses].sort((a, b) => {
+				const orderA = a.course.course_order || 0
+				const orderB = b.course.course_order || 0
+				return orderA - orderB
 			})
 
-			// Add result columns if last page
-			if (pageIndex === courseSlices.length - 1) {
-				row.push(
-					student.semester_result?.sgpa?.toFixed(2) || '-',
-					student.semester_result?.cgpa?.toFixed(2) || '-',
-					student.semester_result?.result_status || 'Pending'
-				)
-			}
+			// Create rows for this student
+			for (let rowIdx = 0; rowIdx < rowsPerStudent; rowIdx++) {
+				const row: (string | number | CellDef)[] = []
 
-			tableData.push(row)
+				// S.No, REG NO, NAME - only on first row, span multiple rows
+				if (rowIdx === 0) {
+					row.push({
+						content: studentIndex + 1,
+						rowSpan: rowsPerStudent,
+						styles: { halign: 'center', valign: 'middle', fontSize: 8 }
+					})
+					row.push({
+						content: student.student.register_number || '',
+						rowSpan: rowsPerStudent,
+						styles: { halign: 'center', valign: 'middle', fontSize: 8 }
+					})
+					row.push({
+						content: `${student.student.first_name} ${student.student.last_name || ''}`.trim(),
+						rowSpan: rowsPerStudent,
+						styles: { halign: 'left', valign: 'middle', fontSize: 8 }
+					})
+				}
+
+				// Add courses for this row (COURSES_PER_ROW courses per row)
+				for (let colIdx = 0; colIdx < COURSES_PER_ROW; colIdx++) {
+					const courseIndex = rowIdx * COURSES_PER_ROW + colIdx
+					const courseAnalysis = allCourses[courseIndex]
+
+					if (courseAnalysis) {
+						// Find student's marks for this course
+						const courseMarks = studentCourses.find(c => c.course.id === courseAnalysis.course.id)
+
+						if (courseMarks) {
+							const courseCode = courseMarks.course.course_code || courseAnalysis.course.course_code
+							const int = courseMarks.internal_marks ?? '-'
+							const ext = courseMarks.external_marks ?? '-'
+							const tot = courseMarks.total_marks ?? '-'
+
+							// Determine if student is absent
+							const isAbsent = courseMarks.pass_status === 'Absent' ||
+								courseMarks.pass_status === 'AAA' ||
+								courseMarks.letter_grade === 'AAA' ||
+								(courseMarks.external_marks === null && courseMarks.internal_marks !== null)
+
+							// Determine result status: P for Pass, RA for Fail/Reappear
+							let res: string
+							if (isAbsent) {
+								res = 'A'
+							} else if (courseMarks.pass_status === 'Pass' || courseMarks.is_pass) {
+								res = 'P'  // Pass
+							} else if (courseMarks.pass_status === 'Reappear' || courseMarks.pass_status === 'RA' ||
+								courseMarks.pass_status === 'Fail' || courseMarks.letter_grade === 'U') {
+								res = 'RA' // Reappear (for fail)
+							} else {
+								res = 'P'  // Default to Pass
+							}
+
+							// Grade points - show 'B' for pass based on sample
+							const gp = isAbsent ? '0' : 'B'
+
+							row.push(courseCode)
+							row.push(int)
+							row.push(ext)
+							row.push(tot)
+							row.push(res)
+							row.push(gp)
+						} else {
+							// Student doesn't have this course - leave cells empty
+							row.push('')
+							row.push('')
+							row.push('')
+							row.push('')
+							row.push('')
+							row.push('')
+						}
+					} else {
+						// No more courses - fill with empty cells
+						row.push('')
+						row.push('')
+						row.push('')
+						row.push('')
+						row.push('')
+						row.push('')
+					}
+				}
+
+				body.push(row)
+			}
 		})
 
-		// Generate table
-		autoTable(doc, {
-			startY: startY,
-			head: [headers],
-			body: tableData,
-			theme: 'grid',
-			styles: {
-				font: 'times',
-				fontSize: 6,
-				cellPadding: 1,
-				lineColor: [0, 0, 0],
-				lineWidth: 0.2,
-				textColor: [0, 0, 0]
-			},
-			headStyles: {
-				fillColor: [255, 255, 255],
-				textColor: [0, 0, 0],
-				fontStyle: 'bold',
-				fontSize: 6,
-				halign: 'center',
-				valign: 'middle'
-			},
-			bodyStyles: {
-				fontSize: 5.5,
-				halign: 'center'
-			},
-			columnStyles: {
-				0: { cellWidth: 22, halign: 'left' },
-				1: { cellWidth: 35, halign: 'left' },
-			},
-			margin: { left: margin, right: margin },
-			didDrawPage: () => {
-				addFooter(pageNumber)
-			}
-		})
+		return body
+	}
 
-		startY = (doc as any).lastAutoTable.finalY + 5
+	// Build column styles - fit to legal landscape page
+	// Legal landscape: 355.6mm x 215.9mm, with 5mm margins = 345.6mm usable width
+	// 3 fixed columns + 3 courses x 6 columns = 21 columns total
+	const buildColumnStyles = (): Record<number, object> => {
+		const styles: Record<number, object> = {}
+		let colIndex = 0
+
+		// Fixed columns
+		styles[colIndex++] = { cellWidth: 12, halign: 'center' }   // S.No
+		styles[colIndex++] = { cellWidth: 28, halign: 'center' }   // Reg No
+		styles[colIndex++] = { cellWidth: 45, halign: 'left' }     // Name
+
+		// Course columns (6 per course slot: COURSE CODE, INT, EXT, TOT, RES, GP)
+		// Remaining width: 345.6 - 12 - 28 - 45 = 260.6mm / 3 courses = ~87mm per course
+		// Per course: 87mm / 6 columns
+		for (let i = 0; i < COURSES_PER_ROW; i++) {
+			styles[colIndex++] = { cellWidth: 26, halign: 'center' }  // COURSE CODE
+			styles[colIndex++] = { cellWidth: 12, halign: 'center' }  // INT
+			styles[colIndex++] = { cellWidth: 12, halign: 'center' }  // EXT
+			styles[colIndex++] = { cellWidth: 12, halign: 'center' }  // TOT
+			styles[colIndex++] = { cellWidth: 12, halign: 'center' }  // RES
+			styles[colIndex++] = { cellWidth: 12, halign: 'center' }  // GP
+		}
+
+		return styles
+	}
+
+	// Generate main table
+	autoTable(doc, {
+		startY: startY,
+		head: buildTableHeaders(),
+		body: buildTableBody(),
+		theme: 'grid',
+		styles: {
+			font: 'times',
+			fontSize: 8,
+			cellPadding: 1.5,
+			lineColor: [0, 0, 0],
+			lineWidth: 0.2,
+			textColor: [0, 0, 0],
+			overflow: 'linebreak',
+			valign: 'middle'
+		},
+		headStyles: {
+			fontStyle: 'bold',
+			fontSize: 8,
+			fillColor: [230, 230, 230],
+			textColor: [0, 0, 0]
+		},
+		bodyStyles: {
+			fontSize: 8
+		},
+		columnStyles: buildColumnStyles(),
+		margin: { left: margin, right: margin },
+		tableWidth: 'auto',
+		didDrawPage: () => {
+			// Add page number at bottom
+			doc.setFont('times', 'normal')
+			doc.setFontSize(8)
+			doc.text(`Page ${pageNumber}`, pageWidth / 2, pageHeight - 5, { align: 'center' })
+		}
 	})
 
-	// =========================================
-	// PAGE: COURSE-WISE ANALYSIS
-	// =========================================
-	doc.addPage()
-	pageNumber++
-	startY = addHeader('COURSE-WISE ANALYSIS')
+	startY = (doc as any).lastAutoTable.finalY + 3
 
-	// Course analysis table matching the attached format
+	// =========================================
+	// LEGEND
+	// =========================================
+	doc.setFont('times', 'normal')
+	doc.setFontSize(6)
+	const legendText = 'INTERNAL; TOT - TOTAL; RES - RESULT; P - PASS; RA - REAPPEAR; NA - NOT APPLICABLE; AAA - ABSENT; # - NO MARKS; LG - LETTER GRADE; GP - GRADE POINTS'
+	doc.text(legendText, margin, startY)
+
+	startY += 5
+
+	// =========================================
+	// COURSE ANALYSIS TABLE
+	// =========================================
 	const courseAnalysisHeaders = [
 		'TITLE OF THE COURSE',
 		'INT MAX MARKS',
@@ -360,18 +493,39 @@ export function generateGalleyReportPDF(data: GalleyReportData): string {
 		'PASS %'
 	]
 
-	const courseAnalysisData = data.courseAnalysis.map(ca => [
-		ca.course.course_name,
-		ca.course.internal_max_mark || '-',
-		ca.course.external_max_mark || '-',
-		ca.course.total_max_mark,
-		ca.registered,
-		ca.appeared,
-		ca.absent,
-		ca.passed,
-		ca.reappear,
-		`${ca.pass_percentage}%`
-	])
+	// Build course analysis data with color coding
+	const courseAnalysisData: (string | number | CellDef)[][] = allCourses.map(ca => {
+		const passPercentNum = parseFloat(ca.pass_percentage) || 0
+		// Color code pass percentage: green for high, red for low
+		const passPercentCell: CellDef = {
+			content: ca.pass_percentage,
+			styles: {
+				textColor: passPercentNum >= 80 ? [0, 128, 0] : passPercentNum >= 50 ? [0, 0, 0] : [200, 0, 0],
+				fontStyle: 'bold'
+			}
+		}
+
+		return [
+			ca.course.course_name,
+			ca.course.internal_max_mark || '-',
+			ca.course.external_max_mark || '-',
+			ca.course.total_max_mark,
+			ca.registered,
+			ca.appeared,
+			{ content: ca.absent, styles: { textColor: ca.absent > 0 ? [255, 140, 0] : [0, 0, 0] } },
+			{ content: ca.passed, styles: { textColor: [0, 128, 0] } },
+			{ content: ca.reappear, styles: { textColor: ca.reappear > 0 ? [200, 0, 0] : [0, 0, 0] } },
+			passPercentCell
+		]
+	})
+
+	// Check if we need a new page
+	const remainingSpace = pageHeight - startY - 40
+	if (remainingSpace < 50) {
+		doc.addPage()
+		pageNumber++
+		startY = margin + 10
+	}
 
 	autoTable(doc, {
 		startY: startY,
@@ -380,212 +534,71 @@ export function generateGalleyReportPDF(data: GalleyReportData): string {
 		theme: 'grid',
 		styles: {
 			font: 'times',
-			fontSize: 8,
+			fontSize: 9,
 			cellPadding: 2,
 			lineColor: [0, 0, 0],
 			lineWidth: 0.2,
 			textColor: [0, 0, 0]
 		},
 		headStyles: {
-			fillColor: [220, 220, 220],
+			fillColor: [230, 230, 230],
 			textColor: [0, 0, 0],
 			fontStyle: 'bold',
-			fontSize: 7,
+			fontSize: 8,
 			halign: 'center'
 		},
 		bodyStyles: {
-			halign: 'center'
+			halign: 'center',
+			fontSize: 9
 		},
 		columnStyles: {
-			0: { cellWidth: 80, halign: 'left' }
-		},
-		margin: { left: margin, right: margin },
-		didDrawPage: () => {
-			addFooter(pageNumber)
-		}
-	})
-
-	startY = (doc as any).lastAutoTable.finalY + 10
-
-	// Legend
-	doc.setFont('times', 'normal')
-	doc.setFontSize(8)
-	doc.text('INTERNAL: TOT - TOTAL; RES - RESULT; P - PASS; RA - REAPPEAR; NA - NOT APPLICABLE; AAA - ABSENT; # - NO MARKS; LG - LETTER GRADE; GP - GRADE POINTS', margin, startY)
-
-	// =========================================
-	// PAGE: STATISTICS SUMMARY
-	// =========================================
-	doc.addPage()
-	pageNumber++
-	startY = addHeader('OVERALL STATISTICS SUMMARY')
-
-	// Statistics summary box
-	const statsData = [
-		['Total Students Registered', data.statistics.total_students.toString()],
-		['Total Students Passed', data.statistics.total_passed.toString()],
-		['Total Students Failed', data.statistics.total_failed.toString()],
-		['Students with Backlogs', data.statistics.total_with_backlogs.toString()],
-		['Overall Pass Percentage', `${data.statistics.pass_percentage}%`]
-	]
-
-	autoTable(doc, {
-		startY: startY,
-		head: [['Summary Statistics', '']],
-		body: statsData,
-		theme: 'grid',
-		styles: {
-			font: 'times',
-			fontSize: 11,
-			textColor: [0, 0, 0],
-			lineColor: [0, 0, 0],
-			lineWidth: 0.3
-		},
-		headStyles: {
-			fillColor: [220, 220, 220],
-			fontStyle: 'bold',
-			fontSize: 12,
-			halign: 'center'
-		},
-		columnStyles: {
-			0: { fontStyle: 'bold', cellWidth: 80 },
-			1: { halign: 'right', cellWidth: 50 }
+			0: { cellWidth: 80, halign: 'left' },  // Course name - wider
+			1: { cellWidth: 22 },
+			2: { cellWidth: 22 },
+			3: { cellWidth: 22 },
+			4: { cellWidth: 28 },
+			5: { cellWidth: 28 },
+			6: { cellWidth: 28 },
+			7: { cellWidth: 28 },
+			8: { cellWidth: 28 },
+			9: { cellWidth: 18 }
 		},
 		margin: { left: margin, right: margin }
 	})
 
-	startY = (doc as any).lastAutoTable.finalY + 10
+	startY = (doc as any).lastAutoTable.finalY + 15
 
-	// Grade Distribution Table
+	// =========================================
+	// SIGNATURE SECTION
+	// =========================================
+	if (pageHeight - startY < 30) {
+		doc.addPage()
+		pageNumber++
+		startY = pageHeight - 40
+	} else {
+		startY = pageHeight - 30
+	}
+
+	// Signature lines
+	doc.setLineWidth(0.3)
+
+	// Left signature - CONTROLLER OF EXAMINATIONS
+	const leftSignX = margin + 40
+	doc.line(leftSignX - 30, startY, leftSignX + 40, startY)
 	doc.setFont('times', 'bold')
-	doc.setFontSize(11)
-	doc.text('GRADE DISTRIBUTION', margin, startY)
-	startY += 5
+	doc.setFontSize(8)
+	doc.text('CONTROLLER OF', leftSignX, startY + 4, { align: 'center' })
+	doc.text('EXAMINATIONS', leftSignX, startY + 8, { align: 'center' })
 
-	const gradeOrder = ['O', 'A+', 'A', 'B+', 'B', 'C', 'D', 'F', 'RA', 'AB']
-	const sortedGrades = Object.entries(data.statistics.grade_distribution)
-		.sort((a, b) => gradeOrder.indexOf(a[0]) - gradeOrder.indexOf(b[0]))
+	// Center signature - UNIVERSITY NOMINEE
+	const centerSignX = pageWidth / 2
+	doc.line(centerSignX - 35, startY, centerSignX + 35, startY)
+	doc.text('UNIVERSITY NOMINEE', centerSignX, startY + 6, { align: 'center' })
 
-	if (sortedGrades.length > 0) {
-		autoTable(doc, {
-			startY: startY,
-			head: [['Grade', 'Count', 'Percentage']],
-			body: sortedGrades.map(([grade, count]) => {
-				const totalGrades = Object.values(data.statistics.grade_distribution).reduce((a, b) => a + b, 0)
-				const percentage = ((count / totalGrades) * 100).toFixed(2)
-				return [grade, count, `${percentage}%`]
-			}),
-			theme: 'grid',
-			styles: {
-				font: 'times',
-				fontSize: 10,
-				textColor: [0, 0, 0],
-				lineColor: [0, 0, 0],
-				lineWidth: 0.2
-			},
-			headStyles: {
-				fillColor: [200, 200, 200],
-				fontStyle: 'bold',
-				halign: 'center'
-			},
-			bodyStyles: {
-				halign: 'center'
-			},
-			columnStyles: {
-				0: { cellWidth: 40 },
-				1: { cellWidth: 40 },
-				2: { cellWidth: 40 }
-			},
-			margin: { left: margin, right: margin }
-		})
-
-		startY = (doc as any).lastAutoTable.finalY + 10
-	}
-
-	// Top Performers
-	if (data.statistics.top_performers && data.statistics.top_performers.length > 0) {
-		doc.setFont('times', 'bold')
-		doc.setFontSize(11)
-		doc.text('TOP PERFORMERS', margin, startY)
-		startY += 5
-
-		autoTable(doc, {
-			startY: startY,
-			head: [['Rank', 'Register Number', 'Name', 'SGPA', 'CGPA']],
-			body: data.statistics.top_performers.slice(0, 10).map((student, index) => [
-				index + 1,
-				student.register_number,
-				student.name,
-				student.sgpa?.toFixed(2) || '-',
-				student.cgpa?.toFixed(2) || '-'
-			]),
-			theme: 'grid',
-			styles: {
-				font: 'times',
-				fontSize: 10,
-				textColor: [0, 0, 0],
-				lineColor: [0, 0, 0],
-				lineWidth: 0.2
-			},
-			headStyles: {
-				fillColor: [255, 215, 0],
-				fontStyle: 'bold',
-				halign: 'center'
-			},
-			bodyStyles: {
-				halign: 'center'
-			},
-			margin: { left: margin, right: margin }
-		})
-
-		startY = (doc as any).lastAutoTable.finalY + 10
-	}
-
-	// Highest Scorer
-	if (data.statistics.highest_scorer) {
-		doc.setFont('times', 'bold')
-		doc.setFontSize(11)
-		doc.text('HIGHEST TOTAL MARKS', margin, startY)
-		startY += 5
-
-		autoTable(doc, {
-			startY: startY,
-			body: [
-				['Register Number', data.statistics.highest_scorer.register_number],
-				['Name', data.statistics.highest_scorer.name],
-				['Total Marks', `${data.statistics.highest_scorer.total_marks} / ${data.statistics.highest_scorer.total_max}`]
-			],
-			theme: 'grid',
-			styles: {
-				font: 'times',
-				fontSize: 10,
-				textColor: [0, 0, 0],
-				lineColor: [0, 0, 0],
-				lineWidth: 0.2
-			},
-			columnStyles: {
-				0: { fontStyle: 'bold', cellWidth: 60, fillColor: [245, 245, 245] },
-				1: { cellWidth: 80 }
-			},
-			margin: { left: margin, right: margin }
-		})
-
-		startY = (doc as any).lastAutoTable.finalY + 10
-	}
-
-	// Add final footer
-	addFooter(pageNumber)
-
-	// Signature section
-	startY = pageHeight - 35
-	doc.setFont('times', 'bold')
-	doc.setFontSize(10)
-	doc.text('UNIVERSITY NOMINEE', margin + 50, startY)
-	doc.text('CHAIRPERSON/PRINCIPAL', pageWidth - margin - 50, startY, { align: 'right' })
-
-	doc.setFont('times', 'normal')
-	doc.setFontSize(9)
-	doc.line(margin + 20, startY - 5, margin + 90, startY - 5)
-	doc.line(pageWidth - margin - 90, startY - 5, pageWidth - margin - 10, startY - 5)
+	// Right signature - CHAIRPERSON/PRINCIPAL
+	const rightSignX = pageWidth - margin - 50
+	doc.line(rightSignX - 30, startY, rightSignX + 40, startY)
+	doc.text('CHAIRPERSON/PRINCIPAL', rightSignX, startY + 6, { align: 'center' })
 
 	// Save PDF
 	const programCode = data.program?.program_code || 'PROGRAM'

@@ -210,7 +210,8 @@ export async function GET(request: NextRequest) {
 					credit
 				),
 				course_offerings:course_offering_id (
-					semester
+					semester,
+					course_id
 				)
 			`)
 			.eq('institutions_id', institutionId)
@@ -220,6 +221,28 @@ export async function GET(request: NextRequest) {
 
 		if (marksError) throw marksError
 
+		// Get unique course_mapping IDs (course_offerings.course_id references course_mapping.id)
+		const courseMappingIds = [...new Set(
+			(finalMarksRaw || [])
+				.map((m: any) => m.course_offerings?.course_id)
+				.filter(Boolean)
+		)]
+
+		// Fetch course_order from course_mapping table
+		let courseMappingMap = new Map<string, number>()
+		if (courseMappingIds.length > 0) {
+			const { data: courseMappings, error: cmError } = await supabase
+				.from('course_mapping')
+				.select('id, course_order')
+				.in('id', courseMappingIds)
+
+			if (!cmError && courseMappings) {
+				courseMappings.forEach((cm: any) => {
+					courseMappingMap.set(cm.id, cm.course_order || 999)
+				})
+			}
+		}
+
 		// Filter by semester (from course_offerings) and transform data
 		const semesterNum = parseInt(semester)
 		const filteredMarks = (finalMarksRaw || [])
@@ -228,6 +251,10 @@ export async function GET(request: NextRequest) {
 				// Get student name from exam_registrations
 				const studentName = mark.exam_registrations?.student_name || ''
 				const nameParts = studentName.split(' ')
+
+				// Get course_order from course_mapping via course_offerings.course_id
+				const courseMappingId = mark.course_offerings?.course_id
+				const courseOrder = courseMappingId ? courseMappingMap.get(courseMappingId) : null
 
 				return {
 					id: mark.id,
@@ -260,7 +287,8 @@ export async function GET(request: NextRequest) {
 						external_max_mark: mark.external_marks_maximum,
 						total_max_mark: mark.total_marks_maximum,
 						course_category: null,
-						course_type: null
+						course_type: null,
+						course_order: courseOrder
 					}
 				}
 			})
@@ -370,7 +398,13 @@ export async function GET(request: NextRequest) {
 			const courseData = coursesMap.get(courseId)
 			courseData.registered++
 
-			if (mark.pass_status === 'Absent' || mark.pass_status === 'AAA') {
+			// Check for absent: pass_status = 'Absent' OR letter_grade = 'AAA' OR external marks is null/0 with no appearance
+			const isAbsent = mark.pass_status === 'Absent' ||
+				mark.pass_status === 'AAA' ||
+				mark.letter_grade === 'AAA' ||
+				(mark.external_marks_obtained === null && mark.internal_marks_obtained !== null)
+
+			if (isAbsent) {
 				courseData.absent++
 			} else {
 				courseData.appeared++
@@ -380,7 +414,8 @@ export async function GET(request: NextRequest) {
 
 				if (mark.is_pass) {
 					courseData.passed++
-				} else if (mark.pass_status === 'Reappear' || mark.pass_status === 'RA') {
+				} else if (mark.pass_status === 'Reappear' || mark.pass_status === 'RA' || mark.letter_grade === 'U') {
+					// Failed students who need to reappear
 					courseData.reappear++
 				} else {
 					courseData.failed++

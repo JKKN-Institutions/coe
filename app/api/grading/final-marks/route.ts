@@ -481,7 +481,23 @@ export async function POST(request: NextRequest) {
 			externalMarksMap.set(em.exam_registration_id, em)
 		})
 
-		// 5. Process each exam registration and calculate final marks
+		// 5. Fetch exam attendance records for absence checking
+		const { data: examAttendance, error: attendanceError } = await supabase
+			.from('exam_attendance')
+			.select('id, exam_registration_id, is_absent, attendance_status')
+			.in('exam_registration_id', examRegIds)
+
+		if (attendanceError) {
+			console.error('Error fetching exam attendance:', attendanceError)
+		}
+
+		// Create exam attendance lookup map: exam_registration_id -> attendance record
+		const examAttendanceMap = new Map<string, any>()
+		examAttendance?.forEach((ea: any) => {
+			examAttendanceMap.set(ea.exam_registration_id, ea)
+		})
+
+		// 6. Process each exam registration and calculate final marks
 		const results: StudentResultRow[] = []
 		const errors: Array<{
 			student_id: string
@@ -510,6 +526,7 @@ export async function POST(request: NextRequest) {
 			const internalKey = `${examReg.student_id}|${course.id}`
 			const internalMark = internalMarksMap.get(internalKey)
 			const externalMark = externalMarksMap.get(examReg.id)
+			const attendanceRecord = examAttendanceMap.get(examReg.id)
 
 			// Get marks configuration from course table (exact values, no fallbacks)
 			const internalMax = Number(course.internal_max_mark) || 0
@@ -518,7 +535,14 @@ export async function POST(request: NextRequest) {
 			const externalPassMark = Number(course.external_pass_mark) || 0
 			const totalMax = Number(course.total_max_mark) || 0
 			const totalPassMark = Number(course.total_pass_mark) || 0
-			const isAbsent = externalMark?.is_absent || false
+
+			// Check absence from multiple sources:
+			// 1. marks_entry.is_absent - marked absent during marks entry
+			// 2. exam_attendance.is_absent - marked absent during attendance
+			// 3. exam_attendance.attendance_status - 'Absent' status
+			const isAbsent = externalMark?.is_absent ||
+				attendanceRecord?.is_absent ||
+				attendanceRecord?.attendance_status === 'Absent'
 
 			// Get marks obtained (cap at max values)
 			let internalMarksObtained = Number(internalMark?.total_internal_marks) || 0
@@ -587,10 +611,15 @@ export async function POST(request: NextRequest) {
 				gradeEntry = grades.find((g: any) => percentage >= g.min_mark && percentage <= g.max_mark)
 			}
 
-			// If failed, override to U grade with 0 grade points and 'Re-Appear' description
-			const letterGrade = isPass ? (gradeEntry?.grade || 'RA') : 'U'
+			// Determine grade based on pass status and absence
+			// If absent, use 'AAA' grade; if failed, use 'U' grade; if passed, use calculated grade
+			const letterGrade = isAbsent || !externalMark
+				? 'AAA'
+				: (isPass ? (gradeEntry?.grade || 'RA') : 'U')
 			const gradePoint = isPass ? (gradeEntry?.grade_point || 0) : 0
-			const gradeDescription = isPass ? (gradeEntry?.description || '') : 'Re-Appear'
+			const gradeDescription = isAbsent || !externalMark
+				? 'Absent'
+				: (isPass ? (gradeEntry?.description || '') : 'Re-Appear')
 			const credits = course.credit || 0
 			const creditPoints = gradePoint * credits
 

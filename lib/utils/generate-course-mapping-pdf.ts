@@ -343,9 +343,9 @@ export function generateCourseMappingPDF(data: ReportData) {
 	const col2X = pageWidth / 2
 	const col3X = pageWidth - margin - 60
 
-	doc.text('Signature of', col1X, startY, { align: 'center' })
-	doc.text('Signature of', col2X, startY, { align: 'center' })
-	doc.text('Signature of', col3X, startY, { align: 'center' })
+	doc.text('Signature of the', col1X, startY, { align: 'center' })
+	doc.text('Signature of the', col2X, startY, { align: 'center' })
+	doc.text('Signature of the', col3X, startY, { align: 'center' })
 
 	doc.text('Class In-charge', col1X, startY + 5, { align: 'center' })
 	doc.text('HOD', col2X, startY + 5, { align: 'center' })
