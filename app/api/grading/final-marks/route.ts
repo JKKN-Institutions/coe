@@ -539,10 +539,10 @@ export async function POST(request: NextRequest) {
 			// Check absence from multiple sources:
 			// 1. marks_entry.is_absent - marked absent during marks entry
 			// 2. exam_attendance.is_absent - marked absent during attendance
-			// 3. exam_attendance.attendance_status - 'Absent' status
+			// 3. exam_attendance.attendance_status - 'Absent' status (case-insensitive check)
 			const isAbsent = externalMark?.is_absent ||
 				attendanceRecord?.is_absent ||
-				attendanceRecord?.attendance_status === 'Absent'
+				attendanceRecord?.attendance_status?.toLowerCase() === 'absent'
 
 			// Get marks obtained (cap at max values)
 			let internalMarksObtained = Number(internalMark?.total_internal_marks) || 0
@@ -612,13 +612,13 @@ export async function POST(request: NextRequest) {
 			}
 
 			// Determine grade based on pass status and absence
-			// If absent, use 'AAA' grade; if failed, use 'U' grade; if passed, use calculated grade
+			// If absent, use 'AAA' grade from grade_system (or fallback to 'AAA'); if failed, use 'U' grade; if passed, use calculated grade
 			const letterGrade = isAbsent || !externalMark
-				? 'AAA'
+				? (gradeEntry?.grade || 'AAA')
 				: (isPass ? (gradeEntry?.grade || 'RA') : 'U')
 			const gradePoint = isPass ? (gradeEntry?.grade_point || 0) : 0
 			const gradeDescription = isAbsent || !externalMark
-				? 'Absent'
+				? (gradeEntry?.description || 'Absent')
 				: (isPass ? (gradeEntry?.description || '') : 'Re-Appear')
 			const credits = course.credit || 0
 			const creditPoints = gradePoint * credits

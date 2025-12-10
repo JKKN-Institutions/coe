@@ -351,23 +351,25 @@ export function generateGalleyReportPDF(data: GalleyReportData): string {
 							const isAbsent = courseMarks.pass_status === 'Absent' ||
 								courseMarks.pass_status === 'AAA' ||
 								courseMarks.letter_grade === 'AAA' ||
-								(courseMarks.external_marks === null && courseMarks.internal_marks !== null)
+								(courseMarks.external_marks === null && courseMarks.internal_marks !== null) ||
+								(courseMarks.external_marks === 0 && courseMarks.internal_marks !== null && courseMarks.internal_marks > 0 && courseMarks.total_marks === 0)
 
-							// Determine result status: P for Pass, RA for Fail/Reappear
+							// Determine result status: P for Pass, RA for Fail/Reappear, A for Absent
 							let res: string
 							if (isAbsent) {
 								res = 'A'
 							} else if (courseMarks.pass_status === 'Pass' || courseMarks.is_pass) {
 								res = 'P'  // Pass
 							} else if (courseMarks.pass_status === 'Reappear' || courseMarks.pass_status === 'RA' ||
-								courseMarks.pass_status === 'Fail' || courseMarks.letter_grade === 'U') {
+								courseMarks.pass_status === 'Fail' || courseMarks.letter_grade === 'U' ||
+								courseMarks.letter_grade === 'RA' || !courseMarks.is_pass) {
 								res = 'RA' // Reappear (for fail)
 							} else {
 								res = 'P'  // Default to Pass
 							}
 
-							// Grade points - show 'B' for pass based on sample
-							const gp = isAbsent ? '0' : 'B'
+							// Letter grade from database (O, A+, A, B+, B, C, RA, AAA)
+							const gp = courseMarks.letter_grade ?? '-'
 
 							row.push(courseCode)
 							row.push(int)

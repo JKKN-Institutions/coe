@@ -52,21 +52,9 @@ export async function POST(request: Request) {
 			}, { status: 400 })
 		}
 
-		if (!body.grade || !body.grade_point || !body.description) {
+		if (!body.grade || body.grade_point === undefined || body.grade_point === null || !body.description) {
 			return NextResponse.json({
 				error: 'Grade, grade point, and description are required'
-			}, { status: 400 })
-		}
-
-		if (body.min_mark === undefined || body.min_mark === null || body.min_mark === '') {
-			return NextResponse.json({
-				error: 'Minimum mark is required'
-			}, { status: 400 })
-		}
-
-		if (body.max_mark === undefined || body.max_mark === null || body.max_mark === '') {
-			return NextResponse.json({
-				error: 'Maximum mark is required'
 			}, { status: 400 })
 		}
 
@@ -110,36 +98,11 @@ export async function POST(request: Request) {
 			}, { status: 400 })
 		}
 
-		// Validate min_mark is numeric
-		const minMark = Number(body.min_mark)
-		if (isNaN(minMark) || minMark < 0 || minMark > 100) {
-			return NextResponse.json({
-				error: 'Minimum mark must be a valid number between 0 and 100'
-			}, { status: 400 })
-		}
-
-		// Validate max_mark is numeric
-		const maxMark = Number(body.max_mark)
-		if (isNaN(maxMark) || maxMark < 0 || maxMark > 100) {
-			return NextResponse.json({
-				error: 'Maximum mark must be a valid number between 0 and 100'
-			}, { status: 400 })
-		}
-
-		// Validate min_mark <= max_mark
-		if (minMark > maxMark) {
-			return NextResponse.json({
-				error: 'Minimum mark must be less than or equal to maximum mark'
-			}, { status: 400 })
-		}
-
 		const insertPayload: any = {
 			institutions_id: institutionData.id,
 			institutions_code: String(body.institutions_code).trim(),
 			grade: String(body.grade).trim(),
 			grade_point: gradePoint,
-			min_mark: minMark,
-			max_mark: maxMark,
 			description: String(body.description).trim(),
 			regulation_id: body.regulation_id,
 			regulation_code: regulationCode,
@@ -201,21 +164,9 @@ export async function PUT(request: Request) {
 		}
 
 		// Validate required fields
-		if (!body.grade || !body.grade_point || !body.description) {
+		if (!body.grade || body.grade_point === undefined || body.grade_point === null || !body.description) {
 			return NextResponse.json({
 				error: 'Grade, grade point, and description are required'
-			}, { status: 400 })
-		}
-
-		if (body.min_mark === undefined || body.min_mark === null || body.min_mark === '') {
-			return NextResponse.json({
-				error: 'Minimum mark is required'
-			}, { status: 400 })
-		}
-
-		if (body.max_mark === undefined || body.max_mark === null || body.max_mark === '') {
-			return NextResponse.json({
-				error: 'Maximum mark is required'
 			}, { status: 400 })
 		}
 
@@ -257,34 +208,9 @@ export async function PUT(request: Request) {
 			}, { status: 400 })
 		}
 
-		// Validate min_mark is numeric
-		const minMark = Number(body.min_mark)
-		if (isNaN(minMark) || minMark < 0 || minMark > 100) {
-			return NextResponse.json({
-				error: 'Minimum mark must be a valid number between 0 and 100'
-			}, { status: 400 })
-		}
-
-		// Validate max_mark is numeric
-		const maxMark = Number(body.max_mark)
-		if (isNaN(maxMark) || maxMark < 0 || maxMark > 100) {
-			return NextResponse.json({
-				error: 'Maximum mark must be a valid number between 0 and 100'
-			}, { status: 400 })
-		}
-
-		// Validate min_mark <= max_mark
-		if (minMark > maxMark) {
-			return NextResponse.json({
-				error: 'Minimum mark must be less than or equal to maximum mark'
-			}, { status: 400 })
-		}
-
 		const updatePayload: any = {
 			grade: String(body.grade).trim(),
 			grade_point: gradePoint,
-			min_mark: minMark,
-			max_mark: maxMark,
 			description: String(body.description).trim(),
 			qualify: body.qualify,
 			exclude_cgpa: body.exclude_cgpa,

@@ -6,6 +6,13 @@
         "shadcn@latest",
         "mcp"
       ]
+    },
+    "supabase": {
+      "type": "http",
+      "url": "https://mcp.supabase.com/mcp?project_ref=qtsuqhduiuagjjtlalbh",
+      "headers": {
+        "Authorization": "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InF0c3VxaGR1aXVhZ2pqdGxhbGJoIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTg3Nzk3ODcsImV4cCI6MjA3NDM1NTc4N30.Not2QbAYwrnqWSRzhi0SqyoeXyPFIqGYIOncKvJxc00"
+      }
     }
   }
 }

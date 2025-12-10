@@ -6,19 +6,24 @@
 
 ## Tech Stack
 
-- **Frontend**: Next.js 15, React 18, TypeScript
+- **Frontend**: Next.js 15, React 19, TypeScript
 - **Backend**: Next.js API Routes, Node.js
 - **Database**: PostgreSQL (Supabase)
+- **ORM**: Prisma Client
 - **Authentication**: Supabase Auth with Google OAuth
 - **UI Components**: Shadcn UI, Radix UI, Tailwind CSS
 - **State Management**: React Context API
-- **Forms**: React Hook Form
+- **Forms**: React Hook Form, Zod validation
+- **Tables**: TanStack React Table
+- **Charts**: Recharts
+- **PDF Generation**: jsPDF, jsPDF-AutoTable
 - **Excel/CSV**: XLSX library
 - **Icons**: Lucide React
+- **Drag & Drop**: dnd-kit
 
 ## Key Features
 
-### 🔐 Authentication & Authorization
+### Authentication & Authorization
 - Google OAuth integration via Supabase Auth
 - Role-Based Access Control (RBAC) with permissions system
 - User activation/deactivation management
@@ -26,7 +31,7 @@
 - Protected routes with flexible authorization logic
 - Email verification system with race condition protection
 
-### 📊 Core Modules
+### Core Modules
 
 #### 1. **Institution Management**
 - Create, read, update, and delete institutions
@@ -41,6 +46,8 @@
 - **Regulations**: Manage academic regulations and rules
 - **Semesters**: Configure semester details
 - **Sections**: Organize student sections
+- **Academic Years**: Academic year management
+- **Batches**: Student batch management
 
 #### 3. **Course Management**
 - **Courses**: Comprehensive course catalog with split credits
@@ -60,14 +67,43 @@
 
 #### 5. **Examination Management**
 - **Exam Registrations**: Student course registration for exams
-  - Student register number integration
-  - Multi-step foreign key validation
-  - Upload tracking with detailed error reporting
-  - Template with institutional reference data
+- **Examination Sessions**: Session configuration and management
+- **Exam Timetables**: Exam scheduling and timetable management
+- **Exam Types**: Exam type configuration
 - **Exam Rooms**: Configure examination halls and rooms
 - **Boards**: Manage examination boards and authorities
+- **Dummy Numbers**: Secure dummy number generation for anonymous grading
 
-### 📥 Import/Export Features
+#### 6. **Pre-Examination Module**
+- **Internal Marks Upload**: Bulk internal marks entry with validation
+- **Hall Ticket Generation**: Student hall ticket generation
+- **Attendance Sheets**: Generate attendance sheets for exams
+
+#### 7. **Post-Examination Module**
+- **External Marks Entry**: Single mark entry with validation
+- **External Marks Bulk Upload**: Bulk upload with template
+- **Marks Correction**: Mark correction with complete audit trail
+- **Answer Sheet Packets**: Answer sheet packet management
+- **Answer Sheet Tracking**: Track answer sheets through evaluation
+
+#### 8. **Grading System** (NEW - December 2025)
+- **Grade Master**: Configure grade ranges (O, A+, A, B+, B, C, U, AAA)
+- **Grade System**: Institution/regulation-specific grade configurations
+- **Final Marks Generation**: Automatic grade assignment from marks
+- **Semester Results**: GPA calculation per semester
+- **CGPA Calculation**: Cumulative GPA across semesters
+- **Student Backlogs**: Track and manage student backlogs with priority levels
+- **Galley Report**: Comprehensive result publication report with PDF export
+
+#### 9. **Results Processing** (NEW - December 2025)
+- **GPA Formula**: Σ(Credits × Grade Points) / Σ(Credits)
+- **CGPA Formula**: Σ(Semester GPA × Semester Credits) / Σ(Semester Credits)
+- **Part-wise Aggregation**: UG (Parts I-V), PG (Parts A-B)
+- **Pass/Fail Determination**: Automatic based on internal + external marks
+- **Absent Handling**: AAA grade with 0 grade points for absent students
+- **Re-Appear Tracking**: Failed attempts with U grade
+
+### Import/Export Features
 
 All modules support standardized import/export patterns:
 
@@ -77,32 +113,22 @@ All modules support standardized import/export patterns:
   - Separate columns for codes and names
   - Optimized column widths
   - Human-readable format
+- **PDF Export**: Formatted reports with tables
 
 #### Template Download
 - **Styled Headers**: Mandatory fields marked with red background and asterisk (*)
 - **Sample Data**: Pre-filled example row with realistic data
 - **Reference Sheets**: Combined reference data in organized sections
-  - Institution codes with names
-  - Course codes
-  - Session codes with names
-  - Program codes with names
 - **Visual Indicators**: Clear distinction between required and optional fields
 
 #### Import Support
 - **Multiple Formats**: JSON, CSV, Excel (.xlsx, .xls)
-- **Flexible Field Mapping**: Supports header variations (with/without asterisk, lowercase)
+- **Flexible Field Mapping**: Supports header variations
 - **Smart Data Conversion**: Automatic type conversion and null handling
 - **Validation**: Pre-upload validation with specific error messages
 - **Row Tracking**: Accurate Excel row numbers in error reports
 
-#### Upload Error Handling
-- **Visual Summary Cards**: 3-column grid showing total/success/failed counts
-- **Detailed Error List**: Row-by-row error details with readable codes
-- **Helpful Tips Section**: Common fixes and data format guidance
-- **Toast Notifications**: Color-coded feedback (green/yellow/red)
-- **Display Codes Pattern**: Shows human-readable codes instead of UUIDs in errors
-
-### 🎨 UI/UX Features
+### UI/UX Features
 
 - **Responsive Design**: Mobile-friendly layouts
 - **Dark Mode Support**: System-wide theme switching
@@ -114,8 +140,9 @@ All modules support standardized import/export patterns:
 - **Error Dialogs**: Comprehensive error reporting with actionable information
 - **Modal Forms**: Side-sheet forms with validation
 - **Color-Coded Sections**: Gradient headers for visual organization
+- **Drag & Drop**: Sortable lists and data reordering
 
-### 🔒 Security Features
+### Security Features
 
 - **Server-Side API Keys**: Sensitive credentials stored server-side only
 - **Row Level Security (RLS)**: Supabase RLS policies
@@ -124,8 +151,9 @@ All modules support standardized import/export patterns:
 - **Unique Constraints**: Data integrity enforcement
 - **Foreign Key Validation**: Referential integrity checks
 - **Environment Variables**: Secure configuration management
+- **Transaction Logging**: Complete audit trail for all operations
 
-### 📈 Data Validation
+### Data Validation
 
 - **Client-Side Validation**: Immediate feedback with inline error messages
 - **Server-Side Validation**: API-level validation with specific error codes
@@ -135,193 +163,203 @@ All modules support standardized import/export patterns:
 - **Format Validation**: Regex-based pattern matching
 - **Numeric Range Validation**: Min/max constraints
 
-## Claude Code Skills (⭐ NEW)
+## Recent Features (November-December 2025)
 
-**Date:** October 27, 2025
+### Grading System (December 2025)
+**Complete grading and result processing system:**
+- Grade master configuration with letter grades and grade points
+- Institution-specific grade systems per regulation
+- Automatic grade assignment from marks using database triggers
+- GPA and CGPA calculation with part-wise aggregation
+- Student backlog tracking with priority levels (Critical, High, Normal, Low)
+- Galley report generation with comprehensive statistics
+- PDF export for result reports
 
-A comprehensive collection of Claude Code skills to accelerate development:
+**Key Database Triggers:**
+- `auto_determine_pass_status` - Determines pass/fail based on marks
+- `auto_assign_letter_grade` - Assigns letter grade from grade_system table
+- `publish_semester_results` - Publishes semester results
 
-### Available Skills
+### Marks Management (November 2025)
+**Post-Examination Module:**
+- External marks entry with single and bulk upload options
+- Marks correction workflow with complete audit trail
+- Answer sheet packet management
+- Examiner assignment tracking
 
-1. **generate-crud-page** - Complete full-stack CRUD page generator
-   - Frontend React/TypeScript components (~1200 lines)
-   - Backend API routes with Supabase (~220 lines)
-   - Search, filter, sort, pagination
-   - Import/Export with validation
-   - Foreign key auto-mapping
+**Pre-Examination Module:**
+- Internal marks bulk upload with validation
+- Template-based import with error reporting
 
-2. **generate-migration** - Database migration SQL generator
-   - Table creation with proper schema
-   - Foreign keys with CASCADE
-   - Indexes and RLS policies
-   - Audit columns and triggers
+### Enhanced Exam Management (November 2025)
+- Exam timetable creation and management
+- Attendance tracking and correction
+- Dummy number generation for anonymous grading
+- Session-wise examination configuration
 
-3. **test-api-endpoints** - API endpoint testing generator
-   - Comprehensive Jest/Vitest tests
-   - All HTTP methods (GET/POST/PUT/DELETE)
-   - Error scenarios and edge cases
-   - Response validation
-
-4. **generate-docs** - Documentation generator
-   - API documentation (OpenAPI style)
-   - User guides with workflows
-   - Developer documentation
-   - Architecture documentation
-
-5. **fix-common-issues** - Troubleshooting assistant
-   - Auth errors diagnosis and fixes
-   - Database error solutions
-   - Foreign key issue resolution
-   - UI, performance, and build fixes
-
-6. **generate-component** - React component generator
-   - Form inputs with validation
-   - Data tables with sorting
-   - Modal dialogs
-   - Cards and layouts
-
-### Quick Start
-
-See [.claude/skills/QUICKSTART.md](.claude/skills/QUICKSTART.md) for detailed usage guide.
-
-**Time Savings:**
-- CRUD Page: 90%+ (30 min vs. 6 hours)
-- Migration: 85%+ (5 min vs. 45 min)
-- API Tests: 90%+ (10 min vs. 3 hours)
-- Documentation: 90%+ (10 min vs. 4 hours)
-- Components: 85%+ (10 min vs. 2 hours)
-
-**Documentation:**
-- [Skills README](.claude/skills/README.md) - Complete skills documentation
-- [Quick Start Guide](.claude/skills/QUICKSTART.md) - Get started in minutes
-
-## Recent Features (October 2025)
-
-### 🆕 MyJKKN API Integration
-**Date:** October 24, 2025
-- Complete integration with MyJKKN platform for student data
-- Type-safe TypeScript API client library
-- Paginated student list (20 items per page)
-- Detailed student information view with 4 color-coded sections
-- Real-time search and sortable columns
-- Dashboard statistics (total, complete, incomplete profiles)
-- Secure Bearer token authentication
-- Comprehensive error handling and retry options
-
-**Files:**
-- `lib/myjkkn-api.ts` - API client library
-- `app/api/myjkkn/students/route.ts` - Students list endpoint
-- `app/api/myjkkn/students/[id]/route.ts` - Student details endpoint
-- `app/coe/myjkkn-students/page.tsx` - Main UI
-- `app/coe/myjkkn-students/student-details.tsx` - Details component
-
-### 🆕 Exam Registrations Module
-**Date:** October 27, 2025
-- Complete CRUD operations for exam registrations
-- Student register number integration (e.g., 24JUGEN6001)
-- Multi-step foreign key validation flow
-- Enhanced upload summary with row count tracking
-- Display codes pattern (readable codes in errors, not UUIDs)
-- Excel template with institutional reference data
-- Foreign key constraint migration for data integrity
-
-**Key Features:**
-- Institution, student, session, and course validation
-- Cross-institution data corruption prevention
-- Row-by-row error tracking with specific messages
-- Visual upload summary cards (blue/green/red)
-- Toast notifications with proper pluralization
-
-**Files:**
-- `app/coe/exam-registrations/page.tsx`
-- `app/api/exam-registrations/route.ts`
-- `supabase/migrations/20251027_add_missing_fk_constraints.sql`
-
-### 🆕 Course Offering Improvements
-**Date:** October 26, 2025
-- Enhanced Excel export with code and name columns
-- Improved template with styled headers (red = required)
-- Single combined reference sheet (instead of 5 separate sheets)
-- CSV import support
-- Flexible field mapping (supports header variations)
-- Better error messages with row tracking
-- Active-only reference data filtering
-
-**Benefits:**
-- Easier data entry with single reference sheet
-- Cleaner display (course codes without titles)
-- Better organization with section separators
-- Fewer errors with visual indicators
-- Less clutter (2 sheets instead of 5)
-
-### 🆕 New Modules Added
-- **Board Management**: Examination boards and authorities
-- **Exam Rooms**: Examination hall configuration
-- **Student Module**: Enhanced student management interface
+### Transaction Logging
+- Complete audit trail for all marks-related operations
+- Transaction log API for compliance and reporting
+- User action tracking with timestamps
 
 ## Project Structure
 
 ```
 jkkncoe/
 ├── app/
-│   ├── coe/          # Protected routes
-│   │   ├── board/                # Board management
-│   │   ├── course-mapping/       # Course mapping
-│   │   ├── course-mapping-index/ # Course mapping index
-│   │   ├── course-offering/      # Course offerings
-│   │   ├── courses/              # Course catalog
-│   │   ├── degree/               # Degree management
-│   │   ├── department/           # Department management
-│   │   ├── exam-registrations/   # Exam registrations ⭐ NEW
-│   │   ├── exam-rooms/           # Exam rooms ⭐ NEW
-│   │   ├── institutions/         # Institution management
-│   │   ├── myjkkn-students/      # MyJKKN student data ⭐ NEW
-│   │   ├── program/              # Program management
-│   │   ├── regulations/          # Regulation management
-│   │   ├── section/              # Section management
-│   │   ├── semester/             # Semester management
-│   │   ├── student/              # Student management ⭐ NEW
-│   │   └── students/             # Student records
-│   ├── api/                      # API routes
-│   │   ├── api-management/       # API key management
-│   │   ├── boards/               # Board API
-│   │   ├── course-mapping/       # Course mapping API
-│   │   ├── course-offering/      # Course offering API
-│   │   ├── courses/              # Courses API
-│   │   ├── exam-registrations/   # Exam registrations API ⭐ NEW
-│   │   ├── exam-rooms/           # Exam rooms API
-│   │   ├── myjkkn/               # MyJKKN proxy API ⭐ NEW
-│   │   ├── program/              # Program API
-│   │   └── students/             # Students API
-│   ├── layout.tsx                # Root layout
-│   └── page.tsx                  # Landing page
+│   ├── (coe)/                      # Protected routes
+│   │   ├── dashboard/              # Main dashboard
+│   │   ├── grading/                # Grading system (NEW)
+│   │   │   ├── grades/             # Grade master
+│   │   │   ├── grade-system/       # Grade system config
+│   │   │   ├── generate-final-marks/ # Final marks generation
+│   │   │   ├── semester-results/   # Semester GPA/CGPA
+│   │   │   ├── student-backlogs/   # Backlog tracking
+│   │   │   └── galley-report/      # Galley report
+│   │   ├── post-exam/              # Post-exam module (NEW)
+│   │   │   ├── external-mark-entry/
+│   │   │   ├── external-mark-bulk-upload/
+│   │   │   ├── external-mark-correction/
+│   │   │   └── answer-sheet-packets/
+│   │   ├── pre-exam/               # Pre-exam module
+│   │   │   └── bulk-internal-marks/
+│   │   ├── exam-management/        # Exam management
+│   │   │   ├── exam-timetable/
+│   │   │   ├── examination-sessions/
+│   │   │   ├── exam-types/
+│   │   │   └── attendance-correction/
+│   │   ├── master/                 # Master data
+│   │   │   ├── academic-years/
+│   │   │   ├── batches/
+│   │   │   ├── boards/
+│   │   │   └── ...
+│   │   ├── users/                  # User management
+│   │   │   ├── roles/
+│   │   │   ├── permissions/
+│   │   │   ├── role-permissions/
+│   │   │   └── user-roles/
+│   │   ├── course-mapping/
+│   │   ├── course-offering/
+│   │   ├── courses/
+│   │   ├── degree/
+│   │   ├── department/
+│   │   ├── exam-registrations/
+│   │   ├── exam-rooms/
+│   │   ├── institutions/
+│   │   ├── myjkkn-students/
+│   │   ├── program/
+│   │   ├── regulations/
+│   │   ├── section/
+│   │   ├── semester/
+│   │   └── students/
+│   ├── api/                        # API routes
+│   │   ├── grading/                # Grading APIs (NEW)
+│   │   │   ├── grades/
+│   │   │   ├── grade-system/
+│   │   │   ├── final-marks/
+│   │   │   ├── semester-results/
+│   │   │   └── galley-report/
+│   │   ├── post-exam/              # Post-exam APIs (NEW)
+│   │   │   └── external-marks-bulk/
+│   │   ├── pre-exam/               # Pre-exam APIs
+│   │   │   └── internal-marks/
+│   │   ├── transaction-logs/       # Audit trail API (NEW)
+│   │   └── ...
+│   ├── layout.tsx
+│   └── page.tsx
 ├── components/
-│   ├── ui/                       # Shadcn UI components
-│   │   └── searchable-select.tsx # Searchable dropdown ⭐ NEW
-│   └── protected-route.tsx       # Route guard component
+│   ├── ui/                         # Shadcn UI components
+│   ├── post-exam/                  # Post-exam components (NEW)
+│   │   ├── external-marks-scorecards.tsx
+│   │   ├── external-marks-table.tsx
+│   │   ├── external-marks-filters.tsx
+│   │   ├── import-preview-dialog.tsx
+│   │   └── upload-error-dialog.tsx
+│   └── protected-route.tsx
+├── hooks/
+│   ├── grading/                    # Grading hooks (NEW)
+│   │   ├── use-grade-calculator.ts
+│   │   └── use-result-processor.ts
+│   ├── post-exam/                  # Post-exam hooks (NEW)
+│   │   └── use-external-marks-bulk.ts
+│   └── use-transaction-log.ts
+├── services/
+│   ├── grading/                    # Grading services (NEW)
+│   │   └── grade-system-service.ts
+│   ├── post-exam/                  # Post-exam services (NEW)
+│   │   ├── external-marks-bulk-service.ts
+│   │   └── external-mark-entry-service.ts
+│   ├── logging/                    # Logging services (NEW)
+│   │   └── transaction-log-service.ts
+│   └── ...
+├── types/
+│   ├── final-marks.ts              # Final marks types (NEW)
+│   ├── grade-system.ts             # Grade system types (NEW)
+│   ├── external-marks.ts           # External marks types (NEW)
+│   └── semester-results.ts         # Semester results types (NEW)
 ├── lib/
-│   ├── auth/                     # Authentication utilities
-│   ├── utils/                    # Utility functions
-│   ├── myjkkn-api.ts            # MyJKKN API client ⭐ NEW
-│   ├── supabase-server.ts       # Server-side Supabase client
-│   └── supabase-client.ts       # Client-side Supabase client
+│   ├── auth/
+│   ├── utils/
+│   │   └── generate-galley-report-pdf.ts  # PDF generation (NEW)
+│   ├── myjkkn-api.ts
+│   ├── supabase-server.ts
+│   └── supabase-client.ts
 ├── supabase/
-│   └── migrations/               # Database migrations
-│       └── 20251027_add_missing_fk_constraints.sql ⭐ NEW
-├── .claude/                      # Claude Code configuration
-│   └── skills/                   # Claude Code Skills ⭐ NEW
-│       ├── generate-crud-page.yaml      # Complete CRUD generator
-│       ├── generate-migration.yaml      # Database migration generator
-│       ├── test-api-endpoints.yaml      # API testing generator
-│       ├── generate-docs.yaml           # Documentation generator
-│       ├── fix-common-issues.yaml       # Troubleshooting assistant
-│       ├── generate-component.yaml      # React component generator
-│       ├── README.md                    # Skills documentation
-│       └── QUICKSTART.md                # Quick start guide
-├── CLAUDE.md                     # Development guidelines
-├── CoE PRD.txt                   # Product requirements
-└── README.md                     # This file
+│   └── migrations/                 # Database migrations
+├── .claude/                        # Claude Code configuration
+│   └── skills/
+├── CLAUDE.md
+└── README.md
 ```
+
+## Database Schema
+
+### Core Tables
+
+- **users**: User accounts with RBAC
+- **roles**: System roles (admin, teacher, student, etc.)
+- **permissions**: Granular permissions
+- **role_permissions**: Role-permission mappings
+- **user_roles**: User-role assignments
+- **institutions**: Educational institutions
+- **departments**: Academic departments
+- **degrees**: Degree programs
+- **programs**: Program offerings
+- **regulations**: Academic regulations
+- **semesters**: Semester configuration
+- **sections**: Student sections
+- **courses**: Course catalog
+- **course_mapping**: Course-to-program mappings
+- **course_offering**: Course offerings with enrollment
+- **students**: Student records
+- **exam_registrations**: Exam registrations
+- **examination_sessions**: Exam sessions
+- **exam_rooms**: Examination rooms
+- **boards**: Examination boards
+
+### Grading Tables (NEW - December 2025)
+
+- **grades**: Grade master (letter grades, grade points, percentage ranges)
+- **grade_systems**: Institution/regulation-specific grade configurations
+- **final_marks**: Student final calculated grades with all marks
+- **marks_entry**: External exam marks entry
+- **internal_marks**: Internal assessment marks
+- **semester_results**: Semester-wise GPA/CGPA results
+- **student_backlogs**: Student backlog tracking with priority
+- **answer_sheets**: Answer sheet tracking
+- **answer_sheet_packets**: Answer sheet packet grouping
+- **examiner_assignments**: Examiner assignment tracking
+- **marks_upload_batches**: Batch upload tracking
+- **marks_correction_log**: Marks modification audit trail
+
+### Key Relationships
+
+- Students → Institutions, Degrees, Departments, Programs, Semesters, Sections
+- Programs → Institutions, Degrees, Departments
+- Course Offerings → Institutions, Courses, Sessions, Programs
+- Exam Registrations → Institutions, Students, Sessions, Courses
+- Final Marks → Students, Courses, Sessions, Exam Attendance
+- Semester Results → Programs, Sessions, Students
 
 ## Getting Started
 
@@ -387,75 +425,45 @@ npm run start        # Start production server
 npm run lint         # Run ESLint
 ```
 
-## Database Schema
-
-### Core Tables
-
-- **users**: User accounts with RBAC
-- **roles**: System roles (admin, teacher, student, etc.)
-- **permissions**: Granular permissions
-- **role_permissions**: Role-permission mappings
-- **user_roles**: User-role assignments
-- **institutions**: Educational institutions
-- **departments**: Academic departments
-- **degrees**: Degree programs
-- **programs**: Program offerings
-- **regulations**: Academic regulations
-- **semesters**: Semester configuration
-- **sections**: Student sections
-- **courses**: Course catalog
-- **course_mapping**: Course-to-program mappings
-- **course_offering**: Course offerings with enrollment
-- **students**: Student records
-- **exam_registrations**: Exam registrations (⭐ NEW)
-- **examination_sessions**: Exam sessions
-- **exam_rooms**: Examination rooms (⭐ NEW)
-- **boards**: Examination boards (⭐ NEW)
-
-### Foreign Key Relationships
-
-The application uses comprehensive foreign key constraints for data integrity:
-- Students → Institutions, Degrees, Departments, Programs, Semesters, Sections
-- Programs → Institutions, Degrees, Departments
-- Course Offerings → Institutions, Courses, Sessions, Programs
-- Exam Registrations → Institutions, Students, Sessions, Courses
-
-See [DEPARTMENTS_TABLE_REFERENCE.md](DEPARTMENTS_TABLE_REFERENCE.md) for detailed schema documentation.
-
 ## API Documentation
 
-### Internal API Endpoints
+### Grading APIs (NEW)
 
-#### MyJKKN Integration (⭐ NEW)
 ```
-GET /api/myjkkn/students
-  Query: page, limit
-  Returns: Paginated student list from MyJKKN
+GET/POST /api/grading/grades
+  - Grade master CRUD operations
 
-GET /api/myjkkn/students/:id
-  Path: student UUID
-  Returns: Detailed student information
-```
+GET/POST /api/grading/grade-system
+  - Grade system configuration per institution/regulation
 
-#### Exam Registrations (⭐ NEW)
-```
-GET /api/exam-registrations
-  Returns: All exam registrations with joins
+POST /api/grading/final-marks
+  - Generate final marks with automatic grade assignment
 
-POST /api/exam-registrations
-  Body: Registration data with FKs
-  Returns: Created registration
+GET/POST /api/grading/semester-results
+  - Semester GPA/CGPA calculation and retrieval
 
-PUT /api/exam-registrations
-  Body: Registration update with ID
-  Returns: Updated registration
-
-DELETE /api/exam-registrations/:id
-  Path: Registration ID
-  Returns: Success/failure
+GET /api/grading/galley-report
+  - Generate comprehensive galley report data
 ```
 
-#### Standard CRUD Endpoints
+### Post-Exam APIs (NEW)
+
+```
+POST /api/post-exam/external-marks-bulk
+  - Bulk upload external marks with validation
+
+GET/POST /api/pre-exam/internal-marks
+  - Internal marks management
+```
+
+### Transaction Logs API (NEW)
+
+```
+GET/POST /api/transaction-logs
+  - Audit trail for all marks operations
+```
+
+### Standard CRUD Endpoints
 
 All entity modules follow RESTful conventions:
 - `GET /api/[entity]` - List all records
@@ -463,7 +471,7 @@ All entity modules follow RESTful conventions:
 - `PUT /api/[entity]` - Update existing record
 - `DELETE /api/[entity]/[id]` - Delete record
 
-Entities: `institutions`, `departments`, `degrees`, `programs`, `regulations`, `semesters`, `sections`, `courses`, `course-mapping`, `course-offering`, `students`, `boards`, `exam-rooms`
+Entities: `institutions`, `departments`, `degrees`, `programs`, `regulations`, `semesters`, `sections`, `courses`, `course-mapping`, `course-offering`, `students`, `boards`, `exam-rooms`, `exam-registrations`
 
 ## Development Standards
 
@@ -523,14 +531,12 @@ See [CLAUDE.md](CLAUDE.md) for comprehensive development standards.
 
 1. **MyJKKN API Authentication Error (401)**
    - Verify API key in `.env.local`
-   - Test connection: `curl -H "Authorization: Bearer YOUR_KEY" https://www.jkkn.ai/api/api-management/students?page=1&limit=1`
+   - Test connection with curl command
    - Contact MyJKKN administrator for valid API key
-   - See [MYJKKN_API_KEY_ISSUE.md](MYJKKN_API_KEY_ISSUE.md)
 
 2. **Google OAuth Issues**
    - Verify OAuth credentials in Supabase dashboard
    - Check redirect URLs configuration
-   - See [OAUTH_TROUBLESHOOTING.md](OAUTH_TROUBLESHOOTING.md)
 
 3. **Excel Import Errors**
    - Ensure all required fields are filled
@@ -539,27 +545,14 @@ See [CLAUDE.md](CLAUDE.md) for comprehensive development standards.
    - Download template for correct format
 
 4. **Foreign Key Constraint Violations**
-   - Run migration: `npx supabase migration up --file supabase/migrations/20251027_add_missing_fk_constraints.sql`
+   - Run migrations: `npx supabase migration up`
    - Verify referenced records exist
    - Check institution ID matches across related tables
 
-## Testing
-
-### Manual Testing Checklist
-
-- [ ] User authentication (Google OAuth)
-- [ ] RBAC permissions and role-based access
-- [ ] CRUD operations on all entity modules
-- [ ] Excel/CSV import with validation
-- [ ] Template download with reference sheets
-- [ ] JSON/Excel export with proper formatting
-- [ ] MyJKKN student data fetch and display
-- [ ] Exam registration creation with FK validation
-- [ ] Search and sort on table columns
-- [ ] Pagination on large datasets
-- [ ] Error handling and user feedback
-- [ ] Dark mode switching
-- [ ] Responsive design on mobile
+5. **Grade Assignment Issues**
+   - Verify grade_system configuration for institution/regulation
+   - Check if student is marked absent in exam_attendance
+   - Review auto_assign_letter_grade trigger logs
 
 ## Success Metrics
 
@@ -615,8 +608,8 @@ For issues or questions:
 
 ---
 
-**Version:** 1.5.0
-**Last Updated:** October 27, 2025
+**Version:** 2.0.0
+**Last Updated:** December 2025
 **Framework:** Next.js 15 with TypeScript
 **Database:** PostgreSQL (Supabase)
 **Status:** Active Development

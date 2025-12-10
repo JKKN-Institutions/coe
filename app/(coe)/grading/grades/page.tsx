@@ -28,8 +28,6 @@ type Grade = {
 	institutions_code: string
 	grade: string
 	grade_point: number
-	min_mark: number
-	max_mark: number
 	description: string
 	regulation_id: string // UUID
 	regulation_code?: string
@@ -66,8 +64,6 @@ export default function GradesPage() {
 		regulation_id: "",
 		grade: "",
 		grade_point: "",
-		min_mark: "",
-		max_mark: "",
 		description: "",
 		qualify: false,
 		exclude_cgpa: false,
@@ -99,8 +95,6 @@ export default function GradesPage() {
 			regulation_id: "",
 			grade: "",
 			grade_point: "",
-			min_mark: "",
-			max_mark: "",
 			description: "",
 			qualify: false,
 			exclude_cgpa: false,
@@ -146,8 +140,6 @@ export default function GradesPage() {
 			regulation_id: row.regulation_id,
 			grade: row.grade,
 			grade_point: String(row.grade_point),
-			min_mark: String(row.min_mark),
-			max_mark: String(row.max_mark),
 			description: row.description,
 			qualify: row.qualify,
 			exclude_cgpa: row.exclude_cgpa,
@@ -164,20 +156,10 @@ export default function GradesPage() {
 		if (!formData.regulation_id) e.regulation_id = "Required"
 		if (!formData.grade.trim()) e.grade = "Required"
 		if (formData.grade_point === '' || formData.grade_point === null || formData.grade_point === undefined) e.grade_point = "Required"
-		if (formData.min_mark === '' || formData.min_mark === null || formData.min_mark === undefined) e.min_mark = "Required"
-		if (formData.max_mark === '' || formData.max_mark === null || formData.max_mark === undefined) e.max_mark = "Required"
 		if (!formData.description.trim()) e.description = "Required"
 
 		const gp = Number(formData.grade_point)
 		if (!e.grade_point && (isNaN(gp) || gp < 0 || gp > 10)) e.grade_point = "Must be between 0 and 10"
-
-		const minMark = Number(formData.min_mark)
-		if (!e.min_mark && (isNaN(minMark) || minMark < 0 || minMark > 100)) e.min_mark = "Must be between 0 and 100"
-
-		const maxMark = Number(formData.max_mark)
-		if (!e.max_mark && (isNaN(maxMark) || maxMark < 0 || maxMark > 100)) e.max_mark = "Must be between 0 and 100"
-
-		if (!e.min_mark && !e.max_mark && minMark > maxMark) e.max_mark = "Max mark must be greater than or equal to min mark"
 
 		// Order index validation (optional but must be non-negative integer if provided)
 		if (formData.order_index !== '' && formData.order_index !== null && formData.order_index !== undefined) {
@@ -201,14 +183,12 @@ export default function GradesPage() {
 				regulation_id: formData.regulation_id,
 				grade: formData.grade,
 				grade_point: Number(formData.grade_point),
-				min_mark: Number(formData.min_mark),
-				max_mark: Number(formData.max_mark),
 				description: formData.description,
 				qualify: formData.qualify,
 				exclude_cgpa: formData.exclude_cgpa,
 				order_index: formData.order_index !== '' ? Number(formData.order_index) : null,
 				is_absent: formData.is_absent,
-				result_status: formData.result_status || null,
+				result_status: formData.result_status && formData.result_status !== 'none' ? formData.result_status : null,
 			}
 			if (editing) {
 				const res = await fetch('/api/grading/grades', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: editing.id, ...payload }) })
@@ -275,11 +255,12 @@ export default function GradesPage() {
 			'Regulation Code': r.regulation_code || '',
 			'Grade': r.grade,
 			'Grade Point': r.grade_point,
-			'Min Mark': r.min_mark,
-			'Max Mark': r.max_mark,
 			'Description': r.description,
 			'Qualify': r.qualify ? 'Pass' : 'Fail',
 			'Exclude CGPA': r.exclude_cgpa ? 'Yes' : 'No',
+			'Order Index': r.order_index ?? '',
+			'Is Absent': r.is_absent ? 'Yes' : 'No',
+			'Result Status': r.result_status || '',
 			'Created': new Date(r.created_at).toISOString().split('T')[0]
 		}))
 		const ws = XLSX.utils.json_to_sheet(excelData)
@@ -447,8 +428,6 @@ export default function GradesPage() {
 						regulation_code: String(j['Regulation Code *'] || j['Regulation Code'] || ''),
 						grade: String(j['Grade *'] || j['Grade'] || ''),
 						grade_point: Number(j['Grade Point *'] || j['Grade Point'] || 0),
-						min_mark: Number(j['Min Mark *'] || j['Min Mark'] || 0),
-						max_mark: Number(j['Max Mark *'] || j['Max Mark'] || 0),
 						description: String(j['Description *'] || j['Description'] || ''),
 						qualify: String(j['Qualify'] || '').toLowerCase() === 'pass' || String(j['Qualify'] || '').toLowerCase() === 'true',
 						exclude_cgpa: String(j['Exclude CGPA'] || '').toLowerCase() === 'yes' || String(j['Exclude CGPA'] || '').toLowerCase() === 'true',
@@ -459,7 +438,7 @@ export default function GradesPage() {
 				}
 
 				// Filter out rows with missing required fields (using regulation_code now)
-				const mapped = rows.filter(r => r.institutions_code && r.regulation_code && r.grade && r.grade_point && r.min_mark !== undefined && r.max_mark !== undefined && r.description)
+				const mapped = rows.filter(r => r.institutions_code && r.regulation_code && r.grade && r.grade_point !== undefined && r.description)
 
 				if (mapped.length === 0) {
 					alert('No valid rows found. Ensure all required fields are provided.')
@@ -499,8 +478,6 @@ export default function GradesPage() {
 						regulation_id: regulation.id, // Use auto-mapped ID from regulation_code
 						grade: gradeItem.grade,
 						grade_point: gradeItem.grade_point,
-						min_mark: gradeItem.min_mark,
-						max_mark: gradeItem.max_mark,
 						description: gradeItem.description,
 						qualify: gradeItem.qualify ?? false,
 						exclude_cgpa: gradeItem.exclude_cgpa ?? false,
@@ -779,8 +756,6 @@ export default function GradesPage() {
 												<TableHead className="w-[100px] text-[11px]"><Button variant="ghost" size="sm" onClick={() => handleSort("institutions_code")} className="h-auto p-0 font-medium hover:bg-transparent">Institution <span className="ml-1">{getSortIcon("institutions_code")}</span></Button></TableHead>
 												<TableHead className="w-[80px] text-[11px]"><Button variant="ghost" size="sm" onClick={() => handleSort("grade")} className="h-auto p-0 font-medium hover:bg-transparent">Grade <span className="ml-1">{getSortIcon("grade")}</span></Button></TableHead>
 												<TableHead className="w-[80px] text-[11px]"><Button variant="ghost" size="sm" onClick={() => handleSort("grade_point")} className="h-auto p-0 font-medium hover:bg-transparent">GP <span className="ml-1">{getSortIcon("grade_point")}</span></Button></TableHead>
-												<TableHead className="w-[80px] text-[11px]"><Button variant="ghost" size="sm" onClick={() => handleSort("min_mark")} className="h-auto p-0 font-medium hover:bg-transparent">Min <span className="ml-1">{getSortIcon("min_mark")}</span></Button></TableHead>
-												<TableHead className="w-[80px] text-[11px]"><Button variant="ghost" size="sm" onClick={() => handleSort("max_mark")} className="h-auto p-0 font-medium hover:bg-transparent">Max <span className="ml-1">{getSortIcon("max_mark")}</span></Button></TableHead>
 												<TableHead className="text-[11px]">Description</TableHead>
 												<TableHead className="w-[80px] text-[11px]"><Button variant="ghost" size="sm" onClick={() => handleSort("qualify")} className="h-auto p-0 font-medium hover:bg-transparent">Pass <span className="ml-1">{getSortIcon("qualify")}</span></Button></TableHead>
 												<TableHead className="w-[100px] text-[11px] text-center">Actions</TableHead>
@@ -788,7 +763,7 @@ export default function GradesPage() {
 										</TableHeader>
 										<TableBody>
 											{loading ? (
-												<TableRow><TableCell colSpan={8} className="h-24 text-center text-[11px]">Loading…</TableCell></TableRow>
+												<TableRow><TableCell colSpan={6} className="h-24 text-center text-[11px]">Loading…</TableCell></TableRow>
 											) : pageItems.length ? (
 												<>
 													{pageItems.map((row) => (
@@ -796,8 +771,6 @@ export default function GradesPage() {
 															<TableCell className="text-[11px] font-medium">{row.institutions_code}</TableCell>
 															<TableCell className="text-[11px] font-semibold">{row.grade}</TableCell>
 															<TableCell className="text-[11px]">{row.grade_point}</TableCell>
-															<TableCell className="text-[11px]">{row.min_mark}</TableCell>
-															<TableCell className="text-[11px]">{row.max_mark}</TableCell>
 															<TableCell className="text-[11px]">{row.description.length > 30 ? row.description.substring(0, 30) + '...' : row.description}</TableCell>
 															<TableCell><Badge variant={row.qualify ? "default" : "destructive"} className="text-[11px] bg-green-600">{row.qualify ? "Pass" : "Fail"}</Badge></TableCell>
 															<TableCell>
@@ -824,7 +797,7 @@ export default function GradesPage() {
 													))}
 												</>
 											) : (
-												<TableRow><TableCell colSpan={8} className="h-24 text-center text-[11px]">No data</TableCell></TableRow>
+												<TableRow><TableCell colSpan={6} className="h-24 text-center text-[11px]">No data</TableCell></TableRow>
 											)}
 										</TableBody>
 									</Table>
@@ -918,16 +891,6 @@ export default function GradesPage() {
 									<Input type="number" min="0" max="10" step="0.01" value={formData.grade_point} onChange={(e) => setFormData({ ...formData, grade_point: e.target.value })} className={`h-10 ${errors.grade_point ? 'border-destructive' : ''}`} placeholder="e.g., 10, 9.5, 8" />
 									{errors.grade_point && <p className="text-xs text-destructive">{errors.grade_point}</p>}
 								</div>
-								<div className="space-y-2">
-									<Label className="text-sm font-semibold">Min Mark *</Label>
-									<Input type="number" min="0" max="100" step="0.1" value={formData.min_mark} onChange={(e) => setFormData({ ...formData, min_mark: e.target.value })} className={`h-10 ${errors.min_mark ? 'border-destructive' : ''}`} placeholder="e.g., 90, 80, 70" />
-									{errors.min_mark && <p className="text-xs text-destructive">{errors.min_mark}</p>}
-								</div>
-								<div className="space-y-2">
-									<Label className="text-sm font-semibold">Max Mark *</Label>
-									<Input type="number" min="0" max="100" step="0.1" value={formData.max_mark} onChange={(e) => setFormData({ ...formData, max_mark: e.target.value })} className={`h-10 ${errors.max_mark ? 'border-destructive' : ''}`} placeholder="e.g., 100, 89, 79" />
-									{errors.max_mark && <p className="text-xs text-destructive">{errors.max_mark}</p>}
-								</div>
 								<div className="space-y-2 md:col-span-2">
 									<Label className="text-sm font-semibold">Description *</Label>
 									<Textarea value={formData.description} onChange={(e) => setFormData({ ...formData, description: e.target.value })} className={`min-h-[80px] ${errors.description ? 'border-destructive' : ''}`} placeholder="Description of this grade" />
@@ -990,7 +953,7 @@ export default function GradesPage() {
 											<SelectValue placeholder="Select result status" />
 										</SelectTrigger>
 										<SelectContent>
-											<SelectItem value="">None</SelectItem>
+											<SelectItem value="none">None</SelectItem>
 											{resultStatusOptions.map((status) => (
 												<SelectItem key={status} value={status}>{status}</SelectItem>
 											))}

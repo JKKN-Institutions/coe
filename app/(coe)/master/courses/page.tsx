@@ -21,6 +21,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
+import { SearchableSelect, toSearchableOptions } from "@/components/ui/searchable-select"
 import { Card, CardContent, CardHeader } from "@/components/ui/card"
 import { AppSidebar } from "@/components/layout/app-sidebar"
 import { AppHeader } from "@/components/layout/app-header"
@@ -1722,57 +1723,71 @@ export default function CoursesPage() {
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 <div className="space-y-2">
                   <Label className="text-sm font-semibold">Institution Code <span className="text-red-500">*</span></Label>
-                  <Select value={formData.institution_code} onValueChange={(v) => setFormData({ ...formData, institution_code: v })}>
-                    <SelectTrigger className={`h-10 ${errors.institution_code ? 'border-destructive' : ''}`}>
-                      <SelectValue placeholder={codesLoading ? 'Loading...' : 'Select institution'} />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {institutions.map(i => (
-                        <SelectItem key={i.id} value={i.institution_code}>{i.institution_code}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                  <SearchableSelect
+                    value={formData.institution_code}
+                    onValueChange={(v) => setFormData({ ...formData, institution_code: v })}
+                    options={institutions.map(i => ({ value: i.institution_code, label: i.institution_code }))}
+                    placeholder="Select institution"
+                    searchPlaceholder="Search institutions..."
+                    loading={codesLoading}
+                    loadingText="Loading..."
+                    error={!!errors.institution_code}
+                    clearable
+                    wrapText
+                  />
                   {errors.institution_code && <p className="text-xs text-destructive">{errors.institution_code}</p>}
                 </div>
                 <div className="space-y-2">
                   <Label className="text-sm font-semibold">Regulation Code <span className="text-red-500">*</span></Label>
-                  <Select value={formData.regulation_code} onValueChange={(v) => setFormData({ ...formData, regulation_code: v })}>
-                    <SelectTrigger className={`h-10 ${errors.regulation_code ? 'border-destructive' : ''}`}>
-                      <SelectValue placeholder={codesLoading ? 'Loading...' : 'Select regulation'} />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {regulations.map(r => (
-                        <SelectItem key={r.id} value={r.regulation_code}>{r.regulation_code}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                  <SearchableSelect
+                    value={formData.regulation_code}
+                    onValueChange={(v) => setFormData({ ...formData, regulation_code: v })}
+                    options={regulations.map(r => ({ value: r.regulation_code, label: r.regulation_code }))}
+                    placeholder="Select regulation"
+                    searchPlaceholder="Search regulations..."
+                    loading={codesLoading}
+                    loadingText="Loading..."
+                    error={!!errors.regulation_code}
+                    clearable
+                    wrapText
+                  />
                   {errors.regulation_code && <p className="text-xs text-destructive">{errors.regulation_code}</p>}
                 </div>
                 <div className="space-y-2">
                   <Label className="text-sm font-semibold">Offering Department Code</Label>
-                  <Select value={formData.offering_department_code} onValueChange={(v) => setFormData({ ...formData, offering_department_code: v })}>
-                    <SelectTrigger className="h-10">
-                      <SelectValue placeholder={codesLoading ? 'Loading...' : 'Select department'} />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {departmentsSrc.map(d => (
-                        <SelectItem key={d.id} value={d.department_code}>{d.department_code}{d.department_name ? ` - ${d.department_name}` : ''}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                  <SearchableSelect
+                    value={formData.offering_department_code}
+                    onValueChange={(v) => setFormData({ ...formData, offering_department_code: v })}
+                    options={departmentsSrc.map(d => ({
+                      value: d.department_code,
+                      label: d.department_name ? `${d.department_code} - ${d.department_name}` : d.department_code,
+                      description: d.department_name
+                    }))}
+                    placeholder="Select department"
+                    searchPlaceholder="Search departments..."
+                    loading={codesLoading}
+                    loadingText="Loading..."
+                    clearable
+                    wrapText
+                  />
                 </div>
                 <div className="space-y-2">
                   <Label className="text-sm font-semibold">Board Code</Label>
-                  <Select value={formData.board_code} onValueChange={(v) => setFormData({ ...formData, board_code: v })}>
-                    <SelectTrigger className="h-10">
-                      <SelectValue placeholder={codesLoading ? 'Loading...' : 'Select board'} />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {boardsSrc.map(b => (
-                        <SelectItem key={b.id} value={b.board_code}>{b.board_code}{b.board_name ? ` - ${b.board_name}` : ''}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                  <SearchableSelect
+                    value={formData.board_code}
+                    onValueChange={(v) => setFormData({ ...formData, board_code: v })}
+                    options={boardsSrc.map(b => ({
+                      value: b.board_code,
+                      label: b.board_name ? `${b.board_code} - ${b.board_name}` : b.board_code,
+                      description: b.board_name
+                    }))}
+                    placeholder="Select board"
+                    searchPlaceholder="Search boards..."
+                    loading={codesLoading}
+                    loadingText="Loading..."
+                    clearable
+                    wrapText
+                  />
                 </div>
                 <div className="space-y-2 md:col-span-1">
                   <Label className="text-sm font-semibold">Course Code <span className="text-red-500">*</span></Label>
@@ -1799,75 +1814,57 @@ export default function CoursesPage() {
                 </div>
                 <div className="space-y-2">
                   <Label className="text-sm font-semibold">Course Category <span className="text-red-500">*</span></Label>
-                  <Select value={formData.course_category} onValueChange={(v) => setFormData({ ...formData, course_category: v })}>
-                    <SelectTrigger className={`h-10 ${errors.course_category ? 'border-destructive' : ''}`}>
-                      <SelectValue placeholder="Select category" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="Theory">Theory</SelectItem>
-                      <SelectItem value="Practical">Practical</SelectItem>
-                      <SelectItem value="Project">Project</SelectItem>
-                      <SelectItem value="Non Academic">Non Academic</SelectItem>
-                      <SelectItem value="Theory + Practical">Theory + Practical</SelectItem>
-                      <SelectItem value="Theory + Project">Theory + Project</SelectItem>
-                      <SelectItem value="Field Work">Field Work</SelectItem>
-                      <SelectItem value="Community Service">Community Service</SelectItem>
-                      <SelectItem value="Group Project">Group Project</SelectItem>
-                    </SelectContent>
-                  </Select>
+                  <SearchableSelect
+                    value={formData.course_category}
+                    onValueChange={(v) => setFormData({ ...formData, course_category: v })}
+                    options={toSearchableOptions([
+                      "Theory", "Practical", "Project", "Non Academic",
+                      "Theory + Practical", "Theory + Project", "Field Work",
+                      "Community Service", "Group Project"
+                    ])}
+                    placeholder="Select category"
+                    searchPlaceholder="Search categories..."
+                    error={!!errors.course_category}
+                    clearable
+                    wrapText
+                  />
                   {errors.course_category && <p className="text-xs text-destructive">{errors.course_category}</p>}
                 </div>
                 <div className="space-y-2">
                   <Label className="text-sm font-semibold">Course Type</Label>
-                  <Select value={formData.course_type} onValueChange={(v) => setFormData({ ...formData, course_type: v })}>
-                    <SelectTrigger className="h-10">
-                      <SelectValue placeholder="Select type" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="Ability Enhancement">Ability Enhancement</SelectItem>
-                      <SelectItem value="Additional Credit course">Additional Credit course</SelectItem>
-                      <SelectItem value="Advance learner course">Advance learner course</SelectItem>
-                      <SelectItem value="Audit Course">Audit Course</SelectItem>
-                      <SelectItem value="Bridge course">Bridge course</SelectItem>
-                      <SelectItem value="Core Practical">Core Practical</SelectItem>
-                      <SelectItem value="Core">Core</SelectItem>
-                      <SelectItem value="Discipline Specific elective Practical">Discipline Specific elective Practical</SelectItem>
-                      <SelectItem value="Discipline Specific elective">Discipline Specific elective</SelectItem>
-                      <SelectItem value="Elective Practical">Elective Practical</SelectItem>
-                      <SelectItem value="Elective">Elective</SelectItem>
-                      <SelectItem value="English">English</SelectItem>
-                      <SelectItem value="Extra Disciplinary Elective Practical">Extra Disciplinary Elective Practical</SelectItem>
-                      <SelectItem value="Extra Disciplinary">Extra Disciplinary</SelectItem>
-                      <SelectItem value="Foundation Course">Foundation Course</SelectItem>
-                      <SelectItem value="Generic Elective Practical">Generic Elective Practical</SelectItem>
-                      <SelectItem value="Generic Elective">Generic Elective</SelectItem>
-                      <SelectItem value="Internship">Internship</SelectItem>
-                      <SelectItem value="Language">Language</SelectItem>
-                      <SelectItem value="Naanmuthalvan">Naanmuthalvan</SelectItem>
-                      <SelectItem value="Non Academic">Non Academic</SelectItem>
-                      <SelectItem value="Non Major Elective Practical">Non Major Elective Practical</SelectItem>
-                      <SelectItem value="Non Major Elective">Non Major Elective</SelectItem>
-                      <SelectItem value="Practical">Practical</SelectItem>
-                      <SelectItem value="Project">Project</SelectItem>
-                      <SelectItem value="Skill Enhancement Practical">Skill Enhancement Practical</SelectItem>
-                      <SelectItem value="Skill Enhancement">Skill Enhancement</SelectItem>
-                    </SelectContent>
-                  </Select>
+                  <SearchableSelect
+                    value={formData.course_type}
+                    onValueChange={(v) => setFormData({ ...formData, course_type: v })}
+                    options={toSearchableOptions([
+                      "Ability Enhancement", "Additional Credit course", "Advance learner course",
+                      "Audit Course", "Bridge course", "Core Practical", "Core",
+                      "Discipline Specific elective Practical", "Discipline Specific elective",
+                      "Elective Practical", "Elective", "English",
+                      "Extra Disciplinary Elective Practical", "Extra Disciplinary",
+                      "Foundation Course", "Generic Elective Practical", "Generic Elective",
+                      "Internship", "Language", "Naanmuthalvan", "Non Academic",
+                      "Non Major Elective Practical", "Non Major Elective",
+                      "Practical", "Project", "Skill Enhancement Practical", "Skill Enhancement"
+                    ])}
+                    placeholder="Select type"
+                    searchPlaceholder="Search course types..."
+                    clearable
+                    wrapText
+                  />
                 </div>
                 <div className="space-y-2">
                   <Label className="text-sm font-semibold">Part</Label>
-                  <Select value={formData.course_part_master} onValueChange={(v) => setFormData({ ...formData, course_part_master: v })}>
-                    <SelectTrigger className="h-10">
-                      <SelectValue placeholder="Select part" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="Part I">Part I</SelectItem>
-                      <SelectItem value="Part II">Part II</SelectItem>
-                      <SelectItem value="Part III">Part III</SelectItem>
-                      <SelectItem value="Part IV">Part IV</SelectItem>
-                      <SelectItem value="Part V">Part V</SelectItem>
-                    </SelectContent>
-                  </Select>
+                  <SearchableSelect
+                    value={formData.course_part_master}
+                    onValueChange={(v) => setFormData({ ...formData, course_part_master: v })}
+                    options={toSearchableOptions([
+                      "Part I", "Part II", "Part III", "Part IV", "Part V"
+                    ])}
+                    placeholder="Select part"
+                    searchPlaceholder="Search parts..."
+                    clearable
+                    wrapText
+                  />
                 </div>
                 <div className="space-y-2">
                   <Label className="text-sm font-semibold">Credit <span className="text-red-500">*</span></Label>
@@ -1912,18 +1909,17 @@ export default function CoursesPage() {
                 </div>
                 <div className="space-y-2">
                   <Label className="text-sm font-semibold">E-Code Name</Label>
-                  <Select value={formData.e_code_name || undefined} onValueChange={(v) => setFormData({ ...formData, e_code_name: v })}>
-                    <SelectTrigger className="h-10">
-                      <SelectValue placeholder="Select language (optional)" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="Tamil">Tamil</SelectItem>
-                      <SelectItem value="English">English</SelectItem>
-                      <SelectItem value="French">French</SelectItem>
-                      <SelectItem value="Malayalam">Malayalam</SelectItem>
-                      <SelectItem value="Hindi">Hindi</SelectItem>
-                    </SelectContent>
-                  </Select>
+                  <SearchableSelect
+                    value={formData.e_code_name || ""}
+                    onValueChange={(v) => setFormData({ ...formData, e_code_name: v })}
+                    options={toSearchableOptions([
+                      "Tamil", "English", "French", "Malayalam", "Hindi"
+                    ])}
+                    placeholder="Select language (optional)"
+                    searchPlaceholder="Search languages..."
+                    clearable
+                    wrapText
+                  />
                 </div>
                 <div className="space-y-2">
                   <Label className="text-sm font-semibold">Exam hours <span className="text-red-500">*</span></Label>
@@ -1932,29 +1928,30 @@ export default function CoursesPage() {
                 </div>
                 <div className="space-y-2">
                   <Label className="text-sm font-semibold">Evaluation Type <span className="text-red-500">*</span></Label>
-                  <Select value={formData.evaluation_type} onValueChange={(v) => setFormData({ ...formData, evaluation_type: v })}>
-                    <SelectTrigger className={`h-10 ${errors.evaluation_type ? 'border-destructive' : ''}`}>
-                      <SelectValue placeholder="Select evaluation type" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="CIA">CIA</SelectItem>
-                      <SelectItem value="ESE">ESE</SelectItem>
-                      <SelectItem value="CIA + ESE">CIA + ESE</SelectItem>
-                    </SelectContent>
-                  </Select>
+                  <SearchableSelect
+                    value={formData.evaluation_type}
+                    onValueChange={(v) => setFormData({ ...formData, evaluation_type: v })}
+                    options={toSearchableOptions(["CIA", "ESE", "CIA + ESE"])}
+                    placeholder="Select evaluation type"
+                    searchPlaceholder="Search evaluation types..."
+                    error={!!errors.evaluation_type}
+                    clearable
+                    wrapText
+                  />
                   {errors.evaluation_type && <p className="text-xs text-destructive">{errors.evaluation_type}</p>}
                 </div>
                 <div className="space-y-2">
                   <Label className="text-sm font-semibold">Result Type <span className="text-red-500">*</span></Label>
-                  <Select value={formData.result_type} onValueChange={(v) => setFormData({ ...formData, result_type: v })}>
-                    <SelectTrigger className={`h-10 ${errors.result_type ? 'border-destructive' : ''}`}>
-                      <SelectValue placeholder="Select result type" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="Mark">Mark</SelectItem>
-                      <SelectItem value="Status">Status</SelectItem>
-                    </SelectContent>
-                  </Select>
+                  <SearchableSelect
+                    value={formData.result_type}
+                    onValueChange={(v) => setFormData({ ...formData, result_type: v })}
+                    options={toSearchableOptions(["Mark", "Status"])}
+                    placeholder="Select result type"
+                    searchPlaceholder="Search result types..."
+                    error={!!errors.result_type}
+                    clearable
+                    wrapText
+                  />
                   {errors.result_type && <p className="text-xs text-destructive">{errors.result_type}</p>}
                 </div>
                 <div className="space-y-2 md:col-span-3">
