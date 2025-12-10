@@ -133,7 +133,7 @@ const data = {
 			url: "#",
 			icon: BookText,
 			isActive: false,
-			roles: ["super_admin", "coe"], // Super admin only
+			roles: ["super_admin", "coe", "coe_office"], // Super admin only
 			items: [
 				{ title: "Courses",        url: "/master/courses",                      icon: BookText },
 				{ title: "Courses (Temp)", url: "/master/courses-temp",                 icon: Database },
