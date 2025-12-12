@@ -22,7 +22,8 @@
       "Bash(npm audit:*)",
       "WebSearch",
       "Bash(npm uninstall:*)",
-      "Bash(node scripts/apply-course-mapping-groups-function.js:*)"
+      "Bash(node scripts/apply-course-mapping-groups-function.js:*)",
+      "Bash(del /q \"d:\\JKKN\\Development\\Application\\COE\\jkkncoe\\app\\(coe)\\master\\courses-temp\\page.tsx\")"
     ],
     "deny": [],
     "ask": []
