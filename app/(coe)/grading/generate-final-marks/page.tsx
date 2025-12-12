@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useEffect, useMemo } from "react"
-import * as XLSX from "xlsx"
+import XLSX from "@/lib/utils/excel-compat"
 import { AppSidebar } from "@/components/layout/app-sidebar"
 import { AppHeader } from "@/components/layout/app-header"
 import { AppFooter } from "@/components/layout/app-footer"
@@ -220,9 +220,10 @@ export default function GenerateFinalMarksPage() {
 	}
 
 	const handleCourseToggle = (courseId: string) => {
-		// Don't allow toggling saved courses
+		// Don't allow toggling courses that cannot be regenerated
+		// A course can be regenerated only if: no results exist OR result_status is 'Pending'
 		const course = courseOfferings.find(co => co.course_id === courseId)
-		if (course?.is_saved) return
+		if (course && course.can_regenerate === false) return
 
 		setSelectedCourses(prev =>
 			prev.includes(courseId)
@@ -232,12 +233,12 @@ export default function GenerateFinalMarksPage() {
 	}
 
 	const handleSelectAllCourses = () => {
-		// Only select unsaved courses
-		const unsavedCourses = courseOfferings.filter(co => !co.is_saved)
-		if (selectedCourses.length === unsavedCourses.length) {
+		// Only select courses that can be regenerated
+		const regeneratableCourses = courseOfferings.filter(co => co.can_regenerate !== false)
+		if (selectedCourses.length === regeneratableCourses.length) {
 			setSelectedCourses([])
 		} else {
-			setSelectedCourses(unsavedCourses.map(co => co.course_id))
+			setSelectedCourses(regeneratableCourses.map(co => co.course_id))
 		}
 	}
 
@@ -603,9 +604,9 @@ export default function GenerateFinalMarksPage() {
 										variant="outline"
 										size="sm"
 										onClick={handleSelectAllCourses}
-										disabled={courseOfferings.filter(co => !co.is_saved).length === 0}
+										disabled={courseOfferings.filter(co => co.can_regenerate !== false).length === 0}
 									>
-										{selectedCourses.length === courseOfferings.filter(co => !co.is_saved).length && selectedCourses.length > 0 ? 'Deselect All' : 'Select All'}
+										{selectedCourses.length === courseOfferings.filter(co => co.can_regenerate !== false).length && selectedCourses.length > 0 ? 'Deselect All' : 'Select All'}
 									</Button>
 								</div>
 							</CardHeader>
@@ -623,54 +624,87 @@ export default function GenerateFinalMarksPage() {
 								) : (
 									<div className="space-y-4">
 										<div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-											{courseOfferings.map(co => (
-												<div
-													key={co.id}
-													className={`p-3 border rounded-lg transition-all ${
-														co.is_saved
-															? 'border-green-300 bg-green-50 dark:bg-green-900/10 dark:border-green-700 cursor-not-allowed opacity-70'
-															: selectedCourses.includes(co.course_id)
-																? 'border-primary bg-primary/5 cursor-pointer'
-																: 'border-border hover:border-primary/50 cursor-pointer'
-													}`}
-													onClick={() => !co.is_saved && handleCourseToggle(co.course_id)}
-												>
-													<div className="flex items-start gap-3">
-														<Checkbox
-															checked={co.is_saved || selectedCourses.includes(co.course_id)}
-															onCheckedChange={() => !co.is_saved && handleCourseToggle(co.course_id)}
-															onClick={(e) => e.stopPropagation()}
-															disabled={co.is_saved}
-															className={co.is_saved ? 'opacity-50' : ''}
-														/>
-														<div className="flex-1">
-															<div className="flex items-center gap-2">
-																<div className="font-medium text-sm">{co.course_code}</div>
+											{courseOfferings.map(co => {
+												// Determine if this course can be selected for regeneration
+												// Once results are saved, regeneration is blocked
+												const canSelect = co.can_regenerate !== false
+												// Determine visual state - any saved course is now locked
+												const isLocked = co.is_saved === true
+
+												return (
+													<div
+														key={co.id}
+														className={`p-3 border rounded-lg transition-all ${
+															isLocked
+																? 'border-amber-300 bg-amber-50 dark:bg-amber-900/10 dark:border-amber-700 cursor-not-allowed opacity-70'
+																: selectedCourses.includes(co.course_id)
+																	? 'border-primary bg-primary/5 cursor-pointer'
+																	: 'border-border hover:border-primary/50 cursor-pointer'
+														}`}
+														onClick={() => canSelect && handleCourseToggle(co.course_id)}
+													>
+														<div className="flex items-start gap-3">
+															<Checkbox
+																checked={selectedCourses.includes(co.course_id)}
+																onCheckedChange={() => canSelect && handleCourseToggle(co.course_id)}
+																onClick={(e) => e.stopPropagation()}
+																disabled={!canSelect}
+																className={!canSelect ? 'opacity-50' : ''}
+															/>
+															<div className="flex-1">
+																<div className="flex items-center gap-2 flex-wrap">
+																	<div className="font-medium text-sm">{co.course_code}</div>
+																	{/* Show result_status badge */}
+																	{co.is_saved && co.result_status && (
+																		<Badge
+																			variant="outline"
+																			className={`text-xs ${
+																				co.result_status === 'Pending'
+																					? 'bg-green-100 text-green-700 border-green-300 dark:bg-green-900/20 dark:text-green-400 dark:border-green-700'
+																					: co.result_status === 'Published'
+																						? 'bg-blue-100 text-blue-700 border-blue-300 dark:bg-blue-900/20 dark:text-blue-400 dark:border-blue-700'
+																						: 'bg-amber-100 text-amber-700 border-amber-300 dark:bg-amber-900/20 dark:text-amber-400 dark:border-amber-700'
+																			}`}
+																		>
+																			{co.result_status === 'Pending' ? (
+																				<CheckCircle2 className="h-3 w-3 mr-1" />
+																			) : (
+																				<AlertTriangle className="h-3 w-3 mr-1" />
+																			)}
+																			{co.result_status}
+																		</Badge>
+																	)}
+																</div>
+																<div className="text-xs text-muted-foreground">{co.course_name}</div>
+																<div className="flex items-center gap-2 mt-1">
+																	<Badge variant="secondary" className="text-xs">Sem {co.semester}</Badge>
+																	<Badge variant="outline" className="text-xs">{co.credits} Credits</Badge>
+																</div>
+																{/* Show status message for saved courses */}
 																{co.is_saved && (
-																	<Badge variant="outline" className="text-xs bg-green-100 text-green-700 border-green-300 dark:bg-green-900/20 dark:text-green-400 dark:border-green-700">
-																		<CheckCircle2 className="h-3 w-3 mr-1" />
-																		Saved
-																	</Badge>
+																	<div className={`text-xs mt-2 flex items-center gap-1 ${
+																		co.result_status === 'Pending'
+																			? 'text-amber-600 dark:text-amber-400'
+																			: 'text-red-600 dark:text-red-400'
+																	}`}>
+																		<AlertTriangle className="h-3 w-3" />
+																		Already saved - Status: {co.result_status} (Cannot regenerate)
+																	</div>
 																)}
-															</div>
-															<div className="text-xs text-muted-foreground">{co.course_name}</div>
-															<div className="flex items-center gap-2 mt-1">
-																<Badge variant="secondary" className="text-xs">Sem {co.semester}</Badge>
-																<Badge variant="outline" className="text-xs">{co.credits} Credits</Badge>
 															</div>
 														</div>
 													</div>
-												</div>
-											))}
+												)
+											})}
 										</div>
 
 										<div className="flex items-center justify-between pt-4 border-t">
-											<div className="text-sm text-muted-foreground flex items-center gap-3">
-												<span>{selectedCourses.length} of {courseOfferings.filter(co => !co.is_saved).length} course(s) selected</span>
+											<div className="text-sm text-muted-foreground flex items-center gap-3 flex-wrap">
+												<span>{selectedCourses.length} of {courseOfferings.filter(co => co.can_regenerate !== false).length} course(s) selected</span>
 												{courseOfferings.filter(co => co.is_saved).length > 0 && (
-													<span className="text-green-600 dark:text-green-400 flex items-center gap-1">
-														<CheckCircle2 className="h-3.5 w-3.5" />
-														{courseOfferings.filter(co => co.is_saved).length} already saved
+													<span className="text-amber-600 dark:text-amber-400 flex items-center gap-1">
+														<AlertTriangle className="h-3.5 w-3.5" />
+														{courseOfferings.filter(co => co.is_saved).length} already saved (locked)
 													</span>
 												)}
 											</div>

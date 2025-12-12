@@ -1,4 +1,4 @@
-import * as XLSX from 'xlsx'
+import ExcelJS from 'exceljs'
 
 export interface CourseReferenceData {
 	institutions: Array<{ institution_code: string }>
@@ -11,8 +11,8 @@ export interface CourseReferenceData {
  * - Sheet 1: Course Master (with headers and sample data)
  * - Sheet 2: Reference Data (lookup values for dropdowns)
  */
-export function generateCourseTemplate(referenceData: CourseReferenceData): XLSX.WorkBook {
-	const workbook = XLSX.utils.book_new()
+export function generateCourseTemplate(referenceData: CourseReferenceData): ExcelJS.Workbook {
+	const workbook = new ExcelJS.Workbook()
 
 	// ==================== SHEET 1: Course Master ====================
 	const courseMasterHeaders = [
@@ -110,63 +110,82 @@ export function generateCourseTemplate(referenceData: CourseReferenceData): XLSX
 		'TRUE'                           // Status
 	]
 
-	// Create worksheet with headers and sample row
-	const courseMasterData = [courseMasterHeaders, sampleRow]
-	const courseMasterSheet = XLSX.utils.aoa_to_sheet(courseMasterData)
+	// Create Course Master worksheet
+	const courseMasterSheet = workbook.addWorksheet('Course Master')
+
+	// Add headers
+	courseMasterSheet.addRow(courseMasterHeaders)
+
+	// Style header row
+	const headerRow = courseMasterSheet.getRow(1)
+	headerRow.font = { bold: true }
+	headerRow.fill = {
+		type: 'pattern',
+		pattern: 'solid',
+		fgColor: { argb: 'FFE0E0E0' }
+	}
+
+	// Add sample data row
+	courseMasterSheet.addRow(sampleRow)
 
 	// Set column widths for better readability
-	courseMasterSheet['!cols'] = [
-		{ wch: 18 },  // Institution Code*
-		{ wch: 18 },  // Regulation Code*
-		{ wch: 25 },  // Offering Department Code*
-		{ wch: 15 },  // Course Code*
-		{ wch: 30 },  // Course Name*
-		{ wch: 15 },  // Display Code*
-		{ wch: 18 },  // Course Category*
-		{ wch: 15 },  // Course Type
-		{ wch: 20 },  // Course Part Master
-		{ wch: 10 },  // Credit
-		{ wch: 15 },  // Split Credit
-		{ wch: 15 },  // Theory Credit
-		{ wch: 17 },  // Practical Credit
-		{ wch: 18 },  // QP Code*
-		{ wch: 15 },  // E Code Name
-		{ wch: 15 },  // Exam Duration Hours
-		{ wch: 17 },  // Evaluation Type*
-		{ wch: 15 },  // Result Type*
-		{ wch: 18 },  // Self Study Course
-		{ wch: 20 },  // Outside Class Course
-		{ wch: 12 },  // Open Book
-		{ wch: 15 },  // Online Course
-		{ wch: 25 },  // Dummy Number Not Required
-		{ wch: 15 },  // Annual Course
-		{ wch: 17 },  // Multiple QP Set
-		{ wch: 17 },  // No of QP Setter
-		{ wch: 18 },  // No of Scrutinizer
-		{ wch: 15 },  // Fee Exception
-		{ wch: 30 },  // Syllabus PDF URL
-		{ wch: 40 },  // Description
-		{ wch: 15 },  // Class Hours*
-		{ wch: 15 },  // Theory Hours*
-		{ wch: 17 },  // Practical Hours*
-		{ wch: 20 },  // Internal Max Mark*
-		{ wch: 20 },  // Internal Pass Mark*
-		{ wch: 25 },  // Internal Converted Mark*
-		{ wch: 20 },  // External Max Mark*
-		{ wch: 20 },  // External Pass Mark*
-		{ wch: 25 },  // External Converted Mark*
-		{ wch: 18 },  // Total Pass Mark*
-		{ wch: 18 },  // Total Max Mark*
-		{ wch: 18 },  // Annual Semester*
-		{ wch: 20 },  // Registration Based*
-		{ wch: 10 },  // Status
+	const columnWidths = [
+		18,  // Institution Code*
+		18,  // Regulation Code*
+		25,  // Offering Department Code*
+		15,  // Course Code*
+		30,  // Course Name*
+		15,  // Display Code*
+		18,  // Course Category*
+		15,  // Course Type
+		20,  // Course Part Master
+		10,  // Credit
+		15,  // Split Credit
+		15,  // Theory Credit
+		17,  // Practical Credit
+		18,  // QP Code*
+		15,  // E Code Name
+		15,  // Exam Duration Hours
+		17,  // Evaluation Type*
+		15,  // Result Type*
+		18,  // Self Study Course
+		20,  // Outside Class Course
+		12,  // Open Book
+		15,  // Online Course
+		25,  // Dummy Number Not Required
+		15,  // Annual Course
+		17,  // Multiple QP Set
+		17,  // No of QP Setter
+		18,  // No of Scrutinizer
+		15,  // Fee Exception
+		30,  // Syllabus PDF URL
+		40,  // Description
+		15,  // Class Hours*
+		15,  // Theory Hours*
+		17,  // Practical Hours*
+		20,  // Internal Max Mark*
+		20,  // Internal Pass Mark*
+		25,  // Internal Converted Mark*
+		20,  // External Max Mark*
+		20,  // External Pass Mark*
+		25,  // External Converted Mark*
+		18,  // Total Pass Mark*
+		18,  // Total Max Mark*
+		18,  // Annual Semester*
+		20,  // Registration Based*
+		10,  // Status
 	]
 
-	XLSX.utils.book_append_sheet(workbook, courseMasterSheet, 'Course Master')
+	courseMasterSheet.columns = columnWidths.map((width, index) => ({
+		key: courseMasterHeaders[index],
+		width
+	}))
 
 	// ==================== SHEET 2: Reference Data ====================
-	// Build reference data in a clean, structured format similar to the example
-	const referenceRows: any[] = []
+	const referenceSheet = workbook.addWorksheet('Reference Data')
+
+	// Build reference data rows
+	const referenceRows: (string | number)[][] = []
 
 	// Helper function to add section header
 	const addSection = (title: string) => {
@@ -219,7 +238,7 @@ export function generateCourseTemplate(referenceData: CourseReferenceData): XLSX
 	addSection('COURSE CATEGORY')
 	addTableHeaders('Category', 'Code/Value', 'Name/Description')
 	addTableHeaders('Value', 'Description', '')
-	;[
+	const courseCategories = [
 		['Theory', 'Theory-based course'],
 		['Practical', 'Practical/Lab-based course'],
 		['Project', 'Project-based course'],
@@ -229,7 +248,8 @@ export function generateCourseTemplate(referenceData: CourseReferenceData): XLSX
 		['Community Service', 'Community service activity'],
 		['Group Project', 'Group project work'],
 		['Non Academic', 'Non-academic activity']
-	].forEach(([value, desc]) => {
+	]
+	courseCategories.forEach(([value, desc]) => {
 		referenceRows.push(['', value, desc])
 	})
 
@@ -237,7 +257,7 @@ export function generateCourseTemplate(referenceData: CourseReferenceData): XLSX
 	addSection('COURSE TYPE')
 	addTableHeaders('Category', 'Code/Value', 'Name/Description')
 	addTableHeaders('Value', 'Description', '')
-	;[
+	const courseTypes = [
 		['Core', 'Core/Compulsory course'],
 		['Generic Elective', 'Generic elective course'],
 		['Skill Enhancement', 'Skill enhancement course'],
@@ -252,7 +272,8 @@ export function generateCourseTemplate(referenceData: CourseReferenceData): XLSX
 		['Non Academic', 'Non-academic activity'],
 		['Naanmuthalvan', 'Naanmuthalvan program'],
 		['Elective', 'General elective course']
-	].forEach(([value, desc]) => {
+	]
+	courseTypes.forEach(([value, desc]) => {
 		referenceRows.push(['', value, desc])
 	})
 
@@ -260,13 +281,14 @@ export function generateCourseTemplate(referenceData: CourseReferenceData): XLSX
 	addSection('COURSE PART MASTER')
 	addTableHeaders('Category', 'Code/Value', 'Name/Description')
 	addTableHeaders('Value', 'Description', '')
-	;[
+	const courseParts = [
 		['Part I', 'First part of the course'],
 		['Part II', 'Second part of the course'],
 		['Part III', 'Third part of the course'],
 		['Part IV', 'Fourth part of the course'],
 		['Part V', 'Fifth part of the course']
-	].forEach(([value, desc]) => {
+	]
+	courseParts.forEach(([value, desc]) => {
 		referenceRows.push(['', value, desc])
 	})
 
@@ -274,11 +296,12 @@ export function generateCourseTemplate(referenceData: CourseReferenceData): XLSX
 	addSection('EVALUATION TYPE')
 	addTableHeaders('Category', 'Code/Value', 'Name/Description')
 	addTableHeaders('Value', 'Description', '')
-	;[
+	const evalTypes = [
 		['CA', 'Continuous Assessment only'],
 		['ESE', 'End Semester Examination only'],
 		['CA + ESE', 'Combined CA and ESE']
-	].forEach(([value, desc]) => {
+	]
+	evalTypes.forEach(([value, desc]) => {
 		referenceRows.push(['', value, desc])
 	})
 
@@ -286,10 +309,11 @@ export function generateCourseTemplate(referenceData: CourseReferenceData): XLSX
 	addSection('RESULT TYPE')
 	addTableHeaders('Category', 'Code/Value', 'Name/Description')
 	addTableHeaders('Value', 'Description', '')
-	;[
+	const resultTypes = [
 		['Mark', 'Numeric marks'],
 		['Status', 'Pass/Fail status only']
-	].forEach(([value, desc]) => {
+	]
+	resultTypes.forEach(([value, desc]) => {
 		referenceRows.push(['', value, desc])
 	})
 
@@ -297,7 +321,7 @@ export function generateCourseTemplate(referenceData: CourseReferenceData): XLSX
 	addSection('E CODE NAME')
 	addTableHeaders('Category', 'Code/Value', 'Name/Description')
 	addTableHeaders('Value', 'Description', '')
-	;[
+	const eCodeNames = [
 		['None', 'No language code'],
 		['Tamil', 'Tamil language'],
 		['English', 'English language'],
@@ -306,7 +330,8 @@ export function generateCourseTemplate(referenceData: CourseReferenceData): XLSX
 		['Hindi', 'Hindi language'],
 		['Computer Science', 'Computer Science elective'],
 		['Mathematics', 'Mathematics elective']
-	].forEach(([value, desc]) => {
+	]
+	eCodeNames.forEach(([value, desc]) => {
 		referenceRows.push(['', value, desc])
 	})
 
@@ -314,10 +339,11 @@ export function generateCourseTemplate(referenceData: CourseReferenceData): XLSX
 	addSection('BOOLEAN FIELDS')
 	addTableHeaders('Category', 'Code/Value', 'Name/Description')
 	addTableHeaders('Value', 'Description', '')
-	;[
+	const booleanFields = [
 		['TRUE', 'Yes/Active/Enabled (case-insensitive)'],
 		['FALSE', 'No/Inactive/Disabled (case-insensitive)']
-	].forEach(([value, desc]) => {
+	]
+	booleanFields.forEach(([value, desc]) => {
 		referenceRows.push(['', value, desc])
 	})
 
@@ -332,16 +358,17 @@ export function generateCourseTemplate(referenceData: CourseReferenceData): XLSX
 	referenceRows.push(['', '• If Split Credit = TRUE, both Theory and Practical credits required', ''])
 	referenceRows.push(['', '• URLs: Must start with http:// or https://', ''])
 
-	const referenceSheet = XLSX.utils.aoa_to_sheet(referenceRows)
+	// Add all rows to reference sheet
+	referenceRows.forEach(row => {
+		referenceSheet.addRow(row)
+	})
 
 	// Set column widths for Reference Data sheet
-	referenceSheet['!cols'] = [
-		{ wch: 25 },  // Category
-		{ wch: 35 },  // Code/Value
-		{ wch: 50 },  // Name/Description
+	referenceSheet.columns = [
+		{ width: 25 },  // Category
+		{ width: 35 },  // Code/Value
+		{ width: 50 },  // Name/Description
 	]
-
-	XLSX.utils.book_append_sheet(workbook, referenceSheet, 'Reference Data')
 
 	return workbook
 }
@@ -349,6 +376,7 @@ export function generateCourseTemplate(referenceData: CourseReferenceData): XLSX
 /**
  * Converts workbook to buffer for downloading
  */
-export function workbookToBuffer(workbook: XLSX.WorkBook): ArrayBuffer {
-	return XLSX.write(workbook, { bookType: 'xlsx', type: 'array' })
+export async function workbookToBuffer(workbook: ExcelJS.Workbook): Promise<ArrayBuffer> {
+	const buffer = await workbook.xlsx.writeBuffer()
+	return buffer as ArrayBuffer
 }

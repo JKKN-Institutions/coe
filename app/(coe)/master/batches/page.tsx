@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react"
 import Link from "next/link"
-import * as XLSX from "xlsx"
+import XLSX from "@/lib/utils/excel-compat"
 import { AppFooter } from "@/components/layout/app-footer"
 import { ProtectedRoute } from "@/components/common/protected-route"
 import {

@@ -1,4 +1,4 @@
-import * as XLSX from 'xlsx'
+import XLSX from '@/lib/utils/excel-compat'
 import type { CourseMapping } from '@/types/course-mapping'
 
 /**

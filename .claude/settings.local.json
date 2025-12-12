@@ -11,7 +11,18 @@
       "Bash(python:*)",
       "Bash(py .claude/skills/webapp-testing/scripts/with_server.py:*)",
       "Bash(python3:*)",
-      "Bash(curl:*)"
+      "Bash(curl:*)",
+      "Bash(npx supabase:*)",
+      "Bash(node apply-migration.mjs:*)",
+      "Bash(node apply-sql-migration.mjs:*)",
+      "Bash(node test-save-final-marks.mjs:*)",
+      "Bash(node check-exam-attendance.mjs:*)",
+      "Bash(claude init:*)",
+      "Bash(npm install:*)",
+      "Bash(npm audit:*)",
+      "WebSearch",
+      "Bash(npm uninstall:*)",
+      "Bash(node scripts/apply-course-mapping-groups-function.js:*)"
     ],
     "deny": [],
     "ask": []
@@ -19,5 +30,8 @@
   "statusLine": {
     "type": "command",
     "command": "python .claude/scripts/context-monitor.py"
+  },
+  "enabledPlugins": {
+    "claude-opus-4-5-migration@claude-code-plugins": true
   }
 }

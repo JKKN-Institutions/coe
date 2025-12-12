@@ -5,7 +5,7 @@
  * (JSON, Excel) and generating import templates with reference data.
  */
 
-import * as XLSX from 'xlsx'
+import XLSX from '@/lib/utils/excel-compat'
 import type {
 	GradeSystem,
 	Institution,

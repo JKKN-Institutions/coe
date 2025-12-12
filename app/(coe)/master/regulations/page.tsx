@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback, useMemo } from "react"
 import Link from "next/link"
-import * as XLSX from "xlsx"
+import XLSX from "@/lib/utils/excel-compat"
 import { AppFooter } from "@/components/layout/app-footer"
 import {
   Breadcrumb,

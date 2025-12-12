@@ -151,13 +151,14 @@ export async function GET(request: NextRequest) {
 					return NextResponse.json({ error: 'Failed to fetch course offerings' }, { status: 400 })
 				}
 
-				// Check which courses already have final marks saved
-				let savedCourseIds: string[] = []
+				// Check which courses already have final marks saved and their result_status
+				// Map: course_id -> { is_saved: boolean, result_status: string }
+				const courseStatusMap = new Map<string, { is_saved: boolean; result_status: string }>()
 				if (institutionId && sessionId && data && data.length > 0) {
 					const courseIds = data.map((co: any) => co.course_id)
 					const { data: savedMarks } = await supabase
 						.from('final_marks')
-						.select('course_id')
+						.select('course_id, result_status')
 						.eq('institutions_id', institutionId)
 						.eq('program_id', programId)
 						.eq('examination_session_id', sessionId)
@@ -165,23 +166,51 @@ export async function GET(request: NextRequest) {
 						.eq('is_active', true)
 
 					if (savedMarks) {
-						savedCourseIds = [...new Set(savedMarks.map((m: any) => m.course_id))]
+						// Group by course_id and get the most restrictive status
+						// Priority: Published > Under Review > Withheld > Cancelled > Pending
+						const statusPriority: Record<string, number> = {
+							'Published': 5,
+							'Under Review': 4,
+							'Withheld': 3,
+							'Cancelled': 2,
+							'Pending': 1
+						}
+
+						savedMarks.forEach((m: any) => {
+							const existing = courseStatusMap.get(m.course_id)
+							const currentPriority = statusPriority[m.result_status] || 0
+							const existingPriority = existing ? (statusPriority[existing.result_status] || 0) : 0
+
+							if (!existing || currentPriority > existingPriority) {
+								courseStatusMap.set(m.course_id, {
+									is_saved: true,
+									result_status: m.result_status
+								})
+							}
+						})
 					}
 				}
 
-				// Transform to flatten course data and mark saved courses
-				const transformed = data?.map((co: any) => ({
-					id: co.id,
-					course_id: co.course_id,
-					program_id: co.program_id,
-					semester: co.semester,
-					section: co.section,
-					course_code: co.courses?.course_code,
-					course_name: co.courses?.course_name || co.courses?.course_code,
-					course_type: co.courses?.course_type,
-					credits: co.courses?.credit,
-					is_saved: savedCourseIds.includes(co.course_id)
-				})) || []
+				// Transform to flatten course data and include result_status
+				const transformed = data?.map((co: any) => {
+					const status = courseStatusMap.get(co.course_id)
+					return {
+						id: co.id,
+						course_id: co.course_id,
+						program_id: co.program_id,
+						semester: co.semester,
+						section: co.section,
+						course_code: co.courses?.course_code,
+						course_name: co.courses?.course_name || co.courses?.course_code,
+						course_type: co.courses?.course_type,
+						credits: co.courses?.credit,
+						is_saved: status?.is_saved || false,
+						result_status: status?.result_status || null,
+						// Can regenerate only if no results exist for this course
+						// Once results are saved, regeneration is blocked regardless of status
+						can_regenerate: !status
+					}
+				}) || []
 
 				return NextResponse.json(transformed)
 			}
@@ -352,6 +381,37 @@ export async function POST(request: NextRequest) {
 		if (!institutions_id || !program_id || !examination_session_id || !course_ids?.length) {
 			return NextResponse.json({
 				error: 'Missing required fields: institutions_id, program_id, examination_session_id, course_ids'
+			}, { status: 400 })
+		}
+
+		// =========================================================
+		// BUSINESS RULE: Check if results already exist
+		// Generation is ONLY allowed when NO records exist for the course
+		// Once results are saved, regeneration is blocked regardless of status
+		// =========================================================
+		const { data: existingResults, error: existingError } = await supabase
+			.from('final_marks')
+			.select('course_id, result_status')
+			.eq('institutions_id', institutions_id)
+			.eq('program_id', program_id)
+			.eq('examination_session_id', examination_session_id)
+			.in('course_id', course_ids)
+			.eq('is_active', true)
+
+		if (existingError) {
+			console.error('Error checking existing results:', existingError)
+		}
+
+		// If any course has saved results, block regeneration
+		if (existingResults && existingResults.length > 0) {
+			// Get unique course IDs with saved results
+			const blockedCourseIds = [...new Set(existingResults.map(r => r.course_id))]
+			const blockedStatuses = [...new Set(existingResults.map(r => r.result_status))]
+
+			return NextResponse.json({
+				error: `Cannot regenerate results. ${blockedCourseIds.length} course(s) already have saved results (status: ${blockedStatuses.join(', ')}). Once results are saved, regeneration is not allowed.`,
+				blocked_courses: blockedCourseIds,
+				blocked_statuses: blockedStatuses
 			}, { status: 400 })
 		}
 
@@ -598,28 +658,43 @@ export async function POST(request: NextRequest) {
 
 			// Determine grade based on percentage
 			let gradeEntry: any = undefined
+
+			// CRITICAL: For absent students, ALWAYS use AAA grade
+			// This ensures the grade is preserved when saved to the database
 			if (isAbsent || !externalMark) {
-				// Find absent grade (min_mark = -1 and max_mark = -1 for absent)
+				// Find absent grade from grade_system (min_mark = -1 and max_mark = -1 for absent)
 				gradeEntry = grades.find((g: any) => g.grades?.is_absent === true || (g.min_mark === -1 && g.max_mark === -1))
-			}
-			if (!gradeEntry && !isPass) {
+			} else if (!isPass) {
 				// Find fail/reappear grade (U grade)
 				gradeEntry = grades.find((g: any) => g.grade === 'U' || g.grades?.result_status === 'REAPPEAR')
-			}
-			if (!gradeEntry) {
-				// Find grade by percentage range
+			} else {
+				// Find grade by percentage range for passed students
 				gradeEntry = grades.find((g: any) => percentage >= g.min_mark && percentage <= g.max_mark)
 			}
 
-			// Determine grade based on pass status and absence
-			// If absent, use 'AAA' grade from grade_system (or fallback to 'AAA'); if failed, use 'U' grade; if passed, use calculated grade
-			const letterGrade = isAbsent || !externalMark
-				? (gradeEntry?.grade || 'AAA')
-				: (isPass ? (gradeEntry?.grade || 'RA') : 'U')
-			const gradePoint = isPass ? (gradeEntry?.grade_point || 0) : 0
-			const gradeDescription = isAbsent || !externalMark
-				? (gradeEntry?.description || 'Absent')
-				: (isPass ? (gradeEntry?.description || '') : 'Re-Appear')
+			// Determine letter grade based on pass status and absence
+			// IMPORTANT: For absent students, ALWAYS use 'AAA' regardless of gradeEntry
+			// This prevents the database trigger from overwriting to 'U'
+			let letterGrade: string
+			let gradePoint: number
+			let gradeDescription: string
+
+			if (isAbsent || !externalMark) {
+				// ABSENT: Always use AAA grade
+				letterGrade = 'AAA'
+				gradePoint = 0
+				gradeDescription = 'Absent'
+			} else if (!isPass) {
+				// FAILED: Always use U grade
+				letterGrade = 'U'
+				gradePoint = 0
+				gradeDescription = 'Re-Appear'
+			} else {
+				// PASSED: Use grade from grade_system
+				letterGrade = gradeEntry?.grade || 'RA'
+				gradePoint = gradeEntry?.grade_point || 0
+				gradeDescription = gradeEntry?.description || ''
+			}
 			const credits = course.credit || 0
 			const creditPoints = gradePoint * credits
 

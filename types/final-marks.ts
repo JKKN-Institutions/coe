@@ -233,6 +233,8 @@ export interface CourseOfferingData {
 	course_type?: string
 	credits?: number
 	is_saved?: boolean // True if final marks already saved for this course
+	result_status?: string | null // Current result status: Pending, Published, etc.
+	can_regenerate?: boolean // True if results can be regenerated (no results or status is Pending)
 }
 
 /**

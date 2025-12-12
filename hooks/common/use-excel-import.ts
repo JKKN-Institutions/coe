@@ -1,5 +1,5 @@
 import { useState, useCallback, useRef } from 'react'
-import * as XLSX from 'xlsx'
+import ExcelJS from 'exceljs'
 import { useToast } from '@/hooks/common/use-toast'
 
 interface ImportError {
@@ -95,11 +95,55 @@ export function useExcelImport<T>(
     const errors: ImportError[] = []
 
     try {
-      // Read Excel file
-      const data = await file.arrayBuffer()
-      const workbook = XLSX.read(data)
-      const worksheet = workbook.Sheets[workbook.SheetNames[0]]
-      const jsonData = XLSX.utils.sheet_to_json(worksheet)
+      // Read Excel file using ExcelJS
+      const arrayBuffer = await file.arrayBuffer()
+      const workbook = new ExcelJS.Workbook()
+      await workbook.xlsx.load(arrayBuffer)
+
+      const worksheet = workbook.worksheets[0]
+      if (!worksheet) {
+        throw new Error('Excel file has no worksheets')
+      }
+
+      // Convert worksheet to JSON
+      const jsonData: Record<string, any>[] = []
+      const headers: string[] = []
+
+      worksheet.eachRow((row, rowNumber) => {
+        if (rowNumber === 1) {
+          // First row is headers
+          row.eachCell((cell, colNumber) => {
+            headers[colNumber - 1] = String(cell.value || '')
+          })
+        } else {
+          // Data rows
+          const rowData: Record<string, any> = {}
+          row.eachCell((cell, colNumber) => {
+            const header = headers[colNumber - 1]
+            if (header) {
+              // Handle different cell value types
+              let value = cell.value
+              if (value && typeof value === 'object') {
+                // Handle rich text, formulas, etc.
+                if ('result' in value) {
+                  value = value.result
+                } else if ('text' in value) {
+                  value = value.text
+                } else if ('richText' in value) {
+                  value = (value as ExcelJS.CellRichTextValue).richText
+                    .map(rt => rt.text)
+                    .join('')
+                }
+              }
+              rowData[header] = value
+            }
+          })
+          // Only add row if it has data
+          if (Object.keys(rowData).length > 0) {
+            jsonData.push(rowData)
+          }
+        }
+      })
 
       if (jsonData.length === 0) {
         throw new Error('Excel file is empty')
@@ -107,8 +151,7 @@ export function useExcelImport<T>(
 
       // Validate required columns
       if (requiredColumns.length > 0) {
-        const firstRow = jsonData[0] as Record<string, any>
-        const missingColumns = requiredColumns.filter(col => !(col in firstRow))
+        const missingColumns = requiredColumns.filter(col => !headers.includes(col))
 
         if (missingColumns.length > 0) {
           throw new Error(`Missing required columns: ${missingColumns.join(', ')}`)
@@ -119,7 +162,7 @@ export function useExcelImport<T>(
       const validData: T[] = []
 
       for (let i = 0; i < jsonData.length; i++) {
-        const row = jsonData[i] as Record<string, any>
+        const row = jsonData[i]
         const rowNumber = i + 2 // +2 for Excel row number (1-indexed + header)
 
         // Validate row

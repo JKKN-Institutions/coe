@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useEffect, useMemo } from "react"
-import * as XLSX from "xlsx"
+import XLSX from "@/lib/utils/excel-compat"
 import supabaseAuthService from "@/services/auth/supabase-auth-service"
 import type { ExamRegistration, ExamRegistrationImportError, UploadSummary } from "@/types/exam-registrations"
 import { useExamRegistrations } from "@/hooks/exam-management/use-exam-registrations"

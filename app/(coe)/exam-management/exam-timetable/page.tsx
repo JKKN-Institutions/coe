@@ -1,7 +1,7 @@
 "use client"
 
 import { useMemo, useState, useEffect } from "react"
-import * as XLSX from "xlsx"
+import XLSX from "@/lib/utils/excel-compat"
 import jsPDF from 'jspdf'
 import autoTable from 'jspdf-autotable'
 import supabaseAuthService from "@/services/auth/supabase-auth-service"

@@ -128,11 +128,11 @@ export async function POST(request: Request) {
 
 		// Check if it's a bulk operation (multiple semesters)
 		if (body.bulk && Array.isArray(body.mappings)) {
-			const results = []
-			const errors = []
+			const errors: Array<{ semester_code: string; course_id: string; error: string }> = []
+			const validMappings: typeof body.mappings = []
 
+			// Step 1: Validate required fields and marks consistency upfront
 			for (const mapping of body.mappings) {
-				// Validate required fields (NO BATCH)
 				if (!mapping.course_id || !mapping.institution_code || !mapping.program_code || !mapping.regulation_code) {
 					errors.push({
 						semester_code: mapping.semester_code,
@@ -142,7 +142,6 @@ export async function POST(request: Request) {
 					continue
 				}
 
-				// Validate marks consistency
 				if (mapping.internal_pass_mark > mapping.internal_max_mark ||
 					mapping.external_pass_mark > mapping.external_max_mark ||
 					mapping.total_pass_mark > mapping.total_max_mark) {
@@ -154,159 +153,180 @@ export async function POST(request: Request) {
 					continue
 				}
 
-				// Fetch course_code from courses table
-				const { data: courseData, error: courseError } = await supabase
-					.from('courses')
-					.select('course_code')
-					.eq('id', mapping.course_id)
-					.single()
+				validMappings.push(mapping)
+			}
 
-				if (courseError || !courseData) {
-					errors.push({
-						semester_code: mapping.semester_code,
-						course_id: mapping.course_id,
-						error: 'Course not found'
-					})
+			if (validMappings.length === 0) {
+				return NextResponse.json({
+					success: [],
+					errors,
+					message: `0 mappings created, ${errors.length} failed validation`
+				})
+			}
+
+			// Step 2: Batch fetch all required lookup data in parallel
+			const uniqueCourseIds = [...new Set(validMappings.map(m => m.course_id))]
+			const uniqueInstitutionCodes = [...new Set(validMappings.map(m => m.institution_code))]
+			const uniqueProgramCodes = [...new Set(validMappings.map(m => m.program_code))]
+			const uniqueRegulationCodes = [...new Set(validMappings.map(m => m.regulation_code).filter(Boolean))]
+
+			// Parallel batch lookups - 4 queries instead of N*4
+			const [coursesResult, institutionsResult, programsResult, regulationsResult] = await Promise.all([
+				supabase.from('courses').select('id, course_code').in('id', uniqueCourseIds),
+				supabase.from('institutions').select('id, institution_code').in('institution_code', uniqueInstitutionCodes),
+				supabase.from('programs').select('id, program_code, institution_code').in('program_code', uniqueProgramCodes),
+				uniqueRegulationCodes.length > 0
+					? supabase.from('regulations').select('id, regulation_code, institution_code').in('regulation_code', uniqueRegulationCodes)
+					: Promise.resolve({ data: [], error: null })
+			])
+
+			// Create lookup maps for O(1) access
+			const courseMap = new Map<string, { id: string; course_code: string }>()
+			coursesResult.data?.forEach(c => courseMap.set(c.id, c))
+
+			const institutionMap = new Map<string, string>()
+			institutionsResult.data?.forEach(i => institutionMap.set(i.institution_code, i.id))
+
+			const programMap = new Map<string, string>()
+			programsResult.data?.forEach(p => programMap.set(`${p.institution_code}:${p.program_code}`, p.id))
+
+			const regulationMap = new Map<string, string>()
+			regulationsResult.data?.forEach(r => regulationMap.set(`${r.institution_code}:${r.regulation_code}`, r.id))
+
+			// Step 3: Build upsert records with resolved IDs
+			const upsertRecords: any[] = []
+			const now = new Date().toISOString()
+
+			for (const mapping of validMappings) {
+				const course = courseMap.get(mapping.course_id)
+				if (!course) {
+					errors.push({ semester_code: mapping.semester_code, course_id: mapping.course_id, error: 'Course not found' })
 					continue
 				}
 
-				// Fetch institution_id from institutions table based on institution_code
-				const { data: institutionData, error: institutionError } = await supabase
-					.from('institutions')
-					.select('id')
-					.eq('institution_code', mapping.institution_code)
-					.single()
-
-				if (institutionError || !institutionData) {
-					errors.push({
-						semester_code: mapping.semester_code,
-						course_id: mapping.course_id,
-						error: `Institution not found: ${mapping.institution_code}`
-					})
+				const institutionId = institutionMap.get(mapping.institution_code)
+				if (!institutionId) {
+					errors.push({ semester_code: mapping.semester_code, course_id: mapping.course_id, error: `Institution not found: ${mapping.institution_code}` })
 					continue
 				}
 
-				// Fetch program_id from programs table based on program_code
-				const { data: programData, error: programError } = await supabase
-					.from('programs')
-					.select('id')
-					.eq('program_code', mapping.program_code)
-					.eq('institution_code', mapping.institution_code)
-					.single()
-
-				if (programError || !programData) {
-					errors.push({
-						semester_code: mapping.semester_code,
-						course_id: mapping.course_id,
-						error: `Program not found: ${mapping.program_code}`
-					})
+				const programId = programMap.get(`${mapping.institution_code}:${mapping.program_code}`)
+				if (!programId) {
+					errors.push({ semester_code: mapping.semester_code, course_id: mapping.course_id, error: `Program not found: ${mapping.program_code}` })
 					continue
 				}
 
-				// Fetch regulation_id from regulations table based on regulation_code (if provided)
 				let regulationId = null
 				if (mapping.regulation_code) {
-					const { data: regulationData, error: regulationError } = await supabase
-						.from('regulations')
-						.select('id')
-						.eq('regulation_code', mapping.regulation_code)
-						.eq('institution_code', mapping.institution_code)
-						.single()
-
-					if (regulationError || !regulationData) {
-						errors.push({
-							semester_code: mapping.semester_code,
-							course_id: mapping.course_id,
-							error: `Regulation not found: ${mapping.regulation_code}`
-						})
+					regulationId = regulationMap.get(`${mapping.institution_code}:${mapping.regulation_code}`)
+					if (!regulationId) {
+						errors.push({ semester_code: mapping.semester_code, course_id: mapping.course_id, error: `Regulation not found: ${mapping.regulation_code}` })
 						continue
 					}
-					regulationId = regulationData.id
 				}
 
-				// Check for existing mapping and use UPSERT
-				const { data: existing } = await supabase
+				upsertRecords.push({
+					...mapping,
+					course_code: course.course_code,
+					institutions_id: institutionId,
+					program_id: programId,
+					regulation_id: regulationId,
+					updated_at: now
+				})
+			}
+
+			if (upsertRecords.length === 0) {
+				return NextResponse.json({
+					success: [],
+					errors,
+					message: `0 mappings created, ${errors.length} failed`
+				})
+			}
+
+			// Step 4: Batch upsert all records in a single operation
+			// Using onConflict for records with existing IDs (updates) and inserting new ones
+			const recordsWithId = upsertRecords.filter(r => r.id)
+			const recordsWithoutId = upsertRecords.filter(r => !r.id)
+
+			let allResults: any[] = []
+
+			// Bulk update existing records (those with id)
+			if (recordsWithId.length > 0) {
+				const { data: updateData, error: updateError } = await supabase
 					.from('course_mapping')
-					.select('id')
-					.eq('course_id', mapping.course_id)
-					.eq('institution_code', mapping.institution_code)
-					.eq('program_code', mapping.program_code)
-					.eq('batch_code', mapping.batch_code || '')
-					.eq('regulation_code', mapping.regulation_code)
-					.eq('semester_code', mapping.semester_code || '')
-					.eq('is_active', true)
-					.single()
-
-				let data, error
-
-				if (existing) {
-					// UPDATE existing mapping
-					const updateResult = await supabase
-						.from('course_mapping')
-						.update({
-							course_code: courseData.course_code,
-							course_group: mapping.course_group,
-							course_category: mapping.course_category,
-							course_order: mapping.course_order,
-							annual_semester: mapping.annual_semester,
-							registration_based: mapping.registration_based,
-							is_active: mapping.is_active,
-							updated_at: new Date().toISOString()
-						})
-						.eq('id', existing.id)
-						.select(`
-							*,
-							course:courses!course_mapping_course_id_fkey (
-								id,
-								course_code,
-								course_name
-							)
-						`)
-						.single()
-					data = updateResult.data
-					error = updateResult.error
-				} else {
-					// INSERT new mapping
-					const insertResult = await supabase
-						.from('course_mapping')
-						.insert([{
-							...mapping,
-							course_code: courseData.course_code,
-							institutions_id: institutionData.id,
-							program_id: programData.id,
-							regulation_id: regulationId,
-							created_at: new Date().toISOString(),
-							updated_at: new Date().toISOString()
-						}])
-						.select(`
-							*,
-							course:courses!course_mapping_course_id_fkey (
-								id,
-								course_code,
-								course_name
-							)
-						`)
-						.single()
-					data = insertResult.data
-					error = insertResult.error
-				}
-
-				if (error) {
-					console.error('Error creating course mapping:', error)
-					errors.push({
-						semester_code: mapping.semester_code,
-						course_id: mapping.course_id,
-						error: error.message
+					.upsert(recordsWithId, {
+						onConflict: 'id',
+						ignoreDuplicates: false
 					})
-				} else {
-					results.push(data)
+					.select(`
+						*,
+						course:courses!course_mapping_course_id_fkey (
+							id,
+							course_code,
+							course_name
+						)
+					`)
+
+				if (updateError) {
+					console.error('Bulk update error:', updateError)
+					// Add all as errors
+					recordsWithId.forEach(r => {
+						errors.push({ semester_code: r.semester_code, course_id: r.course_id, error: updateError.message })
+					})
+				} else if (updateData) {
+					allResults = [...allResults, ...updateData]
+				}
+			}
+
+			// Bulk insert new records (those without id)
+			if (recordsWithoutId.length > 0) {
+				// Add created_at for new records
+				const newRecords = recordsWithoutId.map(r => ({ ...r, created_at: now }))
+
+				const { data: insertData, error: insertError } = await supabase
+					.from('course_mapping')
+					.insert(newRecords)
+					.select(`
+						*,
+						course:courses!course_mapping_course_id_fkey (
+							id,
+							course_code,
+							course_name
+						)
+					`)
+
+				if (insertError) {
+					console.error('Bulk insert error:', insertError)
+					// Try individual inserts for better error granularity on duplicates
+					for (const record of newRecords) {
+						const { data: singleData, error: singleError } = await supabase
+							.from('course_mapping')
+							.insert([record])
+							.select(`
+								*,
+								course:courses!course_mapping_course_id_fkey (
+									id,
+									course_code,
+									course_name
+								)
+							`)
+							.single()
+
+						if (singleError) {
+							errors.push({ semester_code: record.semester_code, course_id: record.course_id, error: singleError.message })
+						} else if (singleData) {
+							allResults.push(singleData)
+						}
+					}
+				} else if (insertData) {
+					allResults = [...allResults, ...insertData]
 				}
 			}
 
 			return NextResponse.json({
-				success: results,
-				errors: errors,
-				message: `${results.length} mappings created successfully${errors.length > 0 ? `, ${errors.length} failed` : ''}`
+				success: allResults,
+				errors,
+				message: `${allResults.length} mappings saved successfully${errors.length > 0 ? `, ${errors.length} failed` : ''}`
 			})
 		}
 

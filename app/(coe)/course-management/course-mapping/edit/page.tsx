@@ -1,6 +1,6 @@
 "use client"
 
-import { useMemo, useState, useEffect } from "react"
+import React, { useMemo, useState, useEffect, useCallback, memo, useRef } from "react"
 import { useSearchParams, useRouter } from "next/navigation"
 import { AppSidebar } from "@/components/layout/app-sidebar"
 import { AppHeader } from "@/components/layout/app-header"
@@ -12,11 +12,11 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Label } from "@/components/ui/label"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { Skeleton } from "@/components/ui/skeleton"
 import { useToast } from "@/hooks/common/use-toast"
 import Link from "next/link"
-import { ArrowLeft, Save, RefreshCw, Calendar, Plus, X, FileText, Upload, Download } from "lucide-react"
-import * as XLSX from 'xlsx'
+import { ArrowLeft, Save, RefreshCw, Calendar, Plus, X, FileText, Upload, Download, Loader2 } from "lucide-react"
+import XLSX from '@/lib/utils/excel-compat'
 import { Checkbox } from "@/components/ui/checkbox"
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
 import { Badge } from "@/components/ui/badge"
@@ -25,6 +25,18 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { Check, ChevronsUpDown, ChevronDown, ChevronRight } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { generateCourseMappingPDF } from "@/lib/utils/generate-course-mapping-pdf"
+
+// Types for course data
+type Course = {
+	id: string
+	course_code: string
+	course_title?: string
+	course_type?: string
+	course_part_master?: string
+	course_category?: string
+	credits?: number
+	display_code?: string
+}
 
 type CourseMapping = {
 	id?: string
@@ -58,6 +70,200 @@ type SemesterTableData = {
 	isOpen: boolean
 }
 
+// Memoized Course Row Component for better performance
+const CourseTableRow = memo(function CourseTableRow({
+	mapping,
+	rowIndex,
+	courseMap,
+	isPopoverOpen,
+	onPopoverChange,
+	onUpdateRow,
+	onRemoveRow,
+	courses
+}: {
+	mapping: CourseMapping
+	rowIndex: number
+	courseMap: Map<string, Course>
+	isPopoverOpen: boolean
+	onPopoverChange: (open: boolean) => void
+	onUpdateRow: (field: string, value: any) => void
+	onRemoveRow: () => void
+	courses: Course[]
+}) {
+	const course = mapping.course_id ? courseMap.get(mapping.course_id) : null
+
+	return (
+		<TableRow>
+			<TableCell className="py-2 text-sm">{rowIndex + 1}</TableCell>
+			<TableCell className="py-2">
+				<Popover open={isPopoverOpen} onOpenChange={onPopoverChange}>
+					<PopoverTrigger asChild>
+						<Button
+							variant="outline"
+							role="combobox"
+							className="h-7 w-full justify-between text-sm"
+						>
+							{course?.course_code || "Select course"}
+							<ChevronsUpDown className="ml-2 h-3 w-3 opacity-50" />
+						</Button>
+					</PopoverTrigger>
+					<PopoverContent className="w-[400px] p-0" align="start">
+						<Command>
+							<CommandInput placeholder="Search course..." className="text-sm" />
+							<CommandList className="max-h-[300px]">
+								<CommandEmpty className="text-sm py-6 text-center">No course found.</CommandEmpty>
+								<CommandGroup>
+									{courses.map((c) => (
+										<CommandItem
+											key={c.id}
+											value={`${c.course_code} ${c.course_title || ''}`}
+											onSelect={() => {
+												onUpdateRow('course_id', c.id)
+												onPopoverChange(false)
+											}}
+											className="text-sm"
+										>
+											<div className="flex flex-col">
+												<span className="font-medium text-sm">{c.course_code}</span>
+												<span className="text-xs text-muted-foreground truncate max-w-[300px]">
+													{c.course_title || '-'}
+												</span>
+											</div>
+											<Check
+												className={cn(
+													"ml-auto h-3 w-3 flex-shrink-0",
+													mapping.course_id === c.id ? "opacity-100" : "opacity-0"
+												)}
+											/>
+										</CommandItem>
+									))}
+								</CommandGroup>
+							</CommandList>
+						</Command>
+					</PopoverContent>
+				</Popover>
+			</TableCell>
+			<TableCell className="text-sm py-2 truncate max-w-[200px]" title={course?.course_title}>
+				{course?.course_title || '-'}
+			</TableCell>
+			<TableCell className="text-sm py-2">{course?.course_type || '-'}</TableCell>
+			<TableCell className="text-sm py-2">{course?.course_part_master || '-'}</TableCell>
+			<TableCell className="text-sm py-2">{mapping.course_category || '-'}</TableCell>
+			<TableCell className="py-2">
+				<DebouncedNumberInput
+					value={mapping.course_order || 1}
+					onChange={(v) => onUpdateRow('course_order', v)}
+					className="h-7 w-16 text-sm text-center"
+					min={1}
+				/>
+			</TableCell>
+			<TableCell className="text-center py-2">
+				<Checkbox
+					checked={mapping.annual_semester || false}
+					onCheckedChange={(v) => onUpdateRow('annual_semester', v)}
+					className="h-4 w-4"
+				/>
+			</TableCell>
+			<TableCell className="text-center py-2">
+				<Checkbox
+					checked={mapping.registration_based || false}
+					onCheckedChange={(v) => onUpdateRow('registration_based', v)}
+					className="h-4 w-4"
+				/>
+			</TableCell>
+			<TableCell className="text-center py-2">
+				<Checkbox
+					checked={mapping.is_active !== false}
+					onCheckedChange={(v) => onUpdateRow('is_active', v)}
+					className="h-4 w-4"
+				/>
+			</TableCell>
+			<TableCell className="py-2">
+				<Button
+					variant="ghost"
+					size="sm"
+					onClick={onRemoveRow}
+					className="h-7 w-7 p-0 text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20"
+				>
+					<X className="h-3 w-3" />
+				</Button>
+			</TableCell>
+		</TableRow>
+	)
+})
+
+// Debounced Number Input for course order - prevents excessive re-renders
+const DebouncedNumberInput = memo(function DebouncedNumberInput({
+	value,
+	onChange,
+	className,
+	min
+}: {
+	value: number
+	onChange: (value: number) => void
+	className?: string
+	min?: number
+}) {
+	const [localValue, setLocalValue] = useState(value)
+	const timeoutRef = useRef<NodeJS.Timeout | null>(null)
+
+	useEffect(() => {
+		setLocalValue(value)
+	}, [value])
+
+	const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+		// Only allow integers
+		const newValue = parseInt(e.target.value, 10) || 1
+		setLocalValue(newValue)
+
+		// Debounce the update to parent
+		if (timeoutRef.current) {
+			clearTimeout(timeoutRef.current)
+		}
+		timeoutRef.current = setTimeout(() => {
+			onChange(newValue)
+		}, 300)
+	}
+
+	useEffect(() => {
+		return () => {
+			if (timeoutRef.current) {
+				clearTimeout(timeoutRef.current)
+			}
+		}
+	}, [])
+
+	return (
+		<Input
+			type="number"
+			value={localValue}
+			onChange={handleChange}
+			className={className}
+			min={min}
+			step={1}
+		/>
+	)
+})
+
+// Loading skeleton for semester cards
+const SemesterSkeleton = memo(function SemesterSkeleton() {
+	return (
+		<Card>
+			<CardHeader className="p-3">
+				<div className="flex items-center justify-between">
+					<div className="flex items-center gap-2">
+						<Skeleton className="h-6 w-6 rounded" />
+						<Skeleton className="h-4 w-4 rounded" />
+						<Skeleton className="h-4 w-32" />
+						<Skeleton className="h-5 w-24 rounded-full" />
+					</div>
+					<Skeleton className="h-7 w-24 rounded" />
+				</div>
+			</CardHeader>
+		</Card>
+	)
+})
+
 export default function CourseMappingEditPage() {
 	const searchParams = useSearchParams()
 	const router = useRouter()
@@ -83,8 +289,16 @@ export default function CourseMappingEditPage() {
 	const [regulationName, setRegulationName] = useState("")
 
 	// Dropdown data states
-	const [courses, setCourses] = useState<any[]>([])
+	const [courses, setCourses] = useState<Course[]>([])
 	const [semesters, setSemesters] = useState<Semester[]>([])
+	const [initialLoading, setInitialLoading] = useState(true)
+
+	// Memoized course lookup map for O(1) access - major performance improvement
+	const courseMap = useMemo(() => {
+		const map = new Map<string, Course>()
+		courses.forEach(course => map.set(course.id, course))
+		return map
+	}, [courses])
 
 	// Semester tables data
 	const [semesterTables, setSemesterTables] = useState<SemesterTableData[]>([])
@@ -116,7 +330,7 @@ export default function CourseMappingEditPage() {
 		}
 
 		// Fetch all required data in parallel for faster loading
-		setLoading(true)
+		setInitialLoading(true)
 		Promise.all([
 			fetchInstitutionName(institutionParam),
 			fetchProgramData(programParam),
@@ -124,7 +338,7 @@ export default function CourseMappingEditPage() {
 			fetchSemesters(programParam),
 			fetchCourses(institutionParam, programParam, regulationParam)
 		]).finally(() => {
-			setLoading(false)
+			setInitialLoading(false)
 		})
 	}, [institutionParam, programParam, regulationParam])
 
@@ -238,7 +452,7 @@ export default function CourseMappingEditPage() {
 				console.log("Semester table names:", semesterTables.map(t => t.semester.semester_name))
 
 				// Check if mapped courses need to be fetched (only fetch missing ones in a single batch call)
-				const mappedCourseIds = [...new Set(data.map((m: CourseMapping) => m.course_id).filter(Boolean))]
+				const mappedCourseIds = [...new Set(data.map((m: CourseMapping) => m.course_id).filter((id): id is string => Boolean(id)))]
 				if (mappedCourseIds.length > 0) {
 					// Get current courses to check which ones are missing
 					const currentCourseIds = new Set(courses.map(c => c.id))
@@ -343,38 +557,43 @@ export default function CourseMappingEditPage() {
 		}
 	}
 
-	const addCourseRow = (semesterIndex: number) => {
-		// Get batch_code from existing mappings (any mapping in any semester should have it)
-		let existingBatchCode = batchCode
-		if (!existingBatchCode) {
-			for (const table of semesterTables) {
-				const mappingWithBatch = table.mappings.find(m => m.batch_code)
-				if (mappingWithBatch?.batch_code) {
-					existingBatchCode = mappingWithBatch.batch_code
-					break
+	const addCourseRow = useCallback((semesterIndex: number) => {
+		setSemesterTables(prev => {
+			// Get batch_code from existing mappings (any mapping in any semester should have it)
+			let existingBatchCode = batchCode
+			if (!existingBatchCode) {
+				for (const table of prev) {
+					const mappingWithBatch = table.mappings.find(m => m.batch_code)
+					if (mappingWithBatch?.batch_code) {
+						existingBatchCode = mappingWithBatch.batch_code
+						break
+					}
 				}
 			}
-		}
 
-		const newRow: CourseMapping = {
-			course_id: "",
-			institution_code: selectedInstitution,
-			program_code: selectedProgram,
-			regulation_code: selectedRegulation,
-			batch_code: existingBatchCode,
-			semester_code: semesterTables[semesterIndex].semester.semester_code,
-			course_group: "General",
-			course_category: "",
-			course_order: semesterTables[semesterIndex].mappings.length + 1,
-			annual_semester: false,
-			registration_based: false,
-			is_active: true
-		}
+			const newRow: CourseMapping = {
+				course_id: "",
+				institution_code: selectedInstitution,
+				program_code: selectedProgram,
+				regulation_code: selectedRegulation,
+				batch_code: existingBatchCode,
+				semester_code: prev[semesterIndex].semester.semester_code,
+				course_group: "General",
+				course_category: "",
+				course_order: prev[semesterIndex].mappings.length + 1,
+				annual_semester: false,
+				registration_based: false,
+				is_active: true
+			}
 
-		const updated = [...semesterTables]
-		updated[semesterIndex].mappings.push(newRow)
-		setSemesterTables(updated)
-	}
+			const updated = [...prev]
+			updated[semesterIndex] = {
+				...updated[semesterIndex],
+				mappings: [...updated[semesterIndex].mappings, newRow]
+			}
+			return updated
+		})
+	}, [batchCode, selectedInstitution, selectedProgram, selectedRegulation])
 
 	const removeCourseRow = async (semesterIndex: number, rowIndex: number) => {
 		const updated = [...semesterTables]
@@ -426,56 +645,77 @@ export default function CourseMappingEditPage() {
 		}
 	}
 
-	const updateCourseRow = (semesterIndex: number, rowIndex: number, field: string, value: any) => {
-		const updated = [...semesterTables]
-		updated[semesterIndex].mappings[rowIndex] = {
-			...updated[semesterIndex].mappings[rowIndex],
-			[field]: value
-		}
-
-		if (field === 'course_id' && value) {
-			const course = courses.find(c => c.id === value)
-			if (course) {
-				updated[semesterIndex].mappings[rowIndex].course_category = course.course_category || course.course_type || ''
+	const updateCourseRow = useCallback((semesterIndex: number, rowIndex: number, field: string, value: any) => {
+		setSemesterTables(prev => {
+			const updated = [...prev]
+			updated[semesterIndex] = {
+				...updated[semesterIndex],
+				mappings: [...updated[semesterIndex].mappings]
 			}
-		}
+			updated[semesterIndex].mappings[rowIndex] = {
+				...updated[semesterIndex].mappings[rowIndex],
+				[field]: value
+			}
 
-		setSemesterTables(updated)
-	}
+			if (field === 'course_id' && value) {
+				const course = courseMap.get(value)
+				if (course) {
+					updated[semesterIndex].mappings[rowIndex].course_category = course.course_category || course.course_type || ''
+				}
+			}
 
-	const toggleSemesterTable = (semesterIndex: number) => {
-		const updated = [...semesterTables]
-		updated[semesterIndex].isOpen = !updated[semesterIndex].isOpen
-		setSemesterTables(updated)
-	}
+			return updated
+		})
+	}, [courseMap])
 
-	const toggleAllRegistration = (semesterIndex: number) => {
+	const toggleSemesterTable = useCallback((semesterIndex: number) => {
+		setSemesterTables(prev => {
+			const updated = [...prev]
+			updated[semesterIndex] = {
+				...updated[semesterIndex],
+				isOpen: !updated[semesterIndex].isOpen
+			}
+			return updated
+		})
+	}, [])
+
+	const toggleAllRegistration = useCallback((semesterIndex: number) => {
 		const key = `semester_${semesterIndex}`
-		const newValue = !selectAllRegistration[key]
+		setSelectAllRegistration(prev => {
+			const newValue = !prev[key]
+			setSemesterTables(prevTables => {
+				const updated = [...prevTables]
+				updated[semesterIndex] = {
+					...updated[semesterIndex],
+					mappings: updated[semesterIndex].mappings.map(m => ({
+						...m,
+						registration_based: newValue
+					}))
+				}
+				return updated
+			})
+			return { ...prev, [key]: newValue }
+		})
+	}, [])
 
-		setSelectAllRegistration({ ...selectAllRegistration, [key]: newValue })
-
-		const updated = [...semesterTables]
-		updated[semesterIndex].mappings = updated[semesterIndex].mappings.map(m => ({
-			...m,
-			registration_based: newValue
-		}))
-		setSemesterTables(updated)
-	}
-
-	const toggleAllStatus = (semesterIndex: number) => {
+	const toggleAllStatus = useCallback((semesterIndex: number) => {
 		const key = `semester_${semesterIndex}`
-		const newValue = !selectAllStatus[key]
-
-		setSelectAllStatus({ ...selectAllStatus, [key]: newValue })
-
-		const updated = [...semesterTables]
-		updated[semesterIndex].mappings = updated[semesterIndex].mappings.map(m => ({
-			...m,
-			is_active: newValue
-		}))
-		setSemesterTables(updated)
-	}
+		setSelectAllStatus(prev => {
+			const newValue = !prev[key]
+			setSemesterTables(prevTables => {
+				const updated = [...prevTables]
+				updated[semesterIndex] = {
+					...updated[semesterIndex],
+					mappings: updated[semesterIndex].mappings.map(m => ({
+						...m,
+						is_active: newValue
+					}))
+				}
+				return updated
+			})
+			return { ...prev, [key]: newValue }
+		})
+	}, [])
 
 	const saveAllMappings = async () => {
 		try {
@@ -787,7 +1027,7 @@ export default function CourseMappingEditPage() {
 				jsonData = Array.isArray(parsed) ? parsed : [parsed]
 			} else {
 				const data = await file.arrayBuffer()
-				const workbook = XLSX.read(data)
+				const workbook = await XLSX.read(data)
 				const worksheet = workbook.Sheets[workbook.SheetNames[0]]
 				jsonData = XLSX.utils.sheet_to_json(worksheet) as any[]
 			}
@@ -1120,8 +1360,23 @@ export default function CourseMappingEditPage() {
 						</CardContent>
 					</Card>
 
+					{/* Loading Skeleton */}
+					{initialLoading && (
+						<div className="space-y-3">
+							<div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg p-2">
+								<div className="flex items-center gap-2">
+									<Loader2 className="h-4 w-4 animate-spin text-blue-600" />
+									<span className="text-sm text-blue-600 dark:text-blue-400">Loading course mappings...</span>
+								</div>
+							</div>
+							{[1, 2, 3, 4].map((i) => (
+								<SemesterSkeleton key={i} />
+							))}
+						</div>
+					)}
+
 					{/* Semester Tables */}
-					{semesterTables.length > 0 && (
+					{!initialLoading && semesterTables.length > 0 && (
 						<div className="space-y-3 relative">
 							{courses.length > 0 && (
 								<div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg p-2">
@@ -1209,121 +1464,22 @@ export default function CourseMappingEditPage() {
 																	</TableRow>
 																) : (
 																	table.mappings.map((mapping, rowIndex) => (
-																		<TableRow key={rowIndex}>
-																			<TableCell className="py-2 text-sm">{rowIndex + 1}</TableCell>
-																			<TableCell className="py-2">
-																				<Popover
-																					open={openPopovers[`${semIndex}_${rowIndex}`] || false}
-																					onOpenChange={(open) => {
-																						setOpenPopovers(prev => ({
-																							...prev,
-																							[`${semIndex}_${rowIndex}`]: open
-																						}))
-																					}}
-																				>
-																					<PopoverTrigger asChild>
-																						<Button
-																							variant="outline"
-																							role="combobox"
-																							className="h-7 w-full justify-between text-sm"
-																						>
-																							{mapping.course_id
-																								? courses.find(c => c.id === mapping.course_id)?.course_code || "Select"
-																								: "Select course"}
-																							<ChevronsUpDown className="ml-2 h-3 w-3 opacity-50" />
-																						</Button>
-																					</PopoverTrigger>
-																					<PopoverContent className="w-[400px] p-0">
-																						<Command>
-																							<CommandInput placeholder="Search course..." className="text-sm" />
-																							<CommandList>
-																								<CommandEmpty className="text-sm">No course found.</CommandEmpty>
-																								<CommandGroup>
-																									{courses.map((course) => (
-																										<CommandItem
-																											key={course.id}
-																											value={`${course.course_code} ${course.course_title || ''}`}
-																											onSelect={() => {
-																												updateCourseRow(semIndex, rowIndex, 'course_id', course.id)
-																												setOpenPopovers(prev => ({
-																													...prev,
-																													[`${semIndex}_${rowIndex}`]: false
-																												}))
-																											}}
-																											className="text-sm"
-																										>
-																											<div className="flex flex-col">
-																												<span className="font-medium text-sm">{course.course_code}</span>
-																												<span className="text-xs text-muted-foreground">
-																													{course.course_title || '-'}
-																												</span>
-																											</div>
-																											<Check
-																												className={cn(
-																													"ml-auto h-3 w-3",
-																													mapping.course_id === course.id ? "opacity-100" : "opacity-0"
-																												)}
-																											/>
-																										</CommandItem>
-																									))}
-																								</CommandGroup>
-																							</CommandList>
-																						</Command>
-																					</PopoverContent>
-																				</Popover>
-																			</TableCell>
-																			<TableCell className="text-sm py-2">
-																				{courses.find(c => c.id === mapping.course_id)?.course_title || '-'}
-																			</TableCell>
-																			<TableCell className="text-sm py-2">
-																				{courses.find(c => c.id === mapping.course_id)?.course_type || '-'}
-																			</TableCell>
-																			<TableCell className="text-sm py-2">
-																				{courses.find(c => c.id === mapping.course_id)?.course_part_master || '-'}
-																			</TableCell>
-																			<TableCell className="text-sm py-2">{mapping.course_category || '-'}</TableCell>
-																			<TableCell className="py-2">
-																				<Input
-																					type="number"
-																					value={mapping.course_order || 1}
-																					onChange={(e) => updateCourseRow(semIndex, rowIndex, 'course_order', parseFloat(e.target.value) || 1)}
-																					className="h-7 w-20 text-sm text-center"
-																					min={0.1}
-																					step={0.1}
-																				/>
-																			</TableCell>
-																			<TableCell className="text-center py-2">
-																				<Checkbox
-																					checked={mapping.annual_semester || false}
-																					onCheckedChange={(v) => updateCourseRow(semIndex, rowIndex, 'annual_semester', v)}
-																					className="h-4 w-4"
-																				/>
-																			</TableCell>
-																			<TableCell className="text-center py-2">
-																				<Checkbox
-																					checked={mapping.registration_based || false}
-																					onCheckedChange={(v) => updateCourseRow(semIndex, rowIndex, 'registration_based', v)}
-																					className="h-4 w-4"
-																				/>
-																			</TableCell>
-																			<TableCell className="text-center py-2">
-																				<Checkbox
-																					checked={mapping.is_active !== false}
-																					onCheckedChange={(v) => updateCourseRow(semIndex, rowIndex, 'is_active', v)}
-																					className="h-4 w-4"
-																				/>
-																			</TableCell>
-																			<TableCell className="py-2">
-																				<Button
-																					variant="ghost"
-																					size="sm"
-																					onClick={() => removeCourseRow(semIndex, rowIndex)}
-																					className="h-7 w-7 p-0 text-red-600 hover:bg-red-50"
-																				>
-																					<X className="h-3 w-3" />
-																				</Button>
-																			</TableCell>
-																		</TableRow>
+																		<CourseTableRow
+																			key={`${semIndex}-${mapping.id || `new-${rowIndex}`}`}
+																			mapping={mapping}
+																			rowIndex={rowIndex}
+																			courseMap={courseMap}
+																			isPopoverOpen={openPopovers[`${semIndex}_${rowIndex}`] || false}
+																			onPopoverChange={(open) => {
+																				setOpenPopovers(prev => ({
+																					...prev,
+																					[`${semIndex}_${rowIndex}`]: open
+																				}))
+																			}}
+																			onUpdateRow={(field, value) => updateCourseRow(semIndex, rowIndex, field, value)}
+																			onRemoveRow={() => removeCourseRow(semIndex, rowIndex)}
+																			courses={courses}
+																		/>
 																	))
 																)}
 															</TableBody>

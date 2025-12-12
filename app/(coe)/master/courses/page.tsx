@@ -72,7 +72,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table"
-import * as XLSX from 'xlsx'
+import XLSX from '@/lib/utils/excel-compat'
 import type { Course, CourseImportError, UploadSummary } from '@/types/courses'
 import {
   fetchCourses as fetchCoursesService,

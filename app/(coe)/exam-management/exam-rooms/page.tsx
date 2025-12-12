@@ -75,7 +75,7 @@ import {
 } from '@/components/ui/breadcrumb'
 import { Card, CardContent, CardHeader } from '@/components/ui/card'
 import { Textarea } from '@/components/ui/textarea'
-import * as XLSX from 'xlsx'
+import XLSX from '@/lib/utils/excel-compat'
 import type { ExamRoom, Institution, ExamRoomFormData, ExamRoomImportError, UploadSummary } from '@/types/exam-rooms'
 import {
 	fetchExamRooms as fetchExamRoomsService,

@@ -1,7 +1,7 @@
 "use client"
 
 import { useMemo, useState, useEffect } from "react"
-import * as XLSX from "xlsx"
+import XLSX from "@/lib/utils/excel-compat"
 import supabaseAuthService from "@/services/auth/supabase-auth-service"
 import { AppSidebar } from "@/components/layout/app-sidebar"
 import { AppHeader } from "@/components/layout/app-header"

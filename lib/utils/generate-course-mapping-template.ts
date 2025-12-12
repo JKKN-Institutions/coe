@@ -1,4 +1,4 @@
-import * as XLSX from 'xlsx'
+import XLSX from '@/lib/utils/excel-compat'
 
 interface ReferenceData {
 	institutions: Array<{ code: string; name: string }>

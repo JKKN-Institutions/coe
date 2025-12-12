@@ -1,5 +1,5 @@
 import { useCallback } from 'react'
-import * as XLSX from 'xlsx'
+import ExcelJS from 'exceljs'
 import { useToast } from '@/hooks/common/use-toast'
 
 interface UseExcelExportOptions<T> {
@@ -49,7 +49,7 @@ export function useExcelExport<T>(
 
   const { toast } = useToast()
 
-  const exportToExcel = useCallback((data: T[]) => {
+  const exportToExcel = useCallback(async (data: T[]) => {
     try {
       if (data.length === 0) {
         toast({
@@ -61,7 +61,7 @@ export function useExcelExport<T>(
         return
       }
 
-      let exportData: any[] = data
+      let exportData: Record<string, any>[] = data as Record<string, any>[]
 
       // Format data if formatter provided
       if (formatData) {
@@ -78,31 +78,60 @@ export function useExcelExport<T>(
         })
       }
 
-      // Create worksheet
-      const worksheet = XLSX.utils.json_to_sheet(exportData)
+      // Create workbook and worksheet
+      const workbook = new ExcelJS.Workbook()
+      const worksheet = workbook.addWorksheet(sheetName)
+
+      // Get headers from first row of data
+      const headers = Object.keys(exportData[0] || {})
+
+      // Add header row
+      worksheet.addRow(headers)
+
+      // Style header row
+      const headerRow = worksheet.getRow(1)
+      headerRow.font = { bold: true }
+      headerRow.fill = {
+        type: 'pattern',
+        pattern: 'solid',
+        fgColor: { argb: 'FFE0E0E0' }
+      }
+
+      // Add data rows
+      exportData.forEach(row => {
+        worksheet.addRow(headers.map(h => row[h]))
+      })
 
       // Auto-size columns
       const maxWidth = 50
-      const colWidths = Object.keys(exportData[0] || {}).map(key => {
-        const headerWidth = key.length
-        const maxCellWidth = exportData.reduce((max, row) => {
-          const cellValue = String(row[key] || '')
-          return Math.max(max, cellValue.length)
-        }, headerWidth)
-        return { wch: Math.min(maxCellWidth + 2, maxWidth) }
-      })
-      worksheet['!cols'] = colWidths
+      worksheet.columns.forEach((column, index) => {
+        const header = headers[index] || ''
+        let maxLength = header.length
 
-      // Create workbook
-      const workbook = XLSX.utils.book_new()
-      XLSX.utils.book_append_sheet(workbook, worksheet, sheetName)
+        exportData.forEach(row => {
+          const cellValue = String(row[header] || '')
+          maxLength = Math.max(maxLength, cellValue.length)
+        })
+
+        column.width = Math.min(maxLength + 2, maxWidth)
+      })
 
       // Generate filename with timestamp
       const timestamp = new Date().toISOString().split('T')[0]
       const finalFilename = `${filename}_${timestamp}.xlsx`
 
-      // Download file
-      XLSX.writeFile(workbook, finalFilename)
+      // Generate buffer and download
+      const buffer = await workbook.xlsx.writeBuffer()
+      const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' })
+      const url = URL.createObjectURL(blob)
+
+      const link = document.createElement('a')
+      link.href = url
+      link.download = finalFilename
+      document.body.appendChild(link)
+      link.click()
+      document.body.removeChild(link)
+      URL.revokeObjectURL(url)
 
       toast({
         title: '✅ Export Successful',
@@ -122,25 +151,44 @@ export function useExcelExport<T>(
     }
   }, [filename, sheetName, columns, formatData, toast])
 
-  const downloadTemplate = useCallback((templateColumns: string[]) => {
+  const downloadTemplate = useCallback(async (templateColumns: string[]) => {
     try {
-      // Create empty worksheet with headers
-      const worksheet = XLSX.utils.aoa_to_sheet([templateColumns])
+      // Create workbook and worksheet
+      const workbook = new ExcelJS.Workbook()
+      const worksheet = workbook.addWorksheet(sheetName)
+
+      // Add header row
+      worksheet.addRow(templateColumns)
+
+      // Style header row
+      const headerRow = worksheet.getRow(1)
+      headerRow.font = { bold: true }
+      headerRow.fill = {
+        type: 'pattern',
+        pattern: 'solid',
+        fgColor: { argb: 'FFE0E0E0' }
+      }
 
       // Auto-size columns based on header length
-      worksheet['!cols'] = templateColumns.map(header => ({
-        wch: Math.max(header.length + 2, 15)
+      worksheet.columns = templateColumns.map(header => ({
+        width: Math.max(header.length + 2, 15)
       }))
-
-      // Create workbook
-      const workbook = XLSX.utils.book_new()
-      XLSX.utils.book_append_sheet(workbook, worksheet, sheetName)
 
       // Generate filename
       const finalFilename = `${filename}_template.xlsx`
 
-      // Download file
-      XLSX.writeFile(workbook, finalFilename)
+      // Generate buffer and download
+      const buffer = await workbook.xlsx.writeBuffer()
+      const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' })
+      const url = URL.createObjectURL(blob)
+
+      const link = document.createElement('a')
+      link.href = url
+      link.download = finalFilename
+      document.body.appendChild(link)
+      link.click()
+      document.body.removeChild(link)
+      URL.revokeObjectURL(url)
 
       toast({
         title: '✅ Template Downloaded',

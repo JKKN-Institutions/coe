@@ -84,7 +84,7 @@ import {
 	Settings,
 } from "lucide-react"
 import Link from "next/link"
-import * as XLSX from 'xlsx'
+import XLSX from '@/lib/utils/excel-compat'
 
 // Type imports
 import type { Student } from '@/types/students'

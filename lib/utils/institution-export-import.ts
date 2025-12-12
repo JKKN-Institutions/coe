@@ -1,4 +1,4 @@
-import * as XLSX from 'xlsx'
+import XLSX from '@/lib/utils/excel-compat'
 import type { Institution, DepartmentInfo } from '@/types/institutions'
 
 // Helper function to format department data

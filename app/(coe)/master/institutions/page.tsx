@@ -1,7 +1,7 @@
 "use client"
 
 import { useMemo, useState, useEffect } from "react"
-import * as XLSX from "xlsx"
+import XLSX from "@/lib/utils/excel-compat"
 import { useRouter } from "next/navigation"
 import { useAuth } from "@/lib/auth/auth-context-parent"
 import { AppSidebar } from "@/components/layout/app-sidebar"
