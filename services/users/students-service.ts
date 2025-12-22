@@ -6,6 +6,10 @@ export async function fetchStudents(): Promise<Student[]> {
 		throw new Error('Failed to fetch students')
 	}
 <<<<<<< Updated upstream
+=======
+<<<<<<< HEAD
+>>>>>>> Stashed changes
+<<<<<<< Updated upstream
 	return response.json()
 =======
 
@@ -33,6 +37,12 @@ export async function fetchStudents(): Promise<Student[]> {
 		console.error('Error enriching student data:', error)
 		return allStudents
 	}
+>>>>>>> Stashed changes
+<<<<<<< Updated upstream
+=======
+=======
+	return response.json()
+>>>>>>> parent of 7476950 (commit)
 >>>>>>> Stashed changes
 }
 
