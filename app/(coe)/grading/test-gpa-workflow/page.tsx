@@ -133,7 +133,7 @@ const initialTestCases: TestCase[] = [
 	{
 		id: 'gpa-1',
 		name: 'GPA Calculation - All Pass',
-		description: 'Calculate GPA for a learner who passed all courses',
+		description: 'Calculate GPA for a student who passed all courses',
 		category: 'gpa',
 		input: {
 			programType: 'UG',
@@ -155,7 +155,7 @@ const initialTestCases: TestCase[] = [
 	{
 		id: 'gpa-2',
 		name: 'GPA Calculation - With Fail',
-		description: 'Calculate GPA for a learner with one failed course',
+		description: 'Calculate GPA for a student with one failed course',
 		category: 'gpa',
 		input: {
 			programType: 'UG',
@@ -265,7 +265,7 @@ const initialTestCases: TestCase[] = [
 	{
 		id: 'pass-1',
 		name: 'UG Pass Status - External 40%',
-		description: 'UG learner with exactly 40% external (borderline pass)',
+		description: 'UG student with exactly 40% external (borderline pass)',
 		category: 'workflow',
 		input: {
 			programType: 'UG',
@@ -278,7 +278,7 @@ const initialTestCases: TestCase[] = [
 	{
 		id: 'pass-2',
 		name: 'UG Pass Status - External Below 40%',
-		description: 'UG learner with external below 40% (fail)',
+		description: 'UG student with external below 40% (fail)',
 		category: 'workflow',
 		input: {
 			programType: 'UG',
@@ -291,7 +291,7 @@ const initialTestCases: TestCase[] = [
 	{
 		id: 'pass-3',
 		name: 'PG Pass Status - 50% Threshold',
-		description: 'PG learner with exactly 50% (borderline pass)',
+		description: 'PG student with exactly 50% (borderline pass)',
 		category: 'workflow',
 		input: {
 			programType: 'PG',
@@ -304,7 +304,7 @@ const initialTestCases: TestCase[] = [
 	{
 		id: 'pass-4',
 		name: 'PG Pass Status - Below 50%',
-		description: 'PG learner with 48% external (fail)',
+		description: 'PG student with 48% external (fail)',
 		category: 'workflow',
 		input: {
 			programType: 'PG',

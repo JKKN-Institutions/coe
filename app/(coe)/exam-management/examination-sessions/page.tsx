@@ -1343,10 +1343,10 @@ export default function ExaminationSessionsPage() {
 									/>
 								</div>
 
-								{/* Total Learners Registered */}
+								{/* Total Students Registered */}
 								<div className="space-y-2">
 									<Label htmlFor="total_students_registered" className="text-sm font-semibold">
-										Total Learners Registered
+										Total Students Registered
 									</Label>
 									<Input
 										id="total_students_registered"

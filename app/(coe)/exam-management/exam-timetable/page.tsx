@@ -1131,7 +1131,7 @@ export default function ExamTimetablePage() {
                             <TableHead className="w-[100px] text-[11px]">Course Code</TableHead>
                             <TableHead className="w-[200px] text-[11px]">Course Name</TableHead>
                             <TableHead className="w-[150px] text-[11px]">Program</TableHead>
-                            <TableHead className="w-[100px] text-[11px] text-center">Learners (R|A)</TableHead>
+                            <TableHead className="w-[100px] text-[11px] text-center">Students (R|A)</TableHead>
                             <TableHead className="w-[130px] text-[11px]">Exam Date *</TableHead>
                             <TableHead className="w-[80px] text-[11px]">Session *</TableHead>
                             <TableHead className="w-[100px] text-[11px]">Time *</TableHead>

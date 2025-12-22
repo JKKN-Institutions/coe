@@ -50,7 +50,6 @@ import {
 	AlertTriangle,
 	BarChart3,
 	TestTube,
-	Mail,
 } from "lucide-react"
 
 import { NavMain } from "@/components/layout/nav-main"
@@ -120,8 +119,6 @@ const data = {
 				{ title: "Regulations",           url: "/master/regulations",     icon: LibraryBig },
 				{ title: "Section",               url: "/master/sections",        icon: Shapes },
 				{ title: "Board",                 url: "/master/boards",          icon: Shapes },
-				{ title: "PDF Settings",          url: "/master/pdf-settings",    icon: FileText },
-				{ title: "SMTP Configuration",    url: "/master/smtp-config",     icon: Mail },
 				{ title: "Grade Card Report",     url: "#",                       icon: FileText },
 				{ title: "Hall",                  url: "#",                       icon: Shapes },
 				{ title: "QP Template",           url: "#",                       icon: NotepadText },
@@ -145,13 +142,13 @@ const data = {
 			],
 		},
 		{
-			title: "Learners",
+			title: "Student",
 			url: "#",
 			icon: GraduationCap,
 			roles: ["super_admin", "coe"],
 			items: [
-				{ title: "Learner Directory",  url: "/users/students-list", icon: GraduationCap },
-				{ title: "Learner Promotion",  url: "#" },
+				{ title: "Student List",      url: "/users/students-list", icon: GraduationCap },
+				{ title: "Student Promotion", url: "#" },
 			],
 		},
 		{
@@ -164,7 +161,7 @@ const data = {
 				{ title: "Grade System",        url: "/grading/grade-system",         icon: CalendarDays },
 				{ title: "Generate Final Marks", url: "/grading/generate-final-marks", icon: Calculator },
 				{ title: "Semester Results",    url: "/grading/semester-results",     icon: BarChart3 },
-				{ title: "Learner Arrears",     url: "/grading/student-backlogs",     icon: AlertTriangle },
+				{ title: "Student Backlogs",    url: "/grading/student-backlogs",     icon: AlertTriangle },
 				{ title: "Galley Report",       url: "/grading/galley-report",        icon: FileText },
 				{ title: "Test GPA Workflow",   url: "/grading/test-gpa-workflow",    icon: TestTube },
 			],
@@ -195,16 +192,6 @@ const data = {
 			],
 		},
 		{
-			title: "Examiners",
-			url: "#",
-			icon: GraduationCap,
-			roles: ["super_admin", "coe", "deputy_coe"],
-			items: [
-				{ title: "Examiner Panel", url: "/exam-management/examiners", icon: Users },
-				{ title: "Send Appointment", url: "/exam-management/examiners/send-email", icon: FileText },
-			],
-		},
-		{
 			title: "Post-Exam",
 			url: "#",
 			icon: CheckSquare,
@@ -226,20 +213,7 @@ const data = {
 				{ title: "Attendance Report", url: "/exam-management/reports/attendance", icon: PieChart },
 			],
 		},
-		{
-			title: "Result Analytics",
-			url: "#",
-			icon: BarChart3,
-			roles: ["super_admin", "coe", "deputy_coe"],
-			items: [
-				{ title: "Dashboard",          url: "/result/dashboard",         icon: PieChart },
-				{ title: "College Analysis",   url: "/result/dashboard?tab=college",  icon: School },
-				{ title: "Program Analysis",   url: "/result/dashboard?tab=program",  icon: GraduationCap },
-				{ title: "Subject Analysis",   url: "/result/dashboard?tab=subject",  icon: BookText },
-				{ title: "NAAC Reports",       url: "/result/dashboard?tab=naac",     icon: FileText },
-				{ title: "NAAD Compliance",    url: "/result/dashboard?tab=naad",     icon: Shield },
-			],
-		},
+
 
 
 	],

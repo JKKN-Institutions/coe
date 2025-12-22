@@ -482,14 +482,14 @@ export default function StudentsPage() {
 			setStudents(data)
 			toast({
 				title: '✅ Refreshed',
-				description: `Loaded ${data.length} learners.`,
+				description: `Loaded ${data.length} students.`,
 				className: 'bg-green-50 border-green-200 text-green-800 dark:bg-green-900/20 dark:border-green-800 dark:text-green-200'
 			})
 		} catch (error) {
 			console.error('Error refreshing students:', error)
 			toast({
 				title: '❌ Refresh Failed',
-				description: 'Failed to load learners.',
+				description: 'Failed to load students.',
 				variant: 'destructive'
 			})
 		} finally {
@@ -961,14 +961,14 @@ export default function StudentsPage() {
 			setStudents(students.filter(s => s.id !== deleteStudentId))
 			toast({
 				title: '✅ Record Deleted',
-				description: 'Learner has been removed.',
+				description: 'Student has been removed.',
 				className: 'bg-green-50 border-green-200 text-green-800 dark:bg-green-900/20 dark:border-green-800 dark:text-green-200'
 			})
 		} catch (error) {
 			console.error('Error deleting student:', error)
 			toast({
 				title: '❌ Delete Failed',
-				description: 'Failed to delete learner.',
+				description: 'Failed to delete student.',
 				variant: 'destructive'
 			})
 		} finally {
@@ -997,8 +997,8 @@ export default function StudentsPage() {
 			'Blood Group': s.blood_group || '',
 
 			// CONTACT INFORMATION
-			'Learner Mobile': s.student_mobile || '',
-			'Learner Email': s.student_email || '',
+			'Student Mobile': s.student_mobile || '',
+			'Student Email': s.student_email || '',
 			'College Email': s.college_email || '',
 			'Telephone': s.telephone_number || '',
 
@@ -1130,7 +1130,7 @@ export default function StudentsPage() {
 			'Reference Contact': s.reference_contact || '',
 
 			// MEDIA
-			'Learner Photo URL': s.student_photo_url || s.photo_url || '',
+			'Student Photo URL': s.student_photo_url || s.photo_url || '',
 
 			// STATUS
 			'Admission Status': s.admission_status || '',
@@ -1139,12 +1139,12 @@ export default function StudentsPage() {
 
 		const ws = XLSX.utils.json_to_sheet(data)
 		const wb = XLSX.utils.book_new()
-		XLSX.utils.book_append_sheet(wb, ws, 'Learners')
-		XLSX.writeFile(wb, `learners_comprehensive_${new Date().toISOString().split('T')[0]}.xlsx`)
+		XLSX.utils.book_append_sheet(wb, ws, 'Students')
+		XLSX.writeFile(wb, `students_comprehensive_${new Date().toISOString().split('T')[0]}.xlsx`)
 
 		toast({
 			title: '✅ Export Successful',
-			description: `${students.length} learners exported to Excel with all fields.`,
+			description: `${students.length} students exported to Excel with all fields.`,
 			className: 'bg-green-50 border-green-200 text-green-800 dark:bg-green-900/20 dark:border-green-800 dark:text-green-200'
 		})
 	}
@@ -1155,7 +1155,7 @@ export default function StudentsPage() {
 		const url = URL.createObjectURL(blob)
 		const a = document.createElement('a')
 		a.href = url
-		a.download = `learners_${new Date().toISOString().split('T')[0]}.json`
+		a.download = `students_${new Date().toISOString().split('T')[0]}.json`
 		document.body.appendChild(a)
 		a.click()
 		document.body.removeChild(a)
@@ -1163,7 +1163,7 @@ export default function StudentsPage() {
 
 		toast({
 			title: '✅ Export Successful',
-			description: `${students.length} learners exported to JSON.`,
+			description: `${students.length} students exported to JSON.`,
 			className: 'bg-green-50 border-green-200 text-green-800 dark:bg-green-900/20 dark:border-green-800 dark:text-green-200'
 		})
 	}
@@ -1202,8 +1202,8 @@ export default function StudentsPage() {
 			'Nationality': 'Indian',
 
 			// CONTACT INFORMATION
-			'Learner Mobile': '',
-			'Learner Email': '',
+			'Student Mobile': '',
+			'Student Email': '',
 			'College Email': '',
 			'Telephone': '',
 
@@ -1317,7 +1317,7 @@ export default function StudentsPage() {
 			'Reference Contact': '',
 
 			// MEDIA
-			'Learner Photo URL': '',
+			'Student Photo URL': '',
 
 			// STATUS
 			'Admission Status': '',
@@ -1389,18 +1389,18 @@ export default function StudentsPage() {
 
 			// Main template sheet
 			const wsTemplate = XLSX.utils.json_to_sheet(template)
-			XLSX.utils.book_append_sheet(wb, wsTemplate, 'Learner Upload Template')
+			XLSX.utils.book_append_sheet(wb, wsTemplate, 'Student Upload Template')
 
 			// Single comprehensive reference sheet
 			const wsReference = XLSX.utils.json_to_sheet(referenceData)
 			XLSX.utils.book_append_sheet(wb, wsReference, 'Reference Data')
 
 			// Download file
-			XLSX.writeFile(wb, 'learners_upload_template_with_references.xlsx')
+			XLSX.writeFile(wb, 'students_upload_template_with_references.xlsx')
 
 			toast({
 				title: '✅ Template Downloaded',
-				description: 'Learner upload template with comprehensive reference data sheet downloaded successfully.',
+				description: 'Student upload template with comprehensive reference data sheet downloaded successfully.',
 				className: 'bg-green-50 border-green-200 text-green-800 dark:bg-green-900/20 dark:border-green-800 dark:text-green-200'
 			})
 		} catch (error) {
@@ -1487,7 +1487,7 @@ export default function StudentsPage() {
 
 			toast({
 				title: successCount > 0 ? '✅ Upload Complete' : '❌ Upload Failed',
-				description: `${successCount} learners uploaded successfully. ${errorCount} failed.`,
+				description: `${successCount} students uploaded successfully. ${errorCount} failed.`,
 				className: successCount > 0 ? 'bg-green-50 border-green-200 text-green-800 dark:bg-green-900/20 dark:border-green-800 dark:text-green-200' : 'bg-red-50 border-red-200 text-red-800 dark:bg-red-900/20 dark:border-red-800 dark:text-red-200'
 			})
 
@@ -1502,25 +1502,19 @@ export default function StudentsPage() {
 		}
 	}
 
-	// Filter and search logic (adapted for MyJKKN API fields)
-	const filteredStudents = students.filter((student: any) => {
-		const searchLower = searchQuery.toLowerCase()
-		// Handle object fields from MyJKKN API (e.g., {id, name})
-		const getFieldValue = (field: any) => typeof field === 'object' ? field?.name : field
+	// Filter and search logic
+	const filteredStudents = students.filter(student => {
 		const matchesSearch =
-			student.roll_number?.toLowerCase().includes(searchLower) ||
-			student.first_name?.toLowerCase().includes(searchLower) ||
-			student.last_name?.toLowerCase().includes(searchLower) ||
-			getFieldValue(student.institution)?.toLowerCase().includes(searchLower) ||
-			getFieldValue(student.department)?.toLowerCase().includes(searchLower) ||
-			getFieldValue(student.program)?.toLowerCase().includes(searchLower)
+			student.roll_number?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+			student.register_number?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+			student.first_name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+			student.last_name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+			student.student_email?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+			student.student_mobile?.includes(searchQuery)
 
-		// Filter by profile status instead of student status for MyJKKN data
-		const matchesFilter = filterStatus === 'all' ||
-			(filterStatus === 'active' && student.is_profile_complete) ||
-			(filterStatus === 'inactive' && !student.is_profile_complete)
+		const matchesStatus = filterStatus === 'all' || student.status === filterStatus
 
-		return matchesSearch && matchesFilter
+		return matchesSearch && matchesStatus
 	})
 
 	// Pagination
@@ -1528,12 +1522,12 @@ export default function StudentsPage() {
 	const startIndex = (currentPage - 1) * itemsPerPage
 	const paginatedStudents = filteredStudents.slice(startIndex, startIndex + itemsPerPage)
 
-	// Stats (adapted for MyJKKN API)
+	// Stats
 	const stats = {
 		total: students.length,
-		active: students.filter((s: any) => s.is_profile_complete).length,
-		inactive: students.filter((s: any) => !s.is_profile_complete).length,
-		graduated: 0, // MyJKKN API doesn't have this field
+		active: students.filter(s => s.status === 'active').length,
+		inactive: students.filter(s => s.status === 'inactive').length,
+		graduated: students.filter(s => s.status === 'graduated').length,
 	}
 
 	return (
@@ -1551,7 +1545,7 @@ export default function StudentsPage() {
 								</BreadcrumbItem>
 								<BreadcrumbSeparator />
 								<BreadcrumbItem>
-									<BreadcrumbPage>Learners</BreadcrumbPage>
+									<BreadcrumbPage>Students</BreadcrumbPage>
 								</BreadcrumbItem>
 							</BreadcrumbList>
 						</Breadcrumb>
@@ -1560,12 +1554,12 @@ export default function StudentsPage() {
 
 				<div className="flex flex-col gap-3 p-3 h-[calc(100vh-8rem)] overflow-hidden">
 					{/* Stats Cards */}
-					<div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+					<div className="grid grid-cols-1 md:grid-cols-4 gap-3">
 						<Card>
 							<CardContent className="p-3">
 								<div className="flex items-center justify-between">
 									<div>
-										<p className="text-xs font-medium text-muted-foreground">Total Learners</p>
+										<p className="text-xs font-medium text-muted-foreground">Total Students</p>
 										<p className="text-xl font-bold text-blue-600">{stats.total}</p>
 									</div>
 									<div className="h-7 w-7 rounded-full bg-blue-100 dark:bg-blue-900/20 flex items-center justify-center">
@@ -1579,7 +1573,7 @@ export default function StudentsPage() {
 							<CardContent className="p-3">
 								<div className="flex items-center justify-between">
 									<div>
-										<p className="text-xs font-medium text-muted-foreground">Profile Complete</p>
+										<p className="text-xs font-medium text-muted-foreground">Active Students</p>
 										<p className="text-xl font-bold text-green-600">{stats.active}</p>
 									</div>
 									<div className="h-7 w-7 rounded-full bg-green-100 dark:bg-green-900/20 flex items-center justify-center">
@@ -1593,11 +1587,25 @@ export default function StudentsPage() {
 							<CardContent className="p-3">
 								<div className="flex items-center justify-between">
 									<div>
-										<p className="text-xs font-medium text-muted-foreground">Profile Incomplete</p>
-										<p className="text-xl font-bold text-orange-600">{stats.inactive}</p>
+										<p className="text-xs font-medium text-muted-foreground">Inactive Students</p>
+										<p className="text-xl font-bold text-red-600">{stats.inactive}</p>
 									</div>
-									<div className="h-7 w-7 rounded-full bg-orange-100 dark:bg-orange-900/20 flex items-center justify-center">
-										<UserX className="h-3 w-3 text-orange-600 dark:text-orange-400" />
+									<div className="h-7 w-7 rounded-full bg-red-100 dark:bg-red-900/20 flex items-center justify-center">
+										<UserX className="h-3 w-3 text-red-600 dark:text-red-400" />
+									</div>
+								</div>
+							</CardContent>
+						</Card>
+
+						<Card>
+							<CardContent className="p-3">
+								<div className="flex items-center justify-between">
+									<div>
+										<p className="text-xs font-medium text-muted-foreground">Graduated</p>
+										<p className="text-xl font-bold text-purple-600">{stats.graduated}</p>
+									</div>
+									<div className="h-7 w-7 rounded-full bg-purple-100 dark:bg-purple-900/20 flex items-center justify-center">
+										<GraduationCap className="h-3 w-3 text-purple-600 dark:text-purple-400" />
 									</div>
 								</div>
 							</CardContent>
@@ -1608,7 +1616,7 @@ export default function StudentsPage() {
 					<Card className="flex-1 flex flex-col min-h-0">
 						<CardHeader className="flex-shrink-0 p-3">
 							<div className="flex items-center justify-between mb-2">
-								<h2 className="text-base font-bold">Learners Management</h2>
+								<h2 className="text-base font-bold">Students Management</h2>
 							</div>
 
 							<div className="flex flex-col sm:flex-row gap-2">
@@ -1623,15 +1631,17 @@ export default function StudentsPage() {
 									/>
 								</div>
 
-								{/* Profile Filter */}
+								{/* Status Filter */}
 								<Select value={filterStatus} onValueChange={setFilterStatus}>
-									<SelectTrigger className="w-[180px] h-9">
-										<SelectValue placeholder="Profile Status" />
+									<SelectTrigger className="w-[150px] h-9">
+										<SelectValue placeholder="Status" />
 									</SelectTrigger>
 									<SelectContent>
-										<SelectItem value="all">All Profiles</SelectItem>
-										<SelectItem value="active">Profile Complete</SelectItem>
-										<SelectItem value="inactive">Profile Incomplete</SelectItem>
+										<SelectItem value="all">All Status</SelectItem>
+										<SelectItem value="active">Active</SelectItem>
+										<SelectItem value="inactive">Inactive</SelectItem>
+										<SelectItem value="graduated">Graduated</SelectItem>
+										<SelectItem value="suspended">Suspended</SelectItem>
 									</SelectContent>
 								</Select>
 
@@ -1666,7 +1676,7 @@ export default function StudentsPage() {
 									/>
 									<Button size="sm" className="text-xs px-2 h-9" onClick={openAdd}>
 										<PlusCircle className="h-3 w-3 mr-1" />
-										Add Learner
+										Add Student
 									</Button>
 								</div>
 							</div>
@@ -1680,36 +1690,45 @@ export default function StudentsPage() {
 											<TableRow>
 												<TableHead className="font-bold text-xs">Roll Number</TableHead>
 												<TableHead className="font-bold text-xs">Name</TableHead>
-												<TableHead className="font-bold text-xs">Institution</TableHead>
-												<TableHead className="font-bold text-xs">Department</TableHead>
-												<TableHead className="font-bold text-xs">Program</TableHead>
-												<TableHead className="font-bold text-xs">Profile</TableHead>
+												<TableHead className="font-bold text-xs">Gender</TableHead>
+												<TableHead className="font-bold text-xs">Mobile</TableHead>
+												<TableHead className="font-bold text-xs">Email</TableHead>
+												<TableHead className="font-bold text-xs">Batch</TableHead>
+												<TableHead className="font-bold text-xs">Status</TableHead>
 												<TableHead className="font-bold text-xs text-right">Actions</TableHead>
 											</TableRow>
 										</TableHeader>
 										<TableBody>
 											{loading ? (
 												<TableRow>
-													<TableCell colSpan={7} className="text-center py-8 text-muted-foreground">
-														Loading learners...
+													<TableCell colSpan={8} className="text-center py-8 text-muted-foreground">
+														Loading students...
 													</TableCell>
 												</TableRow>
 											) : paginatedStudents.length === 0 ? (
 												<TableRow>
-													<TableCell colSpan={7} className="text-center py-8 text-muted-foreground">
-														No learners found
+													<TableCell colSpan={8} className="text-center py-8 text-muted-foreground">
+														No students found
 													</TableCell>
 												</TableRow>
 											) : (
-												paginatedStudents.map((student: any) => (
+												paginatedStudents.map((student) => (
 													<TableRow key={student.id}>
+<<<<<<< Updated upstream
 
+=======
+<<<<<<< HEAD
+<<<<<<< Updated upstream
+=======
+>>>>>>> parent of 7476950 (commit)
+>>>>>>> Stashed changes
 														<TableCell className="font-medium text-xs">{student.roll_number}</TableCell>
 														<TableCell className="text-xs">{student.full_name}</TableCell>
 														<TableCell className="text-xs">{student.gender}</TableCell>
 														<TableCell className="text-xs">{student.student_mobile || '-'}</TableCell>
 														<TableCell className="text-xs">{student.student_email || '-'}</TableCell>
 														<TableCell className="text-xs">{student.batch_year || '-'}</TableCell>
+<<<<<<< Updated upstream
 
 														<TableCell className="font-medium text-xs">{student.roll_number || '-'}</TableCell>
 														<TableCell className="text-xs">{student.full_name || `${student.first_name || ''} ${student.last_name || ''}`.trim() || '-'}</TableCell>
@@ -1723,15 +1742,39 @@ export default function StudentsPage() {
 														<TableCell className="text-xs">{typeof student.department === 'object' ? student.department?.name : student.department || '-'}</TableCell>
 														<TableCell className="text-xs">{typeof student.program === 'object' ? student.program?.name : student.program || '-'}</TableCell>
 
+=======
+<<<<<<< HEAD
+=======
+														<TableCell className="font-medium text-xs">{student.roll_number || '-'}</TableCell>
+														<TableCell className="text-xs">{student.full_name || `${student.first_name || ''} ${student.last_name || ''}`.trim() || '-'}</TableCell>
+														<TableCell className="text-xs">{typeof student.institution === 'object' ? student.institution?.name : student.institution || '-'}</TableCell>
+														<TableCell className="text-xs">{typeof student.department === 'object' ? (student.department?.department_name || student.department?.name) : (student.department || student.department_name || student.department_code) || '-'}</TableCell>
+														<TableCell className="text-xs">{typeof student.program === 'object' ? (student.program?.program_name || student.program?.name) : (student.program || student.program_name || student.program_code) || '-'}</TableCell>
+>>>>>>> Stashed changes
+=======
+>>>>>>> parent of 7476950 (commit)
+>>>>>>> Stashed changes
 														<TableCell className="text-xs">
-															<Badge variant={student.is_profile_complete ? 'default' : 'outline'}>
-																{student.is_profile_complete ? 'Complete' : 'Incomplete'}
+															<Badge variant={
+																student.status === 'active' ? 'default' :
+																student.status === 'graduated' ? 'secondary' :
+																student.status === 'suspended' ? 'destructive' : 'outline'
+															}>
+																{student.status}
 															</Badge>
 														</TableCell>
 														<TableCell className="text-right">
-															<Button variant="ghost" size="sm" className="h-7 w-7 p-0" onClick={() => openEdit(student)}>
-																<Edit className="h-3 w-3" />
-															</Button>
+															<div className="flex gap-1 justify-end">
+																<Button variant="ghost" size="sm" className="h-7 w-7 p-0" onClick={() => openEdit(student)}>
+																	<Edit className="h-3 w-3" />
+																</Button>
+																<Button variant="ghost" size="sm" className="h-7 w-7 p-0 text-destructive" onClick={() => {
+																	setDeleteStudentId(student.id)
+																	setDeleteDialogOpen(true)
+																}}>
+																	<Trash2 className="h-3 w-3" />
+																</Button>
+															</div>
 														</TableCell>
 													</TableRow>
 												))
@@ -1744,7 +1787,7 @@ export default function StudentsPage() {
 								{filteredStudents.length > 0 && (
 									<div className="flex items-center justify-between border-t px-4 py-2 bg-slate-50 dark:bg-slate-900/50">
 										<div className="text-xs text-muted-foreground">
-											Showing {startIndex + 1} to {Math.min(startIndex + itemsPerPage, filteredStudents.length)} of {filteredStudents.length} learners
+											Showing {startIndex + 1} to {Math.min(startIndex + itemsPerPage, filteredStudents.length)} of {filteredStudents.length} students
 										</div>
 										<div className="flex items-center gap-2">
 											<Button
@@ -1781,7 +1824,7 @@ export default function StudentsPage() {
 					<SheetContent className="sm:max-w-[900px] overflow-y-auto">
 						<SheetHeader>
 							<SheetTitle className="text-lg font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">
-								{editing ? 'Edit Learner' : 'Add New Learner'}
+								{editing ? 'Edit Student' : 'Add New Student'}
 							</SheetTitle>
 						</SheetHeader>
 
@@ -1928,7 +1971,7 @@ export default function StudentsPage() {
 									</div>
 
 									<div className="space-y-2">
-										<Label className="text-sm font-semibold">Learner Photo URL</Label>
+										<Label className="text-sm font-semibold">Student Photo URL</Label>
 										<Input
 											value={formData.student_photo_url}
 											onChange={(e) => setFormData({ ...formData, student_photo_url: e.target.value })}
@@ -1943,7 +1986,7 @@ export default function StudentsPage() {
 							<TabsContent value="contact" className="space-y-4 mt-4">
 								<div className="grid grid-cols-1 md:grid-cols-2 gap-4">
 									<div className="space-y-2">
-										<Label className="text-sm font-semibold">Learner Mobile</Label>
+										<Label className="text-sm font-semibold">Student Mobile</Label>
 										<Input
 											value={formData.student_mobile}
 											onChange={(e) => setFormData({ ...formData, student_mobile: e.target.value })}
@@ -1953,13 +1996,13 @@ export default function StudentsPage() {
 									</div>
 
 									<div className="space-y-2">
-										<Label className="text-sm font-semibold">Learner Email</Label>
+										<Label className="text-sm font-semibold">Student Email</Label>
 										<Input
 											type="email"
 											value={formData.student_email}
 											onChange={(e) => setFormData({ ...formData, student_email: e.target.value })}
 											className="h-10"
-											placeholder="learner@example.com"
+											placeholder="student@example.com"
 										/>
 									</div>
 
@@ -1970,7 +2013,7 @@ export default function StudentsPage() {
 											value={formData.college_email}
 											onChange={(e) => setFormData({ ...formData, college_email: e.target.value })}
 											className="h-10"
-											placeholder="learner@college.edu"
+											placeholder="student@college.edu"
 										/>
 									</div>
 
@@ -2515,7 +2558,7 @@ export default function StudentsPage() {
 									</div>
 
 									<div className="space-y-2 md:col-span-2">
-										<h3 className="text-sm font-bold text-blue-600 border-b pb-1 mt-4">UG Degree Details (for PG learners)</h3>
+										<h3 className="text-sm font-bold text-blue-600 border-b pb-1 mt-4">UG Degree Details (for PG students)</h3>
 									</div>
 
 									<div className="space-y-2">
@@ -2856,7 +2899,7 @@ export default function StudentsPage() {
 								Cancel
 							</Button>
 							<Button onClick={handleSave}>
-								{editing ? 'Update' : 'Create'} Learner
+								{editing ? 'Update' : 'Create'} Student
 							</Button>
 						</div>
 					</SheetContent>
@@ -2868,7 +2911,7 @@ export default function StudentsPage() {
 						<AlertDialogHeader>
 							<AlertDialogTitle>Are you sure?</AlertDialogTitle>
 							<AlertDialogDescription>
-								This will permanently delete this learner record. This action cannot be undone.
+								This will permanently delete this student record. This action cannot be undone.
 							</AlertDialogDescription>
 						</AlertDialogHeader>
 						<AlertDialogFooter>

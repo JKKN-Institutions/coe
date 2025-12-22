@@ -58,7 +58,7 @@ export default function StudentDetails({ studentId, onBack }: StudentDetailsProp
 
 				if (!response.ok) {
 					if (response.status === 404) {
-						throw new Error('Learner not found')
+						throw new Error('Student not found')
 					}
 					const errorData = await response.json().catch(() => ({}))
 					throw new Error(errorData.error || `HTTP error! status: ${response.status}`)
@@ -83,7 +83,7 @@ export default function StudentDetails({ studentId, onBack }: StudentDetailsProp
 		return (
 			<div className="flex justify-center items-center py-12">
 				<Loader2 className="h-8 w-8 animate-spin text-primary" />
-				<span className="ml-2 text-muted-foreground">Loading learner details...</span>
+				<span className="ml-2 text-muted-foreground">Loading student details...</span>
 			</div>
 		)
 	}
@@ -96,7 +96,7 @@ export default function StudentDetails({ studentId, onBack }: StudentDetailsProp
 				</div>
 				<Button onClick={onBack} variant="outline">
 					<ArrowLeft className="mr-2 h-4 w-4" />
-					Back to Learners
+					Back to Students
 				</Button>
 			</div>
 		)
@@ -105,10 +105,10 @@ export default function StudentDetails({ studentId, onBack }: StudentDetailsProp
 	if (!student) {
 		return (
 			<div className="py-8 text-center">
-				<p className="text-muted-foreground mb-4">No learner data available</p>
+				<p className="text-muted-foreground mb-4">No student data available</p>
 				<Button onClick={onBack} variant="outline">
 					<ArrowLeft className="mr-2 h-4 w-4" />
-					Back to Learners
+					Back to Students
 				</Button>
 			</div>
 		)

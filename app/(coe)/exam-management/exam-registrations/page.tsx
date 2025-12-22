@@ -696,7 +696,7 @@ export default function ExamRegistrationsPage() {
 			<SidebarInset>
 				<PremiumNavbar
 					title="Exam Registrations"
-					description="Manage learner exam course registrations"
+					description="Manage student exam course registrations"
 					showSearch={true}
 				/>
 				<PageTransition>
@@ -762,7 +762,7 @@ export default function ExamRegistrationsPage() {
 									</div>
 									<div>
 										<h2 className="text-lg font-semibold font-grotesk text-slate-900 dark:text-slate-100">All Exam Registrations</h2>
-										<p className="text-sm text-slate-600 dark:text-slate-400">Manage learner exam course registrations</p>
+										<p className="text-sm text-slate-600 dark:text-slate-400">Manage student exam course registrations</p>
 									</div>
 								</div>
 
@@ -824,7 +824,7 @@ export default function ExamRegistrationsPage() {
 											<tr>
 												<th className="text-left font-semibold text-sm">
 													<Button variant="ghost" size="sm" onClick={() => handleSort("student")} className="hover:bg-slate-100 dark:hover:bg-slate-800">
-														Learner
+														Student
 														<span className="ml-1">{getSortIcon("student")}</span>
 													</Button>
 												</th>
@@ -1024,10 +1024,10 @@ export default function ExamRegistrationsPage() {
 									{errors.institutions_id && <p className="text-xs text-destructive">{errors.institutions_id}</p>}
 								</div>
 
-								{/* Learner dropdown */}
+								{/* Student dropdown */}
 								<div className="space-y-2">
 									<Label htmlFor="student_id" className="text-sm font-semibold">
-										Learner <span className="text-red-500">*</span>
+										Student <span className="text-red-500">*</span>
 									</Label>
 									<Select
 										value={formData.student_id}
@@ -1037,7 +1037,7 @@ export default function ExamRegistrationsPage() {
 										disabled={!formData.institutions_id}
 									>
 										<SelectTrigger className={`h-10 ${errors.student_id ? 'border-destructive' : ''} ${!formData.institutions_id ? 'bg-muted cursor-not-allowed' : ''}`}>
-											<SelectValue placeholder={!formData.institutions_id ? "Select Institution First" : filteredStudents.length === 0 ? "No Learners Available" : "Select Learner"} />
+											<SelectValue placeholder={!formData.institutions_id ? "Select Institution First" : filteredStudents.length === 0 ? "No Students Available" : "Select Student"} />
 										</SelectTrigger>
 										<SelectContent>
 											{filteredStudents.map(student => (
@@ -1105,10 +1105,10 @@ export default function ExamRegistrationsPage() {
 									{!formData.institutions_id && <p className="text-xs text-muted-foreground">Please select an institution first</p>}
 								</div>
 
-								{/* Learner Register Number */}
+								{/* Student Register Number */}
 								<div className="space-y-2">
 									<Label htmlFor="stu_register_no" className="text-sm font-semibold">
-										Learner Register Number
+										Student Register Number
 									</Label>
 									<Input
 										id="stu_register_no"
@@ -1118,13 +1118,13 @@ export default function ExamRegistrationsPage() {
 										onChange={(e) => setFormData({ ...formData, stu_register_no: e.target.value })}
 										className="h-10"
 									/>
-									<p className="text-xs text-muted-foreground">Optional: Enter learner's register number</p>
+									<p className="text-xs text-muted-foreground">Optional: Enter student's register number</p>
 								</div>
 
-								{/* Learner Name */}
+								{/* Student Name */}
 								<div className="space-y-2">
 									<Label htmlFor="student_name" className="text-sm font-semibold">
-										Learner Name (Override)
+										Student Name (Override)
 									</Label>
 									<Input
 										id="student_name"
@@ -1134,7 +1134,7 @@ export default function ExamRegistrationsPage() {
 										onChange={(e) => setFormData({ ...formData, student_name: e.target.value })}
 										className="h-10"
 									/>
-									<p className="text-xs text-muted-foreground">Optional: Override learner name if needed</p>
+									<p className="text-xs text-muted-foreground">Optional: Override student name if needed</p>
 								</div>
 
 								<div className="space-y-2">
@@ -1410,8 +1410,8 @@ export default function ExamRegistrationsPage() {
 									<h4 className="font-semibold text-blue-800 dark:text-blue-200 text-sm mb-1">Required Excel Format & Tips:</h4>
 									<ul className="text-xs text-blue-700 dark:text-blue-300 space-y-1">
 										<li>• <strong>Institution Code</strong> (required): Must match existing institution (e.g., JKKNCAS)</li>
-										<li>• <strong>Learner Register Number</strong> (required): e.g., 24JUGEN6001</li>
-										<li>• <strong>Learner Name</strong> (required): Full name of the learner</li>
+										<li>• <strong>Student Register Number</strong> (required): e.g., 24JUGEN6001</li>
+										<li>• <strong>Student Name</strong> (required): Full name of the student</li>
 										<li>• <strong>Examination Session Code</strong> (required): Must match existing session (e.g., JKKNCAS-NOV-DEC-2025)</li>
 										<li>• <strong>Course Code</strong> (required): Must match existing course offering (e.g., 24UENS03)</li>
 										<li>• <strong>Registration Status</strong> (required): Pending, Approved, Rejected, or Cancelled</li>

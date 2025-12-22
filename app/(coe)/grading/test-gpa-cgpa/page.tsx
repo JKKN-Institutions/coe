@@ -642,7 +642,7 @@ export default function TestGPACGPAPage() {
 
 			toast({
 				title: '✅ Results Fetched',
-				description: `Fetched results for ${transformedResults.length} learners from database.`,
+				description: `Fetched results for ${transformedResults.length} students from database.`,
 				className: 'bg-green-50 border-green-200 text-green-800'
 			})
 		} catch (e) {
@@ -727,7 +727,7 @@ export default function TestGPACGPAPage() {
 
 			toast({
 				title: '✅ GPA Calculated',
-				description: `Calculated GPA for ${processedResults.length} learners using dot product formula.`,
+				description: `Calculated GPA for ${processedResults.length} students using dot product formula.`,
 				className: 'bg-green-50 border-green-200 text-green-800'
 			})
 		} catch (e) {
@@ -1139,7 +1139,7 @@ export default function TestGPACGPAPage() {
 									<CardContent className="p-3">
 										<div className="flex items-center justify-between">
 											<div>
-												<p className="text-xs font-medium text-muted-foreground">Learners</p>
+												<p className="text-xs font-medium text-muted-foreground">Students</p>
 												<p className="text-xl font-bold">{studentResults.length}</p>
 											</div>
 											<Users className="h-5 w-5 text-blue-500" />
