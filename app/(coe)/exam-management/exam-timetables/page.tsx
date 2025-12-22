@@ -835,7 +835,7 @@ export default function ExamTimetablesListPage() {
 												</TableHead>
 												<TableHead className="w-[60px] text-[11px] text-center">
 													<Button variant="ghost" size="sm" onClick={() => handleSort("student_count")} className="h-auto p-0 font-medium hover:bg-transparent">
-														Stds
+														Lrnrs
 														<span className="ml-1">{getSortIcon("student_count")}</span>
 													</Button>
 												</TableHead>
@@ -1123,7 +1123,7 @@ export default function ExamTimetablesListPage() {
 								Hall Allocation - {selectedTimetable?.course_code}
 							</DialogTitle>
 							<DialogDescription>
-								Allocate students to examination halls for {selectedTimetable?.course_name} on {selectedTimetable?.exam_date} ({selectedTimetable?.session})
+								Allocate learners to examination halls for {selectedTimetable?.course_name} on {selectedTimetable?.exam_date} ({selectedTimetable?.session})
 							</DialogDescription>
 						</DialogHeader>
 
@@ -1131,7 +1131,7 @@ export default function ExamTimetablesListPage() {
 							{/* Summary */}
 							<div className="grid grid-cols-3 gap-3">
 								<div className="bg-blue-50 dark:bg-blue-900/10 border border-blue-200 rounded-lg p-3">
-									<div className="text-xs text-blue-600 font-medium mb-1">Total Students</div>
+									<div className="text-xs text-blue-600 font-medium mb-1">Total Learners</div>
 									<div className="text-2xl font-bold text-blue-700">{selectedTimetable?.student_count || 0}</div>
 								</div>
 								<div className="bg-green-50 dark:bg-green-900/10 border border-green-200 rounded-lg p-3">
@@ -1159,8 +1159,8 @@ export default function ExamTimetablesListPage() {
 								<ul className="text-sm text-muted-foreground mt-2 space-y-1 ml-4">
 									<li>• Select rooms sorted by room_order</li>
 									<li>• Enter column start (C1, C2, etc.)</li>
-									<li>• Enter student count (validated against room capacity)</li>
-									<li>• Auto-populate students by program_code, attempt_number, student_reg_no</li>
+									<li>• Enter learner count (validated against room capacity)</li>
+									<li>• Auto-populate learners by program_code, attempt_number, learner_reg_no</li>
 									<li>• Display room capacity, balance, rows, and columns</li>
 								</ul>
 							</div>

@@ -34,10 +34,41 @@ interface AttendanceSheet {
 	courses: CourseData[]
 }
 
+/**
+ * Institution PDF Settings - configurable header/footer settings
+ * These settings come from the pdf_institution_settings table
+ */
+interface InstitutionPdfSettings {
+	// Institution details
+	institution_name: string
+	institution_code: string
+	accreditation_text?: string
+	address?: string
+
+	// Logo settings
+	logo_url?: string
+	logo_width?: string
+	logo_height?: string
+	secondary_logo_url?: string
+	secondary_logo_width?: string
+	secondary_logo_height?: string
+
+	// Color scheme
+	primary_color?: string
+	secondary_color?: string
+
+	// Font settings
+	font_family?: string
+	font_size_heading?: string
+	font_size_body?: string
+}
+
 interface StudentAttendanceSheetData {
 	sheets: AttendanceSheet[]
 	logoImage?: string
 	rightLogoImage?: string
+	/** Optional: Institution PDF settings from database */
+	institutionSettings?: InstitutionPdfSettings
 }
 
 export function generateStudentAttendanceSheetPDF(data: StudentAttendanceSheetData): string {
@@ -46,6 +77,12 @@ export function generateStudentAttendanceSheetPDF(data: StudentAttendanceSheetDa
 	const pageWidth = doc.internal.pageSize.getWidth()
 	const pageHeight = doc.internal.pageSize.getHeight()
 	const margin = 12.7 // 0.5 inch in mm
+
+	// Get institution settings or use defaults
+	const settings = data.institutionSettings
+	const defaultInstitutionName = 'J.K.K.NATARAJA COLLEGE OF ARTS & SCIENCE (AUTONOMOUS)'
+	const defaultAccreditation = '(Accredited by NAAC, Approved by AICTE, Recognized by\nUGC Under Section 2(f) & 12(B), Affiliated to Periyar University)'
+	const defaultAddress = 'Komarapalayam- 638 183, Namakkal District, Tamil Nadu'
 
 	// Process each sheet (grouped by exam_date, session)
 	data.sheets.forEach((sheet, sheetIndex) => {
@@ -65,44 +102,80 @@ export function generateStudentAttendanceSheetPDF(data: StudentAttendanceSheetDa
 
 			// ========== HEADER SECTION ==========
 
+			// Parse logo dimensions from settings (convert px to mm)
+			const parsePxToMm = (value?: string): number => {
+				if (!value) return 20 // default 20mm
+				const px = parseInt(value.replace('px', ''), 10)
+				return isNaN(px) ? 20 : px * 0.264583 // px to mm conversion
+			}
+
+			const logoWidth = parsePxToMm(settings?.logo_width)
+			const logoHeight = parsePxToMm(settings?.logo_height)
+			const secondaryLogoWidth = parsePxToMm(settings?.secondary_logo_width)
+			const secondaryLogoHeight = parsePxToMm(settings?.secondary_logo_height)
+
 			// College Logo (left side)
 			if (data.logoImage) {
 				try {
-					const logoSize = 20
-					doc.addImage(data.logoImage, 'PNG', margin, currentY, logoSize, logoSize)
+					doc.addImage(data.logoImage, 'PNG', margin, currentY, logoWidth, logoHeight)
 				} catch (e) {
 					console.warn('Failed to add logo to PDF:', e)
 				}
 			}
 
-			// College Logo (right side - JKKN text logo)
+			// College Logo (right side - secondary logo)
 			if (data.rightLogoImage) {
 				try {
-					const logoSize = 20
-					doc.addImage(data.rightLogoImage, 'PNG', pageWidth - margin - logoSize, currentY, logoSize, logoSize)
+					doc.addImage(data.rightLogoImage, 'PNG', pageWidth - margin - secondaryLogoWidth, currentY, secondaryLogoWidth, secondaryLogoHeight)
 				} catch (e) {
 					console.warn('Failed to add right logo to PDF:', e)
 				}
 			}
 
-			// College name and details (centered between logos)
+			// Get text color from settings or use black
+			const parseHexColor = (hex?: string): [number, number, number] => {
+				if (!hex || !hex.startsWith('#')) return [0, 0, 0]
+				const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex)
+				return result
+					? [parseInt(result[1], 16), parseInt(result[2], 16), parseInt(result[3], 16)]
+					: [0, 0, 0]
+			}
+
+			const primaryColor = parseHexColor(settings?.primary_color)
+			const secondaryColor = parseHexColor(settings?.secondary_color)
+
+			// Institution name (centered between logos)
+			const institutionName = settings?.institution_name || sheet.metadata.institution_name || defaultInstitutionName
 			doc.setFont('times', 'bold')
 			doc.setFontSize(12)
-			doc.setTextColor(0, 0, 0)
-			doc.text('J.K.K.NATARAJA COLLEGE OF ARTS & SCIENCE (AUTONOMOUS)', pageWidth / 2, currentY + 5, { align: 'center' })
+			doc.setTextColor(primaryColor[0], primaryColor[1], primaryColor[2])
+			doc.text(institutionName.toUpperCase(), pageWidth / 2, currentY + 5, { align: 'center' })
 
+			// Accreditation text
+			const accreditationText = settings?.accreditation_text || defaultAccreditation
 			doc.setFont('times', 'normal')
 			doc.setFontSize(8)
-			doc.text('(Accredited by NAAC, Approved by AICTE, Recognized by', pageWidth / 2, currentY + 10, { align: 'center' })
-			doc.text('UGC Under Section 2(f) & 12(B), Affiliated to Periyar University)', pageWidth / 2, currentY + 14, { align: 'center' })
+			doc.setTextColor(secondaryColor[0], secondaryColor[1], secondaryColor[2])
 
+			// Split accreditation text into lines if it contains newline
+			const accreditationLines = accreditationText.split('\n')
+			let accreditationY = currentY + 10
+			accreditationLines.forEach((line) => {
+				doc.text(line, pageWidth / 2, accreditationY, { align: 'center' })
+				accreditationY += 4
+			})
+
+			// Address
+			const address = settings?.address || defaultAddress
 			doc.setFont('times', 'bold')
 			doc.setFontSize(9)
-			doc.text('Komarapalayam- 638 183, Namakkal District, Tamil Nadu', pageWidth / 2, currentY + 19, { align: 'center' })
+			doc.setTextColor(primaryColor[0], primaryColor[1], primaryColor[2])
+			doc.text(address, pageWidth / 2, currentY + 19, { align: 'center' })
 
 			// Report Title
 			doc.setFont('times', 'bold')
 			doc.setFontSize(11)
+			doc.setTextColor(0, 0, 0)
 			doc.text('Student Attendance Sheet', pageWidth / 2, currentY + 25, { align: 'center' })
 
 			currentY += 37

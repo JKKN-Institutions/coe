@@ -6,58 +6,53 @@ export async function GET(request: Request) {
 		const supabase = getSupabaseServer()
 		const { searchParams } = new URL(request.url)
 
-		const includeDetails = searchParams.get('details') === 'true'
 		const institutionId = searchParams.get('institution_id')
 		const programId = searchParams.get('program_id')
 		const semesterId = searchParams.get('semester_id')
 		const sectionId = searchParams.get('section_id')
 		const status = searchParams.get('status')
 
-		if (includeDetails) {
-			// Fetch students with basic data (view doesn't exist yet)
-			let query = supabase
+		// Use the detailed view which has full_name computed and all related data
+		let query = supabase
+			.from('students_detailed_view')
+			.select('*', { count: 'exact' })
+			.order('created_at', { ascending: false })
+			.range(0, 9999)
+
+		if (institutionId) query = query.eq('institution_id', institutionId)
+		if (programId) query = query.eq('program_id', programId)
+		if (semesterId) query = query.eq('semester_id', semesterId)
+		if (sectionId) query = query.eq('section_id', sectionId)
+		if (status) query = query.eq('status', status)
+
+		const { data, error } = await query
+
+		if (error) {
+			console.error('Error fetching students from view:', error)
+			// Fallback to basic table if view fails
+			let fallbackQuery = supabase
 				.from('students')
 				.select('*', { count: 'exact' })
 				.order('created_at', { ascending: false })
-				.range(0, 9999) // Increase limit from default 1000 to 10000 rows
+				.range(0, 9999)
 
-			if (institutionId) query = query.eq('institution_id', institutionId)
-			if (programId) query = query.eq('program_id', programId)
-			if (semesterId) query = query.eq('semester_id', semesterId)
-			if (sectionId) query = query.eq('section_id', sectionId)
-			if (status) query = query.eq('status', status)
+			if (institutionId) fallbackQuery = fallbackQuery.eq('institution_id', institutionId)
+			if (programId) fallbackQuery = fallbackQuery.eq('program_id', programId)
+			if (semesterId) fallbackQuery = fallbackQuery.eq('semester_id', semesterId)
+			if (sectionId) fallbackQuery = fallbackQuery.eq('section_id', sectionId)
+			if (status) fallbackQuery = fallbackQuery.eq('status', status)
 
-			const { data, error } = await query
+			const { data: fallbackData, error: fallbackError } = await fallbackQuery
 
-			if (error) {
-				console.error('Error fetching students:', error)
-				return NextResponse.json({ error: error.message }, { status: 500 })
+			if (fallbackError) {
+				console.error('Error fetching students:', fallbackError)
+				return NextResponse.json({ error: fallbackError.message }, { status: 500 })
 			}
 
-			return NextResponse.json(data || [])
-		} else {
-			// Use basic query without joins (FK constraints may not exist for all relationships)
-			let query = supabase
-				.from('students')
-				.select('*', { count: 'exact' })
-				.order('created_at', { ascending: false })
-				.range(0, 9999) // Increase limit from default 1000 to 10000 rows
-
-			if (institutionId) query = query.eq('institution_id', institutionId)
-			if (programId) query = query.eq('program_id', programId)
-			if (semesterId) query = query.eq('semester_id', semesterId)
-			if (sectionId) query = query.eq('section_id', sectionId)
-			if (status) query = query.eq('status', status)
-
-			const { data, error } = await query
-
-			if (error) {
-				console.error('Error fetching students:', error)
-				return NextResponse.json({ error: error.message }, { status: 500 })
-			}
-
-			return NextResponse.json(data || [])
+			return NextResponse.json(fallbackData || [])
 		}
+
+		return NextResponse.json(data || [])
 	} catch (err) {
 		console.error('Unexpected error in GET /api/students:', err)
 		return NextResponse.json({ error: 'Internal server error' }, { status: 500 })

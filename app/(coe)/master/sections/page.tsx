@@ -697,7 +697,7 @@ export default function SectionPage() {
                   </div>
                   <div>
                     <h2 className="text-sm font-semibold">Section</h2>
-                    <p className="text-[11px] text-muted-foreground">Manage student sections</p>
+                    <p className="text-[11px] text-muted-foreground">Manage learner sections</p>
                   </div>
                 </div>
               </div>

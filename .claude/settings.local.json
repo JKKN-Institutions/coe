@@ -24,11 +24,45 @@
       "Bash(npm uninstall:*)",
       "Bash(node scripts/apply-course-mapping-groups-function.js:*)",
       "Bash(del /q \"d:\\JKKN\\Development\\Application\\COE\\jkkncoe\\app\\(coe)\\master\\courses-temp\\page.tsx\")",
-      "Bash(powershell -Command \"Remove-Item -Recurse -Force ''d:\\JKKN\\Development\\Application\\COE\\jkkncoe\\app\\(coe)\\master\\courses-temp''\")"
+      "Bash(powershell -Command \"Remove-Item -Recurse -Force ''d:\\JKKN\\Development\\Application\\COE\\jkkncoe\\app\\(coe)\\master\\courses-temp''\")",
+      "Bash(node apply-pdf-settings-migration.mjs:*)",
+      "Bash(node:*)",
+      "Bash(powershell -Command \"Remove-Item -Recurse -Force ''d:\\JKKN\\Development\\Application\\COE\\jkkncoe\\app\\(coe)\\admin\\pdf-settings''\")",
+      "Bash(npm run dev:*)",
+      "Bash(tasklist:*)",
+      "Bash(findstr:*)",
+      "Bash(if exist \".next\" rmdir /s /q \".next\")",
+      "Bash(powershell -Command \"if (Test-Path ''.next'') { Remove-Item -Recurse -Force ''.next''; Write-Host ''Cleared .next cache folder'' } else { Write-Host ''.next folder does not exist'' }\")",
+      "Bash(if not exist \"public\\logo\" mkdir \"public\\logo\")",
+      "Bash(powershell -Command:*)",
+      "Bash(claude mcp add-from-claude-desktop:*)",
+      "Bash(claude mcp remove:*)",
+      "Bash(npx -y @anthropic/mcp-server-playwright --version)",
+      "Bash(gh pr view:*)",
+      "Bash(where gh:*)",
+      "Skill(skill-creator)",
+      "mcp__supabase__*",
+      "Bash(claude doctor)",
+      "Bash(claude --version:*)",
+      "Bash(npm view:*)",
+      "Skill(release-decoder)",
+      "Bash(claude update:*)",
+      "Bash(bash:*)",
+      "Bash(find:*)",
+      "Skill(release-decoder:*)",
+      "Bash(head:*)",
+      "Bash(dir:*)",
+      "Skill(whatsnew)",
+      "Skill(whatsnew:*)"
     ],
-    "deny": [],
+    "deny": [
+      "mcp__filesystem__*"
+    ],
     "ask": []
   },
+  "disabledMcpjsonServers": [
+    "obsidian"
+  ],
   "statusLine": {
     "type": "command",
     "command": "python .claude/scripts/context-monitor.py"

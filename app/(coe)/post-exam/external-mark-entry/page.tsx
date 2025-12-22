@@ -268,14 +268,14 @@ export default function ExternalMarkEntryPage() {
 			setCourseDetails(data.course_details)
 
 			toast({
-				title: "✅ Students Loaded",
-				description: `Loaded ${data.students.length} students for packet ${data.course_details.packet_no}`,
+				title: "✅ Learners Loaded",
+				description: `Loaded ${data.students.length} learners for packet ${data.course_details.packet_no}`,
 				className: "bg-green-50 border-green-200 text-green-800",
 			})
 		} catch (error) {
 			toast({
 				title: "❌ Error",
-				description: error instanceof Error ? error.message : 'Failed to load students',
+				description: error instanceof Error ? error.message : 'Failed to load learners',
 				variant: "destructive",
 			})
 		} finally {
@@ -328,7 +328,7 @@ export default function ExternalMarkEntryPage() {
 		if (missingMarks.length > 0) {
 			toast({
 				title: "⚠️ Validation Error",
-				description: `Please enter marks for all ${students.length} students`,
+				description: `Please enter marks for all ${students.length} learners`,
 				variant: "destructive",
 			})
 			return
@@ -366,7 +366,7 @@ export default function ExternalMarkEntryPage() {
 
 			toast({
 				title: "✅ Marks Saved",
-				description: `Successfully saved marks for ${students.length} students`,
+				description: `Successfully saved marks for ${students.length} learners`,
 				className: "bg-green-50 border-green-200 text-green-800",
 				duration: 5000,
 			})
@@ -717,7 +717,7 @@ export default function ExternalMarkEntryPage() {
 									disabled={!selectedPacketId || loadingStudents}
 									className="bg-emerald-600 hover:bg-emerald-700 text-white h-8 text-xs"
 								>
-									{loadingStudents ? 'Loading...' : 'Load Students'}
+									{loadingStudents ? 'Loading...' : 'Load Learners'}
 								</Button>
 							</div>
 						</CardContent>

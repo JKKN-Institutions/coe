@@ -286,7 +286,7 @@ export default function GenerateFinalMarksPage() {
 
 			toast({
 				title: '✅ Generation Complete',
-				description: `Generated results for ${data.total_students} students across ${data.total_courses} course(s).`,
+				description: `Generated results for ${data.total_students} learners across ${data.total_courses} course(s).`,
 				className: 'bg-green-50 border-green-200 text-green-800'
 			})
 
@@ -377,7 +377,7 @@ export default function GenerateFinalMarksPage() {
 
 		const excelData = results.map(r => ({
 			'Register No': r.register_no,
-			'Student Name': r.student_name,
+			'Learner Name': r.student_name,
 			'Course Code': r.course_code,
 			'Course Name': r.course_name,
 			'Internal Marks': r.internal_marks,
@@ -497,7 +497,7 @@ export default function GenerateFinalMarksPage() {
 						</div>
 						<div>
 							<h1 className="text-2xl font-bold">Generate Final Marks</h1>
-							<p className="text-sm text-muted-foreground">Calculate and save student final grades</p>
+							<p className="text-sm text-muted-foreground">Calculate and save learner final grades</p>
 						</div>
 					</div>
 
@@ -1034,7 +1034,7 @@ export default function GenerateFinalMarksPage() {
 						<AlertDialogTitle>Save Final Marks to Database?</AlertDialogTitle>
 						<AlertDialogDescription>
 							This will save {results.length} final marks records to the database.
-							Existing records for the same student-course-session combination will be updated.
+							Existing records for the same learner-course-session combination will be updated.
 						</AlertDialogDescription>
 					</AlertDialogHeader>
 					<AlertDialogFooter>
