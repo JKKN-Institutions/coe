@@ -1713,12 +1713,20 @@ export default function StudentsPage() {
 											) : (
 												paginatedStudents.map((student) => (
 													<TableRow key={student.id}>
+<<<<<<< Updated upstream
 														<TableCell className="font-medium text-xs">{student.roll_number}</TableCell>
 														<TableCell className="text-xs">{student.full_name}</TableCell>
 														<TableCell className="text-xs">{student.gender}</TableCell>
 														<TableCell className="text-xs">{student.student_mobile || '-'}</TableCell>
 														<TableCell className="text-xs">{student.student_email || '-'}</TableCell>
 														<TableCell className="text-xs">{student.batch_year || '-'}</TableCell>
+=======
+														<TableCell className="font-medium text-xs">{student.roll_number || '-'}</TableCell>
+														<TableCell className="text-xs">{student.full_name || `${student.first_name || ''} ${student.last_name || ''}`.trim() || '-'}</TableCell>
+														<TableCell className="text-xs">{typeof student.institution === 'object' ? student.institution?.name : student.institution || '-'}</TableCell>
+														<TableCell className="text-xs">{typeof student.department === 'object' ? (student.department?.department_name || student.department?.name) : (student.department || student.department_name || student.department_code) || '-'}</TableCell>
+														<TableCell className="text-xs">{typeof student.program === 'object' ? (student.program?.program_name || student.program?.name) : (student.program || student.program_name || student.program_code) || '-'}</TableCell>
+>>>>>>> Stashed changes
 														<TableCell className="text-xs">
 															<Badge variant={
 																student.status === 'active' ? 'default' :

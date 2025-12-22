@@ -5,7 +5,35 @@ export async function fetchStudents(): Promise<Student[]> {
 	if (!response.ok) {
 		throw new Error('Failed to fetch students')
 	}
+<<<<<<< Updated upstream
 	return response.json()
+=======
+
+	// Enrich students with department and program names from master data
+	try {
+		const [deptRes, progRes] = await Promise.all([
+			fetch('/api/master/departments'),
+			fetch('/api/master/programs')
+		])
+
+		const departments = deptRes.ok ? await deptRes.json() : []
+		const programs = progRes.ok ? await progRes.json() : []
+
+		// Create lookup maps
+		const deptMap = new Map(departments.map((d: any) => [d.department_code, d.department_name]))
+		const progMap = new Map(programs.map((p: any) => [p.program_code, p.program_name]))
+
+		// Enrich student data
+		return allStudents.map(student => ({
+			...student,
+			department_name: student.department_code ? deptMap.get(student.department_code) || student.department_code : undefined,
+			program_name: student.program_code ? progMap.get(student.program_code) || student.program_code : undefined,
+		}))
+	} catch (error) {
+		console.error('Error enriching student data:', error)
+		return allStudents
+	}
+>>>>>>> Stashed changes
 }
 
 export async function createStudent(data: StudentFormData): Promise<Student> {
