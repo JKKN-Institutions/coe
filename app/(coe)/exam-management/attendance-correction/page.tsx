@@ -354,7 +354,7 @@ export default function AttendanceCorrectionPage() {
 						<div className="flex items-center justify-between">
 							<div>
 								<h1 className="text-x font-bold tracking-tight">Attendance Correction</h1>
-								<p className="text-[11px] text-muted-foreground mt-1">Search and correct learner attendance records</p>
+								<p className="text-[11px] text-muted-foreground mt-1">Search and correct student attendance records</p>
 							</div>
 							<Edit className="h-6 w-6 text-primary" />
 						</div>
@@ -367,8 +367,8 @@ export default function AttendanceCorrectionPage() {
 										<Search className="h-3 w-3 text-white" />
 									</div>
 									<div>
-										<h2 className="text-sm font-bold">Search Learner Attendance</h2>
-										<p className="text-[11px] text-muted-foreground">Select course and enter learner register number</p>
+										<h2 className="text-sm font-bold">Search Student Attendance</h2>
+										<p className="text-[11px] text-muted-foreground">Select course and enter student register number</p>
 									</div>
 								</div>
 							</CardHeader>
@@ -460,7 +460,7 @@ export default function AttendanceCorrectionPage() {
 									{/* Register Number Input (Child - Dependent on Course Selection) */}
 									<div className="space-y-2">
 										<Label htmlFor="register_no" className="text-xs font-semibold">
-											Learner Register Number <span className="text-red-500">*</span>
+											Student Register Number <span className="text-red-500">*</span>
 										</Label>
 										<div className="flex gap-2">
 											<Input
@@ -500,10 +500,10 @@ export default function AttendanceCorrectionPage() {
 							</CardContent>
 						</Card>
 
-						{/* Learner Info & Attendance Record */}
+						{/* Student Info & Attendance Record */}
 						{showRecord && studentInfo && attendanceRecord && (
 							<>
-								{/* Learner Information Card */}
+								{/* Student Information Card */}
 								<Card className="bg-gradient-to-r from-green-50 to-emerald-50 dark:from-green-950/20 dark:to-emerald-950/20 border-green-200 dark:border-green-800">
 									<CardContent className="pt-4 p-3">
 										<div className="grid grid-cols-1 md:grid-cols-4 gap-3">
@@ -512,7 +512,7 @@ export default function AttendanceCorrectionPage() {
 												<p className="text-xs font-semibold">{studentInfo.register_no}</p>
 											</div>
 											<div>
-												<p className="text-[11px] font-medium text-muted-foreground">Learner Name</p>
+												<p className="text-[11px] font-medium text-muted-foreground">Student Name</p>
 												<p className="text-xs font-semibold">{studentInfo.name}</p>
 											</div>
 											<div>
@@ -668,7 +668,7 @@ export default function AttendanceCorrectionPage() {
 					</AlertDialogHeader>
 
 					<div className="space-y-3 py-4">
-						{/* Learner Details */}
+						{/* Student Details */}
 						{studentInfo && attendanceRecord && (
 							<div className="flex items-center justify-between p-3 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg">
 								<div>

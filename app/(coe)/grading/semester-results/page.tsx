@@ -89,7 +89,7 @@ interface CourseResult {
 	pass_status: string
 }
 
-interface LearnerResult {
+interface StudentResult {
 	student_id: string
 	student_name: string
 	register_no: string
@@ -103,9 +103,9 @@ interface LearnerResult {
 }
 
 interface ProgramSummary {
-	total_learners: number
-	passed_learners: number
-	failed_learners: number
+	total_students: number
+	passed_students: number
+	failed_students: number
 	pass_percentage: number
 	average_gpa: number
 	highest_gpa: number
@@ -150,7 +150,7 @@ interface StoredSemesterResult {
 }
 
 interface StoredResultsSummary {
-	total_learners: number
+	total_students: number
 	passed: number
 	failed: number
 	pending: number
@@ -561,13 +561,13 @@ export default function SemesterResultsPage() {
 
 	// Results state
 	const [loading, setLoading] = useState(false)
-	const [learnerResults, setLearnerResults] = useState<LearnerResult[]>([])
+	const [studentResults, setStudentResults] = useState<StudentResult[]>([])
 	const [summary, setSummary] = useState<ProgramSummary | null>(null)
 
 	// UI state
 	const [searchTerm, setSearchTerm] = useState("")
 	const [groupByPart, setGroupByPart] = useState(true)
-	const [expandedLearners, setExpandedLearners] = useState<Set<string>>(new Set())
+	const [expandedStudents, setExpandedStudents] = useState<Set<string>>(new Set())
 	const [viewMode, setViewMode] = useState<'table' | 'cards'>('table')
 	const [activeTab, setActiveTab] = useState<'results' | 'summary' | 'parts'>('results')
 	const [mainTab, setMainTab] = useState<'calculate' | 'stored'>('calculate')
@@ -609,7 +609,7 @@ export default function SemesterResultsPage() {
 		setSelectedPrograms([])
 		setSelectedSemesters([])
 		setSemesters([])
-		setLearnerResults([])
+		setStudentResults([])
 		setSummary(null)
 		setProgramType(null)
 	}, [selectedInstitution])
@@ -623,7 +623,7 @@ export default function SemesterResultsPage() {
 			setSemesters([])
 		}
 		setSelectedSemesters([])
-		setLearnerResults([])
+		setStudentResults([])
 		setSummary(null)
 	}, [selectedPrograms, selectedSession, selectedInstitution])
 
@@ -741,7 +741,7 @@ export default function SemesterResultsPage() {
 		}
 
 		setLoading(true)
-		setLearnerResults([])
+		setStudentResults([])
 		setSummary(null)
 		setCurrentPage(1)
 
@@ -771,12 +771,12 @@ export default function SemesterResultsPage() {
 			}
 
 			const data = await res.json()
-			setLearnerResults(data.results || [])
+			setStudentResults(data.results || [])
 			setSummary(data.summary || null)
 
 			toast({
 				title: 'Results Loaded',
-				description: `Fetched results for ${data.results?.length || 0} learners.`,
+				description: `Fetched results for ${data.results?.length || 0} students.`,
 				className: 'bg-green-50 border-green-200 text-green-800'
 			})
 		} catch (e) {
@@ -1109,35 +1109,35 @@ export default function SemesterResultsPage() {
 		setSelectedStoredIds(new Set())
 	}
 
-	const toggleLearnerExpand = (learnerId: string) => {
-		setExpandedLearners(prev => {
+	const toggleStudentExpand = (studentId: string) => {
+		setExpandedStudents(prev => {
 			const newSet = new Set(prev)
-			if (newSet.has(learnerId)) {
-				newSet.delete(learnerId)
+			if (newSet.has(studentId)) {
+				newSet.delete(studentId)
 			} else {
-				newSet.add(learnerId)
+				newSet.add(studentId)
 			}
 			return newSet
 		})
 	}
 
 	const expandAll = () => {
-		setExpandedLearners(new Set(learnerResults.map(s => s.student_id)))
+		setExpandedStudents(new Set(studentResults.map(s => s.student_id)))
 	}
 
 	const collapseAll = () => {
-		setExpandedLearners(new Set())
+		setExpandedStudents(new Set())
 	}
 
 	// Filter and paginate results
 	const filteredResults = useMemo(() => {
-		if (!searchTerm) return learnerResults
+		if (!searchTerm) return studentResults
 		const search = searchTerm.toLowerCase()
-		return learnerResults.filter(s =>
+		return studentResults.filter(s =>
 			s.register_no.toLowerCase().includes(search) ||
 			s.student_name.toLowerCase().includes(search)
 		)
-	}, [learnerResults, searchTerm])
+	}, [studentResults, searchTerm])
 
 	const paginatedResults = useMemo(() => {
 		if (pageSize === 'all') return filteredResults
@@ -1177,7 +1177,7 @@ export default function SemesterResultsPage() {
 
 	// Export to Excel
 	const handleExport = () => {
-		if (learnerResults.length === 0) {
+		if (studentResults.length === 0) {
 			toast({
 				title: 'No Data',
 				description: 'No results to export.',
@@ -1191,11 +1191,11 @@ export default function SemesterResultsPage() {
 
 		const exportData: any[] = []
 
-		learnerResults.forEach(learner => {
-			learner.courses.forEach(course => {
+		studentResults.forEach(student => {
+			student.courses.forEach(course => {
 				exportData.push({
-					'Register No': learner.register_no,
-					'Learner Name': learner.student_name,
+					'Register No': student.register_no,
+					'Student Name': student.student_name,
 					'Semester': course.semester,
 					'Part': course.course_part,
 					'Course Code': course.course_code,
@@ -1213,21 +1213,21 @@ export default function SemesterResultsPage() {
 			})
 
 			exportData.push({
-				'Register No': learner.register_no,
-				'Learner Name': learner.student_name,
+				'Register No': student.register_no,
+				'Student Name': student.student_name,
 				'Semester': '',
 				'Part': 'TOTAL',
 				'Course Code': '',
 				'Course Name': '',
-				'Credits': learner.total_credits,
+				'Credits': student.total_credits,
 				'Internal': '',
 				'External': '',
 				'Total': '',
 				'Percentage': '',
 				'Grade': '',
 				'Grade Point': '',
-				'Credit Points': learner.total_credit_points.toFixed(2),
-				'Status': `GPA: ${learner.semester_gpa.toFixed(2)}`
+				'Credit Points': student.total_credit_points.toFixed(2),
+				'Status': `GPA: ${student.semester_gpa.toFixed(2)}`
 			})
 		})
 
@@ -1240,13 +1240,12 @@ export default function SemesterResultsPage() {
 
 		toast({
 			title: 'Export Successful',
-			description: `Exported ${learnerResults.length} learner records.`,
+			description: `Exported ${studentResults.length} student records.`,
 			className: 'bg-green-50 border-green-200 text-green-800'
 		})
 	}
 
 	const parts = programType === 'UG' ? UG_PARTS : PG_PARTS
-	const hasResults = learnerResults.length > 0
 	const canFetch = selectedInstitution && selectedSession && selectedPrograms.length > 0
 
 	return (
@@ -1430,7 +1429,7 @@ export default function SemesterResultsPage() {
 							</Card>
 
 							{/* Results Section */}
-							{learnerResults.length > 0 && (
+							{studentResults.length > 0 && (
 								<>
 									{/* Summary Cards */}
 									<div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-3">
@@ -1438,8 +1437,8 @@ export default function SemesterResultsPage() {
 											<CardContent className="p-3">
 												<div className="flex items-center justify-between">
 													<div>
-														<p className="text-xs font-medium text-muted-foreground">Total Learners</p>
-														<p className="text-xl font-bold">{summary?.total_learners || 0}</p>
+														<p className="text-xs font-medium text-muted-foreground">Total Students</p>
+														<p className="text-xl font-bold">{summary?.total_students || 0}</p>
 													</div>
 													<Users className="h-5 w-5 text-blue-500" />
 												</div>
@@ -1450,7 +1449,7 @@ export default function SemesterResultsPage() {
 												<div className="flex items-center justify-between">
 													<div>
 														<p className="text-xs font-medium text-muted-foreground">Passed</p>
-														<p className="text-xl font-bold text-green-600">{summary?.passed_learners || 0}</p>
+														<p className="text-xl font-bold text-green-600">{summary?.passed_students || 0}</p>
 													</div>
 													<CheckCircle2 className="h-5 w-5 text-green-500" />
 												</div>
@@ -1461,7 +1460,7 @@ export default function SemesterResultsPage() {
 												<div className="flex items-center justify-between">
 													<div>
 														<p className="text-xs font-medium text-muted-foreground">Failed</p>
-														<p className="text-xl font-bold text-red-600">{summary?.failed_learners || 0}</p>
+														<p className="text-xl font-bold text-red-600">{summary?.failed_students || 0}</p>
 													</div>
 													<AlertTriangle className="h-5 w-5 text-red-500" />
 												</div>
@@ -1522,7 +1521,7 @@ export default function SemesterResultsPage() {
 													className="gap-2 data-[state=active]:bg-gradient-to-r data-[state=active]:from-violet-500 data-[state=active]:to-purple-600 data-[state=active]:text-white data-[state=active]:shadow-md"
 												>
 													<Users className="h-4 w-4" />
-													Learner Results
+													Student Results
 												</TabsTrigger>
 												<TabsTrigger
 													value="parts"
@@ -1545,7 +1544,7 @@ export default function SemesterResultsPage() {
 													<Input
 														value={searchTerm}
 														onChange={(e) => setSearchTerm(e.target.value)}
-														placeholder="Search learners..."
+														placeholder="Search students..."
 														className="pl-8 h-9 w-48"
 													/>
 												</div>
@@ -1566,15 +1565,15 @@ export default function SemesterResultsPage() {
 											</div>
 										</div>
 
-										{/* Learner Results Tab */}
+										{/* Student Results Tab */}
 										<TabsContent value="results" className="mt-4">
 											<Card>
 												<CardHeader className="py-3">
 													<div className="flex items-center justify-between">
 														<div className="flex items-center gap-2">
-															<CardTitle className="text-lg">Learner Results</CardTitle>
+															<CardTitle className="text-lg">Student Results</CardTitle>
 															<Badge variant="secondary" className="text-xs">
-																{filteredResults.length} learners
+																{filteredResults.length} students
 															</Badge>
 														</div>
 														<div className="flex gap-2">
@@ -1589,46 +1588,46 @@ export default function SemesterResultsPage() {
 												</CardHeader>
 												<CardContent className="p-0">
 													<div className="divide-y">
-														{paginatedResults.map(learner => (
+														{paginatedResults.map(student => (
 															<Collapsible
-																key={learner.student_id}
-																open={expandedLearners.has(learner.student_id)}
-																onOpenChange={() => toggleLearnerExpand(learner.student_id)}
+																key={student.student_id}
+																open={expandedStudents.has(student.student_id)}
+																onOpenChange={() => toggleStudentExpand(student.student_id)}
 															>
 																<CollapsibleTrigger asChild>
 																	<div className="flex items-center justify-between p-4 hover:bg-muted/50 cursor-pointer">
 																		<div className="flex items-center gap-4">
-																			<ChevronRight className={`h-4 w-4 transition-transform ${expandedLearners.has(learner.student_id) ? 'rotate-90' : ''}`} />
+																			<ChevronRight className={`h-4 w-4 transition-transform ${expandedStudents.has(student.student_id) ? 'rotate-90' : ''}`} />
 																			<div>
-																				<div className="font-medium">{learner.register_no}</div>
-																				<div className="text-sm text-muted-foreground">{learner.student_name}</div>
+																				<div className="font-medium">{student.register_no}</div>
+																				<div className="text-sm text-muted-foreground">{student.student_name}</div>
 																			</div>
 																		</div>
 																		<div className="flex items-center gap-4">
 																			<Badge variant="outline" className="text-xs">
-																				{learner.courses.length} Courses
+																				{student.courses.length} Courses
 																			</Badge>
 																			<Badge variant="outline" className="text-xs">
-																				{learner.total_credits} Credits
+																				{student.total_credits} Credits
 																			</Badge>
-																			{learner.failed_count > 0 ? (
+																			{student.failed_count > 0 ? (
 																				<Badge variant="destructive" className="text-xs">
-																					{learner.failed_count} Arrear(s)
+																					{student.failed_count} Backlog(s)
 																				</Badge>
 																			) : (
 																				<Badge className="bg-green-600 text-xs">Passed</Badge>
 																			)}
-																			<Badge className={`text-sm font-bold ${learner.semester_gpa >= 8 ? 'bg-green-600' : learner.semester_gpa >= 6 ? 'bg-blue-600' : 'bg-orange-600'}`}>
-																				GPA: {learner.semester_gpa.toFixed(2)}
+																			<Badge className={`text-sm font-bold ${student.semester_gpa >= 8 ? 'bg-green-600' : student.semester_gpa >= 6 ? 'bg-blue-600' : 'bg-orange-600'}`}>
+																				GPA: {student.semester_gpa.toFixed(2)}
 																			</Badge>
 																		</div>
 																	</div>
 																</CollapsibleTrigger>
 																<CollapsibleContent>
 																	<div className="px-4 pb-4">
-																		{groupByPart && learner.part_breakdown ? (
+																		{groupByPart && student.part_breakdown ? (
 																			<div className="space-y-4">
-																				{learner.part_breakdown.map(part => (
+																				{student.part_breakdown.map(part => (
 																					<div key={part.part_name} className="border rounded-lg overflow-hidden">
 																						<div className={`px-4 py-2 ${parts.find(p => p.name === part.part_name)?.color || 'bg-gray-500'} text-white flex items-center justify-between`}>
 																							<div className="flex items-center gap-2">
@@ -1708,7 +1707,7 @@ export default function SemesterResultsPage() {
 																						</TableRow>
 																					</TableHeader>
 																					<TableBody>
-																						{learner.courses.map(course => (
+																						{student.courses.map(course => (
 																							<TableRow key={course.course_id}>
 																								<TableCell className="text-xs">
 																									<span className="font-medium">{course.course_code}</span>
@@ -1742,16 +1741,16 @@ export default function SemesterResultsPage() {
 																			</div>
 																		)}
 
-																		{/* Learner Summary */}
+																		{/* Student Summary */}
 																		<div className="mt-3 p-3 bg-muted/30 rounded-lg flex items-center justify-between">
 																			<div className="flex items-center gap-6 text-sm">
-																				<span>Total Credits: <strong>{learner.total_credits}</strong></span>
-																				<span>Credit Points: <strong>{learner.total_credit_points.toFixed(2)}</strong></span>
-																				<span>Passed: <strong className="text-green-600">{learner.passed_count}</strong></span>
-																				<span>Failed: <strong className="text-red-600">{learner.failed_count}</strong></span>
+																				<span>Total Credits: <strong>{student.total_credits}</strong></span>
+																				<span>Credit Points: <strong>{student.total_credit_points.toFixed(2)}</strong></span>
+																				<span>Passed: <strong className="text-green-600">{student.passed_count}</strong></span>
+																				<span>Failed: <strong className="text-red-600">{student.failed_count}</strong></span>
 																			</div>
 																			<div className="text-lg font-bold">
-																				Semester GPA: <span className="text-purple-600">{learner.semester_gpa.toFixed(2)}</span>
+																				Semester GPA: <span className="text-purple-600">{student.semester_gpa.toFixed(2)}</span>
 																			</div>
 																		</div>
 																	</div>
@@ -1763,7 +1762,7 @@ export default function SemesterResultsPage() {
 													{filteredResults.length === 0 && (
 														<div className="text-center py-8 text-muted-foreground">
 															<Users className="h-12 w-12 mx-auto mb-3 opacity-50" />
-															<p>{searchTerm ? 'No matching learners found' : 'No results available'}</p>
+															<p>{searchTerm ? 'No matching students found' : 'No results available'}</p>
 														</div>
 													)}
 
@@ -1900,7 +1899,7 @@ export default function SemesterResultsPage() {
 							)}
 
 							{/* Empty State for Calculate Tab */}
-							{!loading && learnerResults.length === 0 && (
+							{!loading && studentResults.length === 0 && (
 								<Card className="py-12">
 									<CardContent className="text-center">
 										<div className="h-16 w-16 rounded-full bg-muted flex items-center justify-center mx-auto mb-4">
@@ -2015,7 +2014,7 @@ export default function SemesterResultsPage() {
 											<div className="flex items-center justify-between">
 												<div>
 													<p className="text-xs font-medium text-muted-foreground">Total</p>
-													<p className="text-xl font-bold">{storedSummary.total_learners}</p>
+													<p className="text-xl font-bold">{storedSummary.total_students}</p>
 												</div>
 												<Users className="h-5 w-5 text-blue-500" />
 											</div>
@@ -2125,7 +2124,7 @@ export default function SemesterResultsPage() {
 															/>
 														</TableHead>
 														<TableHead className="text-xs font-semibold">Register No</TableHead>
-														<TableHead className="text-xs font-semibold">Learner Name</TableHead>
+														<TableHead className="text-xs font-semibold">Student Name</TableHead>
 														<TableHead className="text-xs text-center font-semibold">Sem</TableHead>
 														<TableHead className="text-xs text-center font-semibold">SGPA</TableHead>
 														<TableHead className="text-xs text-center font-semibold">CGPA</TableHead>

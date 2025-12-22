@@ -82,7 +82,7 @@ interface BacklogItem {
 	arrear_session_code: string | null
 }
 
-interface LearnerArrearSummary {
+interface StudentBacklogSummary {
 	student_id: string
 	student_name: string
 	register_no: string
@@ -103,7 +103,7 @@ interface BacklogStatistics {
 	cleared_backlogs: number
 	critical_count: number
 	high_priority_count: number
-	learners_with_arrears: number
+	students_with_backlogs: number
 	failure_reasons: {
 		Internal: number
 		External: number
@@ -140,7 +140,7 @@ const PRIORITY_BORDER_COLORS: Record<string, string> = {
 // MAIN COMPONENT
 // =====================================================
 
-export default function LearnerArrearsPage() {
+export default function StudentBacklogsPage() {
 	const { toast } = useToast()
 
 	// Selection state
@@ -156,13 +156,13 @@ export default function LearnerArrearsPage() {
 	// Results state
 	const [loading, setLoading] = useState(false)
 	const [backlogs, setBacklogs] = useState<BacklogItem[]>([])
-	const [learnerSummaries, setLearnerSummaries] = useState<LearnerArrearSummary[]>([])
+	const [studentSummaries, setStudentSummaries] = useState<StudentBacklogSummary[]>([])
 	const [statistics, setStatistics] = useState<BacklogStatistics | null>(null)
 
 	// UI state
 	const [searchTerm, setSearchTerm] = useState("")
-	const [expandedLearners, setExpandedLearners] = useState<Set<string>>(new Set())
-	const [activeTab, setActiveTab] = useState<'overview' | 'learners' | 'courses'>('overview')
+	const [expandedStudents, setExpandedStudents] = useState<Set<string>>(new Set())
+	const [activeTab, setActiveTab] = useState<'overview' | 'students' | 'courses'>('overview')
 
 	// Fetch institutions on mount
 	useEffect(() => {
@@ -178,7 +178,7 @@ export default function LearnerArrearsPage() {
 		}
 		setSelectedProgram("")
 		setBacklogs([])
-		setLearnerSummaries([])
+		setStudentSummaries([])
 		setStatistics(null)
 	}, [selectedInstitution])
 
@@ -226,7 +226,7 @@ export default function LearnerArrearsPage() {
 
 		setLoading(true)
 		setBacklogs([])
-		setLearnerSummaries([])
+		setStudentSummaries([])
 		setStatistics(null)
 
 		try {
@@ -251,7 +251,7 @@ export default function LearnerArrearsPage() {
 
 			const data = await res.json()
 			setBacklogs(data.backlogs || [])
-			setLearnerSummaries(data.student_summaries || [])
+			setStudentSummaries(data.student_summaries || [])
 			setStatistics(data.statistics || null)
 
 			toast({
@@ -271,13 +271,13 @@ export default function LearnerArrearsPage() {
 		}
 	}
 
-	const toggleLearnerExpand = (learnerId: string) => {
-		setExpandedLearners(prev => {
+	const toggleStudentExpand = (studentId: string) => {
+		setExpandedStudents(prev => {
 			const newSet = new Set(prev)
-			if (newSet.has(learnerId)) {
-				newSet.delete(learnerId)
+			if (newSet.has(studentId)) {
+				newSet.delete(studentId)
 			} else {
-				newSet.add(learnerId)
+				newSet.add(studentId)
 			}
 			return newSet
 		})
@@ -285,17 +285,17 @@ export default function LearnerArrearsPage() {
 
 	// Filter results based on search
 	const filteredSummaries = useMemo(() => {
-		if (!searchTerm) return learnerSummaries
+		if (!searchTerm) return studentSummaries
 		const search = searchTerm.toLowerCase()
-		return learnerSummaries.filter(s =>
+		return studentSummaries.filter(s =>
 			s.register_no?.toLowerCase().includes(search) ||
 			s.student_name?.toLowerCase().includes(search)
 		)
-	}, [learnerSummaries, searchTerm])
+	}, [studentSummaries, searchTerm])
 
-	// Get backlogs for a specific learner
-	const getLearnerBacklogs = (learnerId: string): BacklogItem[] => {
-		return backlogs.filter(b => b.student_id === learnerId && !b.is_cleared)
+	// Get backlogs for a specific student
+	const getStudentBacklogs = (studentId: string): BacklogItem[] => {
+		return backlogs.filter(b => b.student_id === studentId && !b.is_cleared)
 	}
 
 	// Group backlogs by course for analysis
@@ -332,7 +332,7 @@ export default function LearnerArrearsPage() {
 
 		const exportData = backlogs.map(b => ({
 			'Register No': b.register_number,
-			'Learner Name': b.student_name,
+			'Student Name': b.student_name,
 			'Program': b.program_code,
 			'Semester': b.original_semester,
 			'Course Code': b.course_code,
@@ -356,9 +356,9 @@ export default function LearnerArrearsPage() {
 
 		const ws = XLSX.utils.json_to_sheet(exportData)
 		const wb = XLSX.utils.book_new()
-		XLSX.utils.book_append_sheet(wb, ws, 'Learner Arrears')
+		XLSX.utils.book_append_sheet(wb, ws, 'Student Backlogs')
 
-		const fileName = `learner_arrears_${new Date().toISOString().split('T')[0]}.xlsx`
+		const fileName = `student_backlogs_${new Date().toISOString().split('T')[0]}.xlsx`
 		XLSX.writeFile(wb, fileName)
 
 		toast({
@@ -393,7 +393,7 @@ export default function LearnerArrearsPage() {
 								</BreadcrumbItem>
 								<BreadcrumbSeparator />
 								<BreadcrumbItem>
-									<BreadcrumbPage>Learner Arrears</BreadcrumbPage>
+									<BreadcrumbPage>Student Backlogs</BreadcrumbPage>
 								</BreadcrumbItem>
 							</BreadcrumbList>
 						</Breadcrumb>
@@ -406,8 +406,8 @@ export default function LearnerArrearsPage() {
 								<FileWarning className="h-5 w-5 text-white" />
 							</div>
 							<div>
-								<h1 className="text-2xl font-bold">Learner Arrears Tracker</h1>
-								<p className="text-sm text-muted-foreground">Track and manage learner arrears with priority analysis</p>
+								<h1 className="text-2xl font-bold">Student Backlogs Tracker</h1>
+								<p className="text-sm text-muted-foreground">Track and manage student backlogs with priority analysis</p>
 							</div>
 						</div>
 					</div>
@@ -564,8 +564,8 @@ export default function LearnerArrearsPage() {
 									<CardContent className="p-3">
 										<div className="flex items-center justify-between">
 											<div>
-												<p className="text-xs font-medium text-muted-foreground">Learners</p>
-												<p className="text-xl font-bold">{statistics.learners_with_arrears}</p>
+												<p className="text-xs font-medium text-muted-foreground">Students</p>
+												<p className="text-xl font-bold">{statistics.students_with_backlogs}</p>
 											</div>
 											<Users className="h-5 w-5 text-purple-500" />
 										</div>
@@ -623,9 +623,9 @@ export default function LearnerArrearsPage() {
 											<BarChart3 className="h-4 w-4" />
 											Overview
 										</TabsTrigger>
-										<TabsTrigger value="learners" className="gap-2">
+										<TabsTrigger value="students" className="gap-2">
 											<Users className="h-4 w-4" />
-											By Learner
+											By Student
 										</TabsTrigger>
 										<TabsTrigger value="courses" className="gap-2">
 											<BookOpen className="h-4 w-4" />
@@ -638,7 +638,7 @@ export default function LearnerArrearsPage() {
 											<Input
 												value={searchTerm}
 												onChange={(e) => setSearchTerm(e.target.value)}
-												placeholder="Search learners..."
+												placeholder="Search students..."
 												className="pl-8 h-9 w-48"
 											/>
 										</div>
@@ -663,10 +663,10 @@ export default function LearnerArrearsPage() {
 												</CardHeader>
 												<CardContent className="pt-3">
 													<p className="text-sm text-muted-foreground mb-3">
-														{statistics.critical_count} learners have arrears pending for 4+ semesters
+														{statistics.critical_count} students have backlogs pending for 4+ semesters
 													</p>
 													<div className="space-y-2">
-														{learnerSummaries
+														{studentSummaries
 															.filter(s => s.critical_count > 0)
 															.slice(0, 5)
 															.map(s => (
@@ -696,7 +696,7 @@ export default function LearnerArrearsPage() {
 																<div className="text-sm font-medium">{course.course_code}</div>
 																<div className="text-xs text-muted-foreground">{course.course_name}</div>
 															</div>
-															<Badge variant="outline">{course.count} learners</Badge>
+															<Badge variant="outline">{course.count} students</Badge>
 														</div>
 													))}
 												</div>
@@ -705,57 +705,57 @@ export default function LearnerArrearsPage() {
 									</div>
 								</TabsContent>
 
-								{/* Learners Tab */}
-								<TabsContent value="learners" className="mt-4">
+								{/* Students Tab */}
+								<TabsContent value="students" className="mt-4">
 									<Card>
 										<CardHeader className="py-3">
-											<CardTitle className="text-lg">Learners with Arrears</CardTitle>
+											<CardTitle className="text-lg">Students with Backlogs</CardTitle>
 										</CardHeader>
 										<CardContent className="p-0">
 											<div className="divide-y">
 												{filteredSummaries
 													.filter(s => s.pending_backlogs > 0 || selectedStatus !== 'pending')
-													.map(learner => {
-														const learnerBacklogs = getLearnerBacklogs(learner.student_id)
+													.map(student => {
+														const studentBacklogs = getStudentBacklogs(student.student_id)
 
 														return (
 															<Collapsible
-																key={learner.student_id}
-																open={expandedLearners.has(learner.student_id)}
-																onOpenChange={() => toggleLearnerExpand(learner.student_id)}
+																key={student.student_id}
+																open={expandedStudents.has(student.student_id)}
+																onOpenChange={() => toggleStudentExpand(student.student_id)}
 															>
 																<CollapsibleTrigger asChild>
 																	<div className={`flex items-center justify-between p-4 hover:bg-muted/50 cursor-pointer border-l-4 ${
-																		learner.critical_count > 0 ? PRIORITY_BORDER_COLORS['Critical'] :
-																		learner.high_priority_count > 0 ? PRIORITY_BORDER_COLORS['High'] :
+																		student.critical_count > 0 ? PRIORITY_BORDER_COLORS['Critical'] :
+																		student.high_priority_count > 0 ? PRIORITY_BORDER_COLORS['High'] :
 																		PRIORITY_BORDER_COLORS['Normal']
 																	}`}>
 																		<div className="flex items-center gap-4">
-																			<ChevronRight className={`h-4 w-4 transition-transform ${expandedLearners.has(learner.student_id) ? 'rotate-90' : ''}`} />
+																			<ChevronRight className={`h-4 w-4 transition-transform ${expandedStudents.has(student.student_id) ? 'rotate-90' : ''}`} />
 																			<div>
-																				<div className="font-medium">{learner.register_no}</div>
-																				<div className="text-sm text-muted-foreground">{learner.student_name}</div>
-																				<div className="text-xs text-muted-foreground">{learner.program_code}</div>
+																				<div className="font-medium">{student.register_no}</div>
+																				<div className="text-sm text-muted-foreground">{student.student_name}</div>
+																				<div className="text-xs text-muted-foreground">{student.program_code}</div>
 																			</div>
 																		</div>
 																		<div className="flex items-center gap-3">
 																			<div className="text-right">
 																				<div className="text-sm">
-																					<span className="font-bold text-orange-600">{learner.pending_backlogs}</span>
+																					<span className="font-bold text-orange-600">{student.pending_backlogs}</span>
 																					<span className="text-muted-foreground"> pending</span>
 																				</div>
 																				<div className="text-xs text-muted-foreground">
-																					{learner.total_credits_pending} credits
+																					{student.total_credits_pending} credits
 																				</div>
 																			</div>
-																			{learner.critical_count > 0 && (
+																			{student.critical_count > 0 && (
 																				<Badge className="bg-red-600 text-xs">
-																					{learner.critical_count} Critical
+																					{student.critical_count} Critical
 																				</Badge>
 																			)}
-																			{learner.high_priority_count > 0 && learner.critical_count === 0 && (
+																			{student.high_priority_count > 0 && student.critical_count === 0 && (
 																				<Badge className="bg-orange-500 text-xs">
-																					{learner.high_priority_count} High
+																					{student.high_priority_count} High
 																				</Badge>
 																			)}
 																		</div>
@@ -778,7 +778,7 @@ export default function LearnerArrearsPage() {
 																				</TableRow>
 																			</TableHeader>
 																			<TableBody>
-																				{learnerBacklogs.map(b => (
+																				{studentBacklogs.map(b => (
 																					<TableRow key={b.id} className="text-xs">
 																						<TableCell>{b.original_semester}</TableCell>
 																						<TableCell>
@@ -822,7 +822,7 @@ export default function LearnerArrearsPage() {
 											{filteredSummaries.filter(s => s.pending_backlogs > 0 || selectedStatus !== 'pending').length === 0 && (
 												<div className="text-center py-8 text-muted-foreground">
 													<Users className="h-12 w-12 mx-auto mb-3 opacity-50" />
-													<p>{searchTerm ? 'No matching learners found' : 'No arrears found'}</p>
+													<p>{searchTerm ? 'No matching students found' : 'No backlogs found'}</p>
 												</div>
 											)}
 										</CardContent>
@@ -844,7 +844,7 @@ export default function LearnerArrearsPage() {
 														<TableHead>Course Code</TableHead>
 														<TableHead>Course Name</TableHead>
 														<TableHead className="text-center">Credits</TableHead>
-														<TableHead className="text-center">Failed Learners</TableHead>
+														<TableHead className="text-center">Failed Students</TableHead>
 														<TableHead className="text-center">% of Total</TableHead>
 													</TableRow>
 												</TableHeader>
@@ -897,7 +897,7 @@ export default function LearnerArrearsPage() {
 								</div>
 								<h3 className="text-lg font-semibold mb-2">No Backlogs Loaded</h3>
 								<p className="text-muted-foreground mb-4">
-									Select an institution and click "Fetch Backlogs" to view learner arrear data.
+									Select an institution and click "Fetch Backlogs" to view student backlog data.
 								</p>
 							</CardContent>
 						</Card>
