@@ -32,5 +32,6 @@
     "type": "command",
     "command": "C:/Users/Admin/.claude/statusline.sh",
     "padding": 0
-  }
+}
+  
 }

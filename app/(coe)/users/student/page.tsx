@@ -214,13 +214,13 @@ export default function MyJKKNStudentsPage() {
 			if (responseData.data.length === 0 && page === 1) {
 				toast({
 					title: "ℹ️ No Data",
-					description: "No students found in MyJKKN API",
+					description: "No learners found in MyJKKN API",
 					className: "bg-blue-50 border-blue-200 text-blue-800 dark:bg-blue-900/20 dark:border-blue-800 dark:text-blue-200",
 				})
 			}
 		} catch (error) {
 			console.error('Error fetching MyJKKN students:', error)
-			const errorMessage = error instanceof Error ? error.message : 'Failed to fetch students'
+			const errorMessage = error instanceof Error ? error.message : 'Failed to fetch learners'
 			setConnectionError(errorMessage)
 			setStudents([])
 			toast({
@@ -410,12 +410,12 @@ export default function MyJKKNStudentsPage() {
 										className="cursor-pointer"
 										onClick={() => setSelectedStudentId(null)}
 									>
-										<span>MyJKKN Students</span>
+										<span>MyJKKN Learners</span>
 									</BreadcrumbLink>
 								</BreadcrumbItem>
 								<BreadcrumbSeparator />
 								<BreadcrumbItem>
-									<BreadcrumbPage>Student Details</BreadcrumbPage>
+									<BreadcrumbPage>Learner Details</BreadcrumbPage>
 								</BreadcrumbItem>
 							</BreadcrumbList>
 						</Breadcrumb>
@@ -446,7 +446,7 @@ export default function MyJKKNStudentsPage() {
 							</BreadcrumbItem>
 							<BreadcrumbSeparator />
 							<BreadcrumbItem>
-								<BreadcrumbPage>MyJKKN Students</BreadcrumbPage>
+								<BreadcrumbPage>MyJKKN Learners</BreadcrumbPage>
 							</BreadcrumbItem>
 						</BreadcrumbList>
 					</Breadcrumb>
@@ -457,7 +457,7 @@ export default function MyJKKNStudentsPage() {
 							<CardContent className="p-3">
 								<div className="flex items-center justify-between">
 									<div>
-										<p className="text-xs font-medium text-muted-foreground">Total Students</p>
+										<p className="text-xs font-medium text-muted-foreground">Total Learners</p>
 										<p className="text-xl font-bold">{stats.total}</p>
 									</div>
 									<div className="h-7 w-7 rounded-full bg-blue-100 dark:bg-blue-900/20 flex items-center justify-center">
@@ -532,10 +532,10 @@ export default function MyJKKNStudentsPage() {
 									</div>
 									<div>
 										<CardTitle className="text-2xl font-bold bg-gradient-to-r from-blue-600 to-indigo-600 bg-clip-text text-transparent">
-											MyJKKN Students
+											MyJKKN Learners
 										</CardTitle>
 										<CardDescription className="mt-1">
-											Students data from MyJKKN API system
+											Learners data from MyJKKN API system
 										</CardDescription>
 									</div>
 								</div>
@@ -650,7 +650,7 @@ export default function MyJKKNStudentsPage() {
 							) : sortedStudents.length === 0 ? (
 								<div className="flex flex-col items-center justify-center h-64 text-muted-foreground">
 									<Users className="h-12 w-12 mb-4 opacity-20" />
-									<p className="text-lg font-medium">No students found</p>
+									<p className="text-lg font-medium">No learners found</p>
 									<p className="text-sm">Try adjusting your search or refresh the data</p>
 								</div>
 							) : (
@@ -748,7 +748,7 @@ export default function MyJKKNStudentsPage() {
 								<div className="text-sm text-muted-foreground">
 									Showing <span className="font-medium">{((currentPage - 1) * itemsPerPage) + 1}</span> to{' '}
 									<span className="font-medium">{Math.min(currentPage * itemsPerPage, totalStudents)}</span> of{' '}
-									<span className="font-medium">{totalStudents}</span> students
+									<span className="font-medium">{totalStudents}</span> learners
 								</div>
 								<div className="flex items-center gap-2">
 									<Button

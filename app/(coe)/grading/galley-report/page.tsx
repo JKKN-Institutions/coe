@@ -359,7 +359,7 @@ export default function GalleyReportPage() {
 
 			toast({
 				title: "Report Generated",
-				description: `Found ${data.students.length} students and ${data.courseAnalysis.length} courses.`,
+				description: `Found ${data.students.length} learners and ${data.courseAnalysis.length} courses.`,
 				className: "bg-green-50 border-green-200 text-green-800"
 			})
 		} catch (error) {
@@ -496,7 +496,7 @@ export default function GalleyReportPage() {
 					<div className="flex flex-col gap-1">
 						<h1 className="text-2xl font-bold font-heading">End Semester Examination Report</h1>
 						<p className="text-sm text-muted-foreground">
-							Generate detailed galley reports with student performance, course analysis, and statistics
+							Generate detailed galley reports with learner performance, course analysis, and statistics
 						</p>
 					</div>
 
@@ -752,7 +752,7 @@ export default function GalleyReportPage() {
 											</div>
 											<div>
 												<p className="text-2xl font-bold">{reportData.statistics.total_students}</p>
-												<p className="text-xs text-muted-foreground">Total Students</p>
+												<p className="text-xs text-muted-foreground">Total Learners</p>
 											</div>
 										</div>
 									</CardContent>
@@ -830,14 +830,14 @@ export default function GalleyReportPage() {
 							</div>
 
 							{/* Tabs for different sections */}
-							<Tabs defaultValue="students" className="space-y-4">
+							<Tabs defaultValue="learners" className="space-y-4">
 								<TabsList className="grid w-full grid-cols-4 h-11 p-1 bg-muted/50">
 									<TabsTrigger
-										value="students"
+										value="learners"
 										className="text-xs gap-1.5 data-[state=active]:bg-gradient-to-r data-[state=active]:from-violet-500 data-[state=active]:to-purple-600 data-[state=active]:text-white data-[state=active]:shadow-md data-[state=active]:shadow-purple-500/25 transition-all duration-200"
 									>
 										<Users className="h-3.5 w-3.5" />
-										Student Results
+										Learner Results
 									</TabsTrigger>
 									<TabsTrigger
 										value="courses"
@@ -862,12 +862,12 @@ export default function GalleyReportPage() {
 									</TabsTrigger>
 								</TabsList>
 
-								{/* Student Results Tab */}
-								<TabsContent value="students">
+								{/* Learner Results Tab */}
+								<TabsContent value="learners">
 									<Card>
 										<CardHeader>
-											<CardTitle className="text-base">Student Performance Summary</CardTitle>
-											<CardDescription className="text-xs">Individual student-wise results with course marks</CardDescription>
+											<CardTitle className="text-base">Learner Performance Summary</CardTitle>
+											<CardDescription className="text-xs">Individual learner-wise results with course marks</CardDescription>
 										</CardHeader>
 										<CardContent>
 											<ScrollArea className="h-[600px]">
@@ -876,7 +876,7 @@ export default function GalleyReportPage() {
 														<TableRow>
 															<TableHead className="w-12 text-xs">S.No</TableHead>
 															<TableHead className="text-xs">Reg. No.</TableHead>
-															<TableHead className="text-xs">Student Name</TableHead>
+															<TableHead className="text-xs">Learner Name</TableHead>
 															{reportData.courseAnalysis.slice(0, 6).map((ca) => (
 																<TableHead key={ca.course.id} className="text-xs text-center">
 																	<div className="flex flex-col">
@@ -1101,7 +1101,7 @@ export default function GalleyReportPage() {
 													<Trophy className="h-4 w-4 text-amber-500" />
 													Top Performers (by CGPA)
 												</CardTitle>
-												<CardDescription className="text-xs">Students with highest CGPA</CardDescription>
+												<CardDescription className="text-xs">Learners with highest CGPA</CardDescription>
 											</CardHeader>
 											<CardContent className="pt-4">
 												<Table>
@@ -1142,7 +1142,7 @@ export default function GalleyReportPage() {
 														<Award className="h-4 w-4 text-green-500" />
 														Highest Total Marks
 													</CardTitle>
-													<CardDescription className="text-xs">Student with highest aggregate marks</CardDescription>
+													<CardDescription className="text-xs">Learner with highest aggregate marks</CardDescription>
 												</CardHeader>
 												<CardContent className="pt-6">
 													<div className="flex flex-col items-center gap-4">

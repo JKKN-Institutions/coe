@@ -1,11 +1,37 @@
 import type { Student, StudentFormData, DropdownData } from '@/types/students'
 
 export async function fetchStudents(): Promise<Student[]> {
-	const response = await fetch('/api/students')
-	if (!response.ok) {
-		throw new Error('Failed to fetch students')
+	// Fetch all students from MyJKKN API (fetch all pages)
+	const allStudents: Student[] = []
+	let page = 1
+	const limit = 100 // Max allowed per request
+	let hasMore = true
+
+	while (hasMore) {
+		const response = await fetch(`/api/myjkkn/students?page=${page}&limit=${limit}`)
+		if (!response.ok) {
+			throw new Error('Failed to fetch students from MyJKKN API')
+		}
+
+		const result = await response.json()
+		const students = result.data || []
+		allStudents.push(...students)
+
+		// Check if there are more pages
+		const metadata = result.metadata
+		if (metadata && metadata.page < metadata.totalPages) {
+			page++
+		} else {
+			hasMore = false
+		}
+
+		// Safety limit to prevent infinite loops
+		if (page > 100) {
+			hasMore = false
+		}
 	}
-	return response.json()
+
+	return allStudents
 }
 
 export async function createStudent(data: StudentFormData): Promise<Student> {
@@ -14,7 +40,7 @@ export async function createStudent(data: StudentFormData): Promise<Student> {
 		batch_year: data.batch_year ? Number(data.batch_year) : null,
 	}
 
-	const response = await fetch('/api/students', {
+	const response = await fetch('/api/users/students', {
 		method: 'POST',
 		headers: { 'Content-Type': 'application/json' },
 		body: JSON.stringify(payload)
@@ -30,11 +56,12 @@ export async function createStudent(data: StudentFormData): Promise<Student> {
 
 export async function updateStudent(id: string, data: StudentFormData): Promise<Student> {
 	const payload = {
+		id,
 		...data,
 		batch_year: data.batch_year ? Number(data.batch_year) : null,
 	}
 
-	const response = await fetch(`/api/students/${id}`, {
+	const response = await fetch('/api/users/students', {
 		method: 'PUT',
 		headers: { 'Content-Type': 'application/json' },
 		body: JSON.stringify(payload)
@@ -49,7 +76,7 @@ export async function updateStudent(id: string, data: StudentFormData): Promise<
 }
 
 export async function deleteStudent(id: string): Promise<void> {
-	const response = await fetch(`/api/students/${id}`, {
+	const response = await fetch(`/api/users/students?id=${id}`, {
 		method: 'DELETE',
 	})
 
@@ -63,8 +90,8 @@ export async function deleteStudent(id: string): Promise<void> {
 export async function fetchDropdownData(): Promise<Partial<DropdownData>> {
 	try {
 		const [instRes, ayRes] = await Promise.all([
-			fetch('/api/institutions'),
-			fetch('/api/academic-year')
+			fetch('/api/master/institutions'),
+			fetch('/api/master/academic-years')
 		])
 
 		const institutions = instRes.ok ? await instRes.json() : []
@@ -77,9 +104,9 @@ export async function fetchDropdownData(): Promise<Partial<DropdownData>> {
 	}
 }
 
-export async function fetchDepartmentsByInstitution(institutionId: string, institutionCode: string) {
+export async function fetchDepartmentsByInstitution(_institutionId: string, institutionCode: string) {
 	try {
-		const url = `/api/departments?institution_code=${institutionCode}`
+		const url = `/api/master/departments?institution_code=${institutionCode}`
 		const response = await fetch(url)
 
 		if (response.ok) {
@@ -94,7 +121,7 @@ export async function fetchDepartmentsByInstitution(institutionId: string, insti
 
 export async function fetchProgramsByDepartment(departmentId: string) {
 	try {
-		const response = await fetch(`/api/program?department_id=${departmentId}`)
+		const response = await fetch(`/api/master/programs?department_id=${departmentId}`)
 
 		if (response.ok) {
 			return await response.json()
@@ -108,7 +135,7 @@ export async function fetchProgramsByDepartment(departmentId: string) {
 
 export async function fetchDegreesByProgram(programId: string) {
 	try {
-		const response = await fetch(`/api/degrees?program_id=${programId}`)
+		const response = await fetch(`/api/master/degrees?program_id=${programId}`)
 
 		if (response.ok) {
 			return await response.json()
@@ -122,7 +149,7 @@ export async function fetchDegreesByProgram(programId: string) {
 
 export async function fetchSemestersByProgram(programId: string) {
 	try {
-		const response = await fetch(`/api/semester?program_id=${programId}`)
+		const response = await fetch(`/api/master/semesters?program_id=${programId}`)
 
 		if (response.ok) {
 			return await response.json()
@@ -136,7 +163,7 @@ export async function fetchSemestersByProgram(programId: string) {
 
 export async function fetchSectionsByProgram(programId: string) {
 	try {
-		const response = await fetch(`/api/section?program_id=${programId}`)
+		const response = await fetch(`/api/master/sections?program_id=${programId}`)
 
 		if (response.ok) {
 			return await response.json()

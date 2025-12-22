@@ -711,7 +711,7 @@ export default function AttendanceReportsPage() {
 								<>
 									<div className="border-t pt-4">
 										<h3 className="text-xs font-semibold mb-3 text-muted-foreground">
-											Optional Filters (for Student Attendance Sheet only)
+											Optional Filters (for Learner Attendance Sheet only)
 										</h3>
 									</div>
 
@@ -918,7 +918,7 @@ export default function AttendanceReportsPage() {
 
 					{/* Report Generation Cards */}
 					<div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-						{/* Student Attendance Sheet */}
+						{/* Learner Attendance Sheet */}
 						<Card>
 							<CardHeader className="bg-gradient-to-r from-green-50 to-emerald-50 dark:from-green-950/20 dark:to-emerald-950/20 p-3">
 								<div className="flex items-center gap-2">
@@ -926,14 +926,14 @@ export default function AttendanceReportsPage() {
 										<FileSpreadsheet className="h-4 w-4 text-white" />
 									</div>
 									<div>
-										<CardTitle className="text-sm font-semibold">Student Attendance Sheet</CardTitle>
-										<CardDescription className="text-xs">Individual student-wise attendance records</CardDescription>
+										<CardTitle className="text-sm font-semibold">Learner Attendance Sheet</CardTitle>
+										<CardDescription className="text-xs">Individual learner-wise attendance records</CardDescription>
 									</div>
 								</div>
 							</CardHeader>
 							<CardContent className="pt-4 p-3">
 								<p className="text-xs text-muted-foreground mb-3">
-									Generate detailed attendance sheets showing individual student records with their attendance status.
+									Generate detailed attendance sheets showing individual learner records with their attendance status.
 									Use optional filters to narrow down the results.
 								</p>
 								<Button
@@ -949,7 +949,7 @@ export default function AttendanceReportsPage() {
 									) : (
 										<>
 											<FileSpreadsheet className="mr-1 h-3 w-3" />
-											Generate Student Sheet
+											Generate Learner Sheet
 										</>
 									)}
 								</Button>
@@ -1008,7 +1008,7 @@ export default function AttendanceReportsPage() {
 							</CardHeader>
 							<CardContent className="pt-4 p-3">
 								<p className="text-xs text-muted-foreground mb-3">
-									Generate bundle cover sheets for answer booklets. Automatically creates bundles of 60 students.
+									Generate bundle cover sheets for answer booklets. Automatically creates bundles of 60 learners.
 									Program and Course filters are optional.
 								</p>
 								<Button
