@@ -10,10 +10,6 @@ export async function fetchStudents(): Promise<Student[]> {
 	return response.json()
 =======
 
-<<<<<<< Updated upstream
-
-=======
->>>>>>> Stashed changes
 	// Enrich students with department and program names from master data
 	try {
 		const [deptRes, progRes] = await Promise.all([
@@ -38,14 +34,10 @@ export async function fetchStudents(): Promise<Student[]> {
 		console.error('Error enriching student data:', error)
 		return allStudents
 	}
-<<<<<<< Updated upstream
-
-=======
 >>>>>>> Stashed changes
 =======
 	return response.json()
 >>>>>>> parent of 7476950 (commit)
->>>>>>> Stashed changes
 }
 
 export async function createStudent(data: StudentFormData): Promise<Student> {
