@@ -152,12 +152,12 @@ export default function Page() {
             {/* Stats Cards - Premium Design */}
             <div className="grid gap-4 sm:gap-6 grid-cols-1 sm:grid-cols-2 lg:grid-cols-4">
             <Card className="hover-lift animate-slide-up" style={{ animationDelay: "0.1s" }}>
-              {/* Total Students */}
+              {/* Total Learners */}
               <CardAnimation delay={0.1}>
                 <div className="card-premium-hover p-6">
                   <div className="flex items-center justify-between">
                     <div>
-                      <p className="text-sm text-slate-600 dark:text-slate-400">Total Students</p>
+                      <p className="text-sm text-slate-600 dark:text-slate-400">Total Learners</p>
                       <p className="text-3xl font-bold text-slate-900 dark:text-slate-100 mt-1 font-grotesk">
                         {loading ? "--" : (stats?.totalStudents?.toLocaleString() || 0)}
                       </p>

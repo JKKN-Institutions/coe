@@ -1088,7 +1088,7 @@ export default function ExamAttendancePage() {
 										<p className="text-[11px] font-semibold">{selectedSessionType || '-'}</p>
 									</div>
 									<div>
-										<p className="text-[9px] font-medium text-muted-foreground">Total Students</p>
+										<p className="text-[9px] font-medium text-muted-foreground">Total Learners</p>
 										<p className="text-[11px] font-semibold">{attendanceRecords.length}</p>
 									</div>
 								</div>
@@ -1118,9 +1118,9 @@ export default function ExamAttendancePage() {
 											<ClipboardCheck className="h-3 w-3 text-white" />
 										</div>
 										<div>
-											<h2 className="text-sm font-bold"><a className="text-x font-bold text-blue-600">Mark Attendance</a>  | Total Students: {attendanceRecords.length} | Present : <a className="text-x font-bold text-green-600">{presentCount}</a> | Absent: <a className="text-x font-bold text-red-600">{absentCount}</a> </h2>
+											<h2 className="text-sm font-bold"><a className="text-x font-bold text-blue-600">Mark Attendance</a>  | Total Learners: {attendanceRecords.length} | Present : <a className="text-x font-bold text-green-600">{presentCount}</a> | Absent: <a className="text-x font-bold text-red-600">{absentCount}</a> </h2>
 											<p className="text-[11px] text-muted-foreground">
-												{isViewMode ? 'Viewing recorded attendance' : 'Check the box to mark student as present'}
+												{isViewMode ? 'Viewing recorded attendance' : 'Check the box to mark learner as present'}
 											</p>
 										</div>
 									</div>
@@ -1140,7 +1140,7 @@ export default function ExamAttendancePage() {
 												<TableRow>
 													<TableHead className="w-12 text-[11px]">S.No</TableHead>
 													<TableHead className="text-[11px]">Register Number</TableHead>
-													<TableHead className="text-[11px]">Student Name</TableHead>
+													<TableHead className="text-[11px]">Learner Name</TableHead>
 													<TableHead className="w-24 text-[11px] text-center">Present/Absent</TableHead>
 													<TableHead className="w-24 text-[11px] text-center">Attendance</TableHead>
 													<TableHead className="text-[11px]">Remarks</TableHead>
@@ -1228,11 +1228,11 @@ export default function ExamAttendancePage() {
 					</AlertDialogHeader>
 
 					<div className="space-y-3 py-4">
-						{/* Total Students */}
+						{/* Total Learners */}
 						<div className="flex items-center justify-between p-3 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg">
 							<div className="flex items-center gap-2">
 								<Users className="h-4 w-4 text-blue-600 dark:text-blue-400" />
-								<span className="text-sm font-medium text-blue-900 dark:text-blue-100">Total Students</span>
+								<span className="text-sm font-medium text-blue-900 dark:text-blue-100">Total Learners</span>
 							</div>
 							<span className="text-lg font-bold text-blue-700 dark:text-blue-300">{attendanceRecords.length}</span>
 						</div>
