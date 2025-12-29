@@ -53,7 +53,8 @@
       "Bash(head:*)",
       "Bash(dir:*)",
       "Skill(whatsnew)",
-      "Skill(whatsnew:*)"
+      "Skill(whatsnew:*)",
+      "Bash(powershell -Command \"Remove-Item -Recurse -Force ''d:\\\\JKKN\\\\Development\\\\Application\\\\COE\\\\jkkncoe\\\\app\\\\\\(coe\\)\\\\admin\\\\pdf-settings''\")"
     ],
     "deny": [
       "mcp__filesystem__*"
