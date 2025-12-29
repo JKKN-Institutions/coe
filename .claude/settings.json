@@ -1,0 +1,37 @@
+{
+  "env": {
+    "MAX_THINKING_TOKENS": "8000"
+  },
+  "permissions": {
+    "allow": [
+      "Bash(git status:*)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(git push:*)",
+      "Bash(npm test:*)",
+      "Bash(npm run build:*)",
+      "Bash(npm run lint:*)",
+      "Bash(ls:*)",
+      "Bash(cat:*)",
+      "Bash(grep:*)",
+      "Read(src/**/*.ts)",
+      "Read(src/**/*.tsx)",
+      "Read(tests/**/*)"
+    ],
+    "deny": [
+      "Bash(rm -rf:*)",
+      "Bash(sudo:*)",
+      "Bash(curl | bash:*)",
+      "Read(.env)",
+      "Read(.env.*)",
+      "Read(secrets/**/*)",
+      "Read(config/production.*)"
+    ]
+  },
+  "statusLine": {
+    "type": "command",
+    "command": "C:/Users/Admin/.claude/statusline.sh",
+    "padding": 0
+}
+  
+}
