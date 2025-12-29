@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getSupabaseServer } from '@/lib/supabase-server'
-import { createRouteHandlerClient } from '@supabase/auth-helpers-nextjs'
-import { cookies } from 'next/headers'
+import { createRouteHandlerSupabaseClient } from '@/lib/supabase-route-handler'
 
 export async function GET(req: NextRequest) {
   try {
@@ -88,7 +87,7 @@ execute FUNCTION update_updated_at_column ();
 export async function POST(req: NextRequest) {
   try {
     // RBAC: require batches.create
-    const supa = createRouteHandlerClient({ cookies })
+    const supa = await createRouteHandlerSupabaseClient()
     const { data: userData } = await supa.auth.getUser()
     if (!userData?.user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     const permsRes = await fetch(`${process.env.NEXT_PUBLIC_BASE_URL || ''}/api/auth/permissions/current`, { headers: { cookie: req.headers.get('cookie') || '' } })

@@ -529,7 +529,68 @@ export default function InternalMarkSettingPage() {
 			...defaultComponentFormData,
 			pattern_id: pattern.id,
 		})
+		setEditingComponent(null)
 		setComponentDialogOpen(true)
+	}
+
+	// Open edit component dialog
+	const openEditComponent = (pattern: PatternWithRelations, component: InternalAssessmentComponent) => {
+		setSelectedPatternForComponent(pattern)
+		setEditingComponent(component)
+		setComponentFormData({
+			pattern_id: pattern.id,
+			component_code: component.component_code,
+			component_name: component.component_name,
+			component_description: component.component_description || "",
+			weightage_percentage: String(component.weightage_percentage),
+			display_order: String(component.display_order || 1),
+			is_visible_to_learner: component.is_visible_to_learner,
+			is_mandatory: component.is_mandatory,
+			can_be_waived: component.can_be_waived,
+			waiver_requires_approval: component.waiver_requires_approval,
+			has_sub_components: component.has_sub_components,
+			calculation_method: component.calculation_method || "sum",
+			best_of_count: component.best_of_count ? String(component.best_of_count) : "",
+			requires_scheduled_exam: component.requires_scheduled_exam,
+			allows_continuous_assessment: component.allows_continuous_assessment,
+			is_active: component.is_active,
+		})
+		setComponentDialogOpen(true)
+	}
+
+	// Delete component
+	const handleDeleteComponent = async (componentId: string) => {
+		try {
+			const response = await fetch(`/api/internal-assessment-patterns/components?id=${componentId}`, {
+				method: "DELETE",
+			})
+
+			if (response.ok) {
+				toast({
+					title: "Component Deleted",
+					description: "Component has been deleted successfully",
+					className: "bg-orange-50 border-orange-200 text-orange-800",
+				})
+				fetchPatterns()
+				// Update the viewing pattern if open
+				if (viewingPattern) {
+					const updatedPattern = patterns.find(p => p.id === viewingPattern.id)
+					if (updatedPattern) {
+						setViewingPattern(updatedPattern)
+					}
+				}
+			} else {
+				const errorData = await response.json()
+				throw new Error(errorData.error || "Failed to delete component")
+			}
+		} catch (error) {
+			console.error("Error deleting component:", error)
+			toast({
+				title: "Error",
+				description: error instanceof Error ? error.message : "Failed to delete component",
+				variant: "destructive",
+			})
+		}
 	}
 
 	// Get status badge color
@@ -1506,11 +1567,36 @@ export default function InternalMarkSettingPage() {
 																</p>
 															</div>
 														</div>
-														<div className="text-right">
-															<div className="text-2xl font-bold text-brand-green">
-																{comp.weightage_percentage}%
+														<div className="flex items-center gap-4">
+															<div className="text-right">
+																<div className="text-2xl font-bold text-brand-green">
+																	{comp.weightage_percentage}%
+																</div>
+																<p className="text-xs text-muted-foreground">Weightage</p>
 															</div>
-															<p className="text-xs text-muted-foreground">Weightage</p>
+															<div className="flex items-center gap-1">
+																<Button
+																	variant="ghost"
+																	size="sm"
+																	className="h-8 w-8 p-0"
+																	onClick={() => {
+																		setViewDialogOpen(false)
+																		openEditComponent(viewingPattern, comp)
+																	}}
+																	title="Edit Component"
+																>
+																	<Edit className="h-4 w-4" />
+																</Button>
+																<Button
+																	variant="ghost"
+																	size="sm"
+																	className="h-8 w-8 p-0 text-destructive hover:text-destructive"
+																	onClick={() => handleDeleteComponent(comp.id)}
+																	title="Delete Component"
+																>
+																	<Trash2 className="h-4 w-4" />
+																</Button>
+															</div>
 														</div>
 													</div>
 													{comp.has_sub_components && comp.internal_assessment_sub_components && (

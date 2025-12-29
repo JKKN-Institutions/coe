@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getSupabaseServer } from '@/lib/supabase-server'
-import { createRouteHandlerClient } from '@supabase/auth-helpers-nextjs'
-import { cookies } from 'next/headers'
+import { createRouteHandlerSupabaseClient } from '@/lib/supabase-route-handler'
 
 export async function GET(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
@@ -30,7 +29,7 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
 export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
     // RBAC: require batches.edit
-    const supa = createRouteHandlerClient({ cookies })
+    const supa = await createRouteHandlerSupabaseClient()
     const { data: userData } = await supa.auth.getUser()
     if (!userData?.user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     const permsRes = await fetch(`${process.env.NEXT_PUBLIC_BASE_URL || ''}/api/auth/permissions/current`, { headers: { cookie: req.headers.get('cookie') || '' } })
@@ -137,7 +136,7 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
 export async function DELETE(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
     // RBAC: require batches.delete
-    const supa = createRouteHandlerClient({ cookies })
+    const supa = await createRouteHandlerSupabaseClient()
     const { data: userData } = await supa.auth.getUser()
     if (!userData?.user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     const permsRes = await fetch(`${process.env.NEXT_PUBLIC_BASE_URL || ''}/api/auth/permissions/current`, { headers: { cookie: (await _req.headers).get('cookie') || '' } as any })

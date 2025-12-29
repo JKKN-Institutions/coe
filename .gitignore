@@ -1,5 +1,11 @@
 # See https://help.github.com/articles/ignoring-files/ for more about ignoring files.
 
+# claude
+/.cursor
+/.next
+/.obsidian
+/.playwright-mcp
+
 # dependencies
 /node_modules
 /.pnp

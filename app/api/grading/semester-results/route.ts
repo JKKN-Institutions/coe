@@ -689,79 +689,94 @@ export async function GET(req: NextRequest) {
 			})
 		}
 
-		// Get CGPA across all semesters for a student
+		// Get CGPA for a student - calculated from ALL subjects (not semester-wise)
+		// CGPA = sum(credit × grade_point) for ALL subjects / sum(ALL credits)
 		if (action === 'student-cgpa') {
 			const studentId = searchParams.get('studentId')
 			const programId = searchParams.get('programId')
 			const programType = (searchParams.get('programType') || 'UG') as 'UG' | 'PG'
 
-			if (!studentId || !programId) {
-				return NextResponse.json({ error: 'studentId and programId are required' }, { status: 400 })
+			if (!studentId) {
+				return NextResponse.json({ error: 'studentId is required' }, { status: 400 })
 			}
 
-			// Fetch all final marks for the student across all semesters
-			const { data, error } = await supabase
+			// Fetch ALL final marks for the student across ALL exam sessions
+			// CGPA is calculated using all subjects, not grouped by semester
+			let query = supabase
 				.from('final_marks')
 				.select(`
 					id,
+					examination_session_id,
 					percentage,
+					grade_points,
 					is_pass,
-					course_offerings!inner (
-						semester,
-						course_mapping!inner (
-							courses!inner (
-								credit
-							)
-						)
+					courses!inner (
+						credit,
+						course_code,
+						course_name
+					),
+					examination_sessions!inner (
+						session_code,
+						session_name
 					)
 				`)
 				.eq('student_id', studentId)
-				.eq('program_id', programId)
 				.eq('is_active', true)
-				.eq('result_status', 'Published')
+
+			if (programId) {
+				query = query.eq('program_id', programId)
+			}
+
+			const { data, error } = await query
 
 			if (error) throw error
 
-			// Group by semester and calculate GPA per semester
-			const semesterGroups: Record<number, { credits: number[]; gradePoints: number[] }> = {}
+			// Calculate CGPA from ALL subjects (no semester grouping)
+			let totalCredits = 0
+			let totalCreditPoints = 0
+			let passedCount = 0
+			let failedCount = 0
+			const coursesList: any[] = []
 
 			data?.forEach((fm: any) => {
-				const semester = fm.course_offerings?.semester || 0
-				const credits = fm.course_offerings?.course_mapping?.courses?.credit || 0
-				const gradeInfo = getGradeFromPercentage(fm.percentage, programType)
+				const credit = fm.courses?.credit || 0
+				const gradePoint = fm.grade_points || 0
 
-				if (!semesterGroups[semester]) {
-					semesterGroups[semester] = { credits: [], gradePoints: [] }
+				totalCredits += credit
+				totalCreditPoints += credit * gradePoint
+
+				if (fm.is_pass) {
+					passedCount++
+				} else {
+					failedCount++
 				}
-				semesterGroups[semester].credits.push(credits)
-				semesterGroups[semester].gradePoints.push(gradeInfo.gradePoint)
+
+				coursesList.push({
+					course_code: fm.courses?.course_code,
+					course_name: fm.courses?.course_name,
+					credit: credit,
+					grade_point: gradePoint,
+					credit_points: credit * gradePoint,
+					percentage: fm.percentage,
+					is_pass: fm.is_pass,
+					session_code: fm.examination_sessions?.session_code,
+					session_name: fm.examination_sessions?.session_name
+				})
 			})
 
-			// Calculate GPA per semester
-			const semesterSummaries = Object.entries(semesterGroups)
-				.sort(([a], [b]) => parseInt(a) - parseInt(b))
-				.map(([semester, { credits, gradePoints }]) => {
-					const gpa = calculateGPA(credits, gradePoints)
-					const totalCredits = credits.reduce((sum, c) => sum + c, 0)
-					return {
-						semester: parseInt(semester),
-						gpa,
-						total_credits: totalCredits,
-						total_credit_points: gpa * totalCredits,
-						courses_count: credits.length
-					}
-				})
-
-			// Calculate CGPA
-			const semesterGPAs = semesterSummaries.map(s => s.gpa)
-			const semesterCredits = semesterSummaries.map(s => s.total_credits)
-			const cgpa = calculateCGPA(semesterGPAs, semesterCredits)
+			// Calculate CGPA: sum(credit × grade_point) / sum(credits)
+			const cgpa = totalCredits > 0
+				? Math.round((totalCreditPoints / totalCredits) * 100) / 100
+				: 0
 
 			return NextResponse.json({
-				semesters: semesterSummaries,
 				cgpa,
-				overall_credits: semesterCredits.reduce((sum, c) => sum + c, 0),
-				overall_credit_points: semesterSummaries.reduce((sum, s) => sum + s.total_credit_points, 0)
+				overall_credits: totalCredits,
+				overall_credit_points: Math.round(totalCreditPoints * 100) / 100,
+				total_courses: data?.length || 0,
+				passed_count: passedCount,
+				failed_count: failedCount,
+				courses: coursesList
 			})
 		}
 
@@ -1185,6 +1200,8 @@ export async function POST(req: NextRequest) {
 		const { action } = body
 
 		// Generate semester results for students (Direct INSERT - bypasses RPC)
+		// CGPA is calculated using ALL subjects taken by the student (not semester-wise)
+		// Semester value comes from student's current_semester in students table
 		if (action === 'generate-results') {
 			const { sessionId, programId, semester, programType = 'UG' } = body
 
@@ -1212,14 +1229,12 @@ export async function POST(req: NextRequest) {
 					total_marks_maximum,
 					percentage,
 					is_pass,
-					course_offerings!inner (
-						semester
-					),
 					courses!inner (
 						credit
 					),
 					exam_registrations!inner (
-						id
+						id,
+						stu_register_no
 					)
 				`)
 				.eq('examination_session_id', sessionId)
@@ -1227,10 +1242,6 @@ export async function POST(req: NextRequest) {
 
 			if (programId) {
 				finalMarksQuery = finalMarksQuery.eq('program_id', programId)
-			}
-
-			if (semester) {
-				finalMarksQuery = finalMarksQuery.eq('course_offerings.semester', semester)
 			}
 
 			const { data: finalMarksData, error: fmError } = await finalMarksQuery
@@ -1248,41 +1259,137 @@ export async function POST(req: NextRequest) {
 				})
 			}
 
-			// Group final marks by student and semester
-			const studentSemesterMap: Record<string, {
+			// Get unique student IDs from final marks
+			const studentIds = [...new Set(finalMarksData.map((fm: any) => fm.student_id))]
+
+			// Fetch student details including semester_id from students table
+			// Note: final_marks.student_id references users table, so we need to match via register_number
+			const registerNumbers = [...new Set(finalMarksData.map((fm: any) => fm.exam_registrations?.stu_register_no).filter(Boolean))]
+
+			const { data: studentsData, error: studentsError } = await supabase
+				.from('students')
+				.select('id, register_number, semester_id')
+				.in('register_number', registerNumbers)
+
+			if (studentsError) {
+				console.error('Students fetch error:', studentsError)
+			}
+
+			// Debug: Log students data
+			console.log('Students data:', JSON.stringify(studentsData, null, 2))
+
+			// Get unique semester IDs and fetch display_order from semesters table
+			const semesterIds = [...new Set((studentsData || []).map((s: any) => s.semester_id).filter(Boolean))]
+			console.log('Semester IDs to lookup:', semesterIds)
+
+			let semestersMap: Record<string, number> = {}
+
+			if (semesterIds.length > 0) {
+				const { data: semestersData, error: semestersError } = await supabase
+					.from('semesters')
+					.select('id, display_order, semester_name')
+					.in('id', semesterIds)
+
+				console.log('Semesters data:', JSON.stringify(semestersData, null, 2))
+
+				if (semestersError) {
+					console.error('Semesters fetch error:', semestersError)
+				} else {
+					semestersData?.forEach((sem: any) => {
+						// Use display_order as the semester number
+						console.log(`Semester ${sem.id}: display_order=${sem.display_order}, name=${sem.semester_name}`)
+						semestersMap[sem.id] = sem.display_order || 1
+					})
+				}
+			}
+
+			// Create a map of register_number to semester (from display_order)
+			const studentSemesterMap: Record<string, number> = {}
+			studentsData?.forEach((s: any) => {
+				// Get display_order from the semesters lookup
+				const semesterNumber = s.semester_id ? (semestersMap[s.semester_id] || 1) : 1
+				console.log(`Student ${s.register_number}: semester_id=${s.semester_id}, resolved semester=${semesterNumber}`)
+				studentSemesterMap[s.register_number] = semesterNumber
+			})
+
+			// Group final marks by student (NOT by semester - CGPA uses all subjects)
+			const studentMarksMap: Record<string, {
 				student_id: string
 				institutions_id: string
 				program_id: string
 				examination_session_id: string
-				semester: number
+				register_no: string
 				marks: typeof finalMarksData
 			}> = {}
 
 			finalMarksData.forEach((fm: any) => {
-				const sem = fm.course_offerings?.semester || 1
-				const key = `${fm.student_id}_${sem}`
+				const studentId = fm.student_id
+				const registerNo = fm.exam_registrations?.stu_register_no || ''
 
-				if (!studentSemesterMap[key]) {
-					studentSemesterMap[key] = {
-						student_id: fm.student_id,
+				if (!studentMarksMap[studentId]) {
+					studentMarksMap[studentId] = {
+						student_id: studentId,
 						institutions_id: fm.institutions_id,
 						program_id: fm.program_id,
 						examination_session_id: fm.examination_session_id,
-						semester: sem,
+						register_no: registerNo,
 						marks: []
 					}
 				}
-				studentSemesterMap[key].marks.push(fm)
+				studentMarksMap[studentId].marks.push(fm)
+			})
+
+			// Fetch ALL final marks for each student to calculate CGPA across all exam sessions
+			// CGPA = sum(credit × grade_point) for ALL subjects / sum(ALL credits)
+			const cgpaPromises = Object.keys(studentMarksMap).map(async (studentId) => {
+				const { data: allMarks, error: allMarksError } = await supabase
+					.from('final_marks')
+					.select(`
+						id,
+						grade_points,
+						is_pass,
+						courses!inner (
+							credit
+						)
+					`)
+					.eq('student_id', studentId)
+					.eq('is_active', true)
+
+				if (allMarksError) {
+					console.error(`Error fetching all marks for student ${studentId}:`, allMarksError)
+					return { studentId, cgpaCredits: 0, cgpaCreditPoints: 0 }
+				}
+
+				let cgpaCredits = 0
+				let cgpaCreditPoints = 0
+
+				allMarks?.forEach((fm: any) => {
+					const credit = fm.courses?.credit || 0
+					const gradePoint = fm.grade_points || 0
+					cgpaCredits += credit
+					cgpaCreditPoints += credit * gradePoint
+				})
+
+				return { studentId, cgpaCredits, cgpaCreditPoints }
+			})
+
+			const cgpaResults = await Promise.all(cgpaPromises)
+			const cgpaDataMap: Record<string, { cgpaCredits: number; cgpaCreditPoints: number }> = {}
+			cgpaResults.forEach(r => {
+				cgpaDataMap[r.studentId] = { cgpaCredits: r.cgpaCredits, cgpaCreditPoints: r.cgpaCreditPoints }
 			})
 
 			// Calculate and prepare semester results
 			const semesterResultsToInsert: any[] = []
 			const results: { studentId: string; semester: number; semesterResultId: string | null; error?: string }[] = []
 
-			Object.values(studentSemesterMap).forEach((studentData) => {
-				const { student_id, institutions_id, program_id, examination_session_id, semester: sem, marks } = studentData
+			Object.values(studentMarksMap).forEach((studentData) => {
+				const { student_id, institutions_id, program_id, examination_session_id, register_no, marks } = studentData
 
-				// Calculate totals
+				// Get semester_number from students.semester_id -> semesters.semester_number
+				const currentSemester = studentSemesterMap[register_no] || 1
+
+				// Calculate SGPA for THIS session only
 				let totalCreditsRegistered = 0
 				let totalCreditsEarned = 0
 				let totalCreditPoints = 0
@@ -1300,7 +1407,6 @@ export async function POST(req: NextRequest) {
 					totalMarksMaximum += fm.total_marks_maximum || 0
 
 					// Use is_pass from final_marks table (already calculated by database trigger)
-					// The trigger 'trigger_auto_determine_pass_status' calculates this on INSERT/UPDATE
 					if (fm.is_pass) {
 						totalCreditsEarned += credit
 					} else {
@@ -1308,19 +1414,21 @@ export async function POST(req: NextRequest) {
 					}
 				})
 
-				// Calculate SGPA
+				// Calculate SGPA (for this session only)
 				const sgpa = totalCreditsRegistered > 0
 					? Math.round((totalCreditPoints / totalCreditsRegistered) * 100) / 100
 					: 0
+
+				// Calculate CGPA using ALL subjects across ALL sessions
+				const cgpaData = cgpaDataMap[student_id] || { cgpaCredits: 0, cgpaCreditPoints: 0 }
+				const cgpa = cgpaData.cgpaCredits > 0
+					? Math.round((cgpaData.cgpaCreditPoints / cgpaData.cgpaCredits) * 100) / 100
+					: sgpa // Fallback to SGPA if no cumulative data
 
 				// Calculate percentage
 				const percentage = totalMarksMaximum > 0
 					? Math.round((totalMarksObtained / totalMarksMaximum) * 10000) / 100
 					: 0
-
-				// For now, CGPA = SGPA (single semester)
-				// In a full implementation, you'd fetch previous semester results
-				const cgpa = sgpa
 
 				// Determine result_status based on backlogs
 				const resultStatus = totalBacklogs === 0 ? 'Pass' : 'Fail'
@@ -1330,12 +1438,12 @@ export async function POST(req: NextRequest) {
 					student_id,
 					examination_session_id,
 					program_id,
-					semester: sem,
+					semester: currentSemester, // Use student's current semester from students table
 					total_credits_registered: totalCreditsRegistered,
 					total_credits_earned: totalCreditsEarned,
 					total_credit_points: totalCreditPoints,
 					sgpa,
-					cgpa,
+					cgpa, // CGPA calculated from ALL subjects
 					percentage,
 					total_backlogs: totalBacklogs,
 					new_backlogs: totalBacklogs,

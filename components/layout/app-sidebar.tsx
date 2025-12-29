@@ -32,6 +32,7 @@ import {
 	Shapes,
 	SquareStack,
 	TableProperties,
+	Layers,
 
 	// Document Icons
 	FileText,
@@ -51,6 +52,10 @@ import {
 	BarChart3,
 	TestTube,
 	Mail,
+	Settings2,
+	Target,
+	Link2,
+	Percent,
 } from "lucide-react"
 
 import { NavMain } from "@/components/layout/nav-main"
@@ -183,6 +188,19 @@ const data = {
 			],
 		},
 		{
+			title: "Internal Marks",
+			url: "#",
+			icon: Percent,
+			roles: ["super_admin", "coe"],
+			items: [
+				{ title: "Assessment Patterns",    url: "/pre-exam/internal-mark-setting",                   icon: Settings2 },
+				{ title: "Eligibility Rules",      url: "/pre-exam/internal-mark-setting/eligibility-rules", icon: Shield },
+				{ title: "Passing Rules",          url: "/pre-exam/internal-mark-setting/passing-rules",     icon: Target },
+				{ title: "Course Associations",    url: "/pre-exam/internal-mark-setting/course-associations", icon: Link2 },
+				{ title: "Program Associations",   url: "/pre-exam/internal-mark-setting/program-associations", icon: Layers },
+			],
+		},
+		{
 			title: "During-Exam",
 			url: "#",
 			icon: Play,
@@ -237,7 +255,7 @@ const data = {
 				{ title: "Program Analysis",   url: "/result/dashboard?tab=program",  icon: GraduationCap },
 				{ title: "Subject Analysis",   url: "/result/dashboard?tab=subject",  icon: BookText },
 				{ title: "NAAC Reports",       url: "/result/dashboard?tab=naac",     icon: FileText },
-				{ title: "NAAD Compliance",    url: "/result/dashboard?tab=naad",     icon: Shield },
+				{ title: "NAD Compliance",    url: "/result/dashboard?tab=nad",     icon: Shield },
 			],
 		},
 

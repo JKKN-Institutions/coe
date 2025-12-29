@@ -1,16 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createRouteHandlerClient } from '@supabase/auth-helpers-nextjs'
-import { cookies } from 'next/headers'
+import { createRouteHandlerSupabaseClient } from '@/lib/supabase-route-handler'
 import { getSupabaseServer } from '@/lib/supabase-server'
 
 // Get all roles assigned to a specific user
 export async function GET(
   req: NextRequest,
-  { params }: { params: { userId: string } }
+  { params }: { params: Promise<{ userId: string }> }
 ) {
   try {
-    const supabase = createRouteHandlerClient({ cookies })
-    const userId = params.userId
+    const supabase = await createRouteHandlerSupabaseClient()
+    const { userId } = await params
 
     // Check if requester is authenticated
     const { data: { user: authUser } } = await supabase.auth.getUser()

@@ -1,12 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createRouteHandlerClient } from '@supabase/auth-helpers-nextjs'
-import { cookies } from 'next/headers'
+import { createRouteHandlerSupabaseClient } from '@/lib/supabase-route-handler'
 import { getSupabaseServer } from '@/lib/supabase-server'
 
 // Assign role to a user
 export async function POST(req: NextRequest) {
   try {
-    const supabase = createRouteHandlerClient({ cookies })
+    const supabase = await createRouteHandlerSupabaseClient()
 
     // Check if requester is authenticated
     const { data: { user: authUser } } = await supabase.auth.getUser()
@@ -168,7 +167,7 @@ export async function POST(req: NextRequest) {
 // Remove role from a user
 export async function DELETE(req: NextRequest) {
   try {
-    const supabase = createRouteHandlerClient({ cookies })
+    const supabase = await createRouteHandlerSupabaseClient()
 
     // Check if requester is authenticated
     const { data: { user: authUser } } = await supabase.auth.getUser()

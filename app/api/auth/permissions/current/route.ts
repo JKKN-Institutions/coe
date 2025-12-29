@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { cookies } from 'next/headers'
-import { createRouteHandlerClient } from '@supabase/auth-helpers-nextjs'
+import { createRouteHandlerSupabaseClient } from '@/lib/supabase-route-handler'
 import { getSupabaseServer } from '@/lib/supabase-server'
 
 // Optimized permission system:
@@ -17,8 +16,8 @@ export async function GET(req: NextRequest) {
       console.log('🔄 Force refresh requested - bypassing cache')
     }
 
-    // Use auth-helpers to bind the Supabase client to the user's auth cookies
-    const supabase = createRouteHandlerClient({ cookies })
+    // Use SSR client bound to the user's auth cookies
+    const supabase = await createRouteHandlerSupabaseClient()
 
     // Get the authenticated user from the auth token
     const { data: authUserData, error: authErr } = await supabase.auth.getUser()

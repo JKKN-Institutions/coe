@@ -37,7 +37,8 @@ import {
 	Award,
 	TrendingUp,
 	AlertTriangle,
-	RefreshCw
+	RefreshCw,
+	SkipForward
 } from "lucide-react"
 import type { StudentResultRow, InstitutionOption, ProgramData, ExamSessionData, CourseOfferingData } from "@/types/final-marks"
 
@@ -102,7 +103,9 @@ export default function GenerateFinalMarksPage() {
 		reappear: 0,
 		withheld: 0,
 		distinction: 0,
-		first_class: 0
+		first_class: 0,
+		skipped_no_attendance: 0,
+		skipped_missing_marks: 0
 	})
 
 	// UI state
@@ -280,13 +283,21 @@ export default function GenerateFinalMarksPage() {
 			const data = await res.json()
 			setResults(data.results || [])
 			setSummary(data.summary || {
-				passed: 0, failed: 0, absent: 0, reappear: 0, withheld: 0, distinction: 0, first_class: 0
+				passed: 0, failed: 0, absent: 0, reappear: 0, withheld: 0, distinction: 0, first_class: 0,
+				skipped_no_attendance: 0, skipped_missing_marks: 0
 			})
 			setIsSaved(false)
 
+			// Build description with skipped info if any
+			const skippedTotal = (data.summary?.skipped_no_attendance || 0) + (data.summary?.skipped_missing_marks || 0)
+			let description = `Generated results for ${data.total_students} learners across ${data.total_courses} course(s).`
+			if (skippedTotal > 0) {
+				description += ` (${skippedTotal} skipped due to missing data)`
+			}
+
 			toast({
 				title: '✅ Generation Complete',
-				description: `Generated results for ${data.total_students} learners across ${data.total_courses} course(s).`,
+				description,
 				className: 'bg-green-50 border-green-200 text-green-800'
 			})
 
@@ -818,6 +829,27 @@ export default function GenerateFinalMarksPage() {
 								</Card>
 							</div>
 
+							{/* Skipped Records Info */}
+							{(summary.skipped_no_attendance > 0 || summary.skipped_missing_marks > 0) && (
+								<Card className="bg-amber-50 dark:bg-amber-900/10 border-amber-200 dark:border-amber-800">
+									<CardContent className="p-3">
+										<div className="flex items-center gap-3">
+											<SkipForward className="h-5 w-5 text-amber-600 dark:text-amber-400" />
+											<div className="flex-1">
+												<p className="text-sm font-medium text-amber-800 dark:text-amber-200">
+													{summary.skipped_no_attendance + summary.skipped_missing_marks} record(s) skipped due to incomplete data
+												</p>
+												<p className="text-xs text-amber-600 dark:text-amber-400">
+													{summary.skipped_no_attendance > 0 && `${summary.skipped_no_attendance} missing attendance`}
+													{summary.skipped_no_attendance > 0 && summary.skipped_missing_marks > 0 && ' • '}
+													{summary.skipped_missing_marks > 0 && `${summary.skipped_missing_marks} missing marks (internal/external)`}
+												</p>
+											</div>
+										</div>
+									</CardContent>
+								</Card>
+							)}
+
 							{/* Results Table */}
 							<Card>
 								<CardHeader className="p-3">
@@ -947,9 +979,18 @@ export default function GenerateFinalMarksPage() {
 												<RefreshCw className="h-4 w-4 mr-1" />
 												Regenerate
 											</Button>
-											<Button onClick={() => setConfirmDialogOpen(true)} disabled={results.length === 0 || isSaved}>
-												<Save className="h-4 w-4 mr-1" />
-												{isSaved ? 'Saved' : 'Save to Database'}
+											<Button onClick={() => setConfirmDialogOpen(true)} disabled={results.length === 0 || isSaved || saving}>
+												{saving ? (
+													<>
+														<Loader2 className="h-4 w-4 mr-1 animate-spin" />
+														Saving...
+													</>
+												) : (
+													<>
+														<Save className="h-4 w-4 mr-1" />
+														{isSaved ? 'Saved' : 'Save to Database'}
+													</>
+												)}
 											</Button>
 										</div>
 									</div>
@@ -1028,7 +1069,7 @@ export default function GenerateFinalMarksPage() {
 			</SidebarInset>
 
 			{/* Confirmation Dialog */}
-			<AlertDialog open={confirmDialogOpen} onOpenChange={setConfirmDialogOpen}>
+			<AlertDialog open={confirmDialogOpen} onOpenChange={(open) => !saving && setConfirmDialogOpen(open)}>
 				<AlertDialogContent>
 					<AlertDialogHeader>
 						<AlertDialogTitle>Save Final Marks to Database?</AlertDialogTitle>

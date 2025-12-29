@@ -16,7 +16,7 @@ const publicApiRoutes = [
 	'/api/token',
 ]
 
-export async function middleware(request: NextRequest) {
+export async function proxy(request: NextRequest) {
 	const { pathname } = request.nextUrl
 	const res = NextResponse.next()
 

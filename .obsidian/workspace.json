@@ -4,17 +4,21 @@
     "type": "split",
     "children": [
       {
-        "id": "2d1a325d023259a1",
+        "id": "450680f30263484e",
         "type": "tabs",
         "children": [
           {
-            "id": "018c5cce98a57711",
+            "id": "5727db9542cbb75d",
             "type": "leaf",
             "state": {
-              "type": "empty",
-              "state": {},
+              "type": "markdown",
+              "state": {
+                "file": "node_modules/@alloc/quick-lru/readme.md",
+                "mode": "source",
+                "source": false
+              },
               "icon": "lucide-file",
-              "title": "New tab"
+              "title": "readme"
             }
           }
         ]
@@ -176,9 +180,19 @@
       "bases:Create new base": false
     }
   },
-  "active": "018c5cce98a57711",
+  "active": "5727db9542cbb75d",
   "lastOpenFiles": [
+    "CLAUDE copy.md",
     "README.md",
+    "docs/DROPDOWN_VERIFICATION_REPORT.md",
+    "docs/COURSE_MAPPING_PDF_REPORT.md",
+    "docs/CHILD_APP_IMPLEMENTATION_GUIDE.md",
+    "docs/bug-reporter-usage.md",
+    "docs/ATTENDANCE_REPORTS_PAGE.md",
+    "docs/API_VERIFICATION_REPORT.md",
+    "docs/modules/INSTITUTIONS_MODULE.md",
+    "docs/modules/answer-sheet-packets-test-cases.md",
+    "docs/modules/answer-sheet-packets-fix-summary.md",
     "CLAUDE_MD_UPDATE.md"
   ]
 }

@@ -44,6 +44,9 @@ export interface FinalMark {
 	letter_grade?: string | null
 	grade_points?: number | null
 	grade_description?: string | null
+	// Credit and Grade Points (for NAAD/ABC export)
+	credit?: number | null
+	total_grade_points?: number | null
 	// Pass/Fail Status (auto-determined by triggers)
 	is_pass: boolean
 	is_distinction: boolean
@@ -266,9 +269,9 @@ export interface StudentResultRow {
 	grade: string
 	grade_point: number
 	grade_description?: string
-	// Credits
+	// Credits (maps to final_marks.credit and final_marks.total_grade_points)
 	credits: number
-	credit_points: number
+	credit_points: number // = credits * grade_point (0 if fail/absent)
 	// Status
 	pass_status: 'Pass' | 'Fail' | 'Reappear' | 'Absent' | 'Withheld' | 'Expelled'
 	is_pass: boolean

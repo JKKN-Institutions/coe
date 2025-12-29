@@ -475,6 +475,7 @@ export async function POST(request: NextRequest) {
 						course_name,
 						course_type,
 						credit,
+						evaluation_type,
 						internal_max_mark,
 						internal_pass_mark,
 						internal_converted_mark,
@@ -542,9 +543,10 @@ export async function POST(request: NextRequest) {
 		})
 
 		// 5. Fetch exam attendance records for absence checking
+		// NOTE: Only attendance_status column exists (is_absent column doesn't exist)
 		const { data: examAttendance, error: attendanceError } = await supabase
 			.from('exam_attendance')
-			.select('id, exam_registration_id, is_absent, attendance_status')
+			.select('id, exam_registration_id, attendance_status')
 			.in('exam_registration_id', examRegIds)
 
 		if (attendanceError) {
@@ -574,7 +576,9 @@ export async function POST(request: NextRequest) {
 			reappear: 0,
 			withheld: 0,
 			distinction: 0,
-			first_class: 0
+			first_class: 0,
+			skipped_no_attendance: 0,
+			skipped_missing_marks: 0
 		}
 
 		for (const examReg of examRegistrations) {
@@ -588,6 +592,80 @@ export async function POST(request: NextRequest) {
 			const externalMark = externalMarksMap.get(examReg.id)
 			const attendanceRecord = examAttendanceMap.get(examReg.id)
 
+			// =========================================================
+			// BUSINESS RULE: Validation before generating final marks
+			// 1. Attendance is mandatory - No attendance record → Skip
+			// 2. Internal and External marks are required (both must exist)
+			// 3. For courses with evaluation_type = 'CIA & ESE':
+			//    - If internal exists but external missing → Skip
+			//    - If external exists but internal missing → Skip
+			// 4. Generate only when: attendance + internal + external all exist
+			// =========================================================
+
+			// Rule 1: Attendance is mandatory
+			if (!attendanceRecord) {
+				// No attendance record means student didn't appear for exam
+				// Skip this student-course combination (no result needed)
+				summary.skipped_no_attendance++
+				continue
+			}
+
+			// Check if student is marked absent in attendance
+			// NOTE: Only attendance_status column exists (is_absent column doesn't exist)
+			const isAbsent = attendanceRecord.attendance_status?.toLowerCase() === 'absent'
+
+			// Check marks availability
+			const hasInternalMark = internalMark && internalMark.total_internal_marks !== null && internalMark.total_internal_marks !== undefined
+			const hasExternalMark = externalMark && externalMark.total_marks_obtained !== null && externalMark.total_marks_obtained !== undefined
+			const evaluationType = course.evaluation_type?.toUpperCase() || ''
+
+			// Determine evaluation type category
+			const isCIAandESE = evaluationType === 'CIA & ESE' || evaluationType === 'CIA AND ESE' || evaluationType === 'CIA&ESE'
+			const isCIAOnly = evaluationType === 'CIA' || evaluationType === 'CIA ONLY'
+			const isESEOnly = evaluationType === 'ESE' || evaluationType === 'ESE ONLY'
+
+			// =========================================================
+			// VALIDATION RULES:
+			// 1. Absent in attendance → Generate with AAA grade, 0 GP (always)
+			// 2. Present + CIA & ESE + missing internal OR external → Skip
+			// 3. Present + CIA only + missing external → Generate normally (internal only)
+			// 4. Present + ESE only + missing internal → Generate normally (external only)
+			// 5. Present + Other types + both marks missing → Skip
+			// 6. Present + all required marks exist → Generate normally
+			// =========================================================
+
+			// If student is absent, we generate AAA grade regardless of marks availability
+			// No validation needed for absent students
+
+			// If student is present, validate marks based on evaluation type
+			if (!isAbsent) {
+				if (isCIAandESE) {
+					// CIA & ESE: Both internal AND external marks are required
+					if (!hasInternalMark || !hasExternalMark) {
+						summary.skipped_missing_marks++
+						continue
+					}
+				} else if (isCIAOnly) {
+					// CIA only: Internal mark is required (external is optional)
+					if (!hasInternalMark) {
+						summary.skipped_missing_marks++
+						continue
+					}
+				} else if (isESEOnly) {
+					// ESE only: External mark is required (internal is optional)
+					if (!hasExternalMark) {
+						summary.skipped_missing_marks++
+						continue
+					}
+				} else {
+					// Other evaluation types: At least one mark type should exist
+					if (!hasInternalMark && !hasExternalMark) {
+						summary.skipped_missing_marks++
+						continue
+					}
+				}
+			}
+
 			// Get marks configuration from course table (exact values, no fallbacks)
 			const internalMax = Number(course.internal_max_mark) || 0
 			const internalPassMark = Number(course.internal_pass_mark) || 0
@@ -595,14 +673,6 @@ export async function POST(request: NextRequest) {
 			const externalPassMark = Number(course.external_pass_mark) || 0
 			const totalMax = Number(course.total_max_mark) || 0
 			const totalPassMark = Number(course.total_pass_mark) || 0
-
-			// Check absence from multiple sources:
-			// 1. marks_entry.is_absent - marked absent during marks entry
-			// 2. exam_attendance.is_absent - marked absent during attendance
-			// 3. exam_attendance.attendance_status - 'Absent' status (case-insensitive check)
-			const isAbsent = externalMark?.is_absent ||
-				attendanceRecord?.is_absent ||
-				attendanceRecord?.attendance_status?.toLowerCase() === 'absent'
 
 			// Get marks obtained (cap at max values)
 			let internalMarksObtained = Number(internalMark?.total_internal_marks) || 0
@@ -628,16 +698,12 @@ export async function POST(request: NextRequest) {
 			let failReason: 'INTERNAL' | 'EXTERNAL' | 'TOTAL' | null = null
 			let isPass = true
 
-			// Case 1: Student is absent in external exam
+			// Case 1: Student is absent in external exam (from exam_attendance)
 			if (isAbsent) {
 				isPass = false
 				failReason = 'EXTERNAL'
 			}
-			// Case 2: No external marks entry found (student didn't appear)
-			else if (!externalMark) {
-				isPass = false
-				failReason = 'EXTERNAL'
-			}
+			// Case 2: Student is present, check pass conditions
 			else {
 				// Check internal pass condition
 				if (internalPassMark > 0 && internalMarksObtained < internalPassMark) {
@@ -659,54 +725,52 @@ export async function POST(request: NextRequest) {
 			// Determine grade based on percentage
 			let gradeEntry: any = undefined
 
-			// CRITICAL: For absent students, ALWAYS use AAA grade
-			// This ensures the grade is preserved when saved to the database
-			if (isAbsent || !externalMark) {
-				// Find absent grade from grade_system (min_mark = -1 and max_mark = -1 for absent)
+			// Grade lookup based on attendance and pass status
+			if (isAbsent) {
+				// ABSENT: Find absent grade from grade_system (AAA grade)
 				gradeEntry = grades.find((g: any) => g.grades?.is_absent === true || (g.min_mark === -1 && g.max_mark === -1))
 			} else if (!isPass) {
-				// Find fail/reappear grade (U grade)
+				// FAILED: Find fail/reappear grade (U grade)
 				gradeEntry = grades.find((g: any) => g.grade === 'U' || g.grades?.result_status === 'REAPPEAR')
 			} else {
-				// Find grade by percentage range for passed students
+				// PASSED: Find grade by percentage range
 				gradeEntry = grades.find((g: any) => percentage >= g.min_mark && percentage <= g.max_mark)
 			}
 
-			// Determine letter grade based on pass status and absence
-			// IMPORTANT: For absent students, ALWAYS use 'AAA' regardless of gradeEntry
-			// This prevents the database trigger from overwriting to 'U'
+			// Determine letter grade based on attendance and pass status
 			let letterGrade: string
 			let gradePoint: number
 			let gradeDescription: string
 
-			if (isAbsent || !externalMark) {
-				// ABSENT: Always use AAA grade
+			if (isAbsent) {
+				// ABSENT (from exam_attendance): Always use AAA grade, grade_point = 0
 				letterGrade = 'AAA'
 				gradePoint = 0
 				gradeDescription = 'Absent'
 			} else if (!isPass) {
-				// FAILED: Always use U grade
+				// FAILED: Always use U grade, grade_point = 0
 				letterGrade = 'U'
 				gradePoint = 0
 				gradeDescription = 'Re-Appear'
 			} else {
-				// PASSED: Use grade from grade_system
+				// PASSED: Use grade letter from grade_system
+				// Grade point = total_marks / 10 (e.g., 59 marks = 5.9 GP, 74 marks = 7.4 GP)
 				letterGrade = gradeEntry?.grade || 'RA'
-				gradePoint = gradeEntry?.grade_point || 0
+				gradePoint = Math.round((totalMarks / 10) * 100) / 100 // Round to 2 decimal places
 				gradeDescription = gradeEntry?.description || ''
 			}
 			const credits = course.credit || 0
 			const creditPoints = gradePoint * credits
 
-			// Determine pass status based on course rules and grade system
+			// Determine pass status based on attendance and course rules
 			let passStatus: 'Pass' | 'Fail' | 'Reappear' | 'Absent' | 'Withheld' | 'Expelled' = 'Fail'
-			if (isAbsent || !externalMark) {
+			if (isAbsent) {
 				passStatus = 'Absent'
 				summary.absent++
 			} else if (isPass) {
 				passStatus = 'Pass'
 				summary.passed++
-				// Check distinction/first class based on grade description
+				// Check distinction/first class based on grade description and calculated grade point
 				const gradeDesc = (gradeEntry?.description || '').toUpperCase()
 				const gradeLetter = (gradeEntry?.grade || '').toUpperCase()
 				// Distinction: D, D+ grades or description contains 'DISTINCTION'
@@ -715,7 +779,7 @@ export async function POST(request: NextRequest) {
 				}
 				// First class: A, A+, D, D+, O grades or description contains 'FIRST' or grade_point >= 6.0
 				if (gradeLetter === 'A' || gradeLetter === 'A+' || gradeLetter === 'D' || gradeLetter === 'D+' || gradeLetter === 'O' ||
-					gradeDesc.includes('FIRST') || (gradeEntry?.grade_point || 0) >= 6.0) {
+					gradeDesc.includes('FIRST') || gradePoint >= 6.0) {
 					summary.first_class++
 				}
 			} else {
@@ -764,6 +828,11 @@ export async function POST(request: NextRequest) {
 		if (save_to_db && results.length > 0) {
 			for (const result of results) {
 				try {
+					// Calculate total_grade_points: credit * grade_points (0 if fail/absent)
+					const totalGradePoints = result.is_pass
+						? result.credits * result.grade_point
+						: 0
+
 					const insertData = {
 						institutions_id,
 						examination_session_id,
@@ -790,7 +859,10 @@ export async function POST(request: NextRequest) {
 						result_status: 'Pending',
 						calculated_by: calculated_by || null,
 						calculated_at: new Date().toISOString(),
-						is_active: true
+						is_active: true,
+						// New fields for NAAD/ABC export
+						credit: result.credits,
+						total_grade_points: totalGradePoints
 					}
 
 					const { error: insertError } = await supabase

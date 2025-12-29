@@ -1,67 +1,50 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { fetchMyJKKNStudents } from '@/services/shared/myjkkn-api'
+import { fetchMyJKKNStudents, MyJKKNApiError } from '@/lib/myjkkn-api'
 
-/**
- * GET /api/myjkkn/students
- * Fetches students from MyJKKN API with pagination
- *
- * Query params:
- * - page: number (default: 1)
- * - limit: number (default: 20)
- */
 export async function GET(request: NextRequest) {
 	try {
-		const searchParams = request.nextUrl.searchParams
-		const page = parseInt(searchParams.get('page') || '1', 10)
-		const limit = parseInt(searchParams.get('limit') || '20', 10)
+		const { searchParams } = new URL(request.url)
+		const page = searchParams.get('page')
+		const limit = searchParams.get('limit')
+		const search = searchParams.get('search')
+		const is_active = searchParams.get('is_active')
+		const institution_id = searchParams.get('institution_id')
+		const institution_code = searchParams.get('institution_code')
+		const program_id = searchParams.get('program_id')
+		const program_code = searchParams.get('program_code')
+		const department_id = searchParams.get('department_id')
+		const department_code = searchParams.get('department_code')
+		const batch_id = searchParams.get('batch_id')
+		const current_semester = searchParams.get('current_semester')
+		const admission_year = searchParams.get('admission_year')
 
-		// Validate pagination parameters
-		if (page < 1) {
-			return NextResponse.json(
-				{ error: 'Page number must be greater than 0' },
-				{ status: 400 }
-			)
-		}
+		const response = await fetchMyJKKNStudents({
+			page: page ? parseInt(page, 10) : 1,
+			limit: limit ? parseInt(limit, 10) : 10,
+			search: search || undefined,
+			is_active: is_active ? is_active === 'true' : undefined,
+			institution_id: institution_id || undefined,
+			institution_code: institution_code || undefined,
+			program_id: program_id || undefined,
+			program_code: program_code || undefined,
+			department_id: department_id || undefined,
+			department_code: department_code || undefined,
+			batch_id: batch_id || undefined,
+			current_semester: current_semester ? parseInt(current_semester, 10) : undefined,
+			admission_year: admission_year ? parseInt(admission_year, 10) : undefined,
+		})
 
-		if (limit < 1 || limit > 100) {
-			return NextResponse.json(
-				{ error: 'Limit must be between 1 and 100' },
-				{ status: 400 }
-			)
-		}
-
-		const data = await fetchMyJKKNStudents({ page, limit })
-
-		return NextResponse.json(data, { status: 200 })
+		return NextResponse.json(response)
 	} catch (error) {
-		console.error('MyJKKN Students API Error:', error)
-
-		const errorMessage = error instanceof Error ? error.message : 'Failed to fetch students from MyJKKN API'
-
-		// Return appropriate status code based on error type
-		if (errorMessage.includes('Invalid API key')) {
+		console.error('Error fetching students from MyJKKN:', error)
+		if (error instanceof MyJKKNApiError) {
 			return NextResponse.json(
-				{ error: errorMessage },
-				{ status: 401 }
+				{ error: error.message, status: error.status, details: error.details },
+				{ status: error.status }
 			)
 		}
-
-		if (errorMessage.includes('Access forbidden')) {
-			return NextResponse.json(
-				{ error: errorMessage },
-				{ status: 403 }
-			)
-		}
-
-		if (errorMessage.includes('not found')) {
-			return NextResponse.json(
-				{ error: errorMessage },
-				{ status: 404 }
-			)
-		}
-
 		return NextResponse.json(
-			{ error: errorMessage },
+			{ error: 'Failed to fetch students from MyJKKN' },
 			{ status: 500 }
 		)
 	}
