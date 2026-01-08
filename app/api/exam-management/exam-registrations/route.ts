@@ -10,6 +10,7 @@ export async function GET(request: Request) {
 		const student_id = searchParams.get('student_id')
 		const examination_session_id = searchParams.get('examination_session_id')
 		const registration_status = searchParams.get('registration_status')
+		const program_id = searchParams.get('program_id')
 
 		// Pagination parameters
 		const page = parseInt(searchParams.get('page') || '1')
@@ -18,7 +19,23 @@ export async function GET(request: Request) {
 		const to = from + pageSize - 1
 
 		// Debug logging
-		console.log('📊 Pagination params:', { page, pageSize, from, to })
+		console.log('📊 Pagination params:', { page, pageSize, from, to, program_id })
+
+		// If program_id filter is provided, first get matching course_offering_ids
+		let courseOfferingIds: string[] | null = null
+		if (program_id) {
+			const { data: matchingOfferings, error: offeringsError } = await supabase
+				.from('course_offerings')
+				.select('id')
+				.eq('program_id', program_id)
+
+			if (offeringsError) {
+				console.error('Error fetching course offerings by program:', offeringsError)
+			} else {
+				courseOfferingIds = matchingOfferings?.map(o => o.id) || []
+				console.log(`📊 Found ${courseOfferingIds.length} course offerings for program_id: ${program_id}`)
+			}
+		}
 
 		let query = supabase
 			.from('exam_registrations')
@@ -27,7 +44,7 @@ export async function GET(request: Request) {
 				institution:institutions(id, institution_code, name),
 				student:students(id, register_number, first_name, last_name),
 				examination_session:examination_sessions(id, session_name, session_code, exam_start_date, exam_end_date),
-				course_offering:course_offerings(id, course_code)
+				course_offering:course_offerings(id, course_code, program_code)
 			`, { count: 'exact' })
 			.order('created_at', { ascending: false })
 			.range(from, to) // Dynamic pagination range
@@ -43,6 +60,14 @@ export async function GET(request: Request) {
 		}
 		if (registration_status) {
 			query = query.eq('registration_status', registration_status)
+		}
+		// Filter by program_id through course_offering_ids
+		if (courseOfferingIds !== null) {
+			if (courseOfferingIds.length === 0) {
+				// No matching course offerings, return empty result
+				return NextResponse.json([])
+			}
+			query = query.in('course_offering_id', courseOfferingIds)
 		}
 
 		const { data, error, count } = await query

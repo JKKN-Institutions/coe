@@ -154,19 +154,15 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
     }
 
     if (input.regulation_code !== undefined) {
-      const { data: regulationData, error: regulationError } = await supabase
+      // Try to fetch regulation_id from regulation_code (optional - regulations may come from MyJKKN)
+      const { data: regulationData } = await supabase
         .from('regulations')
         .select('id')
         .eq('regulation_code', String(input.regulation_code))
         .single()
 
-      if (regulationError || !regulationData) {
-        return NextResponse.json({
-          error: `Regulation with code "${input.regulation_code}" not found.`
-        }, { status: 400 })
-      }
-
-      data.regulation_id = regulationData.id
+      // regulation_id is optional since regulations may be sourced from MyJKKN API
+      data.regulation_id = regulationData?.id || null
       data.regulation_code = String(input.regulation_code)
     }
 

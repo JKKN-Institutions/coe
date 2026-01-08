@@ -89,4 +89,5 @@ export interface CourseOfferingOption {
 	course_code: string
 	course_name?: string
 	institutions_id?: string
+	program_code?: string
 }

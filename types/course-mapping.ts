@@ -29,6 +29,7 @@ export interface Semester {
 	semester_code: string
 	semester_name: string
 	semester_number: number
+	semester_order?: number
 	program_id?: string
 }
 

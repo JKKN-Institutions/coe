@@ -21,9 +21,11 @@ import { PlusCircle, Edit, Trash2, Search, ChevronLeft, ChevronRight, ArrowUpDow
 import { Switch } from "@/components/ui/switch"
 import { useToast } from "@/hooks/common/use-toast"
 import { useFormValidation, ValidationPresets } from "@/hooks/common/use-form-validation"
+import { useInstitutionFilter } from "@/hooks/use-institution-filter"
 
 type Department = {
   id: string
+  institutions_id: string
   institution_code: string
   department_code: string
   department_name: string
@@ -34,11 +36,19 @@ type Department = {
   created_at: string
 }
 
-const MOCK_DEPARTMENTS: Department[] = [
-  { id: "1", institution_code: "JKKN", department_code: "CSE", department_name: "Computer Science and Engineering", display_name: "CSE", stream: "Engineering", is_active: true, created_at: new Date().toISOString() },
-]
-
 export default function DepartmentPage() {
+  // Institution filter hook
+  const {
+    filter,
+    isReady,
+    appendToUrl,
+    getInstitutionIdForCreate,
+    getInstitutionCodeForCreate,
+    mustSelectInstitution,
+    shouldFilter,
+    institutionId
+  } = useInstitutionFilter()
+
   const [items, setItems] = useState<Department[]>([])
   const [loading, setLoading] = useState(true)
   const [searchTerm, setSearchTerm] = useState("")
@@ -52,7 +62,7 @@ export default function DepartmentPage() {
   const [statusFilter, setStatusFilter] = useState("all")
   // Removed year filter
 
-  const [formData, setFormData] = useState({ institution_code: "", department_code: "", department_name: "", display_name: "", description: "", stream: "", department_order: "", is_active: true })
+  const [formData, setFormData] = useState({ institutions_id: "", institution_code: "", department_code: "", department_name: "", display_name: "", description: "", stream: "", department_order: "", is_active: true })
 
   // Validation hook
   const { errors, validate, clearErrors } = useFormValidation({
@@ -85,14 +95,15 @@ export default function DepartmentPage() {
   const { toast } = useToast()
 
   // Institutions for dropdown
-  const [institutions, setInstitutions] = useState<Array<{ id: string; institution_code: string; name?: string }>>([])
+  const [institutions, setInstitutions] = useState<Array<{ id: string; institution_code: string; institution_name?: string; counselling_code?: string | null }>>([])
   const [institutionsLoading, setInstitutionsLoading] = useState(true)
 
-  // Fetch departments from API
+  // Fetch departments from API with institution filter
   const fetchDepartments = async () => {
     try {
       setLoading(true)
-      const res = await fetch('/api/master/departments')
+      const url = appendToUrl('/api/master/departments')
+      const res = await fetch(url)
       if (!res.ok) throw new Error('Failed to fetch departments')
       const data = await res.json()
       setItems(Array.isArray(data) ? data : [])
@@ -112,10 +123,14 @@ export default function DepartmentPage() {
       if (res.ok) {
         const data = await res.json()
         const mapped = Array.isArray(data)
-          ? data.filter((i: any) => i?.institution_code).map((i: any) => ({ id: i.id, institution_code: i.institution_code, name: i.name }))
+          ? data.filter((i: any) => i?.institution_code).map((i: any) => ({
+            id: i.id,
+            institution_code: i.institution_code,
+            institution_name: i.institution_name || i.name,
+            counselling_code: i.counselling_code || null
+          }))
           : []
         setInstitutions(mapped)
-        console.log('Institutions loaded:', mapped)
       } else {
         console.error('Failed to fetch institutions:', res.status, res.statusText)
       }
@@ -126,12 +141,19 @@ export default function DepartmentPage() {
     }
   }
 
+  // Load data when institution filter is ready
   useEffect(() => {
-    fetchDepartments()
-    fetchInstitutions()
-  }, [])
+    if (isReady) {
+      fetchDepartments()
+      fetchInstitutions()
+    }
+  }, [isReady, filter])
 
-  const resetForm = () => { setFormData({ institution_code: "", department_code: "", department_name: "", display_name: "", description: "", stream: "", department_order: "", is_active: true }); clearErrors(); setEditing(null) }
+  const resetForm = () => {
+    const autoInstitutionId = getInstitutionIdForCreate() || ""
+    const autoInstitutionCode = getInstitutionCodeForCreate() || ""
+    setFormData({ institutions_id: autoInstitutionId, institution_code: autoInstitutionCode, department_code: "", department_name: "", display_name: "", description: "", stream: "", department_order: "", is_active: true }); clearErrors(); setEditing(null)
+  }
 
   const handleSort = (c: string) => { if (sortColumn === c) setSortDirection(sortDirection === "asc" ? "desc" : "asc"); else { setSortColumn(c); setSortDirection("asc") } }
   const getSortIcon = (c: string) => sortColumn !== c ? <ArrowUpDown className="h-3 w-3 text-muted-foreground" /> : (sortDirection === "asc" ? <ArrowUp className="h-3 w-3" /> : <ArrowDown className="h-3 w-3" />)
@@ -158,7 +180,7 @@ export default function DepartmentPage() {
   useEffect(() => setCurrentPage(1), [searchTerm, sortColumn, sortDirection, statusFilter])
 
   const openAdd = () => { resetForm(); setSheetOpen(true) }
-  const openEdit = (row: Department) => { setEditing(row); setFormData({ institution_code: row.institution_code, department_code: row.department_code, department_name: row.department_name, display_name: row.display_name || "", description: (row as any).description || "", stream: row.stream || "", department_order: row.department_order ? String(row.department_order) : "", is_active: row.is_active }); setSheetOpen(true) }
+  const openEdit = (row: Department) => { setEditing(row); setFormData({ institutions_id: row.institutions_id || "", institution_code: row.institution_code, department_code: row.department_code, department_name: row.department_name, display_name: row.display_name || "", description: (row as any).description || "", stream: row.stream || "", department_order: row.department_order ? String(row.department_order) : "", is_active: row.is_active }); setSheetOpen(true) }
 
   const save = async () => {
     if (!validate(formData)) {
@@ -349,7 +371,7 @@ export default function DepartmentPage() {
     // Sheet 2: Institution Code References
     const institutionReference = institutions.map(inst => ({
       'Institution Code': inst.institution_code,
-      'Institution Name': inst.name || 'N/A',
+      'Institution Name': inst.institution_name || 'N/A',
       'Status': (inst as any).is_active ? 'Active' : 'Inactive'
     }))
 
@@ -851,7 +873,10 @@ export default function DepartmentPage() {
                   <Table>
                     <TableHeader className="sticky top-0 z-10 bg-slate-50 dark:bg-slate-900/50">
                       <TableRow>
-                        <TableHead className="w-[120px] text-[11px]"><Button variant="ghost" size="sm" onClick={() => handleSort("institution_code")} className="h-auto p-0 font-medium hover:bg-transparent">Inst. Code <span className="ml-1">{getSortIcon("institution_code")}</span></Button></TableHead>
+                        {/* Show Institution column only when "All Institutions" is selected */}
+                        {mustSelectInstitution && (
+                          <TableHead className="w-[120px] text-[11px]"><Button variant="ghost" size="sm" onClick={() => handleSort("institution_code")} className="h-auto p-0 font-medium hover:bg-transparent">Institution <span className="ml-1">{getSortIcon("institution_code")}</span></Button></TableHead>
+                        )}
                         <TableHead className="w-[120px] text-[11px]"><Button variant="ghost" size="sm" onClick={() => handleSort("department_code")} className="h-auto p-0 font-medium hover:bg-transparent">Dept. Code <span className="ml-1">{getSortIcon("department_code")}</span></Button></TableHead>
                         <TableHead className="text-[11px]"><Button variant="ghost" size="sm" onClick={() => handleSort("department_name")} className="h-auto p-0 font-medium hover:bg-transparent">Department Name <span className="ml-1">{getSortIcon("department_name")}</span></Button></TableHead>
                         <TableHead className="w-[160px] text-[11px]">Display</TableHead>
@@ -863,12 +888,15 @@ export default function DepartmentPage() {
                     </TableHeader>
                     <TableBody>
                       {loading ? (
-                        <TableRow><TableCell colSpan={8} className="h-24 text-center text-[11px]">Loading…</TableCell></TableRow>
+                        <TableRow><TableCell colSpan={mustSelectInstitution ? 8 : 7} className="h-24 text-center text-[11px]">Loading…</TableCell></TableRow>
                       ) : pageItems.length ? (
                         <>
                           {pageItems.map((row) => (
                             <TableRow key={row.id}>
-                              <TableCell className="text-[11px] font-medium">{row.institution_code}</TableCell>
+                              {/* Show Institution cell only when "All Institutions" is selected */}
+                              {mustSelectInstitution && (
+                                <TableCell className="text-[11px] font-medium">{row.institution_code}</TableCell>
+                              )}
                               <TableCell className="text-[11px]">{row.department_code}</TableCell>
                               <TableCell className="text-[11px]">{row.department_name}</TableCell>
                               <TableCell className="text-[11px] text-muted-foreground">{row.display_name}</TableCell>
@@ -899,7 +927,7 @@ export default function DepartmentPage() {
                           ))}
                         </>
                       ) : (
-                        <TableRow><TableCell colSpan={8} className="h-24 text-center text-[11px]">No data</TableCell></TableRow>
+                        <TableRow><TableCell colSpan={mustSelectInstitution ? 8 : 7} className="h-24 text-center text-[11px]">No data</TableCell></TableRow>
                       )}
                     </TableBody>
                   </Table>
@@ -972,53 +1000,63 @@ export default function DepartmentPage() {
               </div>
               
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <div className="flex items-center justify-between">
-                    <Label htmlFor="institution_code" className="text-sm font-semibold">
-                      Institution Code <span className="text-red-500">*</span>
-                    </Label>
-                    {institutions.length === 0 && !institutionsLoading && (
-                      <Button
-                        type="button"
-                        variant="outline"
-                        size="sm"
-                        className="h-6 px-2 text-xs"
-                        onClick={fetchInstitutions}
-                      >
-                        <RefreshCw className="h-3 w-3 mr-1" />
-                        Refresh
-                      </Button>
+                {/* Institution field - show only when needed */}
+                {(mustSelectInstitution || !shouldFilter || !institutionId) && (
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between">
+                      <Label htmlFor="institution_code" className="text-sm font-semibold">
+                        Institution <span className="text-red-500">*</span>
+                      </Label>
+                      {institutions.length === 0 && !institutionsLoading && (
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          className="h-6 px-2 text-xs"
+                          onClick={fetchInstitutions}
+                        >
+                          <RefreshCw className="h-3 w-3 mr-1" />
+                          Refresh
+                        </Button>
+                      )}
+                    </div>
+                    <Select
+                      value={formData.institutions_id}
+                      onValueChange={(id) => {
+                        const selectedInst = institutions.find(i => i.id === id)
+                        setFormData({
+                          ...formData,
+                          institutions_id: id,
+                          institution_code: selectedInst?.institution_code || ''
+                        })
+                      }}
+                      disabled={institutionsLoading}
+                    >
+                      <SelectTrigger className={`h-10 ${errors.institution_code ? 'border-destructive' : ''}`}>
+                        <SelectValue placeholder={institutionsLoading ? "Loading institutions..." : "Select Institution"} />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {institutionsLoading ? (
+                          <SelectItem value="loading" disabled>Loading institutions...</SelectItem>
+                        ) : institutions.length === 0 ? (
+                          <SelectItem value="empty" disabled>No institutions available</SelectItem>
+                        ) : (
+                          institutions.map(inst => (
+                            <SelectItem key={inst.id} value={inst.id}>
+                              {inst.institution_code}{inst.institution_name ? ` - ${inst.institution_name}` : ''}
+                            </SelectItem>
+                          ))
+                        )}
+                      </SelectContent>
+                    </Select>
+                    {errors.institution_code && (
+                      <div className="flex items-center gap-1 mt-1">
+                        <span className="text-xs text-destructive font-medium">⚠️ {errors.institution_code}</span>
+                      </div>
                     )}
                   </div>
-                  <Select 
-                    value={formData.institution_code} 
-                    onValueChange={(code)=> setFormData({ ...formData, institution_code: code })}
-                    disabled={institutionsLoading}
-                  >
-                    <SelectTrigger className={`h-10 ${errors.institution_code ? 'border-destructive' : ''}`}>
-                      <SelectValue placeholder={institutionsLoading ? "Loading institutions..." : "Select Institution Code"} />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {institutionsLoading ? (
-                        <SelectItem value="" disabled>Loading institutions...</SelectItem>
-                      ) : institutions.length === 0 ? (
-                        <SelectItem value="" disabled>No institutions available</SelectItem>
-                      ) : (
-                        institutions.map(inst => (
-                          <SelectItem key={inst.id} value={inst.institution_code}>
-                            {inst.institution_code}{inst.name ? ` - ${inst.name}` : ''}
-                          </SelectItem>
-                        ))
-                      )}
-                    </SelectContent>
-                  </Select>
-                  {errors.institution_code && (
-                    <div className="flex items-center gap-1 mt-1">
-                      <span className="text-xs text-destructive font-medium">⚠️ {errors.institution_code}</span>
-                    </div>
-                  )}
-                </div>
-                
+                )}
+
                 <div className="space-y-2">
                   <Label htmlFor="department_code" className="text-sm font-semibold">
                     Department Code <span className="text-red-500">*</span>

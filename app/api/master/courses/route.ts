@@ -286,18 +286,19 @@ export async function POST(req: NextRequest) {
       }, { status: 400 })
     }
 
-    // 2. Fetch regulation_id from regulation_code
-    const { data: regulationData, error: regulationError } = await supabase2
+    // 2. Try to fetch regulation_id from regulation_code (optional - regulations may come from MyJKKN)
+    let regulationId = null
+    const { data: regulationData } = await supabase2
       .from('regulations')
       .select('id')
       .eq('regulation_code', String(input.regulation_code))
       .single()
 
-    if (regulationError || !regulationData) {
-      return NextResponse.json({
-        error: `Regulation with code "${input.regulation_code}" not found. Please ensure the regulation exists.`
-      }, { status: 400 })
+    if (regulationData) {
+      regulationId = regulationData.id
     }
+    // Note: regulation_id is optional since regulations may be sourced from MyJKKN API
+    // The regulation_code is always stored for reference
 
     // 3. Fetch offering_department_id from offering_department_code (optional)
     let offeringDepartmentId = null
@@ -319,7 +320,7 @@ export async function POST(req: NextRequest) {
     // 4. Insert course with resolved IDs
     const { data, error } = await supabase2.from('courses').insert({
       institutions_id: institutionData.id,
-      regulation_id: regulationData.id,
+      regulation_id: regulationId,
       offering_department_id: offeringDepartmentId,
       institution_code: String(input.institution_code),
       regulation_code: String(input.regulation_code),

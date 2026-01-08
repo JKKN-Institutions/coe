@@ -151,8 +151,9 @@ export async function fetchCourseOfferings(): Promise<CourseOfferingOption[]> {
 		return data.map((c: any) => ({
 			id: c.id,
 			course_code: c.course_code,
-			course_name: c.course_name,
-			institutions_id: c.institutions_id
+			course_name: c.course_name || c.course_title,
+			institutions_id: c.institutions_id,
+			program_code: c.course_program_code || c.program_code
 		}))
 	} catch (e) {
 		console.error('Failed to load course offerings:', e)

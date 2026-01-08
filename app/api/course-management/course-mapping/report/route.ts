@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getSupabaseServer } from '@/lib/supabase-server'
+import { createRouteHandlerSupabaseClient } from '@/lib/supabase-route-handler'
+import { fetchAllMyJKKNPrograms, fetchAllMyJKKNRegulations, fetchAllMyJKKNSemesters, fetchAllMyJKKNInstitutions } from '@/lib/myjkkn-api'
 import path from 'path'
 import fs from 'fs'
 
@@ -12,9 +14,6 @@ export async function GET(request: NextRequest) {
 		const programCode = searchParams.get('program_code')
 		const regulationCode = searchParams.get('regulation_code')
 
-		// Handle null string as actual null
-		const actualRegulationCode = regulationCode === 'null' || regulationCode === 'undefined' ? null : regulationCode
-
 		// Validate required parameters (NO BATCH)
 		if (!institutionCode || !programCode || !regulationCode) {
 			return NextResponse.json(
@@ -23,10 +22,50 @@ export async function GET(request: NextRequest) {
 			)
 		}
 
-		// Fetch institution details
+		// Handle null string as actual null (after validation)
+		const actualRegulationCode = regulationCode === 'null' || regulationCode === 'undefined' ? null : regulationCode
+
+		// Apply institution filter: Validate user has access to requested institution
+		try {
+			const routeHandlerSupabase = await createRouteHandlerSupabaseClient()
+			const { data: authUser } = await routeHandlerSupabase.auth.getUser()
+
+			if (authUser?.user) {
+				// Get user's institution from users table
+				const { data: userData } = await supabase
+					.from('users')
+					.select('institution_id, role, is_super_admin')
+					.eq('email', authUser.user.email)
+					.single()
+
+				// If user is not super_admin, validate institution access
+				if (userData && !userData.is_super_admin && userData.role !== 'super_admin') {
+					// Get user's institution code
+					const { data: userInstitution } = await supabase
+						.from('institutions')
+						.select('institution_code')
+						.eq('id', userData.institution_id)
+						.single()
+
+					// Validate requested institution matches user's institution
+					if (userInstitution && userInstitution.institution_code !== institutionCode) {
+						return NextResponse.json(
+							{ error: 'Access denied: You can only access data for your institution' },
+							{ status: 403 }
+						)
+					}
+				}
+			}
+		} catch (authError) {
+			// If auth check fails, log but continue (for development/testing)
+			console.warn('Institution filter validation warning:', authError)
+		}
+
+		// Fetch institution details (including myjkkn_institution_ids for MyJKKN API calls)
+		// Note: Address fields don't exist in local institutions table - use MyJKKN API for address
 		const { data: institution, error: instError } = await supabase
 			.from('institutions')
-			.select('id, institution_code, name, address_line1, address_line2, address_line3, city, state, pin_code')
+			.select('id, institution_code, name, myjkkn_institution_ids')
 			.eq('institution_code', institutionCode)
 			.single()
 
@@ -39,40 +78,57 @@ export async function GET(request: NextRequest) {
 			}, { status: 404 })
 		}
 
-		// Fetch program details with degree information
-		const { data: program, error: progError } = await supabase
-			.from('programs')
-			.select(`
-				id,
-				program_code,
-				program_name,
-				degree_code,
-				degrees (
-					degree_code,
-					degree_name
-				)
-			`)
-			.eq('program_code', programCode)
-			.eq('institution_code', institutionCode)
-			.single()
+		// Get MyJKKN institution IDs for fetching semesters
+		const myjkknInstitutionIds = institution.myjkkn_institution_ids || []
 
-		if (progError || !program) {
-			return NextResponse.json({ error: 'Program not found' }, { status: 404 })
-		}
+		// Fetch program and regulation details from MyJKKN API
+		// Note: Programs and regulations come from MyJKKN API, not local database
+		let programName = programCode
+		let regulationName = actualRegulationCode || ''
+		let degreeName = 'Degree'
+		let programId: string | null = null // MyJKKN program UUID for fetching semesters
 
-		// Fetch regulation details
-		let regulation = null
-		if (actualRegulationCode) {
-			const { data: regData, error: regError } = await supabase
-				.from('regulations')
-				.select('id, regulation_code, regulation_name')
-				.eq('regulation_code', actualRegulationCode)
-				.single()
-
-			if (regError) {
-				console.warn('Regulation not found:', actualRegulationCode, regError)
+		try {
+			// Fetch all programs from MyJKKN API
+			const myjkknPrograms = await fetchAllMyJKKNPrograms({ limit: 10000, is_active: true })
+			const programArray = Array.isArray(myjkknPrograms) ? myjkknPrograms : []
+			
+			// Find program by program_code (MyJKKN uses program_id as CODE field, fallback to program_code)
+			const program = programArray.find((p: any) => 
+				(p.program_id === programCode || p.program_code === programCode) &&
+				(p.institution_code === institutionCode || !p.institution_code)
+			)
+			
+			if (program) {
+				programName = program.program_name || program.name || programCode
+				programId = program.id // Store MyJKKN program UUID for fetching semesters
+				// Try to get degree information if available
+				if (program.degree_name) {
+					degreeName = program.degree_name
+				} else if (program.degree_code) {
+					degreeName = program.degree_code
+				}
+			} else {
+				console.warn(`[Report Route] Program "${programCode}" not found in MyJKKN API`)
 			}
-			regulation = regData
+
+			// Fetch all regulations from MyJKKN API
+			if (actualRegulationCode) {
+				const myjkknRegulations = await fetchAllMyJKKNRegulations({ limit: 10000, is_active: true })
+				const regulationArray = Array.isArray(myjkknRegulations) ? myjkknRegulations : []
+				
+				// Find regulation by regulation_code
+				const regulation = regulationArray.find((r: any) => r.regulation_code === actualRegulationCode)
+				
+				if (regulation) {
+					regulationName = regulation.regulation_name || regulation.name || actualRegulationCode
+				} else {
+					console.warn(`[Report Route] Regulation "${actualRegulationCode}" not found in MyJKKN API`)
+				}
+			}
+		} catch (error) {
+			console.error('[Report Route] Error fetching from MyJKKN API:', error)
+			// Continue with fallback values (programCode and regulationCode)
 		}
 
 		// Fetch course mappings with proper joins using Supabase syntax
@@ -119,30 +175,85 @@ export async function GET(request: NextRequest) {
 			return NextResponse.json({ error: 'No course mappings found for this criteria' }, { status: 404 })
 		}
 
-		// Fetch all related semesters by semester_code (since it's text, not FK)
+		// Fetch semesters from MyJKKN API (not local database)
+		// Get unique semester_ids from course_mapping (MyJKKN UUIDs)
+		const semesterIds = [...new Set(mappings.map((m: any) => m.semester_id).filter(Boolean))]
 		const semesterCodes = [...new Set(mappings.map((m: any) => m.semester_code).filter(Boolean))]
-		const { data: semesters } = await supabase
-			.from('semesters')
-			.select('semester_code, semester_name, semester_number, display_order')
-			.in('semester_code', semesterCodes)
-
-		// Create lookup map for semesters
-		const semestersMap = new Map(semesters?.map(s => [s.semester_code, s]) || [])
+		
+		// Fetch semesters from MyJKKN API
+		const semestersMap = new Map<string, any>()
+		
+		if (myjkknInstitutionIds.length > 0 && programId) {
+			console.log(`[Report Route] Fetching semesters from MyJKKN API for ${myjkknInstitutionIds.length} institution(s), program_id: ${programId}`)
+			try {
+				// Fetch semesters from MyJKKN API for each institution
+				for (const myjkknInstId of myjkknInstitutionIds) {
+					try {
+						const semesterData = await fetchAllMyJKKNSemesters({
+							institution_id: myjkknInstId,
+							program_id: programId,
+							is_active: true,
+							limit: 1000
+						})
+						
+						const semesterArray = Array.isArray(semesterData) ? semesterData : []
+						console.log(`[Report Route] Fetched ${semesterArray.length} semesters from MyJKKN API for institution ${myjkknInstId}`)
+						
+						// Build lookup map by semester_id (MyJKKN UUID) and semester_code
+						for (const sem of semesterArray) {
+							if (sem?.id) {
+								// Map by semester_id (MyJKKN UUID)
+								if (!semestersMap.has(`id:${sem.id}`)) {
+									semestersMap.set(`id:${sem.id}`, sem)
+								}
+								
+								// Also map by semester_code if available (for fallback matching)
+								if (sem.semester_code) {
+									if (!semestersMap.has(`code:${sem.semester_code}`)) {
+										semestersMap.set(`code:${sem.semester_code}`, sem)
+									}
+								}
+							}
+						}
+					} catch (err) {
+						console.error(`[Report Route] Error fetching semesters for institution ${myjkknInstId}:`, err)
+					}
+				}
+				console.log(`[Report Route] Total unique semesters in map: ${semestersMap.size}`)
+			} catch (error) {
+				console.error('[Report Route] Error fetching semesters from MyJKKN API:', error)
+			}
+		} else {
+			console.warn(`[Report Route] Cannot fetch semesters: myjkknInstitutionIds=${myjkknInstitutionIds.length}, programId=${programId}`)
+		}
 
 		// Transform the data for the PDF generator
 		const transformedMappings = (mappings || []).map((mapping: any) => {
 			// course data comes from the joined courses table (via course_id FK)
 			const course = mapping.courses
-			// semester data from manual lookup (semester_code is text, not FK)
-			const semester = semestersMap.get(mapping.semester_code)
+			// semester data from MyJKKN API lookup (by semester_id first, fallback to semester_code)
+			let semester = null
+			if (mapping.semester_id) {
+				semester = semestersMap.get(`id:${mapping.semester_id}`)
+				if (!semester && mapping.semester_code) {
+					semester = semestersMap.get(`code:${mapping.semester_code}`)
+				}
+			} else if (mapping.semester_code) {
+				semester = semestersMap.get(`code:${mapping.semester_code}`)
+			}
+			
+			// Log if semester not found (for debugging)
+			if (!semester && (mapping.semester_id || mapping.semester_code)) {
+				console.warn(`[Report Route] Semester not found in MyJKKN API: semester_id=${mapping.semester_id}, semester_code=${mapping.semester_code}`)
+			}
 
 			return {
 				id: mapping.id,
-				// Semester information
-				semester_code: mapping.semester_code,
+				// Semester information (from MyJKKN API)
+				semester_code: semester?.semester_code || mapping.semester_code,
 				semester_name: semester?.semester_name || mapping.semester_code,
-				semester_number: semester?.display_order || semester?.semester_number || 0,
-				display_order: semester?.display_order || 0,
+				semester_number: semester?.semester_number || 0,
+				display_order: (semester as any)?.semester_order || semester?.semester_number || 0, // Use semester_order if available, fallback to semester_number
 
 				// Part information (from courses table via FK join)
 				part_name: course?.course_part_master || '-',
@@ -179,16 +290,34 @@ export async function GET(request: NextRequest) {
 			}
 		})
 
-		// Build institution address
-		const addressParts = [
-			institution.address_line1,
-			institution.address_line2,
-			institution.address_line3,
-			institution.city,
-			institution.state,
-			institution.pin_code
-		].filter(Boolean)
-		const institutionAddress = addressParts.join(', ')
+		// Build institution address from MyJKKN API (local institutions table doesn't have address columns)
+		let institutionAddress: string | undefined
+		
+		try {
+			const myjkknInstitutions = await fetchAllMyJKKNInstitutions({ limit: 10000, is_active: true })
+			const institutionArray = Array.isArray(myjkknInstitutions) ? myjkknInstitutions : []
+			
+			// Find institution by counselling_code or institution_code
+			const myjkknInst = institutionArray.find((inst: any) => 
+				inst.counselling_code === institutionCode || 
+				inst.institution_code === institutionCode
+			)
+			
+			if (myjkknInst) {
+				const myjkknAddressParts = [
+					myjkknInst.address,
+					myjkknInst.city,
+					myjkknInst.state,
+					myjkknInst.pincode
+				].filter(Boolean)
+				
+				if (myjkknAddressParts.length > 0) {
+					institutionAddress = myjkknAddressParts.join(', ')
+				}
+			}
+		} catch (error) {
+			console.warn('[Report Route] Error fetching MyJKKN institution address:', error)
+		}
 
 		// Load JKKN logo (left side)
 		let logoImage: string | undefined
@@ -213,19 +342,19 @@ export async function GET(request: NextRequest) {
 		}
 
 		// Get regulation code from multiple sources (fallback chain)
-		const finalRegulationCode = regulation?.regulation_code ||
-			actualRegulationCode ||
+		const finalRegulationCode = actualRegulationCode ||
 			mappings[0]?.regulation_code ||
-			mappings[0]?.courses?.regulation_code
+			mappings[0]?.courses?.regulation_code ||
+			regulationName
 
 		// Prepare response data
 		const reportData = {
 			institutionName: institution.name,
 			institutionAddress: institutionAddress || undefined,
-			programName: program.program_name,
-			programCode: program.program_code,
-			degreeName: (program.degrees as any)?.degree_name || program.degree_code || 'Degree',
-			regulationName: regulation?.regulation_name || finalRegulationCode,
+			programName: programName,
+			programCode: programCode,
+			degreeName: degreeName,
+			regulationName: regulationName,
 			regulationCode: finalRegulationCode,
 			logoImage,
 			rightLogoImage,

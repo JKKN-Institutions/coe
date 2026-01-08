@@ -1,7 +1,9 @@
 "use client"
 
-import { useState, useEffect, useMemo } from "react"
+import { useState, useEffect, useMemo, useCallback } from "react"
 import Link from "next/link"
+import { useMyJKKNInstitutionFilter } from "@/hooks/use-myjkkn-institution-filter"
+import { useInstitutionFilter } from "@/hooks/use-institution-filter"
 import {
 	Breadcrumb,
 	BreadcrumbItem,
@@ -135,12 +137,14 @@ interface InstitutionOption {
 	id: string
 	institution_code: string
 	name?: string
+	counselling_code?: string | null
 }
 
 interface RegulationOption {
 	id: string
 	regulation_code: string
 	regulation_year?: number
+	regulation_name?: string
 }
 
 // Default form data
@@ -183,6 +187,20 @@ const defaultComponentFormData: InternalAssessmentComponentFormData = {
 }
 
 export default function InternalMarkSettingPage() {
+	// MyJKKN API hook for institution filtering
+	const { fetchRegulations: fetchMyJKKNRegulations } = useMyJKKNInstitutionFilter()
+
+	// Institution filter hook for multi-tenant filtering
+	const {
+		filter,
+		isReady,
+		appendToUrl,
+		getInstitutionCodeForCreate,
+		mustSelectInstitution,
+		shouldFilter,
+		institutionCode
+	} = useInstitutionFilter()
+
 	// State for patterns
 	const [patterns, setPatterns] = useState<PatternWithRelations[]>([])
 	const [loading, setLoading] = useState(true)
@@ -217,14 +235,17 @@ export default function InternalMarkSettingPage() {
 	// Dropdown data
 	const [institutions, setInstitutions] = useState<InstitutionOption[]>([])
 	const [regulations, setRegulations] = useState<RegulationOption[]>([])
+	const [regulationsLoading, setRegulationsLoading] = useState(false)
 
 	const { toast } = useToast()
 
-	// Fetch patterns
+	// Fetch patterns with institution filter
 	const fetchPatterns = async () => {
 		try {
 			setLoading(true)
-			const response = await fetch("/api/internal-assessment-patterns")
+			// Use institution filter for multi-tenant data access
+			const url = appendToUrl("/api/internal-assessment-patterns")
+			const response = await fetch(url)
 			if (response.ok) {
 				const data = await response.json()
 				setPatterns(data)
@@ -243,31 +264,75 @@ export default function InternalMarkSettingPage() {
 		}
 	}
 
-	// Fetch dropdown data
-	const fetchDropdownData = async () => {
+	// Fetch institutions
+	const fetchInstitutions = async () => {
 		try {
-			// Fetch institutions
 			const instResponse = await fetch("/api/master/institutions")
 			if (instResponse.ok) {
 				const data = await instResponse.json()
-				setInstitutions(data)
-			}
-
-			// Fetch regulations
-			const regResponse = await fetch("/api/master/regulations")
-			if (regResponse.ok) {
-				const data = await regResponse.json()
-				setRegulations(data)
+				// Map to include counselling_code
+				const mapped = Array.isArray(data)
+					? data.filter((i: any) => i?.institution_code).map((i: any) => ({
+						id: i.id,
+						institution_code: i.institution_code,
+						name: i.institution_name || i.name,
+						counselling_code: i.counselling_code || null
+					}))
+					: []
+				setInstitutions(mapped)
 			}
 		} catch (error) {
-			console.error("Error fetching dropdown data:", error)
+			console.error("Error fetching institutions:", error)
 		}
 	}
 
+	// Fetch regulations from MyJKKN API using hook (two-step lookup with client-side filtering)
+	const fetchRegulations = useCallback(async (institutionCode?: string) => {
+		try {
+			setRegulationsLoading(true)
+			setRegulations([])
+
+			// If no institution selected, clear regulations
+			if (!institutionCode) {
+				return
+			}
+
+			// Find the counselling_code for the selected institution
+			const institution = institutions.find(i => i.institution_code === institutionCode)
+			const counsellingCode = institution?.counselling_code || undefined
+
+			// Use hook to fetch regulations (handles two-step lookup and deduplication)
+			const regs = await fetchMyJKKNRegulations(counsellingCode)
+
+			setRegulations(regs.map(r => ({
+				id: r.id,
+				regulation_code: r.regulation_code,
+				regulation_name: r.regulation_name,
+				regulation_year: r.regulation_year || r.effective_year
+			})))
+		} catch (error) {
+			console.error('[InternalMarkSetting] Error fetching regulations from MyJKKN:', error)
+		} finally {
+			setRegulationsLoading(false)
+		}
+	}, [institutions, fetchMyJKKNRegulations])
+
+	// Load data when institution filter is ready
 	useEffect(() => {
-		fetchPatterns()
-		fetchDropdownData()
-	}, [])
+		if (isReady) {
+			fetchPatterns()
+			fetchInstitutions()
+		}
+	}, [isReady, filter])
+
+	// Fetch regulations when institution changes in form
+	useEffect(() => {
+		if (patternFormData.institution_code && institutions.length > 0) {
+			fetchRegulations(patternFormData.institution_code)
+		} else {
+			setRegulations([])
+		}
+	}, [patternFormData.institution_code, fetchRegulations, institutions.length])
 
 	// Filter and search patterns
 	const filteredPatterns = useMemo(() => {
@@ -486,7 +551,12 @@ export default function InternalMarkSettingPage() {
 
 	// Reset forms
 	const resetPatternForm = () => {
-		setPatternFormData(defaultPatternFormData)
+		// Auto-fill institution_code from context if available
+		const autoInstitutionCode = getInstitutionCodeForCreate() || ""
+		setPatternFormData({
+			...defaultPatternFormData,
+			institution_code: autoInstitutionCode,
+		})
 		setEditingPattern(null)
 		setErrors({})
 	}
@@ -660,6 +730,15 @@ export default function InternalMarkSettingPage() {
 						</div>
 						<Button
 							onClick={() => {
+								// Check if super_admin needs to select an institution first
+								if (mustSelectInstitution) {
+									toast({
+										title: "⚠️ Select Institution",
+										description: "Please select an institution from the header before creating a pattern.",
+										className: "bg-yellow-50 border-yellow-200 text-yellow-800 dark:bg-yellow-900/20 dark:border-yellow-800 dark:text-yellow-200"
+									})
+									return
+								}
 								resetPatternForm()
 								setPatternSheetOpen(true)
 							}}
@@ -990,21 +1069,30 @@ export default function InternalMarkSettingPage() {
 									<Label htmlFor="institution_code">
 										Institution <span className="text-red-500">*</span>
 									</Label>
-									<Select
-										value={patternFormData.institution_code}
-										onValueChange={(v) => setPatternFormData({ ...patternFormData, institution_code: v })}
-									>
-										<SelectTrigger className={errors.institution_code ? "border-red-500" : ""}>
-											<SelectValue placeholder="Select institution" />
-										</SelectTrigger>
-										<SelectContent>
-											{institutions.map((inst) => (
-												<SelectItem key={inst.id} value={inst.institution_code}>
-													{inst.institution_code}
-												</SelectItem>
-											))}
-										</SelectContent>
-									</Select>
+									{/* Show read-only input for non-super_admin users, dropdown for super_admin */}
+									{shouldFilter && institutionCode ? (
+										<Input
+											value={patternFormData.institution_code}
+											disabled
+											className="bg-muted"
+										/>
+									) : (
+										<Select
+											value={patternFormData.institution_code}
+											onValueChange={(v) => setPatternFormData({ ...patternFormData, institution_code: v, regulation_code: "" })}
+										>
+											<SelectTrigger className={errors.institution_code ? "border-red-500" : ""}>
+												<SelectValue placeholder="Select institution" />
+											</SelectTrigger>
+											<SelectContent>
+												{institutions.map((inst) => (
+													<SelectItem key={inst.id} value={inst.institution_code}>
+														{inst.institution_code} {inst.name ? `- ${inst.name}` : ""}
+													</SelectItem>
+												))}
+											</SelectContent>
+										</Select>
+									)}
 									{errors.institution_code && (
 										<p className="text-xs text-red-500">{errors.institution_code}</p>
 									)}
@@ -1015,19 +1103,29 @@ export default function InternalMarkSettingPage() {
 									<Select
 										value={patternFormData.regulation_code || "none"}
 										onValueChange={(v) => setPatternFormData({ ...patternFormData, regulation_code: v === "none" ? "" : v })}
+										disabled={!patternFormData.institution_code || regulationsLoading}
 									>
-										<SelectTrigger>
-											<SelectValue placeholder="Select regulation" />
+										<SelectTrigger className={!patternFormData.institution_code ? "bg-muted cursor-not-allowed" : ""}>
+											<SelectValue placeholder={
+												regulationsLoading
+													? "Loading regulations..."
+													: !patternFormData.institution_code
+														? "Select institution first"
+														: "Select regulation"
+											} />
 										</SelectTrigger>
 										<SelectContent>
 											<SelectItem value="none">None</SelectItem>
 											{regulations.map((reg) => (
 												<SelectItem key={reg.id} value={reg.regulation_code}>
-													{reg.regulation_code} ({reg.regulation_year})
+													{reg.regulation_code} {reg.regulation_year ? `(${reg.regulation_year})` : ""} {reg.regulation_name ? `- ${reg.regulation_name}` : ""}
 												</SelectItem>
 											))}
 										</SelectContent>
 									</Select>
+									{!patternFormData.institution_code && (
+										<p className="text-xs text-muted-foreground">Select an institution to load regulations</p>
+									)}
 								</div>
 							</div>
 

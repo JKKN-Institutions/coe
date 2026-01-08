@@ -1,6 +1,7 @@
 "use client"
 
 import { useState, useEffect } from "react"
+import { useInstitutionFilter } from "@/hooks/use-institution-filter"
 import { AppSidebar } from "@/components/layout/app-sidebar"
 import { AppHeader } from "@/components/layout/app-header"
 import { AppFooter } from "@/components/layout/app-footer"
@@ -35,14 +36,23 @@ export default function CourseMappingIndexPage() {
 	const [currentPage, setCurrentPage] = useState(1)
 	const { toast } = useToast()
 
-	useEffect(() => {
-		fetchCourseMappingGroups()
-	}, [])
+	// Institution context for filtering
+	const {
+		institutionCode: contextInstitutionCode,
+		isReady: institutionContextReady,
+		appendToUrl
+	} = useInstitutionFilter()
 
+	// Fetch course mapping groups with institution filter
 	const fetchCourseMappingGroups = async () => {
 		try {
 			setLoading(true)
-			const res = await fetch('/api/course-management/course-mapping/groups')
+			// Build URL with institution filter
+			let url = '/api/course-management/course-mapping/groups'
+			if (contextInstitutionCode) {
+				url = appendToUrl(url)
+			}
+			const res = await fetch(url)
 			if (res.ok) {
 				const data = await res.json()
 				setGroups(data)
@@ -65,6 +75,12 @@ export default function CourseMappingIndexPage() {
 			setLoading(false)
 		}
 	}
+
+	// Fetch data when institution context is ready or changes
+	useEffect(() => {
+		if (!institutionContextReady) return
+		fetchCourseMappingGroups()
+	}, [institutionContextReady, contextInstitutionCode])
 
 	// Filter groups based on search term
 	const filteredGroups = groups.filter(group => {
@@ -129,7 +145,7 @@ export default function CourseMappingIndexPage() {
 								</div>
 								<div className="flex gap-2">
 									<Button variant="outline" size="sm" className="h-8" asChild>
-										<Link href="/course-mapping/add">
+										<Link href="/course-management/course-mapping/add">
 											<Edit2 className="h-3 w-3 mr-2" />
 											Add New Mapping
 										</Link>
@@ -180,7 +196,7 @@ export default function CourseMappingIndexPage() {
 									<Table>
 										<TableHeader className="sticky top-0 z-10 bg-slate-50 dark:bg-slate-900/50">
 											<TableRow className="bg-muted/50">
-												<TableHead className="w-[200px] font-semibold text-[11px] h-8">Institution</TableHead>
+											<TableHead className="w-[200px] font-semibold text-[11px] h-8">Institution</TableHead>
 												<TableHead className="w-[150px] font-semibold text-[11px] h-8">Program Code</TableHead>
 												<TableHead className="w-[250px] font-semibold text-[11px] h-8">Program Name</TableHead>
 												<TableHead className="font-semibold text-[11px] h-8">Regulation</TableHead>

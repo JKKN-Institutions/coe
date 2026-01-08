@@ -8,6 +8,7 @@ export async function GET(req: NextRequest) {
 		const is_active = searchParams.get('is_active')
 		const institution_code = searchParams.get('institution_code')
 		const program_code = searchParams.get('program_code')
+		const program_id = searchParams.get('program_id')
 
 		const supabase = getSupabaseServer()
 
@@ -26,6 +27,13 @@ export async function GET(req: NextRequest) {
 		}
 		if (institution_code) {
 			query = query.eq('institution_code', institution_code)
+		}
+		if (program_id) {
+			query = query.eq('program_id', program_id)
+		}
+		if (program_code) {
+			// Filter by program_code through the joined programs table
+			query = query.eq('programs.program_code', program_code)
 		}
 
 		const { data, error } = await query

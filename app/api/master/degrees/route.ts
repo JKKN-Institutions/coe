@@ -8,6 +8,7 @@ export async function GET(request: Request) {
     const { searchParams } = new URL(request.url)
     const program_id = searchParams.get('program_id')
     const institutions_id = searchParams.get('institutions_id')
+    const institution_code = searchParams.get('institution_code')
 
     let query = supabase
       .from('degrees')
@@ -15,11 +16,15 @@ export async function GET(request: Request) {
       .order('created_at', { ascending: false })
       .range(0, 9999) // Increase limit from default 1000 to 10000 rows
 
+    // Institution filtering - supports both institution_code and institutions_id
+    if (institution_code) {
+      query = query.eq('institution_code', institution_code)
+    } else if (institutions_id) {
+      query = query.eq('institutions_id', institutions_id)
+    }
+
     if (program_id) {
       query = query.eq('program_id', program_id)
-    }
-    if (institutions_id) {
-      query = query.eq('institutions_id', institutions_id)
     }
 
     const { data, error } = await query
@@ -49,7 +54,7 @@ export async function POST(request: Request) {
     let institution_code: string | undefined = body.institution_code
     let institutions_id: string | undefined = body.institutions_id
 
-    // If institution_code is provided, fetch institutions_id
+    // Find institution by institution_code in local database
     if (institution_code) {
       const { data: inst, error: instError } = await supabase
         .from('institutions')
@@ -148,27 +153,23 @@ export async function PUT(request: Request) {
     const body = await request.json()
     const supabase = getSupabaseServer()
 
-    // Auto-map institution_code to institutions_id (same logic as POST)
+    // Get institution_code and institutions_id from body
     let institution_code: string | undefined = body.institution_code
     let institutions_id: string | undefined = body.institutions_id
 
-    // If institution_code is provided, fetch institutions_id
+    // Find institution by institution_code in local database
     if (institution_code) {
-      const { data: inst, error: instError } = await supabase
+      const { data: inst } = await supabase
         .from('institutions')
         .select('id, institution_code')
         .eq('institution_code', institution_code)
         .maybeSingle()
 
-      if (instError || !inst) {
-        return NextResponse.json({
-          error: `Invalid institution_code: ${institution_code}. Institution not found.`
-        }, { status: 400 })
+      if (inst) {
+        // Found in local database - use the institutions_id
+        institutions_id = inst.id
+        console.log(`✅ Auto-mapped institution_code "${institution_code}" to institutions_id "${institutions_id}" (UPDATE)`)
       }
-
-      // Auto-map the institutions_id from the fetched institution
-      institutions_id = inst.id
-      console.log(`✅ Auto-mapped institution_code "${institution_code}" to institutions_id "${institutions_id}" (UPDATE)`)
     }
     // If institutions_id is provided but no institution_code, fetch the code
     else if (institutions_id && !institution_code) {

@@ -78,15 +78,26 @@ import { Textarea } from '@/components/ui/textarea'
 import XLSX from '@/lib/utils/excel-compat'
 import type { ExamRoom, Institution, ExamRoomFormData, ExamRoomImportError, UploadSummary } from '@/types/exam-rooms'
 import {
-	fetchExamRooms as fetchExamRoomsService,
 	fetchInstitutions as fetchInstitutionsService,
 	createExamRoom,
 	updateExamRoom,
 	deleteExamRoom as deleteExamRoomService,
 } from '@/services/exam-management/exam-rooms-service'
+import { useInstitutionFilter } from '@/hooks/use-institution-filter'
 
 export default function ExamRoomsPage() {
 	const { toast } = useToast()
+
+	// Institution filter hook
+	const {
+		filter,
+		isReady,
+		appendToUrl,
+		getInstitutionIdForCreate,
+		mustSelectInstitution,
+		shouldFilter,
+		institutionId
+	} = useInstitutionFilter()
 
 	// State Management
 	const [items, setItems] = useState<ExamRoom[]>([])
@@ -144,16 +155,28 @@ export default function ExamRoomsPage() {
 		}>
 	>([])
 
-	// Fetch Data
+	// Fetch Data when institution filter is ready
 	useEffect(() => {
+		if (!isReady) return
 		fetchData()
 		fetchInstitutions()
-	}, [])
+	}, [isReady, filter])
 
 	const fetchData = async () => {
 		try {
 			setLoading(true)
-			const data = await fetchExamRoomsService()
+			const url = appendToUrl('/api/exam-management/exam-rooms')
+			const response = await fetch(url)
+			if (!response.ok) {
+				throw new Error('Failed to fetch exam rooms')
+			}
+			let data = await response.json()
+
+			// Client-side filter for safety
+			if (shouldFilter && institutionId) {
+				data = data.filter((room: ExamRoom) => room.institutions_id === institutionId)
+			}
+
 			setItems(data)
 		} catch (error) {
 			console.error('Error fetching exam rooms:', error)
@@ -171,8 +194,16 @@ export default function ExamRoomsPage() {
 
 	const fetchInstitutions = async () => {
 		try {
-			const data = await fetchInstitutionsService()
-			setInstitutions(data.filter((inst: Institution) => inst.is_active))
+			const url = appendToUrl('/api/master/institutions')
+			const res = await fetch(url)
+			if (res.ok) {
+				let data = await res.json()
+				// Filter by institution if shouldFilter
+				if (shouldFilter && institutionId) {
+					data = data.filter((inst: Institution) => inst.id === institutionId)
+				}
+				setInstitutions(data.filter((inst: Institution) => inst.is_active))
+			}
 		} catch (error) {
 			console.error('Error fetching institutions:', error)
 		}
@@ -425,9 +456,14 @@ export default function ExamRoomsPage() {
 	}
 
 	const resetForm = () => {
+		// Auto-fill institution code from context
+		const autoInstitutionId = getInstitutionIdForCreate()
+		const autoInstitution = autoInstitutionId ? institutions.find(i => i.id === autoInstitutionId) : null
+		const autoInstitutionCode = autoInstitution?.institution_code || ''
+
 		setFormData({
 			id: '',
-			institution_code: '',
+			institution_code: autoInstitutionCode,
 			room_code: '',
 			room_name: '',
 			building: '',
@@ -1080,6 +1116,10 @@ export default function ExamRoomsPage() {
 						<Table>
 							<TableHeader>
 								<TableRow>
+									{/* Show Institution column only when "All Institutions" is selected */}
+									{mustSelectInstitution && (
+										<TableHead className="text-[11px]">Institution</TableHead>
+									)}
 									<TableHead
 										className="text-[11px] cursor-pointer"
 										onClick={() => handleSort('room_code')}
@@ -1135,16 +1175,16 @@ export default function ExamRoomsPage() {
 								</TableRow>
 							</TableHeader>
 							<TableBody>
-								{loading ? (
+								{loading || !isReady ? (
 									<TableRow>
-										<TableCell colSpan={12} className="text-center text-[11px] py-8">
+										<TableCell colSpan={mustSelectInstitution ? 13 : 12} className="text-center text-[11px] py-8">
 											<RefreshCw className="h-6 w-6 animate-spin mx-auto mb-2 text-muted-foreground" />
 											Loading exam rooms...
 										</TableCell>
 									</TableRow>
 								) : paginatedItems.length === 0 ? (
 									<TableRow>
-										<TableCell colSpan={12} className="text-center text-[11px] py-8">
+										<TableCell colSpan={mustSelectInstitution ? 13 : 12} className="text-center text-[11px] py-8">
 											<Building2 className="h-12 w-12 mx-auto mb-3 text-muted-foreground opacity-50" />
 											<p className="text-muted-foreground">No exam rooms found</p>
 											<p className="text-xs text-muted-foreground mt-1">
@@ -1157,6 +1197,12 @@ export default function ExamRoomsPage() {
 								) : (
 									paginatedItems.map((room) => (
 										<TableRow key={room.id}>
+											{/* Show Institution cell only when "All Institutions" is selected */}
+											{mustSelectInstitution && (
+												<TableCell className="text-[11px]">
+													{institutions.find(i => i.id === room.institutions_id)?.institution_code || '-'}
+												</TableCell>
+											)}
 											<TableCell className="text-[11px] font-medium">
 												{room.room_code}
 											</TableCell>
@@ -1340,39 +1386,42 @@ export default function ExamRoomsPage() {
 							</div>
 
 							<div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-								<div className="space-y-2">
-									<Label htmlFor="institution_code" className="text-sm font-semibold">
-										Institution <span className="text-red-500">*</span>
-									</Label>
-									<Select
-										value={formData.institution_code}
-										onValueChange={(value) =>
-											setFormData({ ...formData, institution_code: value })
-										}
-									>
-										<SelectTrigger
-											id="institution_code"
-											className={`h-10 ${errors.institution_code ? 'border-destructive' : ''}`}
+								{/* Institution dropdown - show only when needed */}
+								{(mustSelectInstitution || !shouldFilter || !institutionId) && (
+									<div className="space-y-2">
+										<Label htmlFor="institution_code" className="text-sm font-semibold">
+											Institution <span className="text-red-500">*</span>
+										</Label>
+										<Select
+											value={formData.institution_code}
+											onValueChange={(value) =>
+												setFormData({ ...formData, institution_code: value })
+											}
 										>
-											<SelectValue placeholder="Select Institution" />
-										</SelectTrigger>
-										<SelectContent>
-											{institutions.map((inst) => (
-												<SelectItem
-													key={inst.id}
-													value={inst.institution_code}
-												>
-													{inst.institution_code} - {inst.name}
-												</SelectItem>
-											))}
-										</SelectContent>
-									</Select>
-									{errors.institution_code && (
-										<p className="text-xs text-destructive">
-											{errors.institution_code}
-										</p>
-									)}
-								</div>
+											<SelectTrigger
+												id="institution_code"
+												className={`h-10 ${errors.institution_code ? 'border-destructive' : ''}`}
+											>
+												<SelectValue placeholder="Select Institution" />
+											</SelectTrigger>
+											<SelectContent>
+												{institutions.map((inst) => (
+													<SelectItem
+														key={inst.id}
+														value={inst.institution_code}
+													>
+														{inst.institution_code} - {inst.name}
+													</SelectItem>
+												))}
+											</SelectContent>
+										</Select>
+										{errors.institution_code && (
+											<p className="text-xs text-destructive">
+												{errors.institution_code}
+											</p>
+										)}
+									</div>
+								)}
 
 								<div className="space-y-2">
 									<Label htmlFor="room_code" className="text-sm font-semibold">

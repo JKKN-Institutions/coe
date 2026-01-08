@@ -29,6 +29,7 @@ import {
 } from 'lucide-react'
 import type { Examiner, ExaminerStatus, ExaminerType, ExaminerFormData, ExaminerImportError } from '@/types/examiner'
 import { EXAMINER_STATUS_OPTIONS, EXAMINER_TYPE_OPTIONS, DEFAULT_EXAMINER_FORM } from '@/types/examiner'
+import { useInstitutionFilter } from '@/hooks/use-institution-filter'
 
 interface Board {
 	id: string
@@ -40,6 +41,17 @@ interface Board {
 export default function ExaminersPage() {
 	const { toast } = useToast()
 	const { hasPermission } = useAuth()
+
+	// Institution filter hook
+	const {
+		filter,
+		isReady,
+		appendToUrl,
+		getInstitutionIdForCreate,
+		mustSelectInstitution,
+		shouldFilter,
+		institutionId
+	} = useInstitutionFilter()
 
 	// Permissions
 	const canEdit = true // hasPermission('examiners.edit')
@@ -75,18 +87,26 @@ export default function ExaminersPage() {
 	const [importErrors, setImportErrors] = useState<ExaminerImportError[]>([])
 	const [uploadSummary, setUploadSummary] = useState({ total: 0, success: 0, failed: 0 })
 
-	// Fetch data
+	// Fetch data when institution filter is ready
 	useEffect(() => {
+		if (!isReady) return
 		fetchExaminers()
 		fetchBoards()
-	}, [])
+	}, [isReady, filter])
 
 	const fetchExaminers = async () => {
 		try {
 			setLoading(true)
-			const res = await fetch('/api/examiners')
+			const url = appendToUrl('/api/examiners')
+			const res = await fetch(url)
 			if (res.ok) {
-				const data = await res.json()
+				let data = await res.json()
+
+				// Client-side filter for safety
+				if (shouldFilter && institutionId) {
+					data = data.filter((examiner: Examiner) => examiner.institutions_id === institutionId)
+				}
+
 				setItems(data)
 			}
 		} catch (error) {
@@ -167,7 +187,19 @@ export default function ExaminersPage() {
 
 	// Form handling
 	const resetForm = () => {
-		setFormData(DEFAULT_EXAMINER_FORM)
+		// Auto-fill institution code from context
+		const autoInstitutionId = getInstitutionIdForCreate()
+		// The DEFAULT_EXAMINER_FORM has institution_code field, find the code
+		let autoInstitutionCode = ''
+		if (autoInstitutionId) {
+			// We don't have institutions list in this page, but we can leave it blank for auto-fill via institutionId
+			autoInstitutionCode = ''
+		}
+
+		setFormData({
+			...DEFAULT_EXAMINER_FORM,
+			institution_code: autoInstitutionCode,
+		})
 		setEditing(null)
 		setErrors({})
 	}
@@ -509,7 +541,7 @@ export default function ExaminersPage() {
 											</TableRow>
 										</TableHeader>
 										<TableBody>
-											{loading ? (
+											{loading || !isReady ? (
 												<TableRow>
 													<TableCell colSpan={7} className="h-24 text-center text-sm text-slate-500">
 														Loading...

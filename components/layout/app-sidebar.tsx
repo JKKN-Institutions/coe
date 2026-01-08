@@ -56,6 +56,8 @@ import {
 	Target,
 	Link2,
 	Percent,
+	Ticket,
+	Globe,
 } from "lucide-react"
 
 import { NavMain } from "@/components/layout/nav-main"
@@ -113,20 +115,21 @@ const data = {
 			icon: Database,
 			isActive: false,
 			roles: ["super_admin"], // Super admin only
-			
+
 			items: [
 				{ title: "Institutions",          url: "/master/institutions",    icon: School },
 				{ title: "Degree",                url: "/master/degrees",         icon: GraduationCap },
-				{ title: "Department",            url: "/master/departments",     icon: Grid2X2 },
-				{ title: "Program",               url: "/master/programs",        icon: GraduationCap },
-				{ title: "Semester",              url: "/master/semesters",       icon: CalendarCheck2 },
+				{ title: "Department",            url: "/master/departments-myjkkn",     icon: Grid2X2 },
+				{ title: "Program",               url: "/master/programs-myjkkn",        icon: GraduationCap },
+				{ title: "Semester",              url: "/master/semesters-myjkkn",       icon: CalendarCheck2 },
 				{ title: "Academic Year",         url: "/master/academic-years",  icon: Calendar },
 				{ title: "Batch",                 url: "/master/batches",         icon: SquareStack },
-				{ title: "Regulations",           url: "/master/regulations",     icon: LibraryBig },
+				{ title: "Regulations",           url: "/master/regulations-myjkkn",     icon: LibraryBig },
 				{ title: "Section",               url: "/master/sections",        icon: Shapes },
 				{ title: "Board",                 url: "/master/boards",          icon: Shapes },
 				{ title: "PDF Settings",          url: "/master/pdf-settings",    icon: FileText },
 				{ title: "SMTP Configuration",    url: "/master/smtp-config",     icon: Mail },
+				{ title: "MyJKKN API Explorer",   url: "/test-myjkkn-api",        icon: Globe },
 				{ title: "Grade Card Report",     url: "#",                       icon: FileText },
 				{ title: "Hall",                  url: "#",                       icon: Shapes },
 				{ title: "QP Template",           url: "#",                       icon: NotepadText },
@@ -144,9 +147,9 @@ const data = {
 			roles: ["super_admin", "coe", "coe_office"], // Super admin only
 			items: [
 				{ title: "Courses",        url: "/master/courses",                      icon: BookText },
-				{ title: "Courses (Temp)", url: "/master/courses-temp",                 icon: Database },
-				{ title: "Course Offering",url: "/course-management/course-offering",   icon: BookText },
 				{ title: "Course Mapping", url: "/course-management/course-mapping-index", icon: TableProperties },
+				{ title: "Course Offering",url: "/course-management/course-offering",   icon: BookText },
+				
 			],
 		},
 		{
@@ -155,7 +158,7 @@ const data = {
 			icon: GraduationCap,
 			roles: ["super_admin", "coe"],
 			items: [
-				{ title: "Learner Directory",  url: "/users/students-list", icon: GraduationCap },
+				{ title: "Learner Directory",  url: "/users/learners-myjkkn", icon: GraduationCap },
 				{ title: "Learner Promotion",  url: "#" },
 			],
 		},
@@ -169,7 +172,7 @@ const data = {
 				{ title: "Grade System",        url: "/grading/grade-system",         icon: CalendarDays },
 				{ title: "Generate Final Marks", url: "/grading/generate-final-marks", icon: Calculator },
 				{ title: "Semester Results",    url: "/grading/semester-results",     icon: BarChart3 },
-				{ title: "Learner Arrears",     url: "/grading/student-backlogs",     icon: AlertTriangle },
+				{ title: "Learner Arrears",     url: "/grading/learner-backlogs",     icon: AlertTriangle },
 				{ title: "Galley Report",       url: "/grading/galley-report",        icon: FileText },
 				{ title: "Test GPA Workflow",   url: "/grading/test-gpa-workflow",    icon: TestTube },
 			],
@@ -184,6 +187,7 @@ const data = {
 				{ title: "Examination Sessions",  url: "/exam-management/examination-sessions", icon: CalendarDays },
 				{ title: "Exam Registrations",    url: "/exam-management/exam-registrations",   icon: UserPlus },
 				{ title: "Exam Timetable",        url: "/exam-management/exam-timetables",      icon: Calendar },
+				{ title: "Hall Tickets",          url: "/pre-exam/hall-tickets",                icon: Ticket },
 				{ title: "Bulk Internal Marks",   url: "/pre-exam/bulk-internal-marks",         icon: FileText },
 			],
 		},

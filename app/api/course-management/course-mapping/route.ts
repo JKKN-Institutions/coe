@@ -1,5 +1,22 @@
 import { NextResponse } from 'next/server'
 import { getSupabaseServer } from '@/lib/supabase-server'
+import { appendFile } from 'fs/promises'
+import path from 'path'
+
+// #region agent log helper
+async function logDebug(payload: Record<string, unknown>) {
+	try {
+		const logPath = path.join(process.cwd(), '.cursor', 'debug.log')
+		const entry = JSON.stringify({
+			...payload,
+			timestamp: Date.now()
+		}) + '\n'
+		await appendFile(logPath, entry, { encoding: 'utf8' })
+	} catch {
+		// Swallow logging errors
+	}
+}
+// #endregion
 
 export async function GET(request: Request) {
 	try {
@@ -14,17 +31,10 @@ export async function GET(request: Request) {
 		const isActive = searchParams.get('is_active')
 
 		if (includeDetails) {
-			// Fetch course mappings with course details joined
+			// Fetch course mappings
 			let query = supabase
 				.from('course_mapping')
-				.select(`
-					*,
-					course:courses!course_mapping_course_id_fkey (
-						id,
-						course_code,
-						course_name
-					)
-				`)
+				.select('*')
 				.order('created_at', { ascending: false })
 
 			if (institutionCode) query = query.eq('institution_code', institutionCode)
@@ -42,17 +52,11 @@ export async function GET(request: Request) {
 
 			return NextResponse.json(data || [])
 		} else {
-			// Fetch course mappings with course details joined
+			// Fetch course mappings
+			// Note: Join with courses causes errors, so fetch course details separately if needed
 			let query = supabase
 				.from('course_mapping')
-				.select(`
-					*,
-					course:courses!course_mapping_course_id_fkey (
-						id,
-						course_code,
-						course_name
-					)
-				`)
+				.select('*')
 				.order('course_order', { ascending: true })
 				.order('created_at', { ascending: false })
 
@@ -62,57 +66,57 @@ export async function GET(request: Request) {
 			if (semesterCode) query = query.eq('semester_code', semesterCode)
 			if (isActive !== null) query = query.eq('is_active', isActive === 'true')
 
-			const { data, error } = await query
+			console.log('[Course Mapping API] Query params:', { institutionCode, programCode, regulationCode, semesterCode, isActive })
+
+			let { data, error } = await query
 
 			if (error) {
-				console.error('Error fetching course mappings:', error)
+				console.error('[Course Mapping API] Supabase error:', error)
+				console.error('[Course Mapping API] Error details:', JSON.stringify(error, null, 2))
 				return NextResponse.json({ error: error.message }, { status: 500 })
 			}
 
-			// If we have mappings and program_code, fetch semesters to get display_order
-			if (data && data.length > 0 && programCode) {
-				// Fetch program_id first
-				const { data: programData } = await supabase
-					.from('programs')
-					.select('id')
-					.eq('program_code', programCode)
-					.single()
+			console.log('[Course Mapping API] Returned', data?.length || 0, 'course mappings')
 
-				if (programData) {
-					// Fetch semesters for this program to get display_order mapping
-					const { data: semesters } = await supabase
-						.from('semesters')
-						.select('semester_name, display_order, institution_code')
-						.eq('program_id', programData.id)
+			// Fetch course details for all course_ids
+			if (data && data.length > 0) {
+				try {
+					const courseIds = Array.from(new Set(data.map(m => m.course_id).filter(Boolean)))
+					console.log('[Course Mapping API] Fetching course details for', courseIds.length, 'course IDs')
 
-					if (semesters) {
-						// Create a map of semester_code to display_order
-						const semesterOrderMap: { [key: string]: number } = {}
-						semesters.forEach(sem => {
-							// Generate semester_code in the same format as stored in course_mapping
-							const semCode = `${sem.institution_code}-${programCode}-${sem.semester_name.replace(/\s+/g, '')}`
-							semesterOrderMap[semCode] = sem.display_order
-						})
+					if (courseIds.length > 0) {
+						const { data: coursesData, error: coursesError } = await supabase
+							.from('courses')
+							.select('id, course_code, course_name')
+							.in('id', courseIds)
 
-						// Add display_order to each mapping
-						const enrichedData = data.map(mapping => ({
-							...mapping,
-							semester_display_order: semesterOrderMap[mapping.semester_code] || 0
-						}))
-
-						// Sort by semester_display_order first, then by course_order
-						enrichedData.sort((a, b) => {
-							if (a.semester_display_order !== b.semester_display_order) {
-								return a.semester_display_order - b.semester_display_order
-							}
-							return (a.course_order || 0) - (b.course_order || 0)
-						})
-
-						return NextResponse.json(enrichedData)
+						if (coursesError) {
+							console.error('[Course Mapping API] Error fetching courses:', coursesError)
+						} else if (coursesData) {
+							console.log('[Course Mapping API] Fetched', coursesData.length, 'course details:', coursesData)
+							// Create a map for quick lookup
+							const coursesMap = new Map(coursesData.map(c => [c.id, {
+								course_code: c.course_code,
+								course_title: c.course_name // Map course_name to course_title for consistency
+							}]))
+							console.log('[Course Mapping API] Courses map created with', coursesMap.size, 'entries')
+							// Enrich mappings with course details
+							data = data.map(m => ({
+								...m,
+								courses: coursesMap.get(m.course_id) || null
+							}))
+							console.log('[Course Mapping API] Enriched data sample:', data[0])
+						}
 					}
+				} catch (err) {
+					console.error('[Course Mapping API] Error enriching with course details:', err)
+					// Continue without enrichment if it fails
 				}
 			}
 
+			// Skip the complex display_order sorting for now - just return the enriched data
+			// Data is already sorted by course_order from the initial query
+			console.log('[Course Mapping API] Returning final data:', data?.length || 0, 'items')
 			return NextResponse.json(data || [])
 		}
 	} catch (err) {
@@ -165,19 +169,13 @@ export async function POST(request: Request) {
 			}
 
 			// Step 2: Batch fetch all required lookup data in parallel
-			const uniqueCourseIds = [...new Set(validMappings.map(m => m.course_id))]
-			const uniqueInstitutionCodes = [...new Set(validMappings.map(m => m.institution_code))]
-			const uniqueProgramCodes = [...new Set(validMappings.map(m => m.program_code))]
-			const uniqueRegulationCodes = [...new Set(validMappings.map(m => m.regulation_code).filter(Boolean))]
+			const uniqueCourseIds = [...new Set(validMappings.map((m: any) => m.course_id))]
+			const uniqueInstitutionCodes = [...new Set(validMappings.map((m: any) => m.institution_code))]
 
-			// Parallel batch lookups - 4 queries instead of N*4
-			const [coursesResult, institutionsResult, programsResult, regulationsResult] = await Promise.all([
+			// Parallel batch lookups - only courses and institutions are required
+			const [coursesResult, institutionsResult] = await Promise.all([
 				supabase.from('courses').select('id, course_code').in('id', uniqueCourseIds),
-				supabase.from('institutions').select('id, institution_code').in('institution_code', uniqueInstitutionCodes),
-				supabase.from('programs').select('id, program_code, institution_code').in('program_code', uniqueProgramCodes),
-				uniqueRegulationCodes.length > 0
-					? supabase.from('regulations').select('id, regulation_code, institution_code').in('regulation_code', uniqueRegulationCodes)
-					: Promise.resolve({ data: [], error: null })
+				supabase.from('institutions').select('id, institution_code').in('institution_code', uniqueInstitutionCodes)
 			])
 
 			// Create lookup maps for O(1) access
@@ -187,11 +185,19 @@ export async function POST(request: Request) {
 			const institutionMap = new Map<string, string>()
 			institutionsResult.data?.forEach(i => institutionMap.set(i.institution_code, i.id))
 
-			const programMap = new Map<string, string>()
-			programsResult.data?.forEach(p => programMap.set(`${p.institution_code}:${p.program_code}`, p.id))
-
-			const regulationMap = new Map<string, string>()
-			regulationsResult.data?.forEach(r => regulationMap.set(`${r.institution_code}:${r.regulation_code}`, r.id))
+			// #region agent log
+			await logDebug({
+				sessionId: 'debug-session',
+				runId: 'pre-fix',
+				hypothesisId: 'H3',
+				location: 'api/course-mapping/route.ts:POST:lookupMaps',
+				message: 'Constructed lookup maps for bulk save (codes-only)',
+				data: {
+					uniqueInstitutionCodes,
+					courseIdCount: uniqueCourseIds.length
+				}
+			})
+			// #endregion
 
 			// Step 3: Build upsert records with resolved IDs
 			const upsertRecords: any[] = []
@@ -204,33 +210,17 @@ export async function POST(request: Request) {
 					continue
 				}
 
-				const institutionId = institutionMap.get(mapping.institution_code)
-				if (!institutionId) {
-					errors.push({ semester_code: mapping.semester_code, course_id: mapping.course_id, error: `Institution not found: ${mapping.institution_code}` })
-					continue
-				}
-
-				const programId = programMap.get(`${mapping.institution_code}:${mapping.program_code}`)
-				if (!programId) {
-					errors.push({ semester_code: mapping.semester_code, course_id: mapping.course_id, error: `Program not found: ${mapping.program_code}` })
-					continue
-				}
-
-				let regulationId = null
-				if (mapping.regulation_code) {
-					regulationId = regulationMap.get(`${mapping.institution_code}:${mapping.regulation_code}`)
-					if (!regulationId) {
-						errors.push({ semester_code: mapping.semester_code, course_id: mapping.course_id, error: `Regulation not found: ${mapping.regulation_code}` })
-						continue
-					}
-				}
+				const institutionId = institutionMap.get(mapping.institution_code) || null
 
 				upsertRecords.push({
 					...mapping,
 					course_code: course.course_code,
 					institutions_id: institutionId,
-					program_id: programId,
-					regulation_id: regulationId,
+					// Use MyJKKN IDs from request body (program_id, regulation_id, semester_id)
+					// These are UUIDs from MyJKKN system, not local database IDs
+					program_id: mapping.program_id || null,
+					regulation_id: mapping.regulation_id || null,
+					semester_id: mapping.semester_id || null,
 					updated_at: now
 				})
 			}
@@ -258,14 +248,7 @@ export async function POST(request: Request) {
 						onConflict: 'id',
 						ignoreDuplicates: false
 					})
-					.select(`
-						*,
-						course:courses!course_mapping_course_id_fkey (
-							id,
-							course_code,
-							course_name
-						)
-					`)
+					.select('*')
 
 				if (updateError) {
 					console.error('Bulk update error:', updateError)
@@ -286,14 +269,7 @@ export async function POST(request: Request) {
 				const { data: insertData, error: insertError } = await supabase
 					.from('course_mapping')
 					.insert(newRecords)
-					.select(`
-						*,
-						course:courses!course_mapping_course_id_fkey (
-							id,
-							course_code,
-							course_name
-						)
-					`)
+					.select('*')
 
 				if (insertError) {
 					console.error('Bulk insert error:', insertError)
@@ -302,14 +278,7 @@ export async function POST(request: Request) {
 						const { data: singleData, error: singleError } = await supabase
 							.from('course_mapping')
 							.insert([record])
-							.select(`
-								*,
-								course:courses!course_mapping_course_id_fkey (
-									id,
-									course_code,
-									course_name
-								)
-							`)
+							.select('*')
 							.single()
 
 						if (singleError) {
@@ -433,24 +402,30 @@ export async function POST(request: Request) {
 			)
 		}
 
-		// Fetch program_id from programs table based on program_code
-		const { data: programData, error: programError } = await supabase
-			.from('programs')
-			.select('id')
-			.eq('program_code', body.program_code)
-			.eq('institution_code', body.institution_code)
-			.single()
+		// Use MyJKKN IDs from request body if provided, otherwise try to fetch from local DB
+		// MyJKKN IDs are UUIDs from MyJKKN system (program.id, regulation.id, semester.id)
+		let programId = body.program_id || null
+		let regulationId = body.regulation_id || null
+		let semesterId = body.semester_id || null
 
-		if (programError || !programData) {
-			return NextResponse.json(
-				{ error: `Program not found: ${body.program_code}` },
-				{ status: 404 }
-			)
+		// Fallback: Try to fetch from local DB if MyJKKN IDs not provided
+		if (!programId) {
+			const { data: programData, error: programError } = await supabase
+				.from('programs')
+				.select('id')
+				.eq('program_code', body.program_code)
+				.eq('institution_code', body.institution_code)
+				.single()
+
+			if (programError || !programData) {
+				// Don't fail if program not found in local DB - MyJKKN IDs are preferred
+				console.warn(`Program not found in local DB: ${body.program_code}, using MyJKKN ID if provided`)
+			} else {
+				programId = programData.id
+			}
 		}
 
-		// Fetch regulation_id from regulations table based on regulation_code
-		let regulationId = null
-		if (body.regulation_code) {
+		if (!regulationId && body.regulation_code) {
 			const { data: regulationData, error: regulationError } = await supabase
 				.from('regulations')
 				.select('id')
@@ -459,12 +434,11 @@ export async function POST(request: Request) {
 				.single()
 
 			if (regulationError || !regulationData) {
-				return NextResponse.json(
-					{ error: `Regulation not found: ${body.regulation_code}` },
-					{ status: 404 }
-				)
+				// Don't fail if regulation not found in local DB - MyJKKN IDs are preferred
+				console.warn(`Regulation not found in local DB: ${body.regulation_code}, using MyJKKN ID if provided`)
+			} else {
+				regulationId = regulationData.id
 			}
-			regulationId = regulationData.id
 		}
 
 		// Check for duplicate mapping (NO BATCH)
@@ -493,17 +467,11 @@ export async function POST(request: Request) {
 				course_id: courseId,                  // Ensure course_id is set
 				course_code: courseCode,              // Ensure course_code is set
 				institutions_id: institutionData.id,  // Add institution ID
-				program_id: programData.id,           // Add program ID
-				regulation_id: regulationId           // Add regulation ID
+				program_id: programId,                // Use MyJKKN program.id if provided, otherwise local DB ID
+				regulation_id: regulationId,          // Use MyJKKN regulation.id if provided, otherwise local DB ID
+				semester_id: semesterId               // Use MyJKKN semester.id if provided
 			}])
-			.select(`
-				*,
-				course:courses!course_mapping_course_id_fkey (
-					id,
-					course_code,
-					course_name
-				)
-			`)
+			.select('*')
 			.single()
 
 		if (error) {
@@ -576,14 +544,7 @@ export async function PUT(request: Request) {
 			.from('course_mapping')
 			.update(updateData)
 			.eq('id', id)
-			.select(`
-				*,
-				course:courses!course_mapping_course_id_fkey (
-					id,
-					course_code,
-					course_name
-				)
-			`)
+			.select('*')
 			.single()
 
 		if (error) {

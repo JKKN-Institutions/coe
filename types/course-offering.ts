@@ -67,6 +67,7 @@ export interface Program {
 	id: string
 	program_code: string
 	program_name: string
+	program_order?: number
 	institutions_id?: string
 	is_active?: boolean
 }
@@ -79,7 +80,10 @@ export interface CourseOfferingFormData {
 	course_id: string
 	examination_session_id: string
 	program_id: string
-	semester: string
+	semester_id: string // MyJKKN semester UUID
+	semester_code: string // Semester code (e.g., "ECE-SEM-2")
+	semester_number: string // Semester number for database
+	semester_order: string // Display order
 	section: string
 	faculty_id: string
 	max_enrollment: string

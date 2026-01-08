@@ -2,7 +2,7 @@
 
 import { useMemo, useState, useEffect } from "react"
 import XLSX from "@/lib/utils/excel-compat"
-import supabaseAuthService from "@/services/auth/supabase-auth-service"
+import { useInstitutionFilter } from "@/hooks/use-institution-filter"
 import { AppSidebar } from "@/components/layout/app-sidebar"
 import { AppHeader } from "@/components/layout/app-header"
 import { AppFooter } from "@/components/layout/app-footer"
@@ -57,6 +57,19 @@ import {
 
 export default function GradeSystemPage() {
 	const { toast } = useToast()
+
+	// Institution filter hook for multi-tenant filtering
+	const {
+		filter,
+		isReady,
+		appendToUrl,
+		getInstitutionCodeForCreate,
+		mustSelectInstitution,
+		shouldFilter,
+		institutionCode,
+		institutionId
+	} = useInstitutionFilter()
+
 	const [items, setItems] = useState<GradeSystem[]>([])
 	const [loading, setLoading] = useState(true)
 	const [searchTerm, setSearchTerm] = useState("")
@@ -82,8 +95,9 @@ export default function GradeSystemPage() {
 	}>({ total: 0, success: 0, failed: 0 })
 
 	// Foreign key dropdowns
-	const [institutions, setInstitutions] = useState<Array<{ id: string; institution_code: string; name?: string }>>([])
+	const [institutions, setInstitutions] = useState<Array<{ id: string; institution_code: string; name?: string; counselling_code?: string | null }>>([])
 	const [regulations, setRegulations] = useState<Array<{ id: string; regulation_code: string; name?: string }>>([])
+	const [regulationsLoading, setRegulationsLoading] = useState(false)
 	const [grades, setGrades] = useState<Array<{ id: string; grade: string; grade_point: number }>>([])
 
 	// Grade system code options (UG/PG constraint)
@@ -101,11 +115,15 @@ export default function GradeSystemPage() {
 	})
 	const [errors, setErrors] = useState<Record<string, string>>({})
 
-	// Fetch data from API using service layer
+	// Fetch data from API using service layer with institution filter
 	const fetchGradeSystems = async () => {
 		try {
 			setLoading(true)
-			const data = await fetchGradeSystemsService()
+			// Use institution filter for multi-tenant data access
+			const url = appendToUrl('/api/grading/grade-system')
+			const res = await fetch(url)
+			if (!res.ok) throw new Error('Fetch failed')
+			const data = await res.json()
 			setItems(data)
 		} catch (error) {
 			console.error('Error fetching grade systems:', error)
@@ -124,35 +142,62 @@ export default function GradeSystemPage() {
 		}
 	}
 
-	const fetchRegulationsList = async () => {
+	// Fetch regulations from MyJKKN API, filtered by institution's counselling_code
+	const fetchRegulationsList = async (institutionCode?: string) => {
 		try {
-			const data = await fetchRegulationsService()
+			setRegulationsLoading(true)
+
+			// Find the institution to get its counselling_code for MyJKKN API filtering
+			let counsellingCode: string | undefined
+			if (institutionCode) {
+				const institution = institutions.find(i => i.institution_code === institutionCode)
+				counsellingCode = institution?.counselling_code || undefined
+			}
+
+			const data = await fetchRegulationsService(counsellingCode)
 			setRegulations(data)
 		} catch (e) {
 			console.error('Failed to load regulations:', e)
+		} finally {
+			setRegulationsLoading(false)
 		}
 	}
 
-	const fetchGradesList = async () => {
+	const fetchGradesList = async (instId?: string | null) => {
 		try {
-			const data = await fetchGradesService()
+			// Pass institution ID to filter grades by institution
+			const data = await fetchGradesService(instId || undefined)
 			setGrades(data)
 		} catch (e) {
 			console.error('Failed to load grades:', e)
 		}
 	}
 
-	// Load data on component mount
+	// Load data when institution filter is ready
 	useEffect(() => {
-		fetchGradeSystems()
-		fetchInstitutionsList()
-		fetchRegulationsList()
-		fetchGradesList()
-	}, [])
+		if (isReady) {
+			fetchGradeSystems()
+			fetchInstitutionsList()
+			// Pass institution ID to filter grades by the user's institution
+			fetchGradesList(institutionId)
+		}
+	}, [isReady, filter, institutionId])
+
+	// Fetch regulations when institution changes (filtered by counselling_code)
+	useEffect(() => {
+		if (formData.institutions_code) {
+			fetchRegulationsList(formData.institutions_code)
+		} else {
+			// Clear regulations when no institution is selected
+			setRegulations([])
+		}
+	}, [formData.institutions_code, institutions])
 
 	const resetForm = () => {
+		// Auto-fill institution_code from context if available
+		const autoInstitutionCode = getInstitutionCodeForCreate() || ""
 		setFormData({
-			institutions_code: "",
+			institutions_code: autoInstitutionCode,
 			grade_system_code: "" as '' | 'UG' | 'PG',
 			grade_id: "",
 			regulation_id: "",
@@ -204,6 +249,7 @@ export default function GradeSystemPage() {
 	useEffect(() => setCurrentPage(1), [searchTerm, sortColumn, sortDirection, statusFilter])
 
 	const openAdd = () => {
+		// Add button always works - user selects institution in form if needed
 		resetForm()
 		setSheetOpen(true)
 	}
@@ -765,12 +811,15 @@ export default function GradeSystemPage() {
 									<Table>
 										<TableHeader className="sticky top-0 z-10 bg-slate-50 dark:bg-slate-900/50">
 											<TableRow>
-												<TableHead className="w-[120px] text-[11px]">
-													<Button variant="ghost" size="sm" onClick={() => handleSort("institutions_code")} className="h-auto p-0 font-medium hover:bg-transparent">
-														Institution
-														<span className="ml-1">{getSortIcon("institutions_code")}</span>
-													</Button>
-												</TableHead>
+												{/* Show Institution column only when "All Institutions" is selected */}
+												{mustSelectInstitution && (
+													<TableHead className="w-[120px] text-[11px]">
+														<Button variant="ghost" size="sm" onClick={() => handleSort("institutions_code")} className="h-auto p-0 font-medium hover:bg-transparent">
+															Institution
+															<span className="ml-1">{getSortIcon("institutions_code")}</span>
+														</Button>
+													</TableHead>
+												)}
 												<TableHead className="w-[120px] text-[11px]">
 													<Button variant="ghost" size="sm" onClick={() => handleSort("grade_system_code")} className="h-auto p-0 font-medium hover:bg-transparent">
 														System Code
@@ -804,13 +853,16 @@ export default function GradeSystemPage() {
 										<TableBody>
 											{loading ? (
 												<TableRow>
-													<TableCell colSpan={9} className="h-24 text-center text-[11px]">Loading…</TableCell>
+													<TableCell colSpan={mustSelectInstitution ? 9 : 8} className="h-24 text-center text-[11px]">Loading…</TableCell>
 												</TableRow>
 											) : pageItems.length ? (
 												<>
 													{pageItems.map((row) => (
 														<TableRow key={row.id}>
-															<TableCell className="text-[11px] font-medium">{row.institutions_code}</TableCell>
+															{/* Show Institution cell only when "All Institutions" is selected */}
+															{mustSelectInstitution && (
+																<TableCell className="text-[11px] font-medium">{row.institutions_code}</TableCell>
+															)}
 															<TableCell className="text-[11px]">{row.grade_system_code}</TableCell>
 															<TableCell className="text-[11px] font-semibold">{row.grade}</TableCell>
 															<TableCell className="text-[11px]">{row.grade_point}</TableCell>
@@ -859,7 +911,7 @@ export default function GradeSystemPage() {
 												</>
 											) : (
 												<TableRow>
-													<TableCell colSpan={9} className="h-24 text-center text-[11px]">No data</TableCell>
+													<TableCell colSpan={mustSelectInstitution ? 9 : 8} className="h-24 text-center text-[11px]">No data</TableCell>
 												</TableRow>
 											)}
 										</TableBody>
@@ -917,30 +969,33 @@ export default function GradeSystemPage() {
 								<h3 className="text-lg font-bold bg-gradient-to-r from-green-600 to-emerald-600 bg-clip-text text-transparent">Basic Information</h3>
 							</div>
 							<div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-								{/* Institution Code dropdown */}
-								<div className="space-y-2">
-									<Label htmlFor="institutions_code" className="text-sm font-semibold">
-										Institution Code <span className="text-red-500">*</span>
-									</Label>
-									<Select
-										value={formData.institutions_code}
-										onValueChange={(code) => {
-											setFormData(prev => ({ ...prev, institutions_code: code }))
-										}}
-									>
-										<SelectTrigger className={`h-10 ${errors.institutions_code ? 'border-destructive' : ''}`}>
-											<SelectValue placeholder="Select Institution Code" />
-										</SelectTrigger>
-										<SelectContent>
-											{institutions.map(inst => (
-												<SelectItem key={inst.id} value={inst.institution_code}>
-													{inst.institution_code}{inst.name ? ` - ${inst.name}` : ''}
-												</SelectItem>
-											))}
-										</SelectContent>
-									</Select>
-									{errors.institutions_code && <p className="text-xs text-destructive">{errors.institutions_code}</p>}
-								</div>
+								{/* Show institution field when "All Institutions" is selected or no specific institution is filtered */}
+								{(mustSelectInstitution || !shouldFilter || !institutionCode) ? (
+									<div className="space-y-2">
+										<Label htmlFor="institutions_code" className="text-sm font-semibold">
+											Institution Code <span className="text-red-500">*</span>
+										</Label>
+										<Select
+											value={formData.institutions_code}
+											onValueChange={(code) => {
+												// Clear regulation_id when institution changes
+												setFormData(prev => ({ ...prev, institutions_code: code, regulation_id: '' }))
+											}}
+										>
+											<SelectTrigger className={`h-10 ${errors.institutions_code ? 'border-destructive' : ''}`}>
+												<SelectValue placeholder="Select Institution Code" />
+											</SelectTrigger>
+											<SelectContent>
+												{institutions.map(inst => (
+													<SelectItem key={inst.id} value={inst.institution_code}>
+														{inst.institution_code}{inst.name ? ` - ${inst.name}` : ''}
+													</SelectItem>
+												))}
+											</SelectContent>
+										</Select>
+										{errors.institutions_code && <p className="text-xs text-destructive">{errors.institutions_code}</p>}
+									</div>
+								) : null}
 
 								<div className="space-y-2">
 									<Label htmlFor="grade_system_code" className="text-sm font-semibold">
@@ -999,9 +1054,16 @@ export default function GradeSystemPage() {
 										onValueChange={(id) => {
 											setFormData(prev => ({ ...prev, regulation_id: id }))
 										}}
+										disabled={!formData.institutions_code || regulationsLoading}
 									>
-										<SelectTrigger className={`h-10 ${errors.regulation_id ? 'border-destructive' : ''}`}>
-											<SelectValue placeholder="Select Regulation" />
+										<SelectTrigger className={`h-10 ${errors.regulation_id ? 'border-destructive' : ''} ${!formData.institutions_code ? 'bg-muted' : ''}`}>
+											<SelectValue placeholder={
+												!formData.institutions_code
+													? "Select institution first"
+													: regulationsLoading
+														? "Loading regulations..."
+														: "Select Regulation"
+											} />
 										</SelectTrigger>
 										<SelectContent>
 											{regulations.map(reg => (
@@ -1012,6 +1074,9 @@ export default function GradeSystemPage() {
 										</SelectContent>
 									</Select>
 									{errors.regulation_id && <p className="text-xs text-destructive">{errors.regulation_id}</p>}
+									{!formData.institutions_code && (
+										<p className="text-xs text-muted-foreground">Select an institution to see available regulations from MyJKKN</p>
+									)}
 								</div>
 
 								<div className="space-y-2">

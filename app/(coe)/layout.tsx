@@ -1,6 +1,7 @@
 'use client';
 
 import { ProtectedRoute } from '@/components/common/protected-route';
+import { InstitutionProvider } from '@/context/institution-context';
 
 export default function AuthenticatedLayout({
   children,
@@ -16,7 +17,9 @@ export default function AuthenticatedLayout({
         </div>
       }
     >
-      {children}
+      <InstitutionProvider>
+        {children}
+      </InstitutionProvider>
     </ProtectedRoute>
   );
 }

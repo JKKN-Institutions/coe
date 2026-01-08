@@ -2,13 +2,13 @@
 
 import { useState, useEffect, useMemo } from "react"
 import XLSX from "@/lib/utils/excel-compat"
-import supabaseAuthService from "@/services/auth/supabase-auth-service"
 import type { ExamRegistration, ExamRegistrationImportError, UploadSummary } from "@/types/exam-registrations"
 import { useExamRegistrations } from "@/hooks/exam-management/use-exam-registrations"
+import { useMyJKKNPrograms } from "@/hooks/myjkkn/use-myjkkn-data"
 import { validateExamRegistrationData, validateExamRegistrationImport } from "@/lib/utils/exam-registrations/validation"
 import { exportToJSON, exportToExcel, exportTemplate } from "@/lib/utils/exam-registrations/export-import"
 import { AppSidebar } from "@/components/layout/app-sidebar"
-import { PremiumNavbar } from "@/components/layout/premium-navbar"
+import { AppHeader } from "@/components/layout/app-header"
 import { AppFooter } from "@/components/layout/app-footer"
 import { PageTransition } from "@/components/common/page-transition"
 import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar"
@@ -25,13 +25,16 @@ import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, 
 import { useToast } from "@/hooks/common/use-toast"
 import { Switch } from "@/components/ui/switch"
 import Link from "next/link"
-import { PlusCircle, Edit, Trash2, Search, ChevronLeft, ChevronRight, ArrowUpDown, ArrowUp, ArrowDown, ClipboardCheck, TrendingUp, FileSpreadsheet, RefreshCw, CheckCircle, XCircle, AlertTriangle, Home, Shield, Users, BookOpen, Calendar, FileText, Award, GraduationCap, School, LayoutGrid, Layers, Building2 } from "lucide-react"
+import { PlusCircle, Edit, Trash2, Search, ChevronLeft, ChevronRight, ArrowUpDown, ArrowUp, ArrowDown, ClipboardCheck, TrendingUp, FileSpreadsheet, RefreshCw, CheckCircle, XCircle, AlertTriangle, FileJson, Download, Upload } from "lucide-react"
 
 
 export default function ExamRegistrationsPage() {
 	const { toast } = useToast()
 
-	// Use custom hook for exam registrations data management
+	// Program filter state - defined first so it can be passed to hook
+	const [programFilter, setProgramFilter] = useState("all")
+
+	// Use custom hook for exam registrations data management with program filter
 	const {
 		examRegistrations,
 		loading,
@@ -52,7 +55,28 @@ export default function ExamRegistrationsPage() {
 		// Dropdown control
 		selectedInstitutionId,
 		setSelectedInstitutionId,
-	} = useExamRegistrations()
+		// Institution filter values
+		isReady,
+		mustSelectInstitution,
+		shouldFilter,
+		institutionId,
+		getInstitutionIdForCreate,
+	} = useExamRegistrations(programFilter)
+
+	// Get institution_code for MyJKKN API filter
+	const selectedInstitutionCode = useMemo(() => {
+		if (institutionId) {
+			const inst = institutions.find(i => i.id === institutionId)
+			return inst?.institution_code
+		}
+		return undefined
+	}, [institutionId, institutions])
+
+	// Fetch programs from MyJKKN API
+	const { data: programs, loading: programsLoading } = useMyJKKNPrograms({
+		institution_code: selectedInstitutionCode,
+		is_active: true,
+	})
 
 	// Local UI state
 	const [items, setItems] = useState<ExamRegistration[]>([])
@@ -60,7 +84,7 @@ export default function ExamRegistrationsPage() {
 	const [sortColumn, setSortColumn] = useState<string | null>(null)
 	const [sortDirection, setSortDirection] = useState<"asc" | "desc">("asc")
 	const [currentPage, setCurrentPage] = useState(1)
-	const itemsPerPage = 10
+	const [itemsPerPage, setItemsPerPage] = useState<number | "all">(10)
 
 	const [sheetOpen, setSheetOpen] = useState(false)
 	const [editing, setEditing] = useState<ExamRegistration | null>(null)
@@ -96,8 +120,9 @@ export default function ExamRegistrationsPage() {
 	}, [examRegistrations])
 
 	const resetForm = () => {
+		const autoInstitutionId = getInstitutionIdForCreate() || ''
 		setFormData({
-			institutions_id: "",
+			institutions_id: autoInstitutionId,
 			student_id: "",
 			examination_session_id: "",
 			course_offering_id: "",
@@ -115,6 +140,10 @@ export default function ExamRegistrationsPage() {
 			approved_by: "",
 			approved_date: "",
 		})
+		// Also set the selectedInstitutionId for dropdown filtering
+		if (autoInstitutionId) {
+			setSelectedInstitutionId(autoInstitutionId)
+		}
 		setErrors({})
 		setEditing(null)
 	}
@@ -133,6 +162,7 @@ export default function ExamRegistrationsPage() {
 		return sortDirection === "asc" ? <ArrowUp className="h-3 w-3" /> : <ArrowDown className="h-3 w-3" />
 	}
 
+	// Program filtering is now done server-side via the API
 	const filtered = useMemo(() => {
 		const q = searchTerm.toLowerCase()
 		const data = items
@@ -156,12 +186,12 @@ export default function ExamRegistrationsPage() {
 		return sorted
 	}, [items, searchTerm, sortColumn, sortDirection, statusFilter])
 
-	const totalPages = Math.ceil(filtered.length / itemsPerPage) || 1
-	const startIndex = (currentPage - 1) * itemsPerPage
-	const endIndex = startIndex + itemsPerPage
+	const totalPages = itemsPerPage === "all" ? 1 : Math.ceil(filtered.length / itemsPerPage) || 1
+	const startIndex = itemsPerPage === "all" ? 0 : (currentPage - 1) * itemsPerPage
+	const endIndex = itemsPerPage === "all" ? filtered.length : startIndex + itemsPerPage
 	const pageItems = filtered.slice(startIndex, endIndex)
 
-	useEffect(() => setCurrentPage(1), [searchTerm, sortColumn, sortDirection, statusFilter])
+	useEffect(() => setCurrentPage(1), [searchTerm, sortColumn, sortDirection, statusFilter, itemsPerPage])
 
 	const openAdd = () => {
 		resetForm()
@@ -693,215 +723,279 @@ export default function ExamRegistrationsPage() {
 	return (
 		<SidebarProvider>
 			<AppSidebar />
-			<SidebarInset>
-				<PremiumNavbar
-					title="Exam Registrations"
-					description="Manage learner exam course registrations"
-					showSearch={true}
-				/>
+			<SidebarInset className="flex flex-col min-h-screen">
+				<AppHeader />
 				<PageTransition>
-					<div className="flex flex-1 flex-col gap-6 p-6 md:p-10">
+					<div className="flex flex-1 flex-col gap-3 p-4 pt-0 overflow-y-auto">
+						<div className="flex items-center gap-2">
+							<Breadcrumb>
+								<BreadcrumbList>
+									<BreadcrumbItem>
+										<BreadcrumbLink asChild>
+											<Link href="/dashboard">Dashboard</Link>
+										</BreadcrumbLink>
+									</BreadcrumbItem>
+									<BreadcrumbSeparator />
+									<BreadcrumbItem>
+										<BreadcrumbLink asChild>
+											<Link href="/exam-management">Exam Management</Link>
+										</BreadcrumbLink>
+									</BreadcrumbItem>
+									<BreadcrumbSeparator />
+									<BreadcrumbItem>
+										<BreadcrumbPage>Exam Registrations</BreadcrumbPage>
+									</BreadcrumbItem>
+								</BreadcrumbList>
+							</Breadcrumb>
+						</div>
+
 						{/* Premium Stats Cards */}
 						<div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-							<div className="card-premium-hover p-6">
-								<div className="flex items-center justify-between">
-									<div>
-										<p className="text-sm text-slate-600 dark:text-slate-400">Total Registrations</p>
-										<p className="text-3xl font-bold text-slate-900 dark:text-slate-100 mt-1 font-grotesk">{items.length}</p>
+							<Card className="border-slate-200 shadow-sm rounded-2xl">
+								<CardContent className="p-6">
+									<div className="flex items-center justify-between">
+										<div>
+											<p className="text-sm text-slate-600">Total Registrations</p>
+											<p className="text-3xl font-bold text-slate-900 mt-1 font-grotesk">{items.length}</p>
+										</div>
+										<div className="h-12 w-12 rounded-xl bg-blue-50 flex items-center justify-center ring-1 ring-blue-100">
+											<ClipboardCheck className="h-6 w-6 text-blue-600" />
+										</div>
 									</div>
-									<div className="h-12 w-12 rounded-xl bg-blue-50 dark:bg-blue-900/20 flex items-center justify-center">
-										<ClipboardCheck className="h-6 w-6 text-blue-600 dark:text-blue-400" />
-									</div>
-								</div>
-							</div>
+								</CardContent>
+							</Card>
 
-							<div className="card-premium-hover p-6">
-								<div className="flex items-center justify-between">
-									<div>
-										<p className="text-sm text-slate-600 dark:text-slate-400">Approved</p>
-										<p className="text-3xl font-bold text-emerald-600 dark:text-emerald-400 mt-1 font-grotesk">{items.filter(i => i.registration_status === 'Approved').length}</p>
+							<Card className="border-slate-200 shadow-sm rounded-2xl">
+								<CardContent className="p-6">
+									<div className="flex items-center justify-between">
+										<div>
+											<p className="text-sm text-slate-600">Approved</p>
+											<p className="text-3xl font-bold text-emerald-600 mt-1 font-grotesk">{items.filter(i => i.registration_status === 'Approved').length}</p>
+										</div>
+										<div className="h-12 w-12 rounded-xl bg-emerald-50 flex items-center justify-center ring-1 ring-emerald-100">
+											<CheckCircle className="h-6 w-6 text-emerald-600" />
+										</div>
 									</div>
-									<div className="h-12 w-12 rounded-xl bg-emerald-50 dark:bg-emerald-900/20 flex items-center justify-center">
-										<CheckCircle className="h-6 w-6 text-emerald-600 dark:text-emerald-400" />
-									</div>
-								</div>
-							</div>
+								</CardContent>
+							</Card>
 
-							<div className="card-premium-hover p-6">
-								<div className="flex items-center justify-between">
-									<div>
-										<p className="text-sm text-slate-600 dark:text-slate-400">Pending</p>
-										<p className="text-3xl font-bold text-yellow-600 dark:text-yellow-400 mt-1 font-grotesk">{items.filter(i => i.registration_status === 'Pending').length}</p>
+							<Card className="border-slate-200 shadow-sm rounded-2xl">
+								<CardContent className="p-6">
+									<div className="flex items-center justify-between">
+										<div>
+											<p className="text-sm text-slate-600">Pending</p>
+											<p className="text-3xl font-bold text-amber-600 mt-1 font-grotesk">{items.filter(i => i.registration_status === 'Pending').length}</p>
+										</div>
+										<div className="h-12 w-12 rounded-xl bg-amber-50 flex items-center justify-center ring-1 ring-amber-100">
+											<AlertTriangle className="h-6 w-6 text-amber-600" />
+										</div>
 									</div>
-									<div className="h-12 w-12 rounded-xl bg-yellow-50 dark:bg-yellow-900/20 flex items-center justify-center">
-										<AlertTriangle className="h-6 w-6 text-yellow-600 dark:text-yellow-400" />
-									</div>
-								</div>
-							</div>
+								</CardContent>
+							</Card>
 
-							<div className="card-premium-hover p-6">
-								<div className="flex items-center justify-between">
-									<div>
-										<p className="text-sm text-slate-600 dark:text-slate-400">Fee Paid</p>
-										<p className="text-3xl font-bold text-purple-600 dark:text-purple-400 mt-1 font-grotesk">{items.filter(i => i.fee_paid).length}</p>
+							<Card className="border-slate-200 shadow-sm rounded-2xl">
+								<CardContent className="p-6">
+									<div className="flex items-center justify-between">
+										<div>
+											<p className="text-sm text-slate-600">Fee Paid</p>
+											<p className="text-3xl font-bold text-purple-600 mt-1 font-grotesk">{items.filter(i => i.fee_paid).length}</p>
+										</div>
+										<div className="h-12 w-12 rounded-xl bg-purple-50 flex items-center justify-center ring-1 ring-purple-100">
+											<TrendingUp className="h-6 w-6 text-purple-600" />
+										</div>
 									</div>
-									<div className="h-12 w-12 rounded-xl bg-purple-50 dark:bg-purple-900/20 flex items-center justify-center">
-										<TrendingUp className="h-6 w-6 text-purple-600 dark:text-purple-400" />
-									</div>
-								</div>
-							</div>
+								</CardContent>
+							</Card>
 						</div>
 
-					<div className="card-premium overflow-hidden">
-						{/* Table Header */}
-						<div className="p-6 border-b border-slate-200 dark:border-slate-800">
-							<div className="flex flex-col lg:flex-row gap-4 items-start lg:items-center justify-between">
-								<div className="flex items-center gap-3">
-									<div className="h-10 w-10 rounded-xl bg-emerald-50 dark:bg-emerald-900/20 flex items-center justify-center">
-										<ClipboardCheck className="h-5 w-5 text-emerald-600 dark:text-emerald-400" />
+						<Card className="flex-1 flex flex-col min-h-0 border-slate-200 shadow-sm rounded-2xl">
+							<CardHeader className="flex-shrink-0 px-8 py-6 border-b border-slate-200">
+								<div className="space-y-4">
+									{/* Row 1: Title (Left) & Action Buttons (Right) - Same Line */}
+									<div className="flex items-center justify-between">
+										{/* Title Section - Left */}
+										<div className="flex items-center gap-3">
+											<div className="h-12 w-12 rounded-xl bg-emerald-50 flex items-center justify-center ring-1 ring-emerald-100">
+												<ClipboardCheck className="h-6 w-6 text-emerald-600" />
+											</div>
+											<div>
+												<h2 className="text-xl font-bold text-slate-900 font-grotesk">All Exam Registrations</h2>
+												<p className="text-sm text-slate-600">Manage learner exam course registrations</p>
+											</div>
+										</div>
+
+										{/* Action Buttons - Right (Icon Only) */}
+										<div className="flex items-center gap-2">
+											<Button variant="outline" size="sm" onClick={fetchExamRegistrations} disabled={loading} className="h-9 w-9 rounded-lg hover:bg-slate-100 text-slate-600 hover:text-slate-900 transition-colors border border-slate-300 p-0" title="Refresh">
+												<RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
+											</Button>
+											<Button variant="outline" size="sm" onClick={handleTemplateExport} className="h-9 w-9 rounded-lg hover:bg-slate-100 text-slate-600 hover:text-slate-900 transition-colors border border-slate-300 p-0" title="Download Template">
+												<FileSpreadsheet className="h-4 w-4" />
+											</Button>
+											<Button variant="outline" size="sm" onClick={handleDownload} className="h-9 w-9 rounded-lg hover:bg-slate-100 text-slate-600 hover:text-slate-900 transition-colors border border-slate-300 p-0" title="Export JSON">
+												<FileJson className="h-4 w-4" />
+											</Button>
+											<Button variant="outline" size="sm" onClick={handleExport} className="h-9 w-9 rounded-lg hover:bg-slate-100 text-slate-600 hover:text-slate-900 transition-colors border border-slate-300 p-0" title="Export Excel">
+												<Download className="h-4 w-4" />
+											</Button>
+											<Button variant="outline" size="sm" onClick={handleImport} className="h-9 w-9 rounded-lg hover:bg-slate-100 text-slate-600 hover:text-slate-900 transition-colors border border-slate-300 p-0" title="Import File">
+												<Upload className="h-4 w-4" />
+											</Button>
+											<Button size="sm" onClick={openAdd} disabled={loading} className="h-9 px-4 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white transition-all duration-200 shadow-sm disabled:opacity-50 disabled:cursor-not-allowed" title="Add Registration">
+												<PlusCircle className="h-4 w-4 mr-2" />
+												Add Registration
+											</Button>
+										</div>
 									</div>
-									<div>
-										<h2 className="text-lg font-semibold font-grotesk text-slate-900 dark:text-slate-100">All Exam Registrations</h2>
-										<p className="text-sm text-slate-600 dark:text-slate-400">Manage learner exam course registrations</p>
+
+									{/* Row 2: Filter and Search Row */}
+									<div className="flex items-center gap-2">
+										<Select value={statusFilter} onValueChange={setStatusFilter}>
+											<SelectTrigger className="h-9 rounded-lg border-slate-300 focus:border-emerald-500 w-[140px]">
+												<SelectValue placeholder="All Status" />
+											</SelectTrigger>
+											<SelectContent>
+												<SelectItem value="all">All Status</SelectItem>
+												<SelectItem value="Pending">Pending</SelectItem>
+												<SelectItem value="Approved">Approved</SelectItem>
+												<SelectItem value="Rejected">Rejected</SelectItem>
+												<SelectItem value="Cancelled">Cancelled</SelectItem>
+											</SelectContent>
+										</Select>
+
+										<Select value={programFilter} onValueChange={setProgramFilter} disabled={programsLoading}>
+											<SelectTrigger className="h-9 rounded-lg border-slate-300 focus:border-emerald-500 w-[180px]">
+												<SelectValue placeholder={programsLoading ? "Loading..." : "All Programs"} />
+											</SelectTrigger>
+											<SelectContent>
+												<SelectItem value="all">All Programs</SelectItem>
+												{programs.map(prog => (
+													<SelectItem key={prog.id} value={prog.program_code}>
+														{prog.program_code} - {prog.program_name}
+													</SelectItem>
+												))}
+											</SelectContent>
+										</Select>
+
+										<div className="relative flex-1 max-w-sm">
+											<Search className="absolute left-2 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
+											<Input
+												value={searchTerm}
+												onChange={(e) => setSearchTerm(e.target.value)}
+												placeholder="Search registrations..."
+												className="pl-8 h-9 rounded-lg border-slate-300 focus:border-emerald-500 focus:ring-emerald-500/20"
+											/>
+										</div>
 									</div>
 								</div>
+							</CardHeader>
 
-								<div className="flex flex-wrap gap-2">
-									<Select value={statusFilter} onValueChange={setStatusFilter}>
-										<SelectTrigger className="w-[140px]">
-											<SelectValue placeholder="All Status" />
-										</SelectTrigger>
-										<SelectContent>
-											<SelectItem value="all">All Status</SelectItem>
-											<SelectItem value="Pending">Pending</SelectItem>
-											<SelectItem value="Approved">Approved</SelectItem>
-											<SelectItem value="Rejected">Rejected</SelectItem>
-											<SelectItem value="Cancelled">Cancelled</SelectItem>
-										</SelectContent>
-									</Select>
-
-									<div className="relative">
-										<Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
-										<Input
-											value={searchTerm}
-											onChange={(e) => setSearchTerm(e.target.value)}
-											placeholder="Search registrations..."
-											className="pl-10 w-[240px] search-premium"
-										/>
-									</div>
-
-									<Button variant="outline" onClick={fetchExamRegistrations} disabled={loading} className="btn-premium-secondary">
-										<RefreshCw className={`h-4 w-4 mr-2 ${loading ? 'animate-spin' : ''}`} />
-										Refresh
-									</Button>
-									<Button variant="outline" onClick={handleTemplateExport} className="btn-premium-secondary">
-										<FileSpreadsheet className="h-4 w-4 mr-2" />
-										Template
-									</Button>
-									<Button variant="outline" onClick={handleDownload} className="btn-premium-secondary">
-										Json
-									</Button>
-									<Button variant="outline" onClick={handleExport} className="btn-premium-secondary">
-										Download
-									</Button>
-									<Button variant="outline" onClick={handleImport} className="btn-premium-secondary">
-										Upload
-									</Button>
-									<Button onClick={openAdd} disabled={loading} className="btn-premium-primary">
-										<PlusCircle className="h-4 w-4 mr-2" />
-										Add Registration
-									</Button>
-								</div>
-							</div>
-						</div>
-
-						{/* Table Content */}
-						<div className="p-6">
-							<div className="rounded-xl border border-slate-200 dark:border-slate-800 overflow-hidden">
-								<div className="overflow-auto" style={{ maxHeight: "500px" }}>
-									<table className="table-premium">
-										<thead className="sticky top-0 z-10 bg-slate-50 dark:bg-slate-900">
-											<tr>
-												<th className="text-left font-semibold text-sm">
-													<Button variant="ghost" size="sm" onClick={() => handleSort("student")} className="hover:bg-slate-100 dark:hover:bg-slate-800">
+							<CardContent className="flex-1 overflow-auto px-8 py-6 bg-slate-50/50">
+								<div className="rounded-xl border border-slate-200 overflow-hidden bg-white">
+									<Table>
+										<TableHeader className="bg-slate-50 border-b border-slate-200">
+											<TableRow>
+												{/* Show Institution column only when "All Institutions" is selected */}
+												{mustSelectInstitution && (
+													<TableHead className="text-sm font-semibold text-slate-700">Institution</TableHead>
+												)}
+												<TableHead className="text-sm font-semibold text-slate-700">
+													<Button variant="ghost" size="sm" onClick={() => handleSort("student")} className="px-2 hover:bg-slate-100 rounded-lg transition-colors">
 														Learner
 														<span className="ml-1">{getSortIcon("student")}</span>
 													</Button>
-												</th>
-												<th className="text-left font-semibold text-sm">
-													<Button variant="ghost" size="sm" onClick={() => handleSort("examination_session")} className="hover:bg-slate-100 dark:hover:bg-slate-800">
+												</TableHead>
+												<TableHead className="text-sm font-semibold text-slate-700">
+													<Button variant="ghost" size="sm" onClick={() => handleSort("examination_session")} className="px-2 hover:bg-slate-100 rounded-lg transition-colors">
 														Session
 														<span className="ml-1">{getSortIcon("examination_session")}</span>
 													</Button>
-												</th>
-												<th className="text-left font-semibold text-sm">Course</th>
-												<th className="text-left font-semibold text-sm">
-													<Button variant="ghost" size="sm" onClick={() => handleSort("registration_status")} className="hover:bg-slate-100 dark:hover:bg-slate-800">
+												</TableHead>
+												<TableHead className="text-sm font-semibold text-slate-700">Course</TableHead>
+												<TableHead className="text-sm font-semibold text-slate-700">
+													<Button variant="ghost" size="sm" onClick={() => handleSort("registration_status")} className="px-2 hover:bg-slate-100 rounded-lg transition-colors">
 														Status
 														<span className="ml-1">{getSortIcon("registration_status")}</span>
 													</Button>
-												</th>
-												<th className="text-left font-semibold text-sm">Type</th>
-												<th className="text-left font-semibold text-sm">Attempt</th>
-												<th className="text-left font-semibold text-sm">Fee Paid</th>
-												<th className="text-center font-semibold text-sm">Actions</th>
-											</tr>
-										</thead>
-										<tbody>
-											{loading ? (
-												<tr>
-													<td colSpan={8} className="h-24 text-center text-sm text-slate-500">Loading…</td>
-												</tr>
+												</TableHead>
+												<TableHead className="text-sm font-semibold text-slate-700">Type</TableHead>
+												<TableHead className="text-sm font-semibold text-slate-700">Attempt</TableHead>
+												<TableHead className="text-sm font-semibold text-slate-700">Fee Paid</TableHead>
+												<TableHead className="text-center text-sm font-semibold text-slate-700">Actions</TableHead>
+											</TableRow>
+										</TableHeader>
+										<TableBody>
+											{loading || !isReady ? (
+												<TableRow>
+													<TableCell colSpan={mustSelectInstitution ? 9 : 8} className="h-24 text-center text-sm text-slate-500">Loading…</TableCell>
+												</TableRow>
 											) : pageItems.length ? (
 												<>
 													{pageItems.map((row) => (
-														<tr key={row.id}>
-															<td className="font-medium text-sm">
+														<TableRow key={row.id} className="border-b border-slate-200 hover:bg-slate-50 transition-colors">
+															{/* Show Institution cell only when "All Institutions" is selected */}
+															{mustSelectInstitution && (
+																<TableCell className="text-sm text-slate-700">
+																	{institutions.find(i => i.id === row.institutions_id)?.institution_code || '-'}
+																</TableCell>
+															)}
+															<TableCell className="font-medium text-sm text-slate-900 font-grotesk">
 																{row.student?.register_number || '-'}
 																<br />
-																<span className="text-slate-500 dark:text-slate-400 text-xs">
+																<span className="text-slate-500 text-xs">
 																	{row.student ? `${row.student.first_name} ` : ''}
 																</span>
-															</td>
-															<td className="text-sm">
+															</TableCell>
+															<TableCell className="text-sm text-slate-700">
 																{row.examination_session?.session_code || '-'}
-															</td>
-															<td className="text-sm">
+															</TableCell>
+															<TableCell className="text-sm text-slate-700">
 																{row.course_offering?.course_code || '-'}
 																<br />
-																<span className="text-slate-500 dark:text-slate-400 text-xs">
+																<span className="text-slate-500 text-xs">
 																	{row.course_offering?.course_name || ''}
 																</span>
-															</td>
-															<td>
-																<span className={
-																	row.registration_status === 'Approved' ? 'pill-success' :
-																	row.registration_status === 'Pending' ? 'pill-warning' :
-																	row.registration_status === 'Rejected' ? 'pill-error' :
-																	'pill-neutral'
-																}>
+															</TableCell>
+															<TableCell>
+																<Badge variant={row.registration_status === 'Approved' ? 'default' : 'secondary'} className={`text-xs ${
+																	row.registration_status === 'Approved' ? 'bg-emerald-100 text-emerald-700 border-emerald-200' :
+																	row.registration_status === 'Pending' ? 'bg-amber-100 text-amber-700 border-amber-200' :
+																	row.registration_status === 'Rejected' ? 'bg-red-100 text-red-700 border-red-200' :
+																	'bg-slate-100 text-slate-700 border-slate-200'
+																}`}>
 																	{row.registration_status}
-																</span>
-															</td>
-															<td className="text-sm">
+																</Badge>
+															</TableCell>
+															<TableCell className="text-sm text-slate-600">
 																{row.is_regular ? 'Regular' : 'Arrear'}
-															</td>
-															<td className="text-sm">
+															</TableCell>
+															<TableCell className="text-sm text-slate-600">
 																{row.attempt_number}
-															</td>
-															<td>
-																<span className={row.fee_paid ? 'pill-success' : 'pill-neutral'}>
+															</TableCell>
+															<TableCell>
+																<Badge variant={row.fee_paid ? 'default' : 'secondary'} className={`text-xs ${row.fee_paid ? 'bg-emerald-100 text-emerald-700 border-emerald-200' : 'bg-slate-100 text-slate-700 border-slate-200'}`}>
 																	{row.fee_paid ? 'Yes' : 'No'}
-																</span>
-															</td>
-															<td className="text-center">
-																<div className="flex items-center justify-center gap-2">
-																	<Button variant="outline" size="sm" className="btn-premium-icon" onClick={() => openEdit(row)}>
+																</Badge>
+															</TableCell>
+															<TableCell className="text-center">
+																<div className="flex items-center justify-center gap-1">
+																	<Button
+																		variant="ghost"
+																		size="sm"
+																		className="h-8 w-8 p-0 rounded-lg hover:bg-emerald-100 text-emerald-600 transition-colors"
+																		onClick={() => openEdit(row)}
+																		title="Edit"
+																	>
 																		<Edit className="h-4 w-4" />
 																	</Button>
 																	<AlertDialog>
 																		<AlertDialogTrigger asChild>
-																			<Button variant="outline" size="sm" className="btn-premium-destructive">
+																			<Button
+																				variant="ghost"
+																				size="sm"
+																				className="h-8 w-8 p-0 rounded-lg hover:bg-red-100 text-red-600 transition-colors"
+																				title="Delete"
+																			>
 																				<Trash2 className="h-4 w-4" />
 																			</Button>
 																		</AlertDialogTrigger>
@@ -919,51 +1013,72 @@ export default function ExamRegistrationsPage() {
 																		</AlertDialogContent>
 																	</AlertDialog>
 																</div>
-															</td>
-														</tr>
+															</TableCell>
+														</TableRow>
 													))}
 												</>
 											) : (
-												<tr>
-													<td colSpan={8} className="h-24 text-center text-sm text-slate-500">No data</td>
-												</tr>
+												<TableRow>
+													<TableCell colSpan={mustSelectInstitution ? 9 : 8} className="h-24 text-center text-sm text-slate-500">No data</TableCell>
+												</TableRow>
 											)}
-										</tbody>
-									</table>
+										</TableBody>
+									</Table>
 								</div>
-							</div>
 
-							{/* Pagination */}
-							<div className="flex items-center justify-between mt-4 pt-4 border-t border-slate-200 dark:border-slate-800">
-								<div className="text-sm text-slate-600 dark:text-slate-400">
-									Showing {filtered.length === 0 ? 0 : startIndex + 1}-{Math.min(endIndex, filtered.length)} of {filtered.length} registrations
-								</div>
-								<div className="flex items-center gap-2">
-									<Button
-										variant="outline"
-										size="sm"
-										onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
-										disabled={currentPage === 1}
-										className="btn-premium-secondary"
-									>
-										<ChevronLeft className="h-4 w-4 mr-1" /> Previous
-									</Button>
-									<div className="text-sm text-slate-600 dark:text-slate-400 px-3">
-										Page {currentPage} of {totalPages}
+								{/* Pagination */}
+								<div className="flex items-center justify-between mt-4 pt-4 border-t border-slate-200">
+									<div className="flex items-center gap-4">
+										<div className="text-sm text-slate-600">
+											Showing {filtered.length === 0 ? 0 : startIndex + 1}-{Math.min(endIndex, filtered.length)} of {filtered.length} registrations
+										</div>
+										<div className="flex items-center gap-2">
+											<Label htmlFor="page-size" className="text-sm text-slate-600">
+												Rows per page:
+											</Label>
+											<Select
+												value={String(itemsPerPage)}
+												onValueChange={(value) => setItemsPerPage(value === "all" ? "all" : Number(value))}
+											>
+												<SelectTrigger id="page-size" className="h-9 rounded-lg border-slate-300 w-[100px]">
+													<SelectValue />
+												</SelectTrigger>
+												<SelectContent>
+													<SelectItem value="10">10</SelectItem>
+													<SelectItem value="20">20</SelectItem>
+													<SelectItem value="50">50</SelectItem>
+													<SelectItem value="100">100</SelectItem>
+													<SelectItem value="all">All</SelectItem>
+												</SelectContent>
+											</Select>
+										</div>
 									</div>
-									<Button
-										variant="outline"
-										size="sm"
-										onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
-										disabled={currentPage >= totalPages}
-										className="btn-premium-secondary"
-									>
-										Next <ChevronRight className="h-4 w-4 ml-1" />
-									</Button>
+									<div className="flex items-center gap-2">
+										<Button
+											variant="outline"
+											size="sm"
+											onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+											disabled={currentPage === 1 || itemsPerPage === "all"}
+											className="h-9 px-4 rounded-lg border-slate-300 hover:bg-slate-50 transition-colors disabled:opacity-50"
+										>
+											<ChevronLeft className="h-4 w-4 mr-1" /> Previous
+										</Button>
+										<div className="text-sm text-slate-600 px-2">
+											Page {currentPage} of {totalPages}
+										</div>
+										<Button
+											variant="outline"
+											size="sm"
+											onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+											disabled={currentPage >= totalPages || itemsPerPage === "all"}
+											className="h-9 px-4 rounded-lg border-slate-300 hover:bg-slate-50 transition-colors disabled:opacity-50"
+										>
+											Next <ChevronRight className="h-4 w-4 ml-1" />
+										</Button>
+									</div>
 								</div>
-							</div>
-						</div>
-					</div>
+							</CardContent>
+						</Card>
 					</div>
 				</PageTransition>
 				<AppFooter />
@@ -971,17 +1086,17 @@ export default function ExamRegistrationsPage() {
 
 			<Sheet open={sheetOpen} onOpenChange={(o) => { if (!o) resetForm(); setSheetOpen(o) }}>
 				<SheetContent className="sm:max-w-[800px] overflow-y-auto">
-					<SheetHeader className="pb-6 border-b bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-blue-950/20 dark:to-indigo-950/20">
+					<SheetHeader className="pb-6 border-b border-slate-200">
 						<div className="flex items-center justify-between">
 							<div className="flex items-center gap-3">
-								<div className="h-10 w-10 rounded-full bg-gradient-to-r from-blue-500 to-indigo-600 flex items-center justify-center">
-									<ClipboardCheck className="h-5 w-5 text-white" />
+								<div className="h-12 w-12 rounded-xl bg-emerald-50 flex items-center justify-center ring-1 ring-emerald-100">
+									<ClipboardCheck className="h-6 w-6 text-emerald-600" />
 								</div>
 								<div>
-									<SheetTitle className="text-2xl font-bold bg-gradient-to-r from-blue-600 to-indigo-600 bg-clip-text text-transparent">
+									<SheetTitle className="text-xl font-bold text-slate-900 font-grotesk">
 										{editing ? "Edit Exam Registration" : "Add Exam Registration"}
 									</SheetTitle>
-									<p className="text-sm text-muted-foreground mt-1">
+									<p className="text-sm text-slate-600 mt-1">
 										{editing ? "Update exam registration information" : "Create a new exam registration record"}
 									</p>
 								</div>
@@ -989,40 +1104,43 @@ export default function ExamRegistrationsPage() {
 						</div>
 					</SheetHeader>
 
-					<div className="mt-6 space-y-6">
+					<div className="mt-6 space-y-8">
 						{/* Basic Information Section */}
 						<div className="space-y-4">
-							<div className="flex items-center gap-3 pb-3 border-b border-blue-200 dark:border-blue-800">
-								<div className="h-8 w-8 rounded-lg bg-gradient-to-r from-green-500 to-emerald-600 flex items-center justify-center">
-									<ClipboardCheck className="h-4 w-4 text-white" />
+							<div className="flex items-center gap-3 pb-3 border-b border-slate-200">
+								<div className="h-8 w-8 rounded-lg bg-emerald-50 flex items-center justify-center ring-1 ring-emerald-100">
+									<ClipboardCheck className="h-4 w-4 text-emerald-600" />
 								</div>
-								<h3 className="text-lg font-bold bg-gradient-to-r from-green-600 to-emerald-600 bg-clip-text text-transparent">Basic Information</h3>
+								<h3 className="text-lg font-semibold text-slate-900 font-grotesk">Basic Information</h3>
 							</div>
 							<div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-								{/* Institution dropdown */}
-								<div className="space-y-2">
-									<Label htmlFor="institutions_id" className="text-sm font-semibold">
-										Institution <span className="text-red-500">*</span>
-									</Label>
-									<Select
-										value={formData.institutions_id}
-										onValueChange={(id) => {
-											setFormData(prev => ({ ...prev, institutions_id: id }))
-										}}
-									>
-										<SelectTrigger className={`h-10 ${errors.institutions_id ? 'border-destructive' : ''}`}>
-											<SelectValue placeholder="Select Institution" />
-										</SelectTrigger>
-										<SelectContent>
-											{institutions.map(inst => (
-												<SelectItem key={inst.id} value={inst.id}>
-													{inst.institution_code}{inst.name ? ` - ${inst.name}` : ''}
-												</SelectItem>
-											))}
-										</SelectContent>
-									</Select>
-									{errors.institutions_id && <p className="text-xs text-destructive">{errors.institutions_id}</p>}
-								</div>
+								{/* Institution dropdown - show only when needed */}
+								{(mustSelectInstitution || !shouldFilter || !institutionId) && (
+									<div className="space-y-2">
+										<Label htmlFor="institutions_id" className="text-sm font-semibold">
+											Institution <span className="text-red-500">*</span>
+										</Label>
+										<Select
+											value={formData.institutions_id}
+											onValueChange={(id) => {
+												setFormData(prev => ({ ...prev, institutions_id: id, student_id: '', examination_session_id: '', course_offering_id: '' }))
+												setSelectedInstitutionId(id)
+											}}
+										>
+											<SelectTrigger className={`h-10 ${errors.institutions_id ? 'border-destructive' : ''}`}>
+												<SelectValue placeholder="Select Institution" />
+											</SelectTrigger>
+											<SelectContent>
+												{institutions.map(inst => (
+													<SelectItem key={inst.id} value={inst.id}>
+														{inst.institution_code}{inst.name ? ` - ${inst.name}` : ''}
+													</SelectItem>
+												))}
+											</SelectContent>
+										</Select>
+										{errors.institutions_id && <p className="text-xs text-destructive">{errors.institutions_id}</p>}
+									</div>
+								)}
 
 								{/* Learner dropdown */}
 								<div className="space-y-2">
@@ -1201,11 +1319,11 @@ export default function ExamRegistrationsPage() {
 
 						{/* Fee Information Section */}
 						<div className="space-y-4">
-							<div className="flex items-center gap-3 pb-3 border-b border-purple-200 dark:border-purple-800">
-								<div className="h-8 w-8 rounded-lg bg-gradient-to-r from-purple-500 to-pink-600 flex items-center justify-center">
-									<ClipboardCheck className="h-4 w-4 text-white" />
+							<div className="flex items-center gap-3 pb-3 border-b border-slate-200">
+								<div className="h-8 w-8 rounded-lg bg-purple-50 flex items-center justify-center ring-1 ring-purple-100">
+									<TrendingUp className="h-4 w-4 text-purple-600" />
 								</div>
-								<h3 className="text-lg font-bold bg-gradient-to-r from-purple-600 to-pink-600 bg-clip-text text-transparent">Fee Information</h3>
+								<h3 className="text-lg font-semibold text-slate-900 font-grotesk">Fee Information</h3>
 							</div>
 							<div className="grid grid-cols-1 md:grid-cols-2 gap-4">
 								<div className="space-y-2">
@@ -1270,18 +1388,18 @@ export default function ExamRegistrationsPage() {
 						</div>
 
 						{/* Action Buttons */}
-						<div className="flex justify-end gap-3 pt-6 border-t">
+						<div className="flex justify-end gap-3 pt-6 border-t border-slate-200">
 							<Button
 								variant="outline"
 								size="sm"
-								className="h-10 px-6"
+								className="h-10 px-6 rounded-lg border-slate-300 hover:bg-slate-50"
 								onClick={() => { setSheetOpen(false); resetForm() }}
 							>
 								Cancel
 							</Button>
 							<Button
 								size="sm"
-								className="h-10 px-6"
+								className="h-10 px-6 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white"
 								onClick={save}
 								disabled={loading}
 							>
@@ -1294,25 +1412,21 @@ export default function ExamRegistrationsPage() {
 
 			{/* Error Popup Dialog */}
 			<AlertDialog open={errorPopupOpen} onOpenChange={setErrorPopupOpen}>
-				<AlertDialogContent className="max-w-4xl max-h-[80vh] overflow-y-auto">
+				<AlertDialogContent className="max-w-4xl max-h-[80vh] overflow-y-auto rounded-3xl border-slate-200">
 					<AlertDialogHeader>
 						<div className="flex items-center gap-3">
 							<div className={`h-10 w-10 rounded-full flex items-center justify-center ${
-								importErrors.length === 0
-									? 'bg-green-100 dark:bg-green-900/20'
-									: 'bg-red-100 dark:bg-red-900/20'
+								importErrors.length === 0 ? 'bg-green-100' : 'bg-red-100'
 							}`}>
 								{importErrors.length === 0 ? (
-									<CheckCircle className="h-5 w-5 text-green-600 dark:text-green-400" />
+									<CheckCircle className="h-5 w-5 text-green-600" />
 								) : (
-									<XCircle className="h-5 w-5 text-red-600 dark:text-red-400" />
+									<XCircle className="h-5 w-5 text-red-600" />
 								)}
 							</div>
 							<div>
 								<AlertDialogTitle className={`text-xl font-bold ${
-									importErrors.length === 0
-										? 'text-green-600 dark:text-green-400'
-										: 'text-red-600 dark:text-red-400'
+									importErrors.length === 0 ? 'text-green-600' : 'text-red-600'
 								}`}>
 									{importErrors.length === 0 ? 'Upload Successful' : 'Data Validation Errors'}
 								</AlertDialogTitle>
@@ -1329,17 +1443,17 @@ export default function ExamRegistrationsPage() {
 						{/* Upload Summary Cards */}
 						{uploadSummary.total > 0 && (
 							<div className="grid grid-cols-3 gap-3">
-								<div className="bg-blue-50 dark:bg-blue-900/10 border border-blue-200 dark:border-blue-800 rounded-lg p-3">
-									<div className="text-xs text-blue-600 dark:text-blue-400 font-medium mb-1">Total Rows</div>
-									<div className="text-2xl font-bold text-blue-700 dark:text-blue-300">{uploadSummary.total}</div>
+								<div className="bg-blue-50 border-blue-200 rounded-lg p-3">
+									<div className="text-xs text-blue-600 font-medium mb-1">Total Rows</div>
+									<div className="text-2xl font-bold text-blue-700">{uploadSummary.total}</div>
 								</div>
-								<div className="bg-green-50 dark:bg-green-900/10 border border-green-200 dark:border-green-800 rounded-lg p-3">
-									<div className="text-xs text-green-600 dark:text-green-400 font-medium mb-1">Successful</div>
-									<div className="text-2xl font-bold text-green-700 dark:text-green-300">{uploadSummary.success}</div>
+								<div className="bg-green-50 border-green-200 rounded-lg p-3">
+									<div className="text-xs text-green-600 font-medium mb-1">Successful</div>
+									<div className="text-2xl font-bold text-green-700">{uploadSummary.success}</div>
 								</div>
-								<div className="bg-red-50 dark:bg-red-900/10 border border-red-200 dark:border-red-800 rounded-lg p-3">
-									<div className="text-xs text-red-600 dark:text-red-400 font-medium mb-1">Failed</div>
-									<div className="text-2xl font-bold text-red-700 dark:text-red-300">{uploadSummary.failed}</div>
+								<div className="bg-red-50 border-red-200 rounded-lg p-3">
+									<div className="text-xs text-red-600 font-medium mb-1">Failed</div>
+									<div className="text-2xl font-bold text-red-700">{uploadSummary.failed}</div>
 								</div>
 							</div>
 						)}
@@ -1347,14 +1461,14 @@ export default function ExamRegistrationsPage() {
 						{/* Error Summary - Only show if there are errors */}
 						{importErrors.length > 0 && (
 							<>
-								<div className="bg-red-50 dark:bg-red-900/10 border border-red-200 dark:border-red-800 rounded-lg p-4">
+								<div className="bg-red-50 border border-red-200 rounded-lg p-4">
 									<div className="flex items-center gap-2 mb-2">
-										<AlertTriangle className="h-4 w-4 text-red-600 dark:text-red-400" />
-										<span className="font-semibold text-red-800 dark:text-red-200">
+										<AlertTriangle className="h-4 w-4 text-red-600" />
+										<span className="font-semibold text-red-800">
 											{importErrors.length} row{importErrors.length > 1 ? 's' : ''} failed validation
 										</span>
 									</div>
-									<p className="text-sm text-red-700 dark:text-red-300">
+									<p className="text-sm text-red-700">
 										Please correct these errors in your Excel file and try uploading again. Row numbers correspond to your Excel file (including header row).
 									</p>
 								</div>
@@ -1362,10 +1476,10 @@ export default function ExamRegistrationsPage() {
 								{/* Detailed Error List */}
 								<div className="space-y-3">
 									{importErrors.map((error, index) => (
-										<div key={index} className="border border-red-200 dark:border-red-800 rounded-lg p-4 bg-red-50/50 dark:bg-red-900/5">
+										<div key={index} className="border border-red-200 rounded-xl p-4 bg-red-50/50">
 											<div className="flex items-start justify-between mb-2">
 												<div className="flex items-center gap-2">
-													<Badge variant="outline" className="text-xs bg-red-100 text-red-800 border-red-300 dark:bg-red-900/20 dark:text-red-200 dark:border-red-700">
+													<Badge variant="outline" className="text-xs bg-red-100 text-red-800 border-red-300 rounded-lg">
 														Row {error.row}
 													</Badge>
 													<span className="font-medium text-sm">
@@ -1378,7 +1492,7 @@ export default function ExamRegistrationsPage() {
 												{error.errors.map((err, errIndex) => (
 													<div key={errIndex} className="flex items-start gap-2 text-sm">
 														<XCircle className="h-3 w-3 text-red-500 mt-0.5 flex-shrink-0" />
-														<span className="text-red-700 dark:text-red-300">{err}</span>
+														<span className="text-red-700">{err}</span>
 													</div>
 												))}
 											</div>
@@ -1390,10 +1504,10 @@ export default function ExamRegistrationsPage() {
 
 						{/* Success Message - Only show if no errors */}
 						{importErrors.length === 0 && uploadSummary.total > 0 && (
-							<div className="bg-green-50 dark:bg-green-900/10 border border-green-200 dark:border-green-800 rounded-lg p-4">
+							<div className="bg-green-50 border border-green-200 rounded-lg p-4">
 								<div className="flex items-center gap-2">
-									<CheckCircle className="h-5 w-5 text-green-600 dark:text-green-400" />
-									<span className="font-semibold text-green-800 dark:text-green-200">
+									<CheckCircle className="h-5 w-5 text-green-600" />
+									<span className="font-semibold text-green-800">
 										All {uploadSummary.success} exam registration{uploadSummary.success > 1 ? 's' : ''} uploaded successfully
 									</span>
 								</div>
@@ -1401,14 +1515,14 @@ export default function ExamRegistrationsPage() {
 						)}
 
 						{/* Helpful Tips */}
-						<div className="bg-blue-50 dark:bg-blue-900/10 border border-blue-200 dark:border-blue-800 rounded-lg p-4">
+						<div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
 							<div className="flex items-start gap-2">
-								<div className="h-5 w-5 rounded-full bg-blue-100 dark:bg-blue-900/20 flex items-center justify-center mt-0.5">
-									<span className="text-xs font-bold text-blue-600 dark:text-blue-400">i</span>
+								<div className="h-5 w-5 rounded-full bg-blue-100 flex items-center justify-center mt-0.5">
+									<span className="text-xs font-bold text-blue-600">i</span>
 								</div>
 								<div>
-									<h4 className="font-semibold text-blue-800 dark:text-blue-200 text-sm mb-1">Required Excel Format & Tips:</h4>
-									<ul className="text-xs text-blue-700 dark:text-blue-300 space-y-1">
+									<h4 className="font-semibold text-blue-800 text-sm mb-1">Required Excel Format & Tips:</h4>
+									<ul className="text-xs text-blue-700 space-y-1">
 										<li>• <strong>Institution Code</strong> (required): Must match existing institution (e.g., JKKNCAS)</li>
 										<li>• <strong>Learner Register Number</strong> (required): e.g., 24JUGEN6001</li>
 										<li>• <strong>Learner Name</strong> (required): Full name of the learner</li>
@@ -1422,9 +1536,9 @@ export default function ExamRegistrationsPage() {
 										<li>• <strong>Payment Date</strong> (optional): Format DD-MM-YYYY</li>
 										<li>• <strong>Registration Date</strong> (optional): Format DD-MM-YYYY (default: today)</li>
 									</ul>
-									<div className="mt-2 pt-2 border-t border-blue-200 dark:border-blue-800">
-										<p className="text-xs text-blue-700 dark:text-blue-300 font-medium">Common Fixes:</p>
-										<ul className="text-xs text-blue-700 dark:text-blue-300 space-y-1 mt-1">
+									<div className="mt-2 pt-2 border-t border-blue-200">
+										<p className="text-xs text-blue-700 font-medium">Common Fixes:</p>
+										<ul className="text-xs text-blue-700 space-y-1 mt-1">
 											<li>• <strong>Important:</strong> Examination Session and Course Offering must belong to the specified Institution</li>
 											<li>• Examination Session Code format: INSTITUTION-MONTH-YEAR (e.g., JKKNCAS-NOV-DEC-2025)</li>
 											<li>• Course Code format: YearCodeSubject (e.g., 24UENS03)</li>
@@ -1438,12 +1552,22 @@ export default function ExamRegistrationsPage() {
 					</div>
 
 					<AlertDialogFooter>
-						<AlertDialogAction onClick={() => setErrorPopupOpen(false)}>
+						<AlertDialogCancel className="bg-gray-100 hover:bg-gray-200">
 							Close
-						</AlertDialogAction>
+						</AlertDialogCancel>
+						<Button
+							onClick={() => {
+								setErrorPopupOpen(false)
+								setImportErrors([])
+							}}
+							className="bg-blue-600 hover:bg-blue-700 text-white"
+						>
+							Try Again
+						</Button>
 					</AlertDialogFooter>
 				</AlertDialogContent>
 			</AlertDialog>
 		</SidebarProvider>
 	)
 }
+

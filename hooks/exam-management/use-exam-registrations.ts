@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useMemo } from 'react'
 import { useToast } from '@/hooks/common/use-toast'
+import { useInstitutionFilter } from '@/hooks/use-institution-filter'
 import type {
 	ExamRegistration,
 	ExamRegistrationFormData,
@@ -9,7 +10,6 @@ import type {
 	CourseOfferingOption
 } from '@/types/exam-registrations'
 import {
-	fetchExamRegistrations as fetchExamRegistrationsService,
 	createExamRegistration,
 	updateExamRegistration,
 	deleteExamRegistration,
@@ -19,8 +19,20 @@ import {
 	fetchCourseOfferings
 } from '@/services/exam-management/exam-registrations-service'
 
-export function useExamRegistrations() {
+export function useExamRegistrations(programId?: string) {
 	const { toast } = useToast()
+
+	// Institution filter integration
+	const {
+		filter,
+		isReady,
+		appendToUrl,
+		getInstitutionIdForCreate,
+		mustSelectInstitution,
+		shouldFilter,
+		institutionId
+	} = useInstitutionFilter()
+
 	const [examRegistrations, setExamRegistrations] = useState<ExamRegistration[]>([])
 	const [loading, setLoading] = useState(true)
 
@@ -30,7 +42,7 @@ export function useExamRegistrations() {
 	const [allExaminationSessions, setAllExaminationSessions] = useState<ExaminationSessionOption[]>([])
 	const [allCourseOfferings, setAllCourseOfferings] = useState<CourseOfferingOption[]>([])
 
-	// Filtered dropdowns based on selected institution
+	// Filtered dropdowns based on selected institution (for form use)
 	const [selectedInstitutionId, setSelectedInstitutionId] = useState<string>('')
 
 	// Filter dropdowns by institution
@@ -49,11 +61,27 @@ export function useExamRegistrations() {
 		return allCourseOfferings.filter(c => c.institutions_id === selectedInstitutionId)
 	}, [allCourseOfferings, selectedInstitutionId])
 
-	// Fetch exam registrations
+	// Fetch exam registrations with institution and program filter
 	const fetchExamRegistrations = useCallback(async () => {
 		try {
 			setLoading(true)
-			const data = await fetchExamRegistrationsService()
+			let url = appendToUrl('/api/exam-management/exam-registrations?pageSize=10000')
+			// Add program_id filter if provided
+			if (programId && programId !== 'all') {
+				url += `&program_id=${encodeURIComponent(programId)}`
+			}
+			const response = await fetch(url)
+			if (!response.ok) {
+				throw new Error('Failed to fetch exam registrations')
+			}
+			const result = await response.json()
+			let data = Array.isArray(result) ? result : result.data || []
+
+			// Client-side filter for safety
+			if (shouldFilter && institutionId) {
+				data = data.filter((reg: ExamRegistration) => reg.institutions_id === institutionId)
+			}
+
 			setExamRegistrations(data)
 		} catch (error) {
 			console.error('Error fetching exam registrations:', error)
@@ -65,13 +93,29 @@ export function useExamRegistrations() {
 		} finally {
 			setLoading(false)
 		}
-	}, [toast])
+	}, [appendToUrl, shouldFilter, institutionId, programId, toast])
 
 	// Refresh exam registrations
 	const refreshExamRegistrations = useCallback(async () => {
 		try {
 			setLoading(true)
-			const data = await fetchExamRegistrationsService()
+			let url = appendToUrl('/api/exam-management/exam-registrations?pageSize=10000')
+			// Add program_id filter if provided
+			if (programId && programId !== 'all') {
+				url += `&program_id=${encodeURIComponent(programId)}`
+			}
+			const response = await fetch(url)
+			if (!response.ok) {
+				throw new Error('Failed to fetch exam registrations')
+			}
+			const result = await response.json()
+			let data = Array.isArray(result) ? result : result.data || []
+
+			// Client-side filter for safety
+			if (shouldFilter && institutionId) {
+				data = data.filter((reg: ExamRegistration) => reg.institutions_id === institutionId)
+			}
+
 			setExamRegistrations(data)
 			toast({
 				title: '✅ Refreshed',
@@ -88,7 +132,7 @@ export function useExamRegistrations() {
 		} finally {
 			setLoading(false)
 		}
-	}, [toast])
+	}, [appendToUrl, shouldFilter, institutionId, programId, toast])
 
 	// Save exam registration (create or update)
 	const saveExamRegistration = useCallback(async (data: ExamRegistrationFormData, editing: ExamRegistration | null) => {
@@ -165,11 +209,12 @@ export function useExamRegistrations() {
 		}
 	}, [])
 
-	// Load data on mount
+	// Load data when institution filter is ready or program filter changes
 	useEffect(() => {
+		if (!isReady) return
 		fetchExamRegistrations()
 		loadDropdownData()
-	}, [fetchExamRegistrations, loadDropdownData])
+	}, [isReady, filter, programId])
 
 	return {
 		examRegistrations,
@@ -192,5 +237,11 @@ export function useExamRegistrations() {
 		selectedInstitutionId,
 		setSelectedInstitutionId,
 		loadDropdownData,
+		// Institution filter values (for page use)
+		isReady,
+		mustSelectInstitution,
+		shouldFilter,
+		institutionId,
+		getInstitutionIdForCreate,
 	}
 }

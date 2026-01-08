@@ -14,6 +14,7 @@ const publicRoutes = [
 const publicApiRoutes = [
 	'/api/auth',
 	'/api/token',
+	'/api/myjkkn',
 ]
 
 export async function proxy(request: NextRequest) {

@@ -9,20 +9,27 @@ export async function GET(request: Request) {
 	try {
 		const supabase = getSupabaseServer()
 		const { searchParams } = new URL(request.url)
-		const institutionId = searchParams.get('institution_id')
-		const regulationId = searchParams.get('regulation_id')
+		// Support both institution_id and institutions_id for compatibility
+		const institutionId = searchParams.get('institutions_id') || searchParams.get('institution_id')
+		const institutionCode = searchParams.get('institution_code')
+		const regulationCode = searchParams.get('regulation_code')
 
 		let query = supabase
 			.from('grades')
 			.select('*')
 			.order('grade_point', { ascending: false })
 
+		// Filter by institutions_id (UUID) if provided
 		if (institutionId) {
 			query = query.eq('institutions_id', institutionId)
 		}
+		// Or filter by institution_code if provided
+		else if (institutionCode) {
+			query = query.eq('institutions_code', institutionCode)
+		}
 
-		if (regulationId) {
-			query = query.eq('regulation_id', regulationId)
+		if (regulationCode) {
+			query = query.eq('regulation_code', regulationCode)
 		}
 
 		const { data, error } = await query
@@ -58,9 +65,9 @@ export async function POST(request: Request) {
 			}, { status: 400 })
 		}
 
-		if (!body.regulation_id) {
+		if (!body.regulation_code) {
 			return NextResponse.json({
-				error: 'Regulation is required'
+				error: 'Regulation code is required'
 			}, { status: 400 })
 		}
 
@@ -77,19 +84,6 @@ export async function POST(request: Request) {
 			}, { status: 400 })
 		}
 
-		// Fetch regulation_code if regulation_id is provided
-		let regulationCode = body.regulation_code || null
-		if (body.regulation_id && !regulationCode) {
-			const { data: regData } = await supabase
-				.from('regulations')
-				.select('regulation_code')
-				.eq('id', body.regulation_id)
-				.single()
-			if (regData?.regulation_code) {
-				regulationCode = regData.regulation_code
-			}
-		}
-
 		// Validate grade_point is numeric
 		const gradePoint = Number(body.grade_point)
 		if (isNaN(gradePoint)) {
@@ -104,8 +98,7 @@ export async function POST(request: Request) {
 			grade: String(body.grade).trim(),
 			grade_point: gradePoint,
 			description: String(body.description).trim(),
-			regulation_id: body.regulation_id,
-			regulation_code: regulationCode,
+			regulation_code: String(body.regulation_code).trim(),
 			qualify: body.qualify ?? false,
 			exclude_cgpa: body.exclude_cgpa ?? false,
 			order_index: body.order_index !== undefined && body.order_index !== null ? Number(body.order_index) : null,
@@ -187,19 +180,6 @@ export async function PUT(request: Request) {
 			institutionsId = institutionData.id
 		}
 
-		// Fetch regulation_code if regulation_id is provided
-		let regulationCode = body.regulation_code || null
-		if (body.regulation_id && !regulationCode) {
-			const { data: regData } = await supabase
-				.from('regulations')
-				.select('regulation_code')
-				.eq('id', body.regulation_id)
-				.single()
-			if (regData?.regulation_code) {
-				regulationCode = regData.regulation_code
-			}
-		}
-
 		// Validate grade_point is numeric
 		const gradePoint = Number(body.grade_point)
 		if (isNaN(gradePoint)) {
@@ -221,8 +201,7 @@ export async function PUT(request: Request) {
 
 		if (institutionsId) updatePayload.institutions_id = institutionsId
 		if (body.institutions_code) updatePayload.institutions_code = String(body.institutions_code).trim()
-		if (body.regulation_id) updatePayload.regulation_id = body.regulation_id
-		if (regulationCode) updatePayload.regulation_code = regulationCode
+		if (body.regulation_code) updatePayload.regulation_code = String(body.regulation_code).trim()
 
 		const { data, error } = await supabase
 			.from('grades')

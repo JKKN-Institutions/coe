@@ -23,7 +23,7 @@ import Link from "next/link"
 import { PlusCircle, Edit, Trash2, Search, ChevronLeft, ChevronRight, ArrowUpDown, ArrowUp, ArrowDown, Building2, FileSpreadsheet, RefreshCw, XCircle, AlertTriangle, Download, Upload, FileJson, Eye } from "lucide-react"
 
 // Import types
-import type { Institution, InstitutionImportError } from "@/types/institutions"
+import type { MergedInstitution, InstitutionImportError, DepartmentInfo, Institution } from "@/types/institutions"
 
 // Import services
 import { fetchInstitutions as fetchInstitutionsService, deleteInstitution } from "@/services/master/institutions-service"
@@ -47,7 +47,7 @@ export default function InstitutionsPage() {
   const canCreate = hasPermission('institutions.create') || hasPermission('institutions.add')
   const canView = hasPermission('institutions.view') || hasPermission('institutions.read')
 
-  const [items, setItems] = useState<Institution[]>([])
+  const [items, setItems] = useState<MergedInstitution[]>([])
   const [loading, setLoading] = useState(true)
   const [searchTerm, setSearchTerm] = useState("")
   const [sortColumn, setSortColumn] = useState<string | null>(null)
@@ -101,7 +101,17 @@ export default function InstitutionsPage() {
   const filtered = useMemo(() => {
     const q = searchTerm.toLowerCase()
     const data = items
-      .filter((i) => [i.institution_code, i.name, i.email, i.phone, i.city].filter(Boolean).some((v) => String(v).toLowerCase().includes(q)))
+      .filter((i) => [
+        i.institution_code,
+        i.name,
+        i.counselling_code,
+        i.myjkkn_name,
+        i.myjkkn_short_name,
+        i.myjkkn_email,
+        i.myjkkn_phone,
+        i.myjkkn_city,
+        i.myjkkn_state
+      ].filter(Boolean).some((v) => String(v).toLowerCase().includes(q)))
       .filter((i) => statusFilter === "all" || (statusFilter === "active" ? i.is_active : !i.is_active))
 
     if (!sortColumn) return data
@@ -526,18 +536,31 @@ export default function InstitutionsPage() {
                       <TableRow>
                         <TableHead className="text-sm font-semibold text-slate-700">
                           <Button variant="ghost" size="sm" onClick={() => handleSort("institution_code")} className="px-2 hover:bg-slate-100 rounded-lg transition-colors">
-                            College Code
+                            COE Code
                             <span className="ml-1">{getSortIcon("institution_code")}</span>
                           </Button>
                         </TableHead>
                         <TableHead className="text-sm font-semibold text-slate-700">
+                          <Button variant="ghost" size="sm" onClick={() => handleSort("counselling_code")} className="px-2 hover:bg-slate-100 rounded-lg transition-colors">
+                            MyJKKN Code
+                            <span className="ml-1">{getSortIcon("counselling_code")}</span>
+                          </Button>
+                        </TableHead>
+                        <TableHead className="text-sm font-semibold text-slate-700">
                           <Button variant="ghost" size="sm" onClick={() => handleSort("name")} className="px-2 hover:bg-slate-100 rounded-lg transition-colors">
-                            College Name
+                            COE Name
                             <span className="ml-1">{getSortIcon("name")}</span>
                           </Button>
                         </TableHead>
-                        <TableHead className="text-sm font-semibold text-slate-700">Email</TableHead>
-                        <TableHead className="text-sm font-semibold text-slate-700">Mobile</TableHead>
+                        <TableHead className="text-sm font-semibold text-slate-700">
+                          <Button variant="ghost" size="sm" onClick={() => handleSort("myjkkn_name")} className="px-2 hover:bg-slate-100 rounded-lg transition-colors">
+                            MyJKKN Name
+                            <span className="ml-1">{getSortIcon("myjkkn_name")}</span>
+                          </Button>
+                        </TableHead>
+                        <TableHead className="text-sm font-semibold text-slate-700">MyJKKN Email</TableHead>
+                        <TableHead className="text-sm font-semibold text-slate-700">MyJKKN Phone</TableHead>
+                        <TableHead className="text-sm font-semibold text-slate-700">City / State</TableHead>
                         <TableHead className="text-sm font-semibold text-slate-700">
                           <Button variant="ghost" size="sm" onClick={() => handleSort("is_active")} className="px-2 hover:bg-slate-100 rounded-lg transition-colors">
                             Status
@@ -550,16 +573,23 @@ export default function InstitutionsPage() {
                     <TableBody>
                       {loading ? (
                         <TableRow>
-                          <TableCell colSpan={6} className="h-24 text-center text-sm text-slate-500">Loading…</TableCell>
+                          <TableCell colSpan={10} className="h-24 text-center text-sm text-slate-500">Loading…</TableCell>
                         </TableRow>
                       ) : pageItems.length ? (
                         <>
                           {pageItems.map((row) => (
                             <TableRow key={row.id} className="border-b border-slate-200 hover:bg-slate-50 transition-colors">
                               <TableCell className="font-medium text-sm text-slate-900 font-grotesk">{row.institution_code}</TableCell>
+                              <TableCell className="font-medium text-sm text-blue-600 font-grotesk">{row.counselling_code || '-'}</TableCell>
                               <TableCell className="text-sm text-slate-900 font-grotesk">{row.name}</TableCell>
-                              <TableCell className="text-sm text-slate-600">{row.email || '-'}</TableCell>
-                              <TableCell className="text-sm text-slate-600">{row.phone || '-'}</TableCell>
+                              <TableCell className="text-sm text-slate-700">{row.myjkkn_name || '-'}</TableCell>
+                              <TableCell className="text-sm text-slate-600">{row.myjkkn_email || '-'}</TableCell>
+                              <TableCell className="text-sm text-slate-600">{row.myjkkn_phone || '-'}</TableCell>
+                              <TableCell className="text-sm text-slate-600">
+                                {row.myjkkn_city || row.myjkkn_state
+                                  ? `${row.myjkkn_city || ''}${row.myjkkn_city && row.myjkkn_state ? ', ' : ''}${row.myjkkn_state || ''}`
+                                  : '-'}
+                              </TableCell>
                               <TableCell>
                                 <Badge variant={row.is_active ? "default" : "secondary"} className={`text-xs ${row.is_active ? 'bg-emerald-100 text-emerald-700 border-emerald-200' : 'bg-red-100 text-red-700 border-red-200'}`}>
                                   {row.is_active ? "Active" : "Inactive"}
@@ -619,7 +649,7 @@ export default function InstitutionsPage() {
                         </>
                       ) : (
                         <TableRow>
-                          <TableCell colSpan={6} className="h-24 text-center text-sm text-slate-500">No data</TableCell>
+                          <TableCell colSpan={10} className="h-24 text-center text-sm text-slate-500">No data</TableCell>
                         </TableRow>
                       )}
                     </TableBody>

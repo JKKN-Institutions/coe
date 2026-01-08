@@ -36,11 +36,11 @@ export function exportToJSON(
 		const program = programs.find(p => p.id === item.program_id)
 
 		return {
-			institution_code: institution?.institution_code || '',
-			course_code: course?.course_code || '',
-			session_code: session?.session_code || '',
-			program_code: program?.program_code || '',
-			semester: item.semester,
+			institution_code: institution?.institution_code || item.institution_code || '',
+			course_code: course?.course_code || item.course_code || '',
+			session_code: session?.session_code || item.session_code || '',
+			program_code: program?.program_code || item.program_code || '',
+			semester_code: (item as any).semester_code || '',
 			section: item.section || '',
 			max_enrollment: item.max_enrollment || '',
 			enrolled_count: item.enrolled_count,
@@ -90,7 +90,7 @@ export function exportToExcel(
 			'Session Name': session?.session_name || 'N/A',
 			'Program Code': r.program_code || program?.program_code || 'N/A',
 			'Program Name': program?.program_name || 'N/A',
-			'Semester': r.semester,
+			'Semester Code': (r as any).semester_code || 'N/A',
 			'Section': r.section || '-',
 			'Max Enrollment': r.max_enrollment ?? '-',
 			'Enrolled Count': r.enrolled_count,
@@ -111,7 +111,7 @@ export function exportToExcel(
 		{ wch: 25 }, // Session Name
 		{ wch: 20 }, // Program Code
 		{ wch: 30 }, // Program Name
-		{ wch: 10 }, // Semester
+		{ wch: 20 }, // Semester Code
 		{ wch: 10 }, // Section
 		{ wch: 15 }, // Max Enrollment
 		{ wch: 15 }, // Enrolled Count
@@ -126,30 +126,57 @@ export function exportToExcel(
 }
 
 /**
+ * Semester type for template reference
+ */
+export interface TemplateSemester {
+	id: string
+	semester_name: string
+	semester_code?: string
+	semester_number?: number
+	semester_order?: number
+	program_code?: string
+	program_name?: string
+}
+
+/**
+ * Options for template export - allows filtering reference data by institution
+ */
+export interface TemplateExportOptions {
+	/** If true, filter reference data by the selected institutions */
+	filterByInstitution?: boolean
+	/** Current institution ID for filtering sessions */
+	currentInstitutionId?: string
+}
+
+/**
  * Generates and downloads import template with sample data and reference sheets
- * @param institutions - Array of institutions for reference
+ * @param institutions - Array of institutions for reference (filtered by context)
  * @param courses - Array of courses for reference
- * @param sessions - Array of examination sessions for reference
- * @param programs - Array of programs for reference
+ * @param sessions - Array of examination sessions for reference (should be filtered by institution)
+ * @param programs - Array of programs for reference (filtered by institution via MyJKKN)
+ * @param semesters - Array of semesters from MyJKKN API for reference (filtered by institution/program)
+ * @param options - Optional settings for template export
  */
 export function exportTemplate(
 	institutions: Institution[],
 	courses: Course[],
 	sessions: ExaminationSession[],
-	programs: Program[]
+	programs: Program[],
+	semesters?: TemplateSemester[],
+	options?: TemplateExportOptions
 ): void {
 	const wb = XLSX.utils.book_new()
 
 	// Sheet 1: Template with sample row
+	// Only required fields: Institution Code, Course Code, Session Code, Program Code, Semester Name
+	// Semester Name allows end users to select by name (e.g., "Semester I")
+	// System will find semester_code and semester_order from MyJKKN API
 	const sample = [{
 		'Institution Code': 'JKKN',
 		'Course Code': 'CS101',
 		'Session Code': 'SEM1-2025',
-		'Program Code': 'BTECH-CSE',
-		'Semester': '1',
-		'Section': 'A',
-		'Max Enrollment': '60',
-		'Enrolled Count': '0',
+		'Program Code': 'BCA',
+		'Semester Name': 'Semester I',
 		'Status': 'Active'
 	}]
 
@@ -161,17 +188,14 @@ export function exportTemplate(
 		{ wch: 15 }, // Course Code
 		{ wch: 20 }, // Session Code
 		{ wch: 20 }, // Program Code
-		{ wch: 10 }, // Semester
-		{ wch: 10 }, // Section
-		{ wch: 15 }, // Max Enrollment
-		{ wch: 15 }, // Enrolled Count
+		{ wch: 20 }, // Semester Name
 		{ wch: 10 }  // Status
 	]
 	ws['!cols'] = colWidths
 
 	// Style mandatory field headers with red and asterisk
 	const range = XLSX.utils.decode_range(ws['!ref'] || 'A1')
-	const mandatoryFields = ['Institution Code', 'Course Code', 'Session Code', 'Program Code', 'Semester']
+	const mandatoryFields = ['Institution Code', 'Course Code', 'Session Code', 'Program Code', 'Semester Name']
 
 	for (let col = range.s.c; col <= range.e.c; col++) {
 		const cellAddress = XLSX.utils.encode_cell({ r: 0, c: col })
@@ -197,59 +221,114 @@ export function exportTemplate(
 	XLSX.utils.book_append_sheet(wb, ws, 'Template')
 
 	// Sheet 2: Combined Reference Data (Single Sheet)
+	// All reference data is now filtered by institution context (passed from page)
 	const referenceData: any[] = []
 
-	// Add Institution Codes
+	console.log('[exportTemplate] Received data:', {
+		institutions: institutions.length,
+		courses: courses.length,
+		sessions: sessions.length,
+		programs: programs.length,
+		semesters: semesters?.length ?? 0
+	})
+
+	// Add Institution Codes (already filtered by institution context from page)
 	const activeInstitutions = institutions.filter(i => i.is_active !== false)
 	if (activeInstitutions.length > 0) {
-		referenceData.push({ 'Type': 'INSTITUTION CODES', 'Code': '', 'Name': '' })
+		referenceData.push({ 'Type': 'INSTITUTION CODES', 'Code': '', 'Name': '', 'Institution': '' })
 		activeInstitutions.forEach(item => {
 			referenceData.push({
 				'Type': 'Institution',
 				'Code': item.institution_code,
-				'Name': item.institution_name || 'N/A'
+				'Name': item.institution_name || 'N/A',
+				'Institution': '-'
 			})
 		})
-		referenceData.push({ 'Type': '', 'Code': '', 'Name': '' }) // Empty row separator
+		referenceData.push({ 'Type': '', 'Code': '', 'Name': '', 'Institution': '' }) // Empty row separator
 	}
 
-	// Add Course Codes (Code only, no title)
-	const activeCourses = courses.filter(c => c.is_active !== false)
-	if (activeCourses.length > 0) {
-		referenceData.push({ 'Type': 'COURSE CODES', 'Code': '', 'Name': '' })
-		activeCourses.forEach(item => {
-			referenceData.push({
-				'Type': 'Course',
-				'Code': item.course_code,
-				'Name': '' // Empty name for courses as requested
-			})
-		})
-		referenceData.push({ 'Type': '', 'Code': '', 'Name': '' }) // Empty row separator
-	}
-
-	// Add Session Codes
+	// Add Session Codes (already filtered by institution context from page)
+	// Sessions are now institution-specific
 	const activeSessions = sessions.filter(s => s.is_active !== false)
 	if (activeSessions.length > 0) {
-		referenceData.push({ 'Type': 'SESSION CODES', 'Code': '', 'Name': '' })
+		referenceData.push({ 'Type': 'SESSION CODES', 'Code': '', 'Name': '', 'Institution': '' })
 		activeSessions.forEach(item => {
+			// Get institution code for this session
+			const sessionInst = institutions.find(i => i.id === (item as any).institutions_id)
 			referenceData.push({
 				'Type': 'Session',
 				'Code': item.session_code,
-				'Name': item.session_name || 'N/A'
+				'Name': item.session_name || 'N/A',
+				'Institution': sessionInst?.institution_code || '-'
 			})
 		})
-		referenceData.push({ 'Type': '', 'Code': '', 'Name': '' }) // Empty row separator
+		referenceData.push({ 'Type': '', 'Code': '', 'Name': '', 'Institution': '' }) // Empty row separator
 	}
 
-	// Add Program Codes
-	const activePrograms = programs.filter(p => p.is_active !== false)
+	// Add Program Codes (already filtered by institution via MyJKKN from page)
+	// Sort by program_order for consistent display
+	const activePrograms = programs
+		.filter(p => p.is_active !== false)
+		.sort((a, b) => {
+			const orderA = (a as any).program_order ?? 999
+			const orderB = (b as any).program_order ?? 999
+			return orderA - orderB
+		})
 	if (activePrograms.length > 0) {
-		referenceData.push({ 'Type': 'PROGRAM CODES', 'Code': '', 'Name': '' })
+		referenceData.push({ 'Type': 'PROGRAM CODES', 'Code': '', 'Name': '', 'Institution': '' })
 		activePrograms.forEach(item => {
 			referenceData.push({
 				'Type': 'Program',
 				'Code': item.program_code,
-				'Name': item.program_name || 'N/A'
+				'Name': item.program_name || 'N/A',
+				'Institution': '-' // Programs are already filtered by institution
+			})
+		})
+		referenceData.push({ 'Type': '', 'Code': '', 'Name': '', 'Institution': '' }) // Empty row separator
+	}
+
+	// Add Course Codes (Code only, no title) - filtered by institution from page
+	const activeCourses = courses.filter(c => c.is_active !== false)
+	if (activeCourses.length > 0) {
+		referenceData.push({ 'Type': 'COURSE CODES', 'Code': '', 'Name': '', 'Institution': '' })
+		activeCourses.forEach(item => {
+			// Get institution code for this course
+			const courseInst = institutions.find(i => i.id === (item as any).institutions_id)
+			referenceData.push({
+				'Type': 'Course',
+				'Code': item.course_code,
+				'Name': '', // Empty name for courses as requested
+				'Institution': courseInst?.institution_code || '-'
+			})
+		})
+		referenceData.push({ 'Type': '', 'Code': '', 'Name': '', 'Institution': '' }) // Empty row separator
+	}
+
+	// Add Semester Names (from MyJKKN API) - Already filtered by institution/program from page
+	// Sort by semester_order or semester_number for consistent display
+	if (semesters && semesters.length > 0) {
+		referenceData.push({ 'Type': 'SEMESTER NAMES', 'Code': '', 'Name': '', 'Institution': '' })
+
+		// Get unique semesters with their order, keyed by semester_name
+		const semesterMap = new Map<string, { name: string; order: number }>()
+		semesters.forEach(sem => {
+			if (sem.semester_name && !semesterMap.has(sem.semester_name)) {
+				// Use semester_order if available, otherwise semester_number, otherwise extract from name
+				const order = sem.semester_order ?? sem.semester_number ?? (parseInt(sem.semester_name.replace(/\D/g, '')) || 999)
+				semesterMap.set(sem.semester_name, { name: sem.semester_name, order })
+			}
+		})
+
+		// Convert to array and sort by semester_order
+		const sortedSemesters = Array.from(semesterMap.values()).sort((a, b) => a.order - b.order)
+
+		// Add sorted semesters
+		sortedSemesters.forEach(sem => {
+			referenceData.push({
+				'Type': 'Semester',
+				'Code': sem.name, // Semester Name is what users should enter
+				'Name': '', // No program name needed for unique list
+				'Institution': '-' // Already filtered by institution
 			})
 		})
 	}
@@ -259,8 +338,9 @@ export function exportTemplate(
 		const wsRef = XLSX.utils.json_to_sheet(referenceData)
 		const refColWidths = [
 			{ wch: 20 }, // Type
-			{ wch: 25 }, // Code
-			{ wch: 40 }  // Name
+			{ wch: 25 }, // Code (Semester Name)
+			{ wch: 35 }, // Name (Program Name)
+			{ wch: 15 }  // Institution
 		]
 		wsRef['!cols'] = refColWidths
 		XLSX.utils.book_append_sheet(wb, wsRef, 'Reference Codes')

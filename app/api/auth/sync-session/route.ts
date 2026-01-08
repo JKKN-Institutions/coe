@@ -65,13 +65,96 @@ async function fetchUserPermissions(supabase: any, userId: string | null, roleNa
 }
 
 /**
+ * Fetch institution details by MyJKKN institution_id (UUID) from local institutions table
+ * Uses myjkkn_institution_ids array field to handle cases where multiple MyJKKN institutions
+ * map to a single COE institution (e.g., CAS Aided + CAS Self → CAS)
+ * Falls back to direct id match for backwards compatibility
+ */
+async function fetchInstitutionByMyJKKNId(supabase: any, myjkknInstitutionId: string | null): Promise<{
+	institution_id: string | null
+	institution_code: string | null
+	institution_name: string | null
+	counselling_code: string | null
+	myjkkn_institution_ids: string[] | null
+}> {
+	if (!myjkknInstitutionId) {
+		return {
+			institution_id: null,
+			institution_code: null,
+			institution_name: null,
+			counselling_code: null,
+			myjkkn_institution_ids: null
+		}
+	}
+
+	try {
+		// First, try to find institution using myjkkn_institution_ids array (new method)
+		// This handles cases like CAS where multiple MyJKKN UUIDs map to one COE institution
+		const { data: institution, error } = await supabase
+			.from('institutions')
+			.select('id, institution_code, name, counselling_code, myjkkn_institution_ids')
+			.contains('myjkkn_institution_ids', [myjkknInstitutionId])
+			.eq('is_active', true)
+			.single()
+
+		if (institution) {
+			return {
+				institution_id: institution.id,
+				institution_code: institution.institution_code || null,
+				institution_name: institution.name || null,
+				counselling_code: institution.counselling_code || null,
+				myjkkn_institution_ids: institution.myjkkn_institution_ids || null
+			}
+		}
+
+		// Fallback: Try direct id match (for institutions where COE id = MyJKKN id)
+		// This provides backwards compatibility
+		const { data: fallbackInstitution, error: fallbackError } = await supabase
+			.from('institutions')
+			.select('id, institution_code, name, counselling_code, myjkkn_institution_ids')
+			.eq('id', myjkknInstitutionId)
+			.eq('is_active', true)
+			.single()
+
+		if (fallbackInstitution) {
+			return {
+				institution_id: fallbackInstitution.id,
+				institution_code: fallbackInstitution.institution_code || null,
+				institution_name: fallbackInstitution.name || null,
+				counselling_code: fallbackInstitution.counselling_code || null,
+				myjkkn_institution_ids: fallbackInstitution.myjkkn_institution_ids || null
+			}
+		}
+
+		console.warn(`[sync-session] Institution not found for MyJKKN id: ${myjkknInstitutionId}`, error?.message || fallbackError?.message)
+		return {
+			institution_id: myjkknInstitutionId,
+			institution_code: null,
+			institution_name: null,
+			counselling_code: null,
+			myjkkn_institution_ids: null
+		}
+	} catch (err) {
+		console.error('[sync-session] Error fetching institution by MyJKKN id:', err)
+		return {
+			institution_id: myjkknInstitutionId,
+			institution_code: null,
+			institution_name: null,
+			counselling_code: null,
+			myjkkn_institution_ids: null
+		}
+	}
+}
+
+/**
  * Sync user session data after parent app OAuth login
  * Updates last_login, syncs user data, fetches permissions, and creates/updates both sessions and user_sessions records
  */
 export async function POST(request: Request) {
 	try {
 		const body = await request.json()
-		const { email, user_id, full_name, avatar_url, role, access_token, refresh_token, expires_in } = body
+		// Extract institution_id (UUID) from MyJKKN session - this is the KEY for institution lookup
+		const { email, avatar_url, role, access_token, refresh_token, expires_in, institution_id: sessionInstitutionId } = body
 
 		if (!email) {
 			return NextResponse.json({ error: 'Email is required' }, { status: 400 })
@@ -86,10 +169,10 @@ export async function POST(request: Request) {
 		const realIp = headersList.get('x-real-ip')
 		const ipAddress = forwardedFor?.split(',')[0]?.trim() || realIp || null
 
-		// Check if user exists in local database (include avatar_url for response)
+		// Check if user exists in local database
 		const { data: existingUser, error: fetchError } = await supabase
 			.from('users')
-			.select('id, email, is_active, avatar_url')
+			.select('id, email, is_active, avatar_url, institution_id')
 			.eq('email', email)
 			.single()
 
@@ -101,6 +184,11 @@ export async function POST(request: Request) {
 
 		const now = new Date()
 		const nowISO = now.toISOString()
+
+		// Lookup institution from COE local table using institution_id from MyJKKN session
+		// Uses myjkkn_institution_ids array to handle many-to-one mapping (e.g., CAS Aided + Self → CAS)
+		// Example: MyJKKN id "a33138b6-..." → institution_code "CAS"
+		const institutionDetails = await fetchInstitutionByMyJKKNId(supabase, sessionInstitutionId)
 
 		if (existingUser) {
 			// User exists - update last_login
@@ -193,9 +281,16 @@ export async function POST(request: Request) {
 				user_id: existingUser.id,
 				is_new_user: false,
 				expires_at: new Date(now.getTime() + (expires_in || 3600) * 1000).toISOString(),
-				avatar_url: existingUser.avatar_url || null, // Return local avatar if available
-				permissions, // Return permissions from database
-				roles: [role].filter(Boolean) // Return roles array
+				avatar_url: existingUser.avatar_url || null,
+				// Return institution details from COE local table (looked up by MyJKKN institution_id)
+				// institution_code in COE = counselling_code in MyJKKN (e.g., "CET")
+				institution_id: institutionDetails.institution_id,
+				institution_code: institutionDetails.institution_code,
+				institution_name: institutionDetails.institution_name,
+				counselling_code: institutionDetails.counselling_code,
+				myjkkn_institution_ids: institutionDetails.myjkkn_institution_ids,
+				permissions,
+				roles: [role].filter(Boolean)
 			})
 		} else {
 			// User doesn't exist in local DB - they need to be added by admin
@@ -206,8 +301,14 @@ export async function POST(request: Request) {
 				success: true,
 				message: 'User not in local database - contact admin for provisioning',
 				is_new_user: true,
-				permissions, // Return any permissions for the role
-				roles: [role].filter(Boolean)
+				permissions,
+				roles: [role].filter(Boolean),
+				// Return institution details even for unprovisioned users
+				institution_id: institutionDetails.institution_id,
+				institution_code: institutionDetails.institution_code,
+				institution_name: institutionDetails.institution_name,
+				counselling_code: institutionDetails.counselling_code,
+				myjkkn_institution_ids: institutionDetails.myjkkn_institution_ids
 			})
 		}
 	} catch (error) {

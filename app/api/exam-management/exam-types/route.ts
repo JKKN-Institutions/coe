@@ -56,29 +56,30 @@ export async function POST(request: Request) {
 			}, { status: 400 })
 		}
 
-		// Validate grade_system_code (optional, but must be UG or PG if provided)
-		const gradeSystemCode = body.grade_system_code || null
-		if (gradeSystemCode && !['UG', 'PG'].includes(gradeSystemCode)) {
-			return NextResponse.json({
-				error: 'grade_system_code must be UG or PG'
-			}, { status: 400 })
-		}
+		// Validate grade_system_codes (optional, supports multiple values as comma-separated string or array)
+		// Valid values: UG, PG, or combination like "UG,PG"
+		let gradeSystemCode: string | null = null
+		if (body.grade_system_code) {
+			// Handle both array and string inputs
+			const codes = Array.isArray(body.grade_system_code)
+				? body.grade_system_code
+				: body.grade_system_code.split(',').map((c: string) => c.trim())
 
-		// Validate regulation_id if provided
-		let regulationId = body.regulation_id || null
-		if (regulationId) {
-			const { data: regulationData, error: regulationError } = await supabase
-				.from('regulations')
-				.select('id')
-				.eq('id', regulationId)
-				.maybeSingle()
+			const validCodes = ['UG', 'PG']
+			const invalidCodes = codes.filter((c: string) => !validCodes.includes(c))
 
-			if (regulationError || !regulationData) {
+			if (invalidCodes.length > 0) {
 				return NextResponse.json({
-					error: 'Invalid regulation_id. Regulation not found.'
+					error: `Invalid grade_system_code: ${invalidCodes.join(', ')}. Must be UG or PG.`
 				}, { status: 400 })
 			}
+
+			gradeSystemCode = codes.join(',')
 		}
+
+		// Note: regulation_id comes from MyJKKN API and is not validated against local table
+		// MyJKKN is the source of truth for regulations
+		const regulationId = body.regulation_id || null
 
 		const insertPayload: any = {
 			institutions_id: body.institutions_id,
@@ -142,29 +143,30 @@ export async function PUT(request: Request) {
 			return NextResponse.json({ error: 'Exam type ID is required' }, { status: 400 })
 		}
 
-		// Validate grade_system_code (optional, but must be UG or PG if provided)
-		const gradeSystemCode = body.grade_system_code || null
-		if (gradeSystemCode && !['UG', 'PG'].includes(gradeSystemCode)) {
-			return NextResponse.json({
-				error: 'grade_system_code must be UG or PG'
-			}, { status: 400 })
-		}
+		// Validate grade_system_codes (optional, supports multiple values as comma-separated string or array)
+		// Valid values: UG, PG, or combination like "UG,PG"
+		let gradeSystemCode: string | null = null
+		if (body.grade_system_code) {
+			// Handle both array and string inputs
+			const codes = Array.isArray(body.grade_system_code)
+				? body.grade_system_code
+				: body.grade_system_code.split(',').map((c: string) => c.trim())
 
-		// Validate regulation_id if provided
-		let regulationId = body.regulation_id || null
-		if (regulationId) {
-			const { data: regulationData, error: regulationError } = await supabase
-				.from('regulations')
-				.select('id')
-				.eq('id', regulationId)
-				.maybeSingle()
+			const validCodes = ['UG', 'PG']
+			const invalidCodes = codes.filter((c: string) => !validCodes.includes(c))
 
-			if (regulationError || !regulationData) {
+			if (invalidCodes.length > 0) {
 				return NextResponse.json({
-					error: 'Invalid regulation_id. Regulation not found.'
+					error: `Invalid grade_system_code: ${invalidCodes.join(', ')}. Must be UG or PG.`
 				}, { status: 400 })
 			}
+
+			gradeSystemCode = codes.join(',')
 		}
+
+		// Note: regulation_id comes from MyJKKN API and is not validated against local table
+		// MyJKKN is the source of truth for regulations
+		const regulationId = body.regulation_id || null
 
 		const updatePayload: any = {
 			examination_code: body.examination_code,

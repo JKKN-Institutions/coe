@@ -1,7 +1,10 @@
 "use client"
 
-import { useMemo, useState, useEffect } from "react"
+import { useMemo, useState, useEffect, useCallback } from "react"
 import { useSearchParams } from "next/navigation"
+import { useMyJKKNInstitutionFilter } from "@/hooks/use-myjkkn-institution-filter"
+import { useInstitutionFilter } from "@/hooks/use-institution-filter"
+import { useInstitution } from "@/context/institution-context"
 import { AppSidebar } from "@/components/layout/app-sidebar"
 import { AppHeader } from "@/components/layout/app-header"
 import { AppFooter } from "@/components/layout/app-footer"
@@ -78,9 +81,23 @@ const COURSE_GROUPS = [
 
 export default function CourseMappingPage() {
 	const searchParams = useSearchParams()
+	const { fetchRegulations: fetchMyJKKNRegulations } = useMyJKKNInstitutionFilter()
 	const [loading, setLoading] = useState(false)
 	const [saving, setSaving] = useState(false)
 	const { toast } = useToast()
+
+	// Institution context - for institution-based filtering
+	const {
+		institutionCode: contextInstitutionCode,
+		isReady: institutionContextReady,
+		mustSelectInstitution
+	} = useInstitutionFilter()
+
+	const {
+		availableInstitutions,
+		canSwitchInstitution,
+		currentInstitution
+	} = useInstitution()
 
 	// Parent form state
 	const [selectedInstitution, setSelectedInstitution] = useState("")
@@ -95,6 +112,7 @@ export default function CourseMappingPage() {
 	const [courses, setCourses] = useState<any[]>([])
 	const [batches, setBatches] = useState<any[]>([])
 	const [regulations, setRegulations] = useState<any[]>([])
+	const [regulationsLoading, setRegulationsLoading] = useState(false)
 	const [semesters, setSemesters] = useState<Semester[]>([])
 
 	// Semester tables data
@@ -110,67 +128,12 @@ export default function CourseMappingPage() {
 	// Popover open state for course selection (track by semesterIndex_rowIndex)
 	const [openPopovers, setOpenPopovers] = useState<{ [key: string]: boolean }>({})
 
-	// Fetch institutions on mount and handle URL parameters
-	useEffect(() => {
-		fetchInstitutions()
-
-		// Pre-populate from URL parameters
-		const institution = searchParams.get('institution')
-		const program = searchParams.get('program')
-		const batch = searchParams.get('batch')
-		const regulation = searchParams.get('regulation')
-
-		if (institution) setSelectedInstitution(institution)
-		if (program) setSelectedProgram(program)
-		if (batch) setSelectedBatch(batch)
-		if (regulation) setSelectedRegulation(regulation)
-	}, [])
-
-	// Fetch programs when institution changes
-	useEffect(() => {
-		if (selectedInstitution) {
-			fetchPrograms(selectedInstitution)
-			fetchRegulations(selectedInstitution, "")
-			setSelectedProgram("")
-			setSelectedBatch("")
-			setSelectedRegulation("")
-			setSemesterTables([])
-		}
-	}, [selectedInstitution])
-
-	// Fetch batches and semesters when program changes
-	useEffect(() => {
-		if (selectedProgram) {
-			// Find the selected program to get its offering_department_code
-			const program = programs.find(p => p.program_code === selectedProgram)
-			const offeringDept = program?.offering_department_code || ""
-			setSelectedOfferingDepartment(offeringDept)
-
-			fetchBatches(selectedProgram)
-			fetchSemesters(selectedProgram)
-			// Pass offering department code for course filtering
-			fetchCourses(selectedInstitution, selectedProgram, selectedRegulation, offeringDept)
-			fetchRegulations(selectedInstitution, selectedProgram)
-			setSelectedBatch("")
-			setSemesterTables([])
-		}
-	}, [selectedProgram, selectedInstitution, programs])
-
-	// Load existing mappings when batch is selected
-	useEffect(() => {
-		if (selectedBatch && semesters.length > 0) {
-			loadExistingMappings()
-		}
-	}, [selectedBatch, semesters])
-
-	// Refetch courses when regulation changes
-	useEffect(() => {
-		if (selectedRegulation && selectedInstitution && selectedProgram) {
-			fetchCourses(selectedInstitution, selectedProgram, selectedRegulation, selectedOfferingDepartment)
-		}
-	}, [selectedRegulation, selectedOfferingDepartment])
+	// ============ FUNCTION DEFINITIONS (before useEffects) ============
 
 	const fetchInstitutions = async () => {
+		// Skip fetch if we already have institutions from context
+		if (availableInstitutions.length > 0) return
+
 		try {
 			const res = await fetch('/api/master/institutions')
 			if (res.ok) {
@@ -250,21 +213,122 @@ export default function CourseMappingPage() {
 		}
 	}
 
-	const fetchRegulations = async (institutionCode: string, programCode: string) => {
+	// Fetch regulations from MyJKKN API using hook (two-step lookup with client-side filtering)
+	const fetchRegulations = useCallback(async (institutionCode: string, _programCode: string) => {
 		try {
-			let url = '/api/master/regulations?'
-			if (institutionCode) url += `institution_code=${institutionCode}&`
-			if (programCode) url += `program_code=${programCode}`
+			setRegulationsLoading(true)
+			setRegulations([])
 
-			const res = await fetch(url)
-			if (res.ok) {
-				const data = await res.json()
-				setRegulations(data)
-			}
+			// Find the institution to get its counselling_code for MyJKKN API filtering
+			const institution = institutions.find((i: any) => i.institution_code === institutionCode)
+			const counsellingCode = institution?.counselling_code || undefined
+
+			// Use hook to fetch regulations (handles two-step lookup and deduplication)
+			const regs = await fetchMyJKKNRegulations(counsellingCode)
+
+			setRegulations(regs.map(r => ({
+				...r,
+				regulation_name: r.regulation_name || r.regulation_code
+			})))
 		} catch (err) {
-			console.error('Error fetching regulations:', err)
+			console.error('[CourseMapping] Error fetching regulations from MyJKKN:', err)
+		} finally {
+			setRegulationsLoading(false)
 		}
-	}
+	}, [institutions, fetchMyJKKNRegulations])
+
+	// ============ USE EFFECTS ============
+
+	// Update institutions list from context (runs first to populate institutions)
+	useEffect(() => {
+		if (availableInstitutions.length > 0) {
+			// Map context institutions to match expected format
+			const mappedInstitutions = availableInstitutions.map(inst => ({
+				id: inst.id,
+				institution_code: inst.institution_code,
+				name: inst.institution_name,
+				counselling_code: inst.counselling_code
+			}))
+			setInstitutions(mappedInstitutions)
+		}
+	}, [availableInstitutions])
+
+	// Fetch institutions on mount (fallback if context doesn't have them)
+	useEffect(() => {
+		fetchInstitutions()
+	}, [])
+
+	// Handle URL parameters after institutions are loaded
+	useEffect(() => {
+		if (institutions.length === 0) return
+
+		// Pre-populate from URL parameters
+		const institution = searchParams.get('institution')
+		const program = searchParams.get('program')
+		const batch = searchParams.get('batch')
+		const regulation = searchParams.get('regulation')
+
+		if (institution && !selectedInstitution) setSelectedInstitution(institution)
+		if (program && !selectedProgram) setSelectedProgram(program)
+		if (batch && !selectedBatch) setSelectedBatch(batch)
+		if (regulation && !selectedRegulation) setSelectedRegulation(regulation)
+	}, [institutions, searchParams])
+
+	// Auto-select institution from context when ready (for non-super_admin users)
+	useEffect(() => {
+		if (!institutionContextReady) return
+		if (institutions.length === 0) return
+
+		// If user has a specific institution from context and nothing is selected yet
+		if (contextInstitutionCode && !selectedInstitution) {
+			setSelectedInstitution(contextInstitutionCode)
+		}
+	}, [institutionContextReady, contextInstitutionCode, selectedInstitution, institutions])
+
+	// Fetch programs when institution changes
+	useEffect(() => {
+		if (selectedInstitution && institutions.length > 0) {
+			fetchPrograms(selectedInstitution)
+			fetchRegulations(selectedInstitution, "")
+			setSelectedProgram("")
+			setSelectedBatch("")
+			setSelectedRegulation("")
+			setSemesterTables([])
+			setCourses([])  // Clear courses when institution changes
+		}
+	}, [selectedInstitution, institutions, fetchRegulations])
+
+	// Fetch batches and semesters when program changes
+	useEffect(() => {
+		if (selectedProgram) {
+			// Find the selected program to get its offering_department_code
+			const program = programs.find(p => p.program_code === selectedProgram)
+			const offeringDept = program?.offering_department_code || ""
+			setSelectedOfferingDepartment(offeringDept)
+
+			fetchBatches(selectedProgram)
+			fetchSemesters(selectedProgram)
+			// Pass offering department code for course filtering
+			fetchCourses(selectedInstitution, selectedProgram, selectedRegulation, offeringDept)
+			fetchRegulations(selectedInstitution, selectedProgram)
+			setSelectedBatch("")
+			setSemesterTables([])
+		}
+	}, [selectedProgram, selectedInstitution, programs, fetchRegulations])
+
+	// Load existing mappings when batch is selected
+	useEffect(() => {
+		if (selectedBatch && semesters.length > 0) {
+			loadExistingMappings()
+		}
+	}, [selectedBatch, semesters])
+
+	// Refetch courses when regulation changes
+	useEffect(() => {
+		if (selectedRegulation && selectedInstitution && selectedProgram) {
+			fetchCourses(selectedInstitution, selectedProgram, selectedRegulation, selectedOfferingDepartment)
+		}
+	}, [selectedRegulation, selectedOfferingDepartment])
 
 	const loadExistingMappings = async () => {
 		if (!selectedInstitution || !selectedProgram || !selectedBatch) return
@@ -691,9 +755,13 @@ export default function CourseMappingPage() {
 	}
 
 	const resetForm = () => {
-		setSelectedInstitution("")
+		// Only reset institution if user can switch institutions (super_admin)
+		if (canSwitchInstitution) {
+			setSelectedInstitution("")
+		}
 		setSelectedProgram("")
 		setSelectedBatch("")
+		setSelectedRegulation("")
 		setSemesterTables([])
 		setExistingMappings([])
 		setSelectAllRegistration({})
@@ -765,9 +833,13 @@ export default function CourseMappingPage() {
 							<div className="grid grid-cols-1 md:grid-cols-4 gap-4">
 								<div className="space-y-2">
 									<Label>Institution <span className="text-red-500">*</span></Label>
-									<Select value={selectedInstitution} onValueChange={setSelectedInstitution}>
-										<SelectTrigger>
-											<SelectValue placeholder="Select institution" />
+									<Select
+										value={selectedInstitution}
+										onValueChange={setSelectedInstitution}
+										disabled={!canSwitchInstitution && !!contextInstitutionCode}
+									>
+										<SelectTrigger className={!canSwitchInstitution && contextInstitutionCode ? "bg-muted" : ""}>
+											<SelectValue placeholder={!institutionContextReady ? "Loading..." : "Select institution"} />
 										</SelectTrigger>
 										<SelectContent>
 											{institutions.map(inst => (
@@ -777,6 +849,9 @@ export default function CourseMappingPage() {
 											))}
 										</SelectContent>
 									</Select>
+									{!canSwitchInstitution && contextInstitutionCode && (
+										<p className="text-xs text-muted-foreground">Auto-selected based on your account</p>
+									)}
 								</div>
 
 								<div className="space-y-2">

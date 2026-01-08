@@ -36,7 +36,6 @@ export function NavUser({ variant = "compact" }: NavUserProps) {
   const { user, logout, isLoading } = useAuth()
   const { reportBug, isAvailable } = useBugReporter()
   const [isLoggingOut, setIsLoggingOut] = useState(false)
-  const [institutionName, setInstitutionName] = useState<string | null>(null)
 
   const displayName = user?.full_name || "User"
   const email = user?.email || ""
@@ -46,6 +45,9 @@ export function NavUser({ variant = "compact" }: NavUserProps) {
   const isSuperAdmin = user?.is_super_admin ?? false
   const lastLogin = user?.last_login
   const [localAvatarUrl, setLocalAvatarUrl] = useState<string | null>(null)
+
+  // Use institution_name directly from user object (populated by sync-session)
+  const institutionName = user?.institution_name || null
 
   const initials = (displayName || "U")
     .split(" ")
@@ -74,7 +76,7 @@ export function NavUser({ variant = "compact" }: NavUserProps) {
       try {
         const response = await fetch(
           `/api/users/avatar?email=${encodeURIComponent(email)}`,
-          { signal: abortController.signal }
+          { signal: abortController.signal, credentials: 'include' }
         )
         if (response.ok) {
           const data = await response.json()
@@ -94,32 +96,6 @@ export function NavUser({ variant = "compact" }: NavUserProps) {
     return () => abortController.abort()
   }, [avatarUrl, email])
 
-  // Fetch institution name
-  useEffect(() => {
-    if (!user?.institution_id) return
-
-    const abortController = new AbortController()
-
-    const fetchInstitution = async () => {
-      try {
-        const response = await fetch(
-          `/api/institutions/${user.institution_id}`,
-          { signal: abortController.signal }
-        )
-        if (response.ok) {
-          const data = await response.json()
-          setInstitutionName(data.institution_name)
-        }
-      } catch (error) {
-        if (error instanceof Error && error.name === 'AbortError') return
-        console.error('Error fetching institution:', error)
-      }
-    }
-
-    fetchInstitution()
-
-    return () => abortController.abort()
-  }, [user?.institution_id])
 
   // Format last login as relative time
   const formatLastLogin = (lastLoginDate?: string) => {

@@ -20,6 +20,7 @@ import Link from "next/link"
 import { PlusCircle, Edit, Trash2, Search, ChevronLeft, ChevronRight, ArrowUpDown, ArrowUp, ArrowDown, Calendar, TrendingUp, CheckCircle, XCircle, FileSpreadsheet, Upload, AlertTriangle, RefreshCw, ChevronDown, ChevronUp, DoorOpen, Users, MapPin } from "lucide-react"
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Label } from "@/components/ui/label"
+import { useInstitutionFilter } from "@/hooks/use-institution-filter"
 
 interface ExamTimetable {
 	id: string
@@ -78,6 +79,16 @@ export default function ExamTimetablesListPage() {
 	const router = useRouter()
 	const { toast } = useToast()
 
+	// Institution filter hook
+	const {
+		filter,
+		isReady,
+		appendToUrl,
+		mustSelectInstitution,
+		shouldFilter,
+		institutionId
+	} = useInstitutionFilter()
+
 	const [items, setItems] = useState<ExamTimetable[]>([])
 	const [loading, setLoading] = useState(true)
 	const [searchTerm, setSearchTerm] = useState("")
@@ -117,15 +128,21 @@ export default function ExamTimetablesListPage() {
 	const [expandedRows, setExpandedRows] = useState<Set<string>>(new Set())
 	const [courseDetails, setCourseDetails] = useState<Map<string, CourseDetail[]>>(new Map())
 
-	// Fetch exam timetables
+	// Fetch exam timetables with institution filter
 	const fetchExamTimetables = async () => {
 		try {
 			setLoading(true)
-			const response = await fetch('/api/exam-management/exam-timetables')
+			const url = appendToUrl('/api/exam-management/exam-timetables')
+			const response = await fetch(url)
 			if (!response.ok) {
 				throw new Error('Failed to fetch exam timetables')
 			}
-			const data = await response.json()
+			let data = await response.json()
+
+			// Client-side filter for safety
+			if (shouldFilter && institutionId) {
+				data = data.filter((item: any) => item.institutions_id === institutionId)
+			}
 
 			// Transform nested data for display
 			const transformed = data.map((item: any) => ({
@@ -151,9 +168,11 @@ export default function ExamTimetablesListPage() {
 		}
 	}
 
+	// Fetch data when institution filter is ready
 	useEffect(() => {
+		if (!isReady) return
 		fetchExamTimetables()
-	}, [])
+	}, [isReady, filter])
 
 	// Delete handler
 	const remove = async (id: string) => {
@@ -861,7 +880,7 @@ export default function ExamTimetablesListPage() {
 											</TableRow>
 										</TableHeader>
 										<TableBody>
-											{loading ? (
+											{loading || !isReady ? (
 												<TableRow>
 													<TableCell colSpan={12} className="h-24 text-center text-[11px]">Loading…</TableCell>
 												</TableRow>

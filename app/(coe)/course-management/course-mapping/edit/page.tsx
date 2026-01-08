@@ -2,6 +2,8 @@
 
 import React, { useMemo, useState, useEffect, useCallback, memo, useRef } from "react"
 import { useSearchParams, useRouter } from "next/navigation"
+import { useInstitutionFilter } from "@/hooks/use-institution-filter"
+import { useMyJKKNInstitutionFilter } from "@/hooks/use-myjkkn-institution-filter"
 import { AppSidebar } from "@/components/layout/app-sidebar"
 import { AppHeader } from "@/components/layout/app-header"
 import { AppFooter } from "@/components/layout/app-footer"
@@ -25,12 +27,16 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { Check, ChevronsUpDown, ChevronDown, ChevronRight } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { generateCourseMappingPDF } from "@/lib/utils/generate-course-mapping-pdf"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { COURSE_GROUPS } from "@/types/course-mapping"
+import { fetchCourses as fetchCoursesService } from "@/services/course-management/course-mapping-service"
 
 // Types for course data
 type Course = {
 	id: string
 	course_code: string
 	course_title?: string
+	course_name?: string
 	course_type?: string
 	course_part_master?: string
 	course_category?: string
@@ -43,13 +49,23 @@ type CourseMapping = {
 	course_id: string
 	institution_code: string
 	program_code: string
+	program_id?: string
 	regulation_code: string
 	regulation_id?: string
 	batch_code?: string
 	semester_code: string
+	semester_id?: string
 	course_group?: string
 	course_category?: string
 	course_order?: number
+	internal_pass_mark?: number
+	internal_max_mark?: number
+	internal_converted_mark?: number
+	external_pass_mark?: number
+	external_max_mark?: number
+	external_converted_mark?: number
+	total_pass_mark?: number
+	total_max_mark?: number
 	annual_semester?: boolean
 	registration_based?: boolean
 	is_active?: boolean
@@ -61,6 +77,7 @@ type Semester = {
 	semester_code: string
 	semester_name: string
 	semester_number: number
+	semester_order?: number
 	program_id?: string
 }
 
@@ -92,46 +109,61 @@ const CourseTableRow = memo(function CourseTableRow({
 }) {
 	const course = mapping.course_id ? courseMap.get(mapping.course_id) : null
 
+	// Debug: Log courses when popover opens
+	useEffect(() => {
+		if (isPopoverOpen) {
+			console.log(`[CourseTableRow] Popover opened, courses available: ${courses.length}`)
+			console.log(`[CourseTableRow] Course codes:`, courses.map(c => c.course_code))
+		}
+	}, [isPopoverOpen, courses])
+
 	return (
-		<TableRow>
-			<TableCell className="py-2 text-sm">{rowIndex + 1}</TableCell>
-			<TableCell className="py-2">
+		<TableRow className="hover:bg-muted/50">
+			<TableCell className="text-sm font-medium py-3">{rowIndex + 1}</TableCell>
+			<TableCell className="py-3">
 				<Popover open={isPopoverOpen} onOpenChange={onPopoverChange}>
 					<PopoverTrigger asChild>
 						<Button
 							variant="outline"
 							role="combobox"
-							className="h-7 w-full justify-between text-sm"
+							aria-expanded={isPopoverOpen}
+							className="h-9 w-full justify-between text-sm font-normal"
 						>
-							{course?.course_code || "Select course"}
-							<ChevronsUpDown className="ml-2 h-3 w-3 opacity-50" />
+							{mapping.course_id
+								? (() => {
+									const course = courses.find(c => c.id === mapping.course_id)
+									return course?.course_code || "Select course"
+								})()
+								: courses.length === 0
+									? "No courses available"
+									: "Select course"}
+							<ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
 						</Button>
 					</PopoverTrigger>
 					<PopoverContent className="w-[400px] p-0" align="start">
 						<Command>
-							<CommandInput placeholder="Search course..." className="text-sm" />
-							<CommandList className="max-h-[300px]">
-								<CommandEmpty className="text-sm py-6 text-center">No course found.</CommandEmpty>
+							<CommandInput placeholder="Search by course code or name..." className="h-9" />
+							<CommandList>
+								<CommandEmpty>No course found.</CommandEmpty>
 								<CommandGroup>
 									{courses.map((c) => (
 										<CommandItem
 											key={c.id}
-											value={`${c.course_code} ${c.course_title || ''}`}
+											value={`${c.course_code} ${c.course_title || c.course_name || ''}`}
 											onSelect={() => {
 												onUpdateRow('course_id', c.id)
 												onPopoverChange(false)
 											}}
-											className="text-sm"
 										>
 											<div className="flex flex-col">
-												<span className="font-medium text-sm">{c.course_code}</span>
-												<span className="text-xs text-muted-foreground truncate max-w-[300px]">
-													{c.course_title || '-'}
+												<span className="font-medium">{c.course_code}</span>
+												<span className="text-xs text-muted-foreground">
+													{c.course_title || c.course_name || '-'}
 												</span>
 											</div>
 											<Check
 												className={cn(
-													"ml-auto h-3 w-3 flex-shrink-0",
+													"ml-auto h-4 w-4",
 													mapping.course_id === c.id ? "opacity-100" : "opacity-0"
 												)}
 											/>
@@ -143,49 +175,144 @@ const CourseTableRow = memo(function CourseTableRow({
 					</PopoverContent>
 				</Popover>
 			</TableCell>
-			<TableCell className="text-sm py-2 truncate max-w-[200px]" title={course?.course_title}>
-				{course?.course_title || '-'}
+			<TableCell className="text-sm py-3">
+				{(() => {
+					const course = courses.find(c => c.id === mapping.course_id)
+					return course?.course_title || course?.course_name || '-'
+				})()}
 			</TableCell>
-			<TableCell className="text-sm py-2">{course?.course_type || '-'}</TableCell>
-			<TableCell className="text-sm py-2">{course?.course_part_master || '-'}</TableCell>
-			<TableCell className="text-sm py-2">{mapping.course_category || '-'}</TableCell>
-			<TableCell className="py-2">
-				<DebouncedNumberInput
+			<TableCell className="text-sm py-3">
+				{mapping.course_category || '-'}
+			</TableCell>
+			<TableCell className="py-3">
+				<Select
+					value={mapping.course_group || "General"}
+					onValueChange={(v) => onUpdateRow('course_group', v)}
+				>
+					<SelectTrigger className="h-9 text-sm w-full">
+						<SelectValue />
+					</SelectTrigger>
+					<SelectContent>
+						{COURSE_GROUPS.map(group => (
+							<SelectItem key={group.value} value={group.value}>
+								{group.label}
+							</SelectItem>
+						))}
+					</SelectContent>
+				</Select>
+			</TableCell>
+			<TableCell className="py-3">
+				<Input
+					type="number"
 					value={mapping.course_order || 1}
-					onChange={(v) => onUpdateRow('course_order', v)}
-					className="h-7 w-16 text-sm text-center"
-					min={1}
+					onChange={(e) => onUpdateRow('course_order', parseFloat(e.target.value))}
+					className="h-9 w-20 text-sm text-center"
+					min={0.1}
+					max={999}
+					step={0.1}
 				/>
 			</TableCell>
-			<TableCell className="text-center py-2">
+			<TableCell className="py-3">
+				<Input
+					type="number"
+					value={mapping.internal_pass_mark || 0}
+					onChange={(e) => onUpdateRow('internal_pass_mark', parseInt(e.target.value))}
+					className="h-9 w-16 text-sm text-center"
+					min={0}
+				/>
+			</TableCell>
+			<TableCell className="py-3">
+				<Input
+					type="number"
+					value={mapping.internal_max_mark || 0}
+					onChange={(e) => onUpdateRow('internal_max_mark', parseInt(e.target.value))}
+					className="h-9 w-16 text-sm text-center"
+					min={0}
+				/>
+			</TableCell>
+			<TableCell className="py-3">
+				<Input
+					type="number"
+					value={mapping.internal_converted_mark || 0}
+					onChange={(e) => onUpdateRow('internal_converted_mark', parseInt(e.target.value))}
+					className="h-9 w-16 text-sm text-center"
+					min={0}
+				/>
+			</TableCell>
+			<TableCell className="py-3">
+				<Input
+					type="number"
+					value={mapping.external_pass_mark || 0}
+					onChange={(e) => onUpdateRow('external_pass_mark', parseInt(e.target.value))}
+					className="h-9 w-16 text-sm text-center"
+					min={0}
+				/>
+			</TableCell>
+			<TableCell className="py-3">
+				<Input
+					type="number"
+					value={mapping.external_max_mark || 0}
+					onChange={(e) => onUpdateRow('external_max_mark', parseInt(e.target.value))}
+					className="h-9 w-16 text-sm text-center"
+					min={0}
+				/>
+			</TableCell>
+			<TableCell className="py-3">
+				<Input
+					type="number"
+					value={mapping.external_converted_mark || 0}
+					onChange={(e) => onUpdateRow('external_converted_mark', parseInt(e.target.value))}
+					className="h-9 w-16 text-sm text-center"
+					min={0}
+				/>
+			</TableCell>
+			<TableCell className="py-3">
+				<Input
+					type="number"
+					value={mapping.total_pass_mark || 0}
+					onChange={(e) => onUpdateRow('total_pass_mark', parseInt(e.target.value))}
+					className="h-9 w-16 text-sm text-center"
+					min={0}
+				/>
+			</TableCell>
+			<TableCell className="py-3">
+				<Input
+					type="number"
+					value={mapping.total_max_mark || 0}
+					onChange={(e) => onUpdateRow('total_max_mark', parseInt(e.target.value))}
+					className="h-9 w-16 text-sm text-center"
+					min={0}
+				/>
+			</TableCell>
+			<TableCell className="text-center py-3">
 				<Checkbox
 					checked={mapping.annual_semester || false}
 					onCheckedChange={(v) => onUpdateRow('annual_semester', v)}
-					className="h-4 w-4"
+					className="h-5 w-5"
 				/>
 			</TableCell>
-			<TableCell className="text-center py-2">
+			<TableCell className="text-center py-3">
 				<Checkbox
 					checked={mapping.registration_based || false}
 					onCheckedChange={(v) => onUpdateRow('registration_based', v)}
-					className="h-4 w-4"
+					className="h-5 w-5"
 				/>
 			</TableCell>
-			<TableCell className="text-center py-2">
+			<TableCell className="text-center py-3">
 				<Checkbox
 					checked={mapping.is_active !== false}
 					onCheckedChange={(v) => onUpdateRow('is_active', v)}
-					className="h-4 w-4"
+					className="h-5 w-5"
 				/>
 			</TableCell>
-			<TableCell className="py-2">
+			<TableCell className="py-3">
 				<Button
 					variant="ghost"
 					size="sm"
 					onClick={onRemoveRow}
-					className="h-7 w-7 p-0 text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20"
+					className="h-8 w-8 p-0 text-red-600 hover:text-red-700 hover:bg-red-50"
 				>
-					<X className="h-3 w-3" />
+					<X className="h-4 w-4" />
 				</Button>
 			</TableCell>
 		</TableRow>
@@ -271,6 +398,22 @@ export default function CourseMappingEditPage() {
 	const [saving, setSaving] = useState(false)
 	const { toast } = useToast()
 
+	// Institution filter hook for multi-tenant filtering
+	const {
+		isReady: institutionContextReady,
+		appendToUrl,
+		institutionCode: contextInstitutionCode,
+		mustSelectInstitution,
+		myjkknInstitutionIds
+	} = useInstitutionFilter()
+
+	// MyJKKN institution filter hook for fetching MyJKKN data
+	const {
+		fetchPrograms: fetchProgramsFromMyJKKN,
+		fetchRegulations: fetchRegulationsFromMyJKKN,
+		fetchSemesters: fetchSemestersFromMyJKKN
+	} = useMyJKKNInstitutionFilter()
+
 	// Get URL parameters (NO BATCH)
 	const institutionParam = searchParams.get('institution')
 	const programParam = searchParams.get('program')
@@ -282,6 +425,10 @@ export default function CourseMappingEditPage() {
 	const [selectedRegulation, setSelectedRegulation] = useState(regulationParam || "")
 	const [selectedOfferingDepartment, setSelectedOfferingDepartment] = useState("")
 	const [batchCode, setBatchCode] = useState("") // Get from existing mappings
+
+	// Store IDs for saving (UUIDs from database)
+	const [selectedProgramId, setSelectedProgramId] = useState<string>("")
+	const [selectedRegulationId, setSelectedRegulationId] = useState<string>("")
 
 	// Display names for locked fields
 	const [institutionName, setInstitutionName] = useState("")
@@ -317,37 +464,105 @@ export default function CourseMappingEditPage() {
 	const [uploadSummary, setUploadSummary] = useState<{ total: number; success: number; failed: number }>({ total: 0, success: 0, failed: 0 })
 	const [uploadErrors, setUploadErrors] = useState<Array<{ row: number; course_code: string; semester: string; errors: string[] }>>([])
 
-	// Fetch initial data on mount
+	// Fetch initial data on mount - wait for institution context to be ready
 	useEffect(() => {
+		if (!institutionContextReady) {
+			console.log("[Edit Page] Institution context not ready yet")
+			return
+		}
+
 		if (!institutionParam || !programParam || !regulationParam) {
 			toast({
 				title: '⚠️ Missing Parameters',
 				description: 'Required parameters (institution, program, regulation) are missing. Redirecting to index page...',
 				variant: 'destructive'
 			})
-			setTimeout(() => router.push('/course-mapping-index'), 2000)
+			setTimeout(() => router.push('/course-management/course-mapping-index'), 2000)
 			return
 		}
 
-		// Fetch all required data in parallel for faster loading
+		console.log("[Edit Page] Starting initial data fetch", { institutionParam, programParam, regulationParam })
+		// Fetch all required data - fetch program first, then semesters
 		setInitialLoading(true)
+		
+		// First fetch program data to get program_id
+		fetchProgramData(programParam)
+			.then(async (programId) => {
+				console.log("[Edit Page] fetchProgramData completed, programId:", programId)
+				// Wait a bit for state to update if programId was found
+				if (programId) {
+					// Small delay to ensure state is updated
+					await new Promise(resolve => setTimeout(resolve, 100))
+				}
+				// Fetch semesters with the programId (or let it find it itself)
+				return fetchSemesters(programParam, programId || undefined)
+			})
+			.catch(err => {
+				console.error("[Edit Page] Error in program/semester fetch:", err)
+				// Still try to fetch semesters even if program fetch failed
+				return fetchSemesters(programParam)
+			})
+		
+		// Fetch other data in parallel
 		Promise.all([
 			fetchInstitutionName(institutionParam),
-			fetchProgramData(programParam),
-			fetchRegulationName(regulationParam),
-			fetchSemesters(programParam),
-			fetchCourses(institutionParam, programParam, regulationParam)
-		]).finally(() => {
+			fetchRegulationName(regulationParam)
+		]).then(() => {
+			// After initial data is fetched, ensure courses are fetched
+			// The useEffect below should handle this, but we also call it here to ensure it happens
+			if (selectedInstitution && selectedProgram && selectedRegulation) {
+				console.log("[Edit Page] Initial fetch completed, calling fetchCourses")
+				fetchCourses(selectedInstitution, selectedProgram, selectedRegulation)
+			}
+		}).catch(err => {
+			console.error("[Edit Page] Error in initial data fetch:", err)
+		}).finally(() => {
+			console.log("[Edit Page] Initial data fetch completed")
 			setInitialLoading(false)
 		})
-	}, [institutionParam, programParam, regulationParam])
+	}, [institutionContextReady, institutionParam, programParam, regulationParam])
 
-	// Load existing mappings when semesterTables are loaded (NO BATCH)
+	// Fetch courses when institution, program, and regulation are set (same as add page)
+	// This runs after state is initialized from URL params
 	useEffect(() => {
-		if (semesterTables.length > 0 && selectedInstitution && selectedProgram && selectedRegulation && existingMappings.length === 0) {
-			loadExistingMappings()
+		if (selectedInstitution && selectedProgram && selectedRegulation) {
+			console.log(`[Edit Page] useEffect triggered - Fetching courses for institution=${selectedInstitution}, program=${selectedProgram}, regulation=${selectedRegulation}`)
+			fetchCourses(selectedInstitution, selectedProgram, selectedRegulation)
+		} else {
+			console.log(`[Edit Page] useEffect for courses - conditions not met:`, {
+				hasInstitution: !!selectedInstitution,
+				hasProgram: !!selectedProgram,
+				hasRegulation: !!selectedRegulation
+			})
 		}
-	}, [semesterTables.length, selectedInstitution, selectedProgram, selectedRegulation])
+	}, [selectedInstitution, selectedProgram, selectedRegulation])
+
+	// Load existing mappings when semesters are loaded (same as add page)
+	// This ensures semesterTables are initialized before loading mappings
+	useEffect(() => {
+		console.log("[Edit Page] useEffect for loadExistingMappings triggered", {
+			semestersLength: semesters.length,
+			semesterTablesLength: semesterTables.length,
+			selectedInstitution,
+			selectedProgram,
+			selectedRegulation,
+			existingMappingsLength: existingMappings.length
+		})
+		// Match add page logic: trigger when semesters are loaded (not just semesterTables)
+		if (semesters.length > 0 && semesterTables.length > 0 && selectedInstitution && selectedProgram && selectedRegulation && existingMappings.length === 0) {
+			console.log("[Edit Page] Calling loadExistingMappings...")
+			loadExistingMappings()
+		} else {
+			console.log("[Edit Page] Conditions not met for loadExistingMappings", {
+				semestersLength: semesters.length,
+				semesterTablesLength: semesterTables.length,
+				hasInstitution: !!selectedInstitution,
+				hasProgram: !!selectedProgram,
+				hasRegulation: !!selectedRegulation,
+				hasExistingMappings: existingMappings.length > 0
+			})
+		}
+	}, [semesters.length, semesterTables.length, selectedInstitution, selectedProgram, selectedRegulation, existingMappings.length])
 
 	const fetchInstitutionName = async (code: string) => {
 		try {
@@ -365,68 +580,312 @@ export default function CourseMappingEditPage() {
 
 	const fetchProgramData = async (code: string) => {
 		try {
-			const res = await fetch(`/api/master/programs?program_code=${code}`)
-			if (res.ok) {
-				const data = await res.json()
-				if (data.length > 0) {
-					setProgramName(data[0].program_name)
-					setSelectedOfferingDepartment(data[0].offering_department_code || "")
-				}
+			// Use the hook to fetch programs from MyJKKN
+			const programs = await fetchProgramsFromMyJKKN(myjkknInstitutionIds || [], { requireFilter: false })
+			
+			console.log(`[Edit Page] fetchProgramData: Fetched ${programs.length} programs from MyJKKN`)
+			
+			// Find the program by code (program_id or program_code in MyJKKN)
+			// In MyJKKN, program_id is the CODE field (like "BE-3"), and id is the UUID
+			const program = programs.find((p: any) => 
+				p.program_code === code || p.program_id === code
+			)
+			
+			if (program) {
+				setProgramName(program.program_name || code)
+				// Note: ProgramOption doesn't have department_code, only department_id
+				setSelectedOfferingDepartment("")
+				// Store MyJKKN program.id (UUID) for saving
+				setSelectedProgramId(program.id)
+				console.log(`[Edit Page] fetchProgramData: Found MyJKKN program: ${program.id} (program_code: ${code})`)
+				return program.id
+			} else {
+				console.warn(`[Edit Page] fetchProgramData: Program "${code}" not found in ${programs.length} programs`)
+				console.log(`[Edit Page] fetchProgramData: Available program codes:`, programs.map((p: any) => ({
+					program_code: p.program_code,
+					program_id: p.program_id,
+					id: p.id
+				})))
 			}
 		} catch (err) {
-			console.error('Error fetching program:', err)
+			console.error('[Edit Page] Error fetching program from MyJKKN:', err)
 		}
+		return null
 	}
 
 	const fetchRegulationName = async (code: string) => {
 		try {
-			const res = await fetch(`/api/master/regulations?regulation_code=${code}`)
-			if (res.ok) {
-				const data = await res.json()
-				if (data.length > 0) {
-					setRegulationName(data[0].regulation_name)
-				}
+			// Use the hook to fetch regulations from MyJKKN
+			const regulations = await fetchRegulationsFromMyJKKN(myjkknInstitutionIds || [], false)
+			
+			console.log(`[Edit Page] fetchRegulationName: Fetched ${regulations.length} regulations from MyJKKN`)
+			
+			// Find the regulation by regulation_code
+			const regulation = regulations.find((r: any) => r.regulation_code === code)
+			
+			if (regulation) {
+				setRegulationName(regulation.regulation_name || code)
+				// Store MyJKKN regulation.id (UUID) for saving
+				setSelectedRegulationId(regulation.id)
+				console.log(`[Edit Page] Found MyJKKN regulation: ${regulation.id} (regulation_code: ${code})`)
+			} else {
+				console.warn(`[Edit Page] fetchRegulationName: Regulation "${code}" not found in ${regulations.length} regulations`)
 			}
 		} catch (err) {
-			console.error('Error fetching regulation:', err)
+			console.error('[Edit Page] Error fetching regulation from MyJKKN:', err)
 		}
 	}
 
-	const fetchSemesters = async (programCode: string) => {
+	const fetchSemesters = async (programCode: string, programId?: string) => {
 		try {
-			const res = await fetch(`/api/master/semesters?program_code=${programCode}`)
-			if (res.ok) {
-				const data = await res.json()
-				setSemesters(data)
-
-				// Initialize semester tables
-				const tables: SemesterTableData[] = data.map((sem: Semester) => ({
-					semester: sem,
-					mappings: [],
-					isOpen: false
-				}))
-				setSemesterTables(tables)
+			console.log(`[Edit Page] Starting fetchSemesters for program ${programCode}`, { programId, selectedProgramId, myjkknInstitutionIds })
+			
+			// Get myjkkn_institution_ids - ensure we have them before proceeding
+			let myjkknIds: string[] = []
+			if (myjkknInstitutionIds && myjkknInstitutionIds.length > 0) {
+				myjkknIds = myjkknInstitutionIds
+			} else {
+				// Fallback: fetch from institutions API
+				const institutionCodeToUse = institutionParam || selectedInstitution
+				if (institutionCodeToUse) {
+					try {
+						const instRes = await fetch(`/api/master/institutions?institution_code=${institutionCodeToUse}`)
+						if (instRes.ok) {
+							const instData = await instRes.json()
+							if (instData.length > 0 && instData[0].myjkkn_institution_ids) {
+								myjkknIds = instData[0].myjkkn_institution_ids
+								console.log(`[Edit Page] fetchSemesters: Fetched myjkkn_institution_ids from API:`, myjkknIds)
+							}
+						}
+					} catch (err) {
+						console.error('[Edit Page] Error fetching institution:', err)
+					}
+				}
 			}
+
+			if (myjkknIds.length === 0) {
+				console.warn('[Edit Page] No myjkkn_institution_ids found, cannot fetch semesters')
+				toast({
+					title: '⚠️ Warning',
+					description: 'No MyJKKN institution IDs found. Cannot fetch semesters.',
+					variant: 'destructive'
+				})
+				return
+			}
+			
+			// First, try to get program_id (UUID) from MyJKKN if not provided
+			// In MyJKKN, program_id is the CODE (like "BE-3"), not a UUID
+			// We need to find the program by program_code to get its UUID (id field)
+			let programIdToUse = programId || selectedProgramId || null
+			
+			if (!programIdToUse) {
+				console.log(`[Edit Page] programId not provided, searching for program ${programCode} in MyJKKN...`)
+				// Use the hook to fetch programs and find the matching one
+				const programs = await fetchProgramsFromMyJKKN(myjkknIds, { requireFilter: false })
+				const program = programs.find((p: any) => 
+					p.program_code === programCode || p.program_id === programCode
+				)
+				
+				if (program?.id) {
+					programIdToUse = program.id // Use the UUID (id field) for fetching semesters
+					// Also update selectedProgramId if not already set
+					if (!selectedProgramId) {
+						setSelectedProgramId(program.id)
+					}
+					console.log(`[Edit Page] Found program_id from MyJKKN: ${programIdToUse} (program_code: ${programCode})`)
+				} else {
+					console.warn(`[Edit Page] Program "${programCode}" not found in ${programs.length} programs`)
+				}
+			} else {
+				console.log(`[Edit Page] Using provided programId: ${programIdToUse}`)
+			}
+
+			if (!programIdToUse) {
+				console.error('[Edit Page] No program_id found for program:', programCode)
+				console.error('[Edit Page] Debug info:', {
+					programCode,
+					programId,
+					selectedProgramId,
+					myjkknIdsCount: myjkknIds.length
+				})
+				toast({
+					title: '❌ Error',
+					description: `Program ID not found for ${programCode}. Please check if the program exists in MyJKKN.`,
+					variant: 'destructive'
+				})
+				return
+			}
+
+			// Use the hook to fetch semesters from MyJKKN
+			// Note: The hook expects program_id to be the UUID (id field), not the CODE
+			const semesterOptions = await fetchSemestersFromMyJKKN(myjkknIds, { 
+				program_id: programIdToUse,
+				requireFilter: false 
+			})
+			
+			console.log(`[Edit Page] Fetched ${semesterOptions.length} semesters from MyJKKN hook for program ${programCode}`)
+			
+			// Convert to Semester type
+			// Note: SemesterOption from hook has semester_name, semester_number, but may not have semester_code or semester_order
+			// We need to fetch the full semester data from MyJKKN API to get these fields
+			const allSemesters: Semester[] = []
+			const seenIds = new Set<string>()
+			
+			// Fetch full semester data from MyJKKN API to get semester_code and semester_order
+			for (const myjkknInstId of myjkknIds) {
+				try {
+					const res = await fetch(`/api/myjkkn/semesters?institution_id=${myjkknInstId}&program_id=${programIdToUse}&is_active=true&limit=1000`)
+					if (res.ok) {
+						const response = await res.json()
+						const data = response.data || response || []
+						
+						const semesters = Array.isArray(data)
+							? data.filter((s: any) => s?.id && s.is_active !== false)
+							: []
+						
+						for (const sem of semesters) {
+							if (!seenIds.has(sem.id)) {
+								seenIds.add(sem.id)
+								
+								// Extract semester_number from semester_name if not provided (e.g., "Semester 2" -> 2)
+								let semesterNumber = sem.semester_number
+								if (!semesterNumber && sem.semester_name) {
+									const nameMatch = sem.semester_name.match(/(\d+)/)
+									if (nameMatch) {
+										semesterNumber = parseInt(nameMatch[1], 10)
+									}
+								}
+								// Fallback to semester_order if still not found
+								if (!semesterNumber) {
+									semesterNumber = sem.semester_order || 0
+								}
+								
+								// Ensure semester_code is always set - use semester_number as fallback
+								const semesterCode = sem.semester_code || (semesterNumber > 0 ? `SEM${semesterNumber}` : `SEM-${sem.id.substring(0, 8)}`)
+								
+								// Ensure semester_name is always set
+								const semesterName = sem.semester_name || sem.name || `Semester ${semesterNumber}`
+								
+								console.log(`[Edit Page] Processing semester:`, {
+									id: sem.id,
+									raw_semester_code: sem.semester_code,
+									raw_semester_number: sem.semester_number,
+									raw_semester_name: sem.semester_name,
+									raw_semester_order: sem.semester_order,
+									extracted_semester_number: semesterNumber,
+									final_semester_code: semesterCode,
+									final_semester_name: semesterName
+								})
+								
+								allSemesters.push({
+									id: sem.id,
+									semester_code: semesterCode,
+									semester_name: semesterName,
+									semester_number: semesterNumber,
+									semester_order: sem.semester_order || semesterNumber,
+									program_id: sem.program_id
+								})
+							}
+						}
+					}
+				} catch (err) {
+					console.error(`[Edit Page] Error fetching full semester data for institution ${myjkknInstId}:`, err)
+				}
+			}
+			
+			// If no semesters found from direct API call, fall back to using hook results
+			if (allSemesters.length === 0 && semesterOptions.length > 0) {
+				console.warn('[Edit Page] No semesters from direct API call, using hook results (may be missing semester_code/semester_order)')
+				semesterOptions.forEach((sem: any) => {
+					// Extract semester_number from semester_name if not provided (e.g., "Semester 2" -> 2)
+					let semesterNumber = sem.semester_number
+					if (!semesterNumber && sem.semester_name) {
+						const nameMatch = sem.semester_name.match(/(\d+)/)
+						if (nameMatch) {
+							semesterNumber = parseInt(nameMatch[1], 10)
+						}
+					}
+					// Fallback to semester_order if still not found
+					if (!semesterNumber) {
+						semesterNumber = sem.semester_order || 0
+					}
+					
+					const semesterCode = sem.semester_code || (semesterNumber > 0 ? `SEM${semesterNumber}` : `SEM-${sem.id.substring(0, 8)}`)
+					const semesterName = sem.semester_name || `Semester ${semesterNumber}`
+					
+					console.log(`[Edit Page] Processing semester from hook:`, {
+						id: sem.id,
+						semester_name: sem.semester_name,
+						extracted_semester_number: semesterNumber,
+						final_semester_code: semesterCode
+					})
+					
+					allSemesters.push({
+						id: sem.id,
+						semester_code: semesterCode,
+						semester_name: semesterName,
+						semester_number: semesterNumber,
+						semester_order: sem.semester_order || semesterNumber,
+						program_id: sem.program_id
+					})
+				})
+			}
+
+			// Sort by semester_order ascending, fallback to semester_number if order is not available
+			allSemesters.sort((a, b) => {
+				const orderA = a.semester_order !== undefined ? a.semester_order : a.semester_number || 0
+				const orderB = b.semester_order !== undefined ? b.semester_order : b.semester_number || 0
+				return orderA - orderB
+			})
+
+			console.log(`[Edit Page] Fetched ${allSemesters.length} semesters from MyJKKN for program ${programCode}`, allSemesters.map(s => `${s.semester_code} - ${s.semester_name}`))
+			setSemesters(allSemesters)
+
+			// Initialize semester tables
+			const tables: SemesterTableData[] = allSemesters.map((sem: Semester) => ({
+				semester: sem,
+				mappings: [],
+				isOpen: false
+			}))
+			setSemesterTables(tables)
+			console.log(`[Edit Page] Initialized ${tables.length} semester tables`, tables.map(t => `${t.semester.semester_code} - ${t.semester.semester_name}`))
 		} catch (err) {
-			console.error('Error fetching semesters:', err)
+			console.error('[Edit Page] Error fetching semesters:', err)
+			toast({
+				title: '❌ Error',
+				description: `Failed to fetch semesters: ${err instanceof Error ? err.message : 'Unknown error'}`,
+				variant: 'destructive'
+			})
 		}
 	}
 
 	const fetchCourses = async (institutionCode: string, programCode: string, regulationCode: string) => {
 		try {
-			let url = `/api/master/courses?institution_code=${institutionCode}`
-			if (regulationCode) {
-				url += `&regulation_code=${regulationCode}`
-			}
-			const res = await fetch(url)
-			if (res.ok) {
-				const data = await res.json()
-				setCourses(data)
-			}
+			// Filter courses by institution_code and regulation_code only
+			// Note: offering_department_code filter removed - courses are available across all departments
+			const data = await fetchCoursesService(institutionCode, undefined, regulationCode)
+			console.log(`[Edit Page] Fetched ${data.length} courses for ${institutionCode}, regulation: ${regulationCode}`)
+			console.log(`[Edit Page] Course IDs:`, data.map(c => c.id))
+			console.log(`[Edit Page] Course codes:`, data.map(c => c.course_code))
+			setCourses(data)
+			console.log(`[Edit Page] Courses state updated, total courses:`, data.length)
 		} catch (err) {
-			console.error('Error fetching courses:', err)
+			console.error('[Edit Page] Error fetching courses:', err)
+			toast({
+				title: '❌ Error',
+				description: `Failed to fetch courses: ${err instanceof Error ? err.message : 'Unknown error'}`,
+				variant: 'destructive'
+			})
 		}
 	}
+
+	// Debug: Log courses state changes
+	useEffect(() => {
+		console.log(`[Edit Page] Courses state changed: ${courses.length} courses`)
+		if (courses.length > 0) {
+			console.log(`[Edit Page] Course list:`, courses.map(c => `${c.course_code} - ${c.course_title}`))
+		}
+	}, [courses])
 
 	const loadExistingMappings = async () => {
 		try {
@@ -434,7 +893,7 @@ export default function CourseMappingEditPage() {
 			const res = await fetch(`/api/course-management/course-mapping?institution_code=${selectedInstitution}&program_code=${selectedProgram}&regulation_code=${selectedRegulation}`)
 
 			if (res.ok) {
-				const data = await res.json()
+				const data: CourseMapping[] = await res.json()
 				setExistingMappings(data)
 				console.log("=== DEBUG: Course Mapping Data ===")
 				console.log("Total mappings loaded:", data.length)
@@ -452,11 +911,12 @@ export default function CourseMappingEditPage() {
 				console.log("Semester table names:", semesterTables.map(t => t.semester.semester_name))
 
 				// Check if mapped courses need to be fetched (only fetch missing ones in a single batch call)
-				const mappedCourseIds = [...new Set(data.map((m: CourseMapping) => m.course_id).filter((id): id is string => Boolean(id)))]
+				const courseIds = data.map((m: CourseMapping) => m.course_id)
+				const mappedCourseIds: string[] = [...new Set(courseIds.filter((id: string | undefined): id is string => typeof id === 'string' && id.length > 0))]
 				if (mappedCourseIds.length > 0) {
 					// Get current courses to check which ones are missing
 					const currentCourseIds = new Set(courses.map(c => c.id))
-					const missingCourseIds = mappedCourseIds.filter(id => !currentCourseIds.has(id))
+					const missingCourseIds = mappedCourseIds.filter((id: string) => !currentCourseIds.has(id))
 
 					if (missingCourseIds.length > 0) {
 						try {
@@ -475,75 +935,89 @@ export default function CourseMappingEditPage() {
 				}
 
 				// Organize mappings by semester
+				// Match using the same simple approach as add page, with fallback for format differences
 				const updatedTables = semesterTables.map(table => {
-					const semesterName = table.semester.semester_name
 					const semesterCode = table.semester.semester_code
+					const semesterNumber = table.semester.semester_number
+					const semesterName = table.semester.semester_name
 
-					// Match by exact semester_code OR by semester_name (handle different formats)
-					// API generates: "JKKNCAS-UCS-SemesterI" but DB stores: "UCS-1", "UCS-2", etc.
-					const semesterMappings = data.filter((m: CourseMapping) => {
-						const dbCode = m.semester_code || ''
+					console.log(`[Edit Page] Matching semester: code="${semesterCode}", number=${semesterNumber}, name="${semesterName}"`)
 
-						// Exact match
-						if (dbCode === semesterCode) return true
+					// Primary: Exact match (same as add page)
+					let semesterMappings = data.filter((m: CourseMapping) => m.semester_code === semesterCode)
 
-						// Match by semester_name
-						if (dbCode === semesterName) return true
-
-						// Match without spaces
-						const dbCodeNoSpaces = dbCode.replace(/\s+/g, '')
-						const semesterNameNoSpaces = semesterName.replace(/\s+/g, '')
-						if (dbCodeNoSpaces === semesterNameNoSpaces) return true
-
-						// Extract semester number from semester_name (e.g., "Semester I" -> 1, "Semester II" -> 2)
-						const romanToNum: { [key: string]: string } = {
-							'I': '1', 'II': '2', 'III': '3', 'IV': '4', 'V': '5', 'VI': '6'
-						}
-						// Match Roman numerals at end (longer patterns first)
-						const semesterMatch = semesterName.match(/(VI|IV|III|II|I|V|\d+)$/i)
-						if (semesterMatch) {
-							const romanNum = semesterMatch[1].toUpperCase()
-							const arabicNum = romanToNum[romanNum] || romanNum
-
-							// Check if DB code matches pattern like "UCS-1", "UCS-2", etc.
-							// DB format: "{program_code}-{number}"
-							if (dbCode === `${selectedProgram}-${arabicNum}`) {
+					// Fallback: If no exact matches found, try flexible matching for format differences
+					// This handles cases where DB has "ECE-SEM-2" but MyJKKN returns different format
+					if (semesterMappings.length === 0) {
+						console.log(`[Edit Page] No exact match for ${semesterCode}, trying flexible matching...`)
+						console.log(`[Edit Page] Available DB semester codes:`, data.map((m: CourseMapping) => m.semester_code))
+						
+						semesterMappings = data.filter((m: CourseMapping) => {
+							const dbCode = (m.semester_code || '').trim()
+							
+							// Case-insensitive match
+							if (dbCode.toLowerCase() === semesterCode.toLowerCase()) {
+								console.log(`[Edit Page] Case-insensitive match: ${dbCode} === ${semesterCode}`)
 								return true
 							}
-
-							// Also check if DB code ends with the number
-							if (dbCode.endsWith(`-${arabicNum}`) || dbCode.endsWith(arabicNum)) {
-								return true
+							
+							// Extract trailing number and match with semester_number
+							// Check if semester_number is valid (not 0 or undefined)
+							if (semesterNumber && semesterNumber > 0) {
+								// Pattern: "ECE-SEM-2" -> extract "2"
+								const semPatternMatch = dbCode.match(/-SEM-(\d+)$/i)
+								if (semPatternMatch) {
+									const semNumber = semPatternMatch[1]
+									if (semNumber === semesterNumber.toString()) {
+										console.log(`[Edit Page] Flexible match (SEM pattern): ${dbCode} (SEM-${semNumber}) === semester ${semesterNumber}`)
+										return true
+									}
+								}
+								
+								// Generic trailing number match
+								const trailingNumberMatch = dbCode.match(/(\d+)$/)
+								if (trailingNumberMatch) {
+									const trailingNum = trailingNumberMatch[1]
+									if (trailingNum === semesterNumber.toString()) {
+										console.log(`[Edit Page] Flexible match (trailing number): ${dbCode} (ends with ${trailingNum}) === semester ${semesterNumber}`)
+										return true
+									}
+								}
+							} else {
+								console.log(`[Edit Page] Skipping flexible match for ${semesterCode} - semester_number is ${semesterNumber} (invalid)`)
 							}
+							
+							return false
+						})
+						
+						if (semesterMappings.length > 0) {
+							console.log(`[Edit Page] Found ${semesterMappings.length} mapping(s) using flexible matching for ${semesterCode}`)
+						} else {
+							console.log(`[Edit Page] No flexible matches found for ${semesterCode}`)
 						}
-
-						return false
-					})
+					} else {
+						console.log(`[Edit Page] Found ${semesterMappings.length} exact match(es) for ${semesterCode}`)
+					}
 
 					// Sort mappings by course_order
 					const sortedMappings = semesterMappings.sort((a: CourseMapping, b: CourseMapping) => {
 						return (a.course_order || 0) - (b.course_order || 0)
 					})
 
-						return {
+					// Return table with mappings (same as add page - don't create empty row if no mappings)
+					return {
 						...table,
-						mappings: sortedMappings.length > 0 ? sortedMappings : [{
-							course_id: "",
-							institution_code: selectedInstitution,
-							program_code: selectedProgram,
-							regulation_code: selectedRegulation,
-							semester_code: table.semester.semester_code,
-							course_group: "General",
-							course_order: 1,
-							annual_semester: false,
-							registration_based: false,
-							is_active: true
-						}],
+						mappings: sortedMappings,
 						isOpen: sortedMappings.length > 0
 					}
 				})
 
 				setSemesterTables(updatedTables)
+				console.log("=== DEBUG: Updated Semester Tables ===")
+				console.log("Total tables:", updatedTables.length)
+				updatedTables.forEach((table, idx) => {
+					console.log(`Table ${idx}: ${table.semester.semester_name}, mappings: ${table.mappings.length}, isOpen: ${table.isOpen}`)
+				})
 			}
 		} catch (err) {
 			console.error('Error loading existing mappings:', err)
@@ -581,6 +1055,14 @@ export default function CourseMappingEditPage() {
 				course_group: "General",
 				course_category: "",
 				course_order: prev[semesterIndex].mappings.length + 1,
+				internal_max_mark: 40,
+				internal_pass_mark: 14,
+				internal_converted_mark: 25,
+				external_max_mark: 60,
+				external_pass_mark: 26,
+				external_converted_mark: 75,
+				total_max_mark: 100,
+				total_pass_mark: 40,
 				annual_semester: false,
 				registration_based: false,
 				is_active: true
@@ -661,6 +1143,32 @@ export default function CourseMappingEditPage() {
 				const course = courseMap.get(value)
 				if (course) {
 					updated[semesterIndex].mappings[rowIndex].course_category = course.course_category || course.course_type || ''
+					
+					// Auto-fill marks details from the course (if available)
+					if ((course as any).internal_max_mark !== undefined) {
+						updated[semesterIndex].mappings[rowIndex].internal_max_mark = (course as any).internal_max_mark
+					}
+					if ((course as any).internal_pass_mark !== undefined) {
+						updated[semesterIndex].mappings[rowIndex].internal_pass_mark = (course as any).internal_pass_mark
+					}
+					if ((course as any).internal_converted_mark !== undefined) {
+						updated[semesterIndex].mappings[rowIndex].internal_converted_mark = (course as any).internal_converted_mark
+					}
+					if ((course as any).external_max_mark !== undefined) {
+						updated[semesterIndex].mappings[rowIndex].external_max_mark = (course as any).external_max_mark
+					}
+					if ((course as any).external_pass_mark !== undefined) {
+						updated[semesterIndex].mappings[rowIndex].external_pass_mark = (course as any).external_pass_mark
+					}
+					if ((course as any).external_converted_mark !== undefined) {
+						updated[semesterIndex].mappings[rowIndex].external_converted_mark = (course as any).external_converted_mark
+					}
+					if ((course as any).total_pass_mark !== undefined) {
+						updated[semesterIndex].mappings[rowIndex].total_pass_mark = (course as any).total_pass_mark
+					}
+					if ((course as any).total_max_mark !== undefined) {
+						updated[semesterIndex].mappings[rowIndex].total_max_mark = (course as any).total_max_mark
+					}
 				}
 			}
 
@@ -733,42 +1241,98 @@ export default function CourseMappingEditPage() {
 				}
 			}
 
-			// Collect all mappings (clean them to remove any nested relations)
-			const allMappings = []
-			for (const table of semesterTables) {
-				for (const mapping of table.mappings) {
-					if (mapping.course_id) {
-						// Create a clean mapping object without nested relations
-						allMappings.push({
-							id: mapping.id,
-							course_id: mapping.course_id,
-							institution_code: selectedInstitution,
-							program_code: selectedProgram,
-							regulation_code: selectedRegulation,
-							batch_code: mapping.batch_code || existingBatchCode,
-							semester_code: mapping.semester_code,
-							course_group: mapping.course_group,
-							course_category: mapping.course_category,
-							course_order: mapping.course_order,
-							annual_semester: mapping.annual_semester,
-							registration_based: mapping.registration_based,
-							is_active: mapping.is_active
+		// Validate that MyJKKN IDs are available
+		if (!selectedProgramId) {
+			toast({
+				title: '❌ Missing Program ID',
+				description: 'Program ID not found. Please refresh the page and try again.',
+				variant: 'destructive'
+			})
+			setSaving(false)
+			return
+		}
+
+		if (!selectedRegulationId) {
+			toast({
+				title: '❌ Missing Regulation ID',
+				description: 'Regulation ID not found. Please refresh the page and try again.',
+				variant: 'destructive'
+			})
+			setSaving(false)
+			return
+		}
+
+		// Collect all mappings (clean them to remove any nested relations)
+		const allMappings = []
+		for (const table of semesterTables) {
+			for (const mapping of table.mappings) {
+				if (mapping.course_id) {
+					// Validate semester_id is available
+					if (!table.semester.id) {
+						console.warn(`[Edit Page] Missing semester_id for semester: ${table.semester.semester_code}`)
+						toast({
+							title: '⚠️ Warning',
+							description: `Semester ID not found for ${table.semester.semester_name}. Skipping this mapping.`,
+							variant: 'destructive'
 						})
+						continue
 					}
+
+					// Create a clean mapping object without nested relations
+					allMappings.push({
+						id: mapping.id,
+						course_id: mapping.course_id,
+						institution_code: selectedInstitution,
+						program_code: selectedProgram,
+						program_id: selectedProgramId, // MyJKKN program.id
+						regulation_code: selectedRegulation,
+						regulation_id: selectedRegulationId, // MyJKKN regulation.id
+						batch_code: mapping.batch_code || existingBatchCode,
+						semester_code: mapping.semester_code,
+						semester_id: table.semester.id, // MyJKKN semester.id
+						course_group: mapping.course_group,
+						course_category: mapping.course_category,
+						course_order: mapping.course_order,
+						internal_pass_mark: mapping.internal_pass_mark,
+						internal_max_mark: mapping.internal_max_mark,
+						internal_converted_mark: mapping.internal_converted_mark,
+						external_pass_mark: mapping.external_pass_mark,
+						external_max_mark: mapping.external_max_mark,
+						external_converted_mark: mapping.external_converted_mark,
+						total_pass_mark: mapping.total_pass_mark,
+						total_max_mark: mapping.total_max_mark,
+						annual_semester: mapping.annual_semester,
+						registration_based: mapping.registration_based,
+						is_active: mapping.is_active
+					})
 				}
 			}
+		}
 
-			if (allMappings.length === 0) {
-				toast({
-					title: '⚠️ No Courses Selected',
-					description: 'Please select at least one course to map.',
-					variant: 'destructive'
-				})
-				return
-			}
+		if (allMappings.length === 0) {
+			toast({
+				title: '⚠️ No Courses Selected',
+				description: 'Please select at least one course to map.',
+				variant: 'destructive'
+			})
+			setSaving(false)
+			return
+		}
 
-			// Send all mappings to API (handles UPSERT - insert or update)
-			console.log('Saving mappings (UPSERT):', allMappings)
+		// Log IDs being sent for debugging
+		console.log('[Edit Page] Saving mappings with MyJKKN IDs:', {
+			program_id: selectedProgramId,
+			regulation_id: selectedRegulationId,
+			totalMappings: allMappings.length,
+			sampleMapping: allMappings[0] ? {
+				program_id: allMappings[0].program_id,
+				regulation_id: allMappings[0].regulation_id,
+				semester_id: allMappings[0].semester_id
+			} : null
+		})
+
+		// Send all mappings to API (handles UPSERT - insert or update)
+		console.log('Saving mappings (UPSERT):', allMappings)
 			const res = await fetch('/api/course-management/course-mapping', {
 				method: 'POST',
 				headers: { 'Content-Type': 'application/json' },
@@ -843,12 +1407,38 @@ export default function CourseMappingEditPage() {
 		try {
 			setLoading(true)
 
-			const url = `/api/course-management/course-mapping/report?institution_code=${selectedInstitution}&program_code=${selectedProgram}&regulation_code=${selectedRegulation}`
+			// Validate required selections
+			if (!selectedInstitution || !selectedProgram || !selectedRegulation) {
+				toast({
+					title: '⚠️ Missing Selection',
+					description: 'Please select Institution, Program, and Regulation before generating the report.',
+					variant: 'destructive'
+				})
+				return
+			}
+
+			// Build URL with form selections
+			// Note: These are form-selected parameters, not from global institution filter
+			const baseUrl = `/api/course-management/course-mapping/report`
+			const params = new URLSearchParams({
+				institution_code: selectedInstitution,
+				program_code: selectedProgram,
+				regulation_code: selectedRegulation
+			})
+			const url = `${baseUrl}?${params.toString()}`
 
 			const response = await fetch(url)
 
 			if (!response.ok) {
-				throw new Error('Failed to fetch report data')
+				const errorData = await response.json().catch(() => ({}))
+				const errorMessage = errorData.error || `Failed to fetch report data (${response.status})`
+				
+				toast({
+					title: '❌ Generation Failed',
+					description: errorMessage,
+					variant: 'destructive'
+				})
+				return
 			}
 
 			const reportData = await response.json()
@@ -856,7 +1446,7 @@ export default function CourseMappingEditPage() {
 			if (!reportData.mappings || reportData.mappings.length === 0) {
 				toast({
 					title: '⚠️ No Data',
-					description: 'No course mappings found.',
+					description: 'No course mappings found for the selected criteria.',
 					variant: 'destructive'
 				})
 				return
@@ -867,12 +1457,13 @@ export default function CourseMappingEditPage() {
 			toast({
 				title: '✅ PDF Generated',
 				description: 'Course mapping report downloaded successfully.',
-				className: 'bg-green-50 border-green-200 text-green-800'
+				className: 'bg-green-50 border-green-200 text-green-800 dark:bg-green-900/20 dark:border-green-800 dark:text-green-200'
 			})
 		} catch (error) {
+			console.error('PDF generation error:', error)
 			toast({
 				title: '❌ Generation Failed',
-				description: 'Failed to generate PDF report.',
+				description: error instanceof Error ? error.message : 'Failed to generate PDF report.',
 				variant: 'destructive'
 			})
 		} finally {
@@ -1111,14 +1702,23 @@ export default function CourseMappingEditPage() {
 						}
 					}
 
+					// Find semester from semesterTables to get semester_id
+					const semesterTable = semesterTables.find(t => 
+						t.semester.semester_code === semesterCode || 
+						t.semester.semester_name.toLowerCase() === semesterCode.toLowerCase()
+					)
+
 					// Build mapping payload
 					const mappingPayload: any = {
 						course_id: course.id,
 						institution_code: row['Institution Code'] || row.institution_code || selectedInstitution,
 						program_code: row['Program Code'] || row.program_code || selectedProgram,
+						program_id: selectedProgramId, // MyJKKN program.id
 						regulation_code: row['Regulation Code'] || row.regulation_code || selectedRegulation,
+						regulation_id: selectedRegulationId, // MyJKKN regulation.id
 						batch_code: rowBatchCode,
 						semester_code: semesterCode,
+						semester_id: semesterTable?.semester.id || "", // MyJKKN semester.id
 						course_category: row['Course Category'] || row.course_category || course.course_category || '',
 						course_group: row['Course Group'] || row.course_group || 'General',
 						course_order: Number(row['Course Order'] || row.course_order) || 1,
@@ -1256,6 +1856,25 @@ export default function CourseMappingEditPage() {
 		}
 	}
 
+	// Show loading state while context is initializing
+	if (!institutionContextReady) {
+		return (
+			<SidebarProvider>
+				<AppSidebar />
+				<SidebarInset className="flex flex-col min-h-screen">
+					<AppHeader />
+					<div className="flex flex-1 flex-col gap-4 p-4 pt-0 items-center justify-center">
+						<div className="text-center">
+							<RefreshCw className="h-8 w-8 animate-spin mx-auto text-muted-foreground" />
+							<p className="mt-2 text-muted-foreground">Loading...</p>
+						</div>
+					</div>
+					<AppFooter />
+				</SidebarInset>
+			</SidebarProvider>
+		)
+	}
+
 	return (
 		<SidebarProvider>
 			<AppSidebar />
@@ -1273,7 +1892,7 @@ export default function CourseMappingEditPage() {
 								<BreadcrumbSeparator />
 								<BreadcrumbItem>
 									<BreadcrumbLink asChild>
-										<Link href="/course-mapping-index">Course Mapping Index</Link>
+										<Link href="/course-management/course-mapping-index">Course Mapping Index</Link>
 									</BreadcrumbLink>
 								</BreadcrumbItem>
 								<BreadcrumbSeparator />
@@ -1294,7 +1913,7 @@ export default function CourseMappingEditPage() {
 										asChild
 										className="bg-green-600 hover:bg-green-700 text-white h-8 text-sm px-2"
 									>
-										<Link href="/course-mapping-index">
+										<Link href="/course-management/course-mapping-index">
 											<ArrowLeft className="h-3 w-3 mr-1" />
 											Back to Index
 										</Link>
@@ -1376,13 +1995,22 @@ export default function CourseMappingEditPage() {
 					)}
 
 					{/* Semester Tables */}
-					{!initialLoading && semesterTables.length > 0 && (
+					{!initialLoading && selectedRegulation && semesterTables.length > 0 && (
 						<div className="space-y-3 relative">
-							{courses.length > 0 && (
+							{courses.length > 0 ? (
 								<div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg p-2">
 									<div className="flex items-center justify-between">
 										<span className="text-sm text-blue-600 dark:text-blue-400">
 											{courses.length} course{courses.length !== 1 ? 's' : ''} available for selection
+										</span>
+									</div>
+								</div>
+							) : (
+								<div className="bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-lg p-2">
+									<div className="flex items-center gap-2">
+										<Loader2 className="h-4 w-4 animate-spin text-yellow-600" />
+										<span className="text-sm text-yellow-600 dark:text-yellow-400">
+											No courses loaded. Please check if courses exist for institution "{selectedInstitution}" and regulation "{selectedRegulation}".
 										</span>
 									</div>
 								</div>
@@ -1406,7 +2034,8 @@ export default function CourseMappingEditPage() {
 													</div>
 													<Button
 														size="sm"
-														className="h-7 text-sm px-2"
+														variant="outline"
+														className="h-7 text-[11px] px-2"
 														onClick={(e) => {
 															e.stopPropagation()
 															addCourseRow(semIndex)
@@ -1420,52 +2049,76 @@ export default function CourseMappingEditPage() {
 
 											<CollapsibleContent>
 												<div className="mt-4 border rounded-lg bg-background shadow-sm">
-													<div className="overflow-x-auto overflow-y-auto" style={{ maxHeight: "440px" }}>
-														<Table>
-															<TableHeader className="sticky top-0 z-[5] bg-slate-50 dark:bg-slate-900/50">
+													<div className="overflow-x-auto overflow-y-auto relative isolate scrollbar-thin scrollbar-thumb-gray-400 scrollbar-track-gray-100 dark:scrollbar-thumb-gray-600 dark:scrollbar-track-gray-800 pr-2" style={{ maxHeight: "440px" }}>
+														<Table className="mr-2">
+															<TableHeader className="sticky top-0 z-[5] bg-slate-50 dark:bg-slate-900/50 border-b shadow-sm">
 																<TableRow>
-																	<TableHead className="w-[50px] text-base font-semibold h-9">#</TableHead>
-																	<TableHead className="w-[180px] text-base font-semibold h-9">Course Code</TableHead>
-																	<TableHead className="w-[220px] text-base font-semibold h-9">Course Name</TableHead>
-																	<TableHead className="w-[100px] text-base font-semibold h-9">Type</TableHead>
-																	<TableHead className="w-[100px] text-base font-semibold h-9">Part</TableHead>
-																	<TableHead className="w-[150px] text-base font-semibold h-9">Category</TableHead>
-																	<TableHead className="w-[80px] text-base font-semibold h-9">Order</TableHead>
-																	<TableHead className="text-center w-[100px] text-base font-semibold h-9">Annual</TableHead>
-																	<TableHead className="text-center w-[120px] text-base font-semibold h-9">
+																	<TableHead className="w-[50px] text-[11px] h-8">#</TableHead>
+																	<TableHead className="w-[180px] text-[11px] h-8">Course Code</TableHead>
+																	<TableHead className="w-[220px] text-[11px] h-8">Course Name</TableHead>
+																	<TableHead className="w-[150px] text-[11px] h-8">Course Category</TableHead>
+																	<TableHead className="w-[120px] text-[11px] h-8">Course Group</TableHead>
+																	<TableHead className="w-[80px] text-[11px] h-8">Order</TableHead>
+																	<TableHead className="w-[200px] text-center text-[11px] h-8" colSpan={3}>Internal Marks</TableHead>
+																	<TableHead className="w-[200px] text-center text-[11px] h-8" colSpan={3}>External Marks</TableHead>
+																	<TableHead className="w-[150px] text-center text-[11px] h-8" colSpan={2}>Total</TableHead>
+																	<TableHead className="w-[100px] text-center text-[11px] h-8">Annual</TableHead>
+																	<TableHead className="w-[120px] text-center text-[11px] h-8">
 																		<div className="flex flex-col items-center gap-1">
-																			<span className="text-sm">Registration</span>
+																			<span className="text-[10px]">Registration</span>
 																			<Checkbox
 																				checked={selectAllRegistration[`semester_${semIndex}`] || false}
 																				onCheckedChange={() => toggleAllRegistration(semIndex)}
+																				aria-label="Select all registration based"
 																				className="h-3 w-3"
 																			/>
 																		</div>
 																	</TableHead>
-																	<TableHead className="text-center w-[100px] text-base font-semibold h-9">
+																	<TableHead className="w-[100px] text-center text-[11px] h-8">
 																		<div className="flex flex-col items-center gap-1">
-																			<span className="text-sm">Active</span>
+																			<span className="text-[10px]">Active</span>
 																			<Checkbox
 																				checked={selectAllStatus[`semester_${semIndex}`] !== false}
 																				onCheckedChange={() => toggleAllStatus(semIndex)}
+																				aria-label="Select all active"
 																				className="h-3 w-3"
 																			/>
 																		</div>
 																	</TableHead>
-																	<TableHead className="w-[80px] text-base font-semibold h-9">Action</TableHead>
+																	<TableHead className="w-[80px] text-[11px] h-8">Action</TableHead>
+																</TableRow>
+																<TableRow className="border-b">
+																	<TableHead className="py-2"></TableHead>
+																	<TableHead className="py-2"></TableHead>
+																	<TableHead className="py-2"></TableHead>
+																	<TableHead className="py-2"></TableHead>
+																	<TableHead className="py-2"></TableHead>
+																	<TableHead className="py-2"></TableHead>
+																	<TableHead className="text-xs text-center py-2">Pass</TableHead>
+																	<TableHead className="text-xs text-center py-2">Max</TableHead>
+																	<TableHead className="text-xs text-center py-2">Convert</TableHead>
+																	<TableHead className="text-xs text-center py-2">Pass</TableHead>
+																	<TableHead className="text-xs text-center py-2">Max</TableHead>
+																	<TableHead className="text-xs text-center py-2">Convert</TableHead>
+																	<TableHead className="text-xs text-center py-2">Pass</TableHead>
+																	<TableHead className="text-xs text-center py-2">Max</TableHead>
+																	<TableHead className="py-2"></TableHead>
+																	<TableHead className="py-2"></TableHead>
+																	<TableHead className="py-2"></TableHead>
+																	<TableHead className="py-2"></TableHead>
 																</TableRow>
 															</TableHeader>
 															<TableBody>
 																{table.mappings.length === 0 ? (
 																	<TableRow>
-																		<TableCell colSpan={11} className="text-center text-sm text-muted-foreground py-4">
+																		<TableCell colSpan={18} className="text-center text-muted-foreground py-4">
 																			No courses mapped. Click "Add Course" to start.
 																		</TableCell>
 																	</TableRow>
 																) : (
 																	table.mappings.map((mapping, rowIndex) => (
 																		<CourseTableRow
-																			key={`${semIndex}-${mapping.id || `new-${rowIndex}`}`}
+																			key={`${semIndex}-${mapping.id || `new-${rowIndex}`}-${rowIndex}`}
 																			mapping={mapping}
 																			rowIndex={rowIndex}
 																			courseMap={courseMap}
@@ -1499,3 +2152,4 @@ export default function CourseMappingEditPage() {
 		</SidebarProvider>
 	)
 }
+

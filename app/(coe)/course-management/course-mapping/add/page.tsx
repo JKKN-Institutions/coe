@@ -2,6 +2,7 @@
 
 import { useMemo, useState, useEffect } from "react"
 import { useSearchParams } from "next/navigation"
+import { useInstitutionFilter } from "@/hooks/use-institution-filter"
 import { AppSidebar } from "@/components/layout/app-sidebar"
 import { AppHeader } from "@/components/layout/app-header"
 import { AppFooter } from "@/components/layout/app-footer"
@@ -31,13 +32,10 @@ import { cn } from "@/lib/utils"
 import type { CourseMapping, Semester, SemesterTableData } from "@/types/course-mapping"
 import { COURSE_GROUPS } from "@/types/course-mapping"
 
-// Import service functions
+// Import service functions (only non-MyJKKN services needed)
 import {
 	fetchInstitutions as fetchInstitutionsService,
-	fetchPrograms as fetchProgramsService,
-	fetchSemesters as fetchSemestersService,
 	fetchCourses as fetchCoursesService,
-	fetchRegulations as fetchRegulationsService,
 	loadExistingMappings as loadExistingMappingsService,
 	saveCourseMappings,
 	deleteCourseMapping,
@@ -50,18 +48,47 @@ export default function CourseMappingAddPage() {
 	const [saving, setSaving] = useState(false)
 	const { toast } = useToast()
 
+	// Institution filter hook for multi-tenant filtering
+	const {
+		filter,
+		isReady,
+		appendToUrl,
+		getInstitutionIdForCreate,
+		getInstitutionCodeForCreate,
+		getMyJKKNInstitutionIdsForCreate,
+		mustSelectInstitution,
+		shouldFilter,
+		institutionCode,
+		institutionId,
+		myjkknInstitutionIds
+	} = useInstitutionFilter()
+
 	// Parent form state (NO BATCH)
 	const [selectedInstitution, setSelectedInstitution] = useState("")
 	const [selectedProgram, setSelectedProgram] = useState("")
 	const [selectedRegulation, setSelectedRegulation] = useState("")
-	const [selectedOfferingDepartment, setSelectedOfferingDepartment] = useState("")
 
 	// Dropdown data states
 	const [institutions, setInstitutions] = useState<any[]>([])
 	const [programs, setPrograms] = useState<any[]>([])
+	const [programsLoading, setProgramsLoading] = useState(false)
 	const [courses, setCourses] = useState<any[]>([])
 	const [regulations, setRegulations] = useState<any[]>([])
+	const [regulationsLoading, setRegulationsLoading] = useState(false)
 	const [semesters, setSemesters] = useState<Semester[]>([])
+	const [semestersLoading, setSemestersLoading] = useState(false)
+
+	// Computed values: get codes from selected IDs
+	// selectedProgram and selectedRegulation now store IDs (UUIDs) from MyJKKN
+	const selectedProgramCode = useMemo(() => {
+		const program = programs.find(p => p.id === selectedProgram)
+		return program?.program_code || ""
+	}, [selectedProgram, programs])
+
+	const selectedRegulationCode = useMemo(() => {
+		const regulation = regulations.find(r => r.id === selectedRegulation)
+		return regulation?.regulation_code || ""
+	}, [selectedRegulation, regulations])
 
 	// Semester tables data
 	const [semesterTables, setSemesterTables] = useState<SemesterTableData[]>([])
@@ -92,6 +119,8 @@ export default function CourseMappingAddPage() {
 
 	// Fetch institutions on mount and handle URL parameters
 	useEffect(() => {
+		if (!isReady) return
+
 		fetchInstitutions()
 
 		// Pre-populate from URL parameters (NO BATCH)
@@ -99,12 +128,22 @@ export default function CourseMappingAddPage() {
 		const program = searchParams.get('program')
 		const regulation = searchParams.get('regulation')
 
-		if (institution) setSelectedInstitution(institution)
+		// Auto-populate institution from context:
+		// - If URL has institution param, use it
+		// - If mustSelectInstitution is false (specific institution selected globally), auto-fill from context
+		// - If mustSelectInstitution is true ("All Institutions" selected), leave empty for user to select
+		let autoInstitution = institution || ""
+		if (!autoInstitution && !mustSelectInstitution) {
+			autoInstitution = getInstitutionCodeForCreate() || ""
+		}
+
+		if (autoInstitution) setSelectedInstitution(autoInstitution)
 		if (program) setSelectedProgram(program)
 		if (regulation) setSelectedRegulation(regulation)
-	}, [])
+	}, [isReady, filter, mustSelectInstitution])
 
 	// Fetch programs when institution changes
+	// fetchPrograms has fallback to use myjkknInstitutionIds from hook, so it works even if institutions array is empty
 	useEffect(() => {
 		if (selectedInstitution) {
 			fetchPrograms(selectedInstitution)
@@ -113,23 +152,20 @@ export default function CourseMappingAddPage() {
 			setSelectedRegulation("")
 			setSemesterTables([])
 		}
-	}, [selectedInstitution])
+	}, [selectedInstitution, institutions, myjkknInstitutionIds])
 
 	// Fetch semesters when program changes (NO BATCH)
+	// Note: selectedProgram now stores program_id (UUID) from MyJKKN
 	useEffect(() => {
-		if (selectedProgram) {
-			// Find the selected program to get its offering_department_code
-			const program = programs.find(p => p.program_code === selectedProgram)
-			const offeringDept = program?.offering_department_code || ""
-			setSelectedOfferingDepartment(offeringDept)
-
+		if (selectedProgram && selectedProgramCode) {
+			// Use program_id directly to fetch semesters from MyJKKN
 			fetchSemesters(selectedProgram)
-			// Pass offering department code for course filtering
-			fetchCourses(selectedInstitution, selectedProgram, selectedRegulation, offeringDept)
-			fetchRegulations(selectedInstitution, selectedProgram)
+			// Fetch courses filtered by institution and regulation only (no department filter)
+			fetchCourses(selectedInstitution, selectedProgramCode, selectedRegulationCode)
+			fetchRegulations(selectedInstitution, selectedProgramCode)
 			setSemesterTables([])
 		}
-	}, [selectedProgram, selectedInstitution, programs])
+	}, [selectedProgram, selectedProgramCode, selectedInstitution, programs])
 
 	// Load existing mappings when regulation and program are selected (NO BATCH)
 	useEffect(() => {
@@ -140,10 +176,10 @@ export default function CourseMappingAddPage() {
 
 	// Refetch courses when regulation changes
 	useEffect(() => {
-		if (selectedRegulation && selectedInstitution && selectedProgram) {
-			fetchCourses(selectedInstitution, selectedProgram, selectedRegulation, selectedOfferingDepartment)
+		if (selectedRegulationCode && selectedInstitution && selectedProgramCode) {
+			fetchCourses(selectedInstitution, selectedProgramCode, selectedRegulationCode)
 		}
-	}, [selectedRegulation, selectedOfferingDepartment])
+	}, [selectedRegulationCode, selectedProgramCode])
 
 	const fetchInstitutions = async () => {
 		try {
@@ -154,61 +190,258 @@ export default function CourseMappingAddPage() {
 		}
 	}
 
+	// Fetch programs from MyJKKN API using myjkkn_institution_ids (direct UUID lookup)
 	const fetchPrograms = async (institutionCode: string) => {
 		try {
-			const data = await fetchProgramsService(institutionCode)
-			setPrograms(data)
+			setProgramsLoading(true)
+			console.log(`[CourseMappingAdd] Fetching programs for institution: ${institutionCode}`)
+			console.log(`[CourseMappingAdd] Institutions array length: ${institutions.length}`)
+			console.log(`[CourseMappingAdd] myjkknInstitutionIds from hook:`, myjkknInstitutionIds)
+			
+			// Determine myjkkn_institution_ids to use:
+			// 1) Prefer institutions array (works for both super_admin and normal users)
+			// 2) Fall back to myjkknInstitutionIds from session when institutions are not loaded
+			let myjkknIds: string[] = []
+
+			// Try to resolve from institutions list first
+			const institution = institutions.find((i: any) => i.institution_code === institutionCode)
+			if (institution?.myjkkn_institution_ids && institution.myjkkn_institution_ids.length > 0) {
+				myjkknIds = institution.myjkkn_institution_ids
+				console.log(`[CourseMappingAdd] Using myjkkn_institution_ids from institutions array:`, myjkknIds)
+			} else if (myjkknInstitutionIds && myjkknInstitutionIds.length > 0) {
+				// Fallback: use IDs from session context (normal users)
+				myjkknIds = myjkknInstitutionIds
+				console.log(`[CourseMappingAdd] Using myjkkn_institution_ids from hook:`, myjkknIds)
+			}
+
+			if (myjkknIds.length === 0) {
+				// Per institution-filter skill: MyJKKN must always be scoped by myjkkn_institution_ids.
+				// If these IDs are not configured, we intentionally return no programs
+				// so that cross-institution data is never shown.
+				console.warn('[CourseMappingAdd] No myjkkn_institution_ids found for institution:', institutionCode)
+				setPrograms([])
+				return
+			}
+
+			// Fetch programs for each MyJKKN institution ID and combine/deduplicate
+			const allPrograms: any[] = []
+			const seenCodes = new Set<string>()
+
+			for (const myjkknInstId of myjkknIds) {
+				try {
+					const res = await fetch(`/api/myjkkn/programs?institution_id=${myjkknInstId}&is_active=true&limit=1000`)
+					if (res.ok) {
+						const response = await res.json()
+						const data = response.data || response || []
+
+						// Client-side filter by institution_id and deduplicate by program_id (CODE field in MyJKKN)
+						// Note: In MyJKKN, program_id is the CODE (like "BCA"), not a UUID
+						const programs = Array.isArray(data)
+							? data.filter((p: any) => (p?.program_id || p?.program_code) && p.is_active !== false && p.institution_id === myjkknInstId)
+							: []
+
+						for (const prog of programs) {
+							// Use program_id as the unique code (MyJKKN uses program_id as CODE field)
+							const programCode = prog.program_id || prog.program_code
+							if (programCode && !seenCodes.has(programCode)) {
+								seenCodes.add(programCode)
+								allPrograms.push({
+									id: prog.id,
+									program_code: programCode,
+									program_name: prog.program_name || prog.name || programCode,
+									department_id: prog.department_id,
+									degree_id: prog.degree_id,
+									offering_department_code: prog.department_code
+								})
+							}
+						}
+					}
+				} catch (err) {
+					console.error(`Error fetching programs for institution ${myjkknInstId}:`, err)
+				}
+			}
+
+			console.log(`[CourseMappingAdd] Fetched ${allPrograms.length} unique programs for ${institutionCode}`)
+			setPrograms(allPrograms)
 		} catch (err) {
-			console.error('Error fetching programs:', err)
+			console.error('Error fetching programs from MyJKKN:', err)
+			setPrograms([])
+		} finally {
+			setProgramsLoading(false)
 		}
 	}
 
-	const fetchSemesters = async (programCode: string) => {
+	// Fetch semesters from MyJKKN API using program_id and myjkkn_institution_ids
+	const fetchSemesters = async (programId: string) => {
 		try {
-			const data = await fetchSemestersService(programCode)
-			setSemesters(data)
+			setSemestersLoading(true)
+			// Priority: Use myjkknInstitutionIds from hook (session context) when available
+			// This handles normal users whose institution comes from session
+			// Fall back to looking up from institutions array for super_admin switching
+			let myjkknIds: string[] = []
+
+			if (myjkknInstitutionIds && myjkknInstitutionIds.length > 0) {
+				// Normal user: use myjkknInstitutionIds directly from session context
+				myjkknIds = myjkknInstitutionIds
+			} else {
+				// Super admin switching: look up from institutions array
+				const institution = institutions.find((i: any) => i.institution_code === selectedInstitution)
+				myjkknIds = institution?.myjkkn_institution_ids || []
+			}
+
+			if (myjkknIds.length === 0) {
+				console.warn('No myjkkn_institution_ids found for institution:', selectedInstitution)
+				setSemesters([])
+				return
+			}
+
+			// Fetch semesters for each MyJKKN institution ID and combine/deduplicate
+			const allSemesters: Semester[] = []
+			const seenIds = new Set<string>()
+
+			for (const myjkknInstId of myjkknIds) {
+				try {
+					const res = await fetch(`/api/myjkkn/semesters?institution_id=${myjkknInstId}&program_id=${programId}&is_active=true&limit=1000`)
+					if (res.ok) {
+						const response = await res.json()
+						const data = response.data || response || []
+
+						const semesters = Array.isArray(data)
+							? data.filter((s: any) => s?.id && s.is_active !== false)
+							: []
+
+						for (const sem of semesters) {
+							if (!seenIds.has(sem.id)) {
+								seenIds.add(sem.id)
+								allSemesters.push({
+									id: sem.id,
+									semester_code: sem.semester_code || `SEM${sem.semester_number}`,
+									semester_name: sem.semester_name || `Semester ${sem.semester_number}`,
+									semester_number: sem.semester_number,
+									semester_order: sem.semester_order,
+									program_id: sem.program_id
+								})
+							}
+						}
+					}
+				} catch (err) {
+					console.error(`Error fetching semesters for institution ${myjkknInstId}:`, err)
+				}
+			}
+
+			// Sort by semester_order ascending, fallback to semester_number if order is not available
+			allSemesters.sort((a, b) => {
+				const orderA = a.semester_order !== undefined ? a.semester_order : a.semester_number || 0
+				const orderB = b.semester_order !== undefined ? b.semester_order : b.semester_number || 0
+				return orderA - orderB
+			})
+
+			console.log(`[CourseMappingAdd] Fetched ${allSemesters.length} semesters for program ${programId}`)
+			setSemesters(allSemesters)
 
 			// Initialize semester tables
-			const tables: SemesterTableData[] = data.map((sem: Semester) => ({
+			const tables: SemesterTableData[] = allSemesters.map((sem: Semester) => ({
 				semester: sem,
 				mappings: [],
 				isOpen: false
 			}))
 			setSemesterTables(tables)
 		} catch (err) {
-			console.error('Error fetching semesters:', err)
+			console.error('Error fetching semesters from MyJKKN:', err)
+			setSemesters([])
+		} finally {
+			setSemestersLoading(false)
 		}
 	}
 
-	const fetchCourses = async (institutionCode: string, programCode: string, regulationCode?: string, offeringDepartmentCode?: string) => {
+	const fetchCourses = async (institutionCode: string, programCode: string, regulationCode?: string) => {
 		try {
-			// Filter courses by institution_code, offering_department_code, and regulation_code
-			// Note: programCode is passed but not used since courses table doesn't have program_code column
-			const data = await fetchCoursesService(institutionCode, offeringDepartmentCode, regulationCode)
+			// Filter courses by institution_code and regulation_code only
+			// Note: offering_department_code filter removed - courses are available across all departments
+			const data = await fetchCoursesService(institutionCode, undefined, regulationCode)
+			console.log(`[CourseMappingAdd] Fetched ${data.length} courses for ${institutionCode}, regulation: ${regulationCode}`)
 			setCourses(data)
 		} catch (err) {
 			console.error('Error fetching courses:', err)
 		}
 	}
 
+	// Fetch regulations from MyJKKN API using myjkkn_institution_ids (direct UUID lookup)
 	const fetchRegulations = async (institutionCode: string, programCode: string) => {
 		try {
-			const data = await fetchRegulationsService(institutionCode, programCode)
-			setRegulations(data)
+			setRegulationsLoading(true)
+			// Determine myjkkn_institution_ids to use:
+			// 1) Prefer institutions array (works for both super_admin and normal users)
+			// 2) Fall back to myjkknInstitutionIds from session when institutions are not loaded
+			let myjkknIds: string[] = []
+
+			// Try to resolve from institutions list first
+			const institution = institutions.find((i: any) => i.institution_code === institutionCode)
+			if (institution?.myjkkn_institution_ids && institution.myjkkn_institution_ids.length > 0) {
+				myjkknIds = institution.myjkkn_institution_ids
+			} else if (myjkknInstitutionIds && myjkknInstitutionIds.length > 0) {
+				// Fallback: use IDs from session context (normal users)
+				myjkknIds = myjkknInstitutionIds
+			}
+
+			if (myjkknIds.length === 0) {
+				console.warn('No myjkkn_institution_ids found for institution:', institutionCode)
+				setRegulations([])
+				return
+			}
+
+			// Fetch regulations for each MyJKKN institution ID and combine/deduplicate
+			const allRegulations: any[] = []
+			const seenCodes = new Set<string>()
+
+			for (const myjkknInstId of myjkknIds) {
+				try {
+					const res = await fetch(`/api/myjkkn/regulations?institution_id=${myjkknInstId}&is_active=true&limit=1000`)
+					if (res.ok) {
+						const response = await res.json()
+						const data = response.data || response || []
+
+						// Client-side filter by institution_id and deduplicate by regulation_code
+						const regulations = Array.isArray(data)
+							? data.filter((r: any) => r?.regulation_code && r.is_active !== false && r.institution_id === myjkknInstId)
+							: []
+
+						for (const reg of regulations) {
+							if (!seenCodes.has(reg.regulation_code)) {
+								seenCodes.add(reg.regulation_code)
+								allRegulations.push({
+									id: reg.id,
+									regulation_code: reg.regulation_code,
+									regulation_name: reg.regulation_name || reg.name || reg.regulation_code,
+									effective_year: reg.effective_year
+								})
+							}
+						}
+					}
+				} catch (err) {
+					console.error(`Error fetching regulations for institution ${myjkknInstId}:`, err)
+				}
+			}
+
+			console.log(`[CourseMappingAdd] Fetched ${allRegulations.length} unique regulations for ${institutionCode}`)
+			setRegulations(allRegulations)
 		} catch (err) {
-			console.error('Error fetching regulations:', err)
+			console.error('Error fetching regulations from MyJKKN:', err)
+			setRegulations([])
+		} finally {
+			setRegulationsLoading(false)
 		}
 	}
 
 	const loadExistingMappings = async () => {
-		if (!selectedInstitution || !selectedProgram || !selectedRegulation) return
+		if (!selectedInstitution || !selectedProgramCode || !selectedRegulationCode) return
 
 		try {
 			setLoading(true)
 			const data = await loadExistingMappingsService(
 				selectedInstitution,
-				selectedProgram,
-				selectedRegulation
+				selectedProgramCode,
+				selectedRegulationCode
 			)
 			setExistingMappings(data)
 
@@ -239,8 +472,8 @@ export default function CourseMappingAddPage() {
 					mappings: semesterMappings.length > 0 ? semesterMappings : [{
 						course_id: "",
 						institution_code: selectedInstitution,
-						program_code: selectedProgram,
-						regulation_code: selectedRegulation,
+						program_code: selectedProgramCode,
+						regulation_code: selectedRegulationCode,
 						semester_code: table.semester.semester_code,
 						course_group: "General",
 						course_order: 1,
@@ -277,14 +510,14 @@ export default function CourseMappingAddPage() {
 		const newRow: CourseMapping = {
 			course_id: "",
 			institution_code: selectedInstitution,
-			program_code: selectedProgram,
-			regulation_code: selectedRegulation,
+			program_code: selectedProgramCode,
+			regulation_code: selectedRegulationCode,
 			semester_code: semesterTables[semesterIndex].semester.semester_code,
 			course_group: "General",
 			course_category: "",
 			course_order: semesterTables[semesterIndex].mappings.length + 1,
 			internal_max_mark: 40,
-			internal_pass_mark: 14,
+			internal_pass_mark: 20,
 			internal_converted_mark: 25,
 			external_max_mark: 60,
 			external_pass_mark: 26,
@@ -492,11 +725,19 @@ export default function CourseMappingAddPage() {
 			for (const table of semesterTables) {
 				for (const mapping of table.mappings) {
 					if (mapping.course_id) { // Only save rows with selected courses
+						// Get program, regulation, and semester IDs from MyJKKN
+						const program = programs.find(p => p.id === selectedProgram)
+						const regulation = regulations.find(r => r.id === selectedRegulation)
+						const semester = table.semester // semester.id is already MyJKKN semester UUID
+						
 						allMappings.push({
 							...mapping,
 							institution_code: selectedInstitution,
-							program_code: selectedProgram,
-							regulation_code: selectedRegulation
+							program_code: selectedProgramCode,
+							program_id: program?.id || "", // MyJKKN program.id
+							regulation_code: selectedRegulationCode,
+							regulation_id: regulation?.id || "", // MyJKKN regulation.id
+							semester_id: semester?.id || "" // MyJKKN semester.id
 						})
 					}
 				}
@@ -510,6 +751,28 @@ export default function CourseMappingAddPage() {
 				})
 				return
 			}
+
+			// #region agent log
+			fetch('http://127.0.0.1:7242/ingest/051aa8a5-db6b-4111-b71d-487d23436391', {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({
+					sessionId: 'debug-session',
+					runId: 'pre-fix',
+					hypothesisId: 'H1',
+					location: 'course-mapping/add/page.tsx:saveAllMappings',
+					message: 'Saving course mappings payload',
+					data: {
+						selectedInstitution,
+						selectedProgramCode,
+						selectedRegulationCode,
+						mappingsCount: allMappings.length,
+						sampleMapping: allMappings[0] || null
+					},
+					timestamp: Date.now()
+				})
+			}).catch(() => {})
+			// #endregion
 
 			// First, try to delete existing mappings (if any)
 			let deletionErrors = []
@@ -536,6 +799,25 @@ export default function CourseMappingAddPage() {
 
 			// Save all mappings in bulk using service
 			const result = await saveCourseMappings(allMappings)
+
+			// #region agent log
+			fetch('http://127.0.0.1:7242/ingest/051aa8a5-db6b-4111-b71d-487d23436391', {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({
+					sessionId: 'debug-session',
+					runId: 'pre-fix',
+					hypothesisId: 'H2',
+					location: 'course-mapping/add/page.tsx:saveAllMappings',
+					message: 'Result from saveCourseMappings',
+					data: {
+						success: result?.success ?? null,
+						error: result?.error ?? null
+					},
+					timestamp: Date.now()
+				})
+			}).catch(() => {})
+			// #endregion
 
 			if (result.success) {
 				toast({
@@ -658,8 +940,8 @@ export default function CourseMappingAddPage() {
 		// Sheet 1: Template with sample data
 		const sample = [{
 			'Institution Code *': selectedInstitution || 'JKKN',
-			'Program Code *': selectedProgram || 'BCA',
-			'Regulation Code *': selectedRegulation || 'R2021',
+			'Program Code *': selectedProgramCode || 'BCA',
+			'Regulation Code *': selectedRegulationCode || 'R2021',
 			'Semester Code *': 'SEM1',
 			'Course Code *': 'BCA101',
 			'Course Group': 'General',
@@ -1025,51 +1307,66 @@ export default function CourseMappingAddPage() {
 							</div>
 						</CardHeader>
 						<CardContent className="p-3 pt-0">
-							<div className="grid grid-cols-1 md:grid-cols-4 gap-3">
-								<div className="space-y-2">
-									<Label className="text-xs">Institution <span className="text-red-500">*</span></Label>
-									<Select value={selectedInstitution} onValueChange={setSelectedInstitution}>
-										<SelectTrigger className="h-7 text-[11px]">
-											<SelectValue placeholder="Select institution" />
-										</SelectTrigger>
-										<SelectContent>
-											{institutions.map(inst => (
-												<SelectItem key={inst.id} value={inst.institution_code} className="text-[11px]">
-													{inst.name}
-												</SelectItem>
-											))}
-										</SelectContent>
-									</Select>
-								</div>
+							<div className={`grid grid-cols-1 gap-3 ${mustSelectInstitution ? 'md:grid-cols-3' : 'md:grid-cols-2'}`}>
+								{/* Institution field - only show when "All Institutions" is selected globally */}
+								{mustSelectInstitution && (
+									<div className="space-y-2">
+										<Label className="text-xs">Institution <span className="text-red-500">*</span></Label>
+										<Select value={selectedInstitution} onValueChange={setSelectedInstitution}>
+											<SelectTrigger className="h-7 text-[11px]">
+												<SelectValue placeholder="Select institution" />
+											</SelectTrigger>
+											<SelectContent>
+												{institutions.map(inst => (
+													<SelectItem key={inst.id} value={inst.institution_code} className="text-[11px]">
+														{inst.name}
+													</SelectItem>
+												))}
+											</SelectContent>
+										</Select>
+									</div>
+								)}
 
 								<div className="space-y-2">
 									<Label className="text-xs">Program <span className="text-red-500">*</span></Label>
-									<Select value={selectedProgram} onValueChange={setSelectedProgram} disabled={!selectedInstitution}>
+									<Select value={selectedProgram} onValueChange={setSelectedProgram} disabled={!selectedInstitution || programsLoading}>
 										<SelectTrigger className="h-7 text-[11px]">
-											<SelectValue placeholder="Select program" />
+											<SelectValue placeholder={programsLoading ? "Loading programs..." : "Select program"} />
 										</SelectTrigger>
 										<SelectContent>
-											{programs.map(prog => (
-												<SelectItem key={prog.id} value={prog.program_code} className="text-[11px]">
-													{prog.program_name} ({prog.program_code})
+											{programs.length === 0 && !programsLoading ? (
+												<SelectItem value="_no_programs" disabled className="text-[11px] text-muted-foreground">
+													No programs found
 												</SelectItem>
-											))}
+											) : (
+												programs.map(prog => (
+													<SelectItem key={prog.id} value={prog.id} className="text-[11px]">
+														{prog.program_name} ({prog.program_code})
+													</SelectItem>
+												))
+											)}
 										</SelectContent>
 									</Select>
 								</div>
 
 								<div className="space-y-2">
 									<Label className="text-xs">Regulation <span className="text-red-500">*</span></Label>
-									<Select value={selectedRegulation} onValueChange={setSelectedRegulation} disabled={!selectedProgram}>
+									<Select value={selectedRegulation} onValueChange={setSelectedRegulation} disabled={!selectedProgram || regulationsLoading}>
 										<SelectTrigger className="h-7 text-[11px]">
-											<SelectValue placeholder="Select regulation" />
+											<SelectValue placeholder={regulationsLoading ? "Loading regulations..." : "Select regulation"} />
 										</SelectTrigger>
 										<SelectContent>
-											{regulations.map(reg => (
-												<SelectItem key={reg.id} value={reg.regulation_code} className="text-[11px]">
-													{reg.regulation_name} ({reg.regulation_code})
+											{regulations.length === 0 && !regulationsLoading ? (
+												<SelectItem value="_no_regulations" disabled className="text-[11px] text-muted-foreground">
+													No regulations found
 												</SelectItem>
-											))}
+											) : (
+												regulations.map(reg => (
+													<SelectItem key={reg.id} value={reg.id} className="text-[11px]">
+														{reg.regulation_name} ({reg.regulation_code})
+													</SelectItem>
+												))
+											)}
 										</SelectContent>
 									</Select>
 								</div>
@@ -1082,10 +1379,10 @@ export default function CourseMappingAddPage() {
 											<span className="font-medium">Institution Code:</span> {selectedInstitution}
 										</div>
 										<div>
-											<span className="font-medium">Program Code:</span> {selectedProgram}
+											<span className="font-medium">Program Code:</span> {selectedProgramCode}
 										</div>
 										<div>
-											<span className="font-medium">Regulation Code:</span> {selectedRegulation}
+											<span className="font-medium">Regulation Code:</span> {selectedRegulationCode}
 										</div>
 									</div>
 								</div>

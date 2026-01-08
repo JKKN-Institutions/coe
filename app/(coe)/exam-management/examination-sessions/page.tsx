@@ -1,8 +1,6 @@
 "use client"
 
-import { useMemo, useState, useEffect } from "react"
-import XLSX from "@/lib/utils/excel-compat"
-import supabaseAuthService from "@/services/auth/supabase-auth-service"
+import { useMemo, useState, useEffect, useCallback } from "react"
 import { AppSidebar } from "@/components/layout/app-sidebar"
 import { AppHeader } from "@/components/layout/app-header"
 import { AppFooter } from "@/components/layout/app-footer"
@@ -21,6 +19,9 @@ import { useToast } from "@/hooks/common/use-toast"
 import { Checkbox } from "@/components/ui/checkbox"
 import Link from "next/link"
 import { PlusCircle, Edit, Trash2, Search, ChevronLeft, ChevronRight, ArrowUpDown, ArrowUp, ArrowDown, Calendar, TrendingUp, FileSpreadsheet, RefreshCw, CheckCircle, XCircle, AlertTriangle } from "lucide-react"
+import { useInstitutionFilter } from "@/hooks/use-institution-filter"
+import { useMyJKKNPrograms } from "@/hooks/myjkkn/use-myjkkn-data"
+import type { COEProgram } from "@/services/myjkkn/myjkkn-adapter-service"
 
 interface ExaminationSession {
 	id: string
@@ -66,17 +67,19 @@ interface AcademicYear {
 	end_date: string
 }
 
-interface Program {
-	id: string
-	program_code: string
-	program_name: string
-	program_type: string
-	program_order: number
-	institution_code: string
-}
-
 export default function ExaminationSessionsPage() {
 	const { toast } = useToast()
+
+	// Institution filter hook
+	const {
+		shouldFilter,
+		isReady: isInstitutionReady,
+		institutionId: currentInstitutionId,
+		appendToUrl,
+		isLoading: isInstitutionLoading,
+		mustSelectInstitution,
+		getInstitutionIdForCreate
+	} = useInstitutionFilter()
 
 	// Main data state
 	const [sessions, setSessions] = useState<ExaminationSession[]>([])
@@ -110,7 +113,9 @@ export default function ExaminationSessionsPage() {
 	const [institutions, setInstitutions] = useState<Institution[]>([])
 	const [examTypes, setExamTypes] = useState<ExamType[]>([])
 	const [academicYears, setAcademicYears] = useState<AcademicYear[]>([])
-	const [programs, setPrograms] = useState<Program[]>([])
+	const { data: programs } = useMyJKKNPrograms({
+		is_active: true,
+	})
 
 	// Form data
 	const [formData, setFormData] = useState({
@@ -137,48 +142,67 @@ export default function ExaminationSessionsPage() {
 	})
 	const [errors, setErrors] = useState<Record<string, string>>({})
 
-	// Fetch examination sessions
-	const fetchSessions = async () => {
+	// Fetch examination sessions with institution filter
+	const fetchSessions = useCallback(async () => {
 		try {
 			setLoading(true)
-			const response = await fetch('/api/exam-management/examination-sessions')
+			// Apply institution filter to URL
+			const url = appendToUrl('/api/exam-management/examination-sessions')
+			const response = await fetch(url)
 			if (!response.ok) {
 				throw new Error('Failed to fetch examination sessions')
 			}
 			const data = await response.json()
-			setSessions(data)
+
+			// Filter by institution if needed (client-side safety)
+			let filteredData = data
+			if (shouldFilter && currentInstitutionId) {
+				filteredData = data.filter((session: ExaminationSession) =>
+					session.institutions_id === currentInstitutionId
+				)
+			}
+
+			setSessions(filteredData)
 		} catch (error) {
 			console.error('Error fetching examination sessions:', error)
 			setSessions([])
 		} finally {
 			setLoading(false)
 		}
-	}
+	}, [appendToUrl, shouldFilter, currentInstitutionId])
 
-	// Fetch institutions
-	const fetchInstitutions = async () => {
+	// Fetch institutions with filter
+	const fetchInstitutions = useCallback(async () => {
 		try {
-			const res = await fetch('/api/master/institutions')
+			const url = appendToUrl('/api/master/institutions')
+			const res = await fetch(url)
 			if (res.ok) {
 				const data = await res.json()
-				const mapped = Array.isArray(data)
+				let mapped = Array.isArray(data)
 					? data.filter((i: any) => i?.institution_code).map((i: any) => ({
 						id: i.id,
 						institution_code: i.institution_code,
 						institution_name: i.institution_name || i.name
 					}))
 					: []
+
+				// Client-side filter for institution
+				if (shouldFilter && currentInstitutionId) {
+					mapped = mapped.filter((i: Institution) => i.id === currentInstitutionId)
+				}
+
 				setInstitutions(mapped)
 			}
 		} catch (e) {
 			console.error('Failed to load institutions:', e)
 		}
-	}
+	}, [appendToUrl, shouldFilter, currentInstitutionId])
 
-	// Fetch exam types
-	const fetchExamTypes = async () => {
+	// Fetch exam types with institution filter
+	const fetchExamTypes = useCallback(async () => {
 		try {
-			const res = await fetch('/api/exam-management/exam-types')
+			const url = appendToUrl('/api/exam-management/exam-types')
+			const res = await fetch(url)
 			if (res.ok) {
 				const data = await res.json()
 				const mapped = Array.isArray(data)
@@ -193,10 +217,10 @@ export default function ExaminationSessionsPage() {
 		} catch (e) {
 			console.error('Failed to load exam types:', e)
 		}
-	}
+	}, [appendToUrl])
 
 	// Fetch academic years
-	const fetchAcademicYears = async () => {
+	const fetchAcademicYears = useCallback(async () => {
 		try {
 			const res = await fetch('/api/master/academic-years')
 			if (res.ok) {
@@ -214,44 +238,32 @@ export default function ExaminationSessionsPage() {
 		} catch (e) {
 			console.error('Failed to load academic years:', e)
 		}
-	}
+	}, [])
 
-	// Fetch programs
-	const fetchPrograms = async () => {
-		try {
-			const res = await fetch('/api/master/programs')
-			if (res.ok) {
-				const data = await res.json()
-				const mapped = Array.isArray(data)
-					? data.filter((i: any) => i?.program_code).map((i: any) => ({
-						id: i.id,
-						program_code: i.program_code,
-						program_name: i.program_name,
-						program_type: i.program_type || 'UG',
-						program_order: i.program_order || 1,
-						institution_code: i.institution_code || ''
-					}))
-					: []
-				setPrograms(mapped)
-			}
-		} catch (e) {
-			console.error('Failed to load programs:', e)
-		}
-	}
-
-	// Load data on mount
+	// Load data when institution filter is ready (run once when ready)
 	useEffect(() => {
+		if (!isInstitutionReady) return
+
 		fetchSessions()
 		fetchInstitutions()
 		fetchExamTypes()
 		fetchAcademicYears()
-		fetchPrograms()
-	}, [])
+		// eslint-disable-next-line react-hooks/exhaustive-deps
+	}, [isInstitutionReady])
+
+	// Auto-set institution when filter changes (for non-super_admin users)
+	useEffect(() => {
+		if (currentInstitutionId && !formData.institutions_id && !editing) {
+			setFormData(prev => ({ ...prev, institutions_id: currentInstitutionId }))
+		}
+	}, [currentInstitutionId, formData.institutions_id, editing])
 
 	// Reset form
 	const resetForm = () => {
+		const autoInstitutionId = getInstitutionIdForCreate() || ''
 		setFormData({
-			institutions_id: "",
+			// Auto-populate institution for non-super_admin users
+			institutions_id: autoInstitutionId,
 			session_code: "",
 			session_name: "",
 			exam_type_id: "",
@@ -603,7 +615,7 @@ export default function ExaminationSessionsPage() {
 
 	// Group programs by type and filter by institution
 	const programsByType = useMemo(() => {
-		const grouped: Record<string, Program[]> = {}
+		const grouped: Record<string, COEProgram[]> = {}
 
 		// Get institution_code from selected institution
 		const selectedInstitution = institutions.find(i => i.id === formData.institutions_id)
@@ -623,9 +635,9 @@ export default function ExaminationSessionsPage() {
 			grouped[type].push(program)
 		})
 
-		// Sort programs within each type by program_order
+		// Sort programs within each type by program_order (fallback to 0 if undefined)
 		Object.keys(grouped).forEach((type) => {
-			grouped[type].sort((a, b) => a.program_order - b.program_order)
+			grouped[type].sort((a, b) => (a.program_order || 0) - (b.program_order || 0))
 		})
 
 		return grouped
@@ -789,6 +801,9 @@ export default function ExaminationSessionsPage() {
 									<Table>
 										<TableHeader className="sticky top-0 z-10 bg-slate-50 dark:bg-slate-900/50">
 											<TableRow>
+												{mustSelectInstitution && (
+													<TableHead className="text-[11px]">Institution</TableHead>
+												)}
 												<TableHead className="text-[11px]">
 													<Button variant="ghost" size="sm" onClick={() => handleSort("session_code")} className="h-auto p-0 font-medium hover:bg-transparent">
 														Session Code
@@ -814,17 +829,22 @@ export default function ExaminationSessionsPage() {
 											</TableRow>
 										</TableHeader>
 										<TableBody>
-											{loading ? (
+											{loading || isInstitutionLoading ? (
 												<TableRow>
-													<TableCell colSpan={7} className="h-24 text-center text-[11px]">Loading…</TableCell>
+													<TableCell colSpan={mustSelectInstitution ? 8 : 7} className="h-24 text-center text-[11px]">Loading…</TableCell>
 												</TableRow>
 											) : paginated.length === 0 ? (
 												<TableRow>
-													<TableCell colSpan={7} className="h-24 text-center text-[11px]">No data</TableCell>
+													<TableCell colSpan={mustSelectInstitution ? 8 : 7} className="h-24 text-center text-[11px]">No data</TableCell>
 												</TableRow>
 											) : (
 												paginated.map((session) => (
 													<TableRow key={session.id}>
+														{mustSelectInstitution && (
+															<TableCell className="text-[11px]">
+																{institutions.find(i => i.id === session.institutions_id)?.institution_name || 'N/A'}
+															</TableCell>
+														)}
 														<TableCell className="text-[11px] font-medium">{session.session_code}</TableCell>
 														<TableCell className="text-[11px]">{session.session_name}</TableCell>
 														<TableCell className="text-[11px]">
@@ -927,28 +947,30 @@ export default function ExaminationSessionsPage() {
 								<h3 className="text-lg font-bold bg-gradient-to-r from-green-600 to-emerald-600 bg-clip-text text-transparent">Basic Information</h3>
 							</div>
 							<div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-								{/* Institution */}
-								<div className="space-y-2">
-									<Label htmlFor="institutions_id" className="text-sm font-semibold">
-										Institution <span className="text-red-500">*</span>
-									</Label>
-									<Select
-										value={formData.institutions_id}
-										onValueChange={(v) => setFormData({ ...formData, institutions_id: v, programs_included: [] })}
-									>
-										<SelectTrigger id="institutions_id" className={`h-10 ${errors.institutions_id ? 'border-destructive' : ''}`}>
-											<SelectValue placeholder="Select institution" />
-										</SelectTrigger>
-										<SelectContent>
-											{institutions.map((inst) => (
-												<SelectItem key={inst.id} value={inst.id}>
-													{inst.institution_name}
-												</SelectItem>
-											))}
-										</SelectContent>
-									</Select>
-									{errors.institutions_id && <p className="text-xs text-destructive">{errors.institutions_id}</p>}
-								</div>
+								{/* Institution - show only when needed */}
+								{(mustSelectInstitution || !shouldFilter || !currentInstitutionId) && (
+									<div className="space-y-2">
+										<Label htmlFor="institutions_id" className="text-sm font-semibold">
+											Institution <span className="text-red-500">*</span>
+										</Label>
+										<Select
+											value={formData.institutions_id}
+											onValueChange={(v) => setFormData({ ...formData, institutions_id: v, programs_included: [] })}
+										>
+											<SelectTrigger id="institutions_id" className={`h-10 ${errors.institutions_id ? 'border-destructive' : ''}`}>
+												<SelectValue placeholder="Select institution" />
+											</SelectTrigger>
+											<SelectContent>
+												{institutions.map((inst) => (
+													<SelectItem key={inst.id} value={inst.id}>
+														{inst.institution_name}
+													</SelectItem>
+												))}
+											</SelectContent>
+										</Select>
+										{errors.institutions_id && <p className="text-xs text-destructive">{errors.institutions_id}</p>}
+									</div>
+								)}
 
 								{/* Session Code */}
 								<div className="space-y-2">

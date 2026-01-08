@@ -6,7 +6,9 @@ export async function GET(request: Request) {
 	try {
 		const supabase = getSupabaseServer()
 		const { searchParams } = new URL(request.url)
-		const institutionId = searchParams.get('institution_id')
+		// Support both institution_id and institutions_id for compatibility
+		const institutionId = searchParams.get('institutions_id') || searchParams.get('institution_id')
+		const institutionCode = searchParams.get('institution_code')
 		const regulationId = searchParams.get('regulation_id')
 		const gradeId = searchParams.get('grade_id')
 		const isActive = searchParams.get('is_active')
@@ -16,8 +18,13 @@ export async function GET(request: Request) {
 			.select('*')
 			.order('created_at', { ascending: false })
 
+		// Filter by institutions_id (UUID) if provided
 		if (institutionId) {
 			query = query.eq('institutions_id', institutionId)
+		}
+		// Or filter by institution_code if provided
+		else if (institutionCode) {
+			query = query.eq('institutions_code', institutionCode)
 		}
 
 		if (regulationId) {

@@ -19,6 +19,11 @@ export interface ParentAppUser {
 	permissions?: string[]
 	institution_id?: string
 	institution_code?: string
+	institution_name?: string
+	counselling_code?: string
+	myjkkn_institution_ids?: string[] | null  // MyJKKN institution UUIDs for API filtering
+	short_name?: string
+	institution_type?: string
 	department_code?: string
 	is_active?: boolean
 	is_super_admin?: boolean

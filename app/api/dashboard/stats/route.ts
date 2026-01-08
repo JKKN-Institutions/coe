@@ -1,5 +1,12 @@
 import { NextResponse } from 'next/server'
 import { getSupabaseServer } from '@/lib/supabase-server'
+import {
+	fetchMyJKKNStudents,
+	fetchMyJKKNStaff,
+	fetchMyJKKNInstitutions,
+	fetchMyJKKNDepartments,
+	fetchMyJKKNPrograms,
+} from '@/lib/myjkkn-api'
 
 export async function GET(request: Request) {
 	try {
@@ -41,13 +48,27 @@ export async function GET(request: Request) {
 		if (userError || !userData) {
 			// Return default stats for users not yet in local database
 			return NextResponse.json({
-				totalStudents: 0,
+				totalLearners: 0,
 				activeCourses: 0,
 				totalPrograms: 0,
 				facultyMembers: 0,
+				totalInstitutions: 0,
+				totalDepartments: 0,
+				totalSemesters: 0,
+				activeExamSessions: 0,
+				totalExaminers: 0,
+				pendingEvaluations: 0,
+				myJKKN: {
+					learners: 0,
+					staff: 0,
+					institutions: 0,
+					departments: 0,
+					programs: 0
+				},
 				attendanceRatio: '0.0%',
 				attendanceDetails: { total: 0, present: 0, absent: 0 },
 				upcomingExams: [],
+				recentResults: [],
 				isSuperAdmin: false,
 				institutionId: null,
 				userRole: 'user',
@@ -151,12 +172,12 @@ export async function GET(request: Request) {
 		)
 		const totalStudents = uniqueStudents.size
 
-		// 2. Active Courses Count
+		// 2. Active Courses Count (count all courses, optionally filter by institution)
 		let coursesQuery = supabase
 			.from('courses')
 			.select('id', { count: 'exact', head: true })
-			.eq('is_active', true)
 
+		// Only filter if not super_admin and institution exists
 		if (!isSuperAdmin && userInstitutionId) {
 			coursesQuery = coursesQuery.eq('institution_code', userInstitutionId)
 		}
@@ -166,6 +187,13 @@ export async function GET(request: Request) {
 		if (coursesError) {
 			console.error('Error fetching courses:', coursesError)
 		}
+
+		// Also get total courses without institution filter for reference
+		const { count: totalCoursesAll } = await supabase
+			.from('courses')
+			.select('id', { count: 'exact', head: true })
+
+		console.log(`[Dashboard Stats] Courses: filtered=${activeCourses}, total=${totalCoursesAll}`)
 
 		// 3. Program Count
 		let programsQuery = supabase
@@ -190,6 +218,13 @@ export async function GET(request: Request) {
 		if (programsError) {
 			console.error('Error fetching programs:', programsError)
 		}
+
+		// Also get total programs without institution filter for reference
+		const { count: totalProgramsAll } = await supabase
+			.from('programs')
+			.select('id', { count: 'exact', head: true })
+
+		console.log(`[Dashboard Stats] Programs: filtered=${totalPrograms}, total=${totalProgramsAll}`)
 
 		// 4. Faculty Members Count (users with 'faculty_coe' role)
 		// First, get the faculty_coe role ID
@@ -317,12 +352,229 @@ export async function GET(request: Request) {
 				? ((presentCount / totalAttendanceRecords) * 100).toFixed(1)
 				: '0.0'
 
+		// 7. Total Institutions Count
+		const { count: totalInstitutions, error: instCountError } = await supabase
+			.from('institutions')
+			.select('id', { count: 'exact', head: true })
+
+		if (instCountError) {
+			console.error('Error fetching institutions count:', instCountError)
+		}
+
+		// 8. Total Departments Count
+		let departmentsQuery = supabase
+			.from('departments')
+			.select('id', { count: 'exact', head: true })
+
+		if (!isSuperAdmin && userInstitutionId) {
+			departmentsQuery = departmentsQuery.eq('institution_code', userInstitutionId)
+		}
+
+		const { count: totalDepartments, error: deptError } = await departmentsQuery
+
+		if (deptError) {
+			console.error('Error fetching departments count:', deptError)
+		}
+
+		// 9. Total Semesters Count
+		const { count: totalSemesters, error: semError } = await supabase
+			.from('semesters')
+			.select('id', { count: 'exact', head: true })
+
+		if (semError) {
+			console.error('Error fetching semesters count:', semError)
+		}
+
+		// 10. Active Exam Sessions Count
+		let examSessionsQuery = supabase
+			.from('examination_sessions')
+			.select('id', { count: 'exact', head: true })
+			.eq('is_active', true)
+
+		if (!isSuperAdmin && userInstitutionId) {
+			const { data: instData } = await supabase
+				.from('institutions')
+				.select('id')
+				.eq('institution_code', userInstitutionId)
+				.single()
+
+			if (instData) {
+				examSessionsQuery = examSessionsQuery.eq('institutions_id', instData.id)
+			}
+		}
+
+		const { count: activeExamSessions, error: sessError } = await examSessionsQuery
+
+		if (sessError) {
+			console.error('Error fetching exam sessions count:', sessError)
+		}
+
+		// 11. Total Examiners Count
+		let examinersQuery = supabase
+			.from('examiners')
+			.select('id', { count: 'exact', head: true })
+
+		if (!isSuperAdmin && userInstitutionId) {
+			examinersQuery = examinersQuery.eq('institution_code', userInstitutionId)
+		}
+
+		const { count: totalExaminers, error: examinerError } = await examinersQuery
+
+		if (examinerError) {
+			console.error('Error fetching examiners count:', examinerError)
+		}
+
+		// 12. Pending Evaluations (marks_entry with status pending)
+		let pendingEvalQuery = supabase
+			.from('marks_entry')
+			.select('id', { count: 'exact', head: true })
+			.eq('verification_status', 'pending')
+
+		if (!isSuperAdmin && userInstitutionId) {
+			const { data: instData } = await supabase
+				.from('institutions')
+				.select('id')
+				.eq('institution_code', userInstitutionId)
+				.single()
+
+			if (instData) {
+				pendingEvalQuery = pendingEvalQuery.eq('institutions_id', instData.id)
+			}
+		}
+
+		const { count: pendingEvaluations, error: pendingError } = await pendingEvalQuery
+
+		if (pendingError) {
+			console.error('Error fetching pending evaluations:', pendingError)
+		}
+
+		// 13. Recent Results (last 5 published semester results)
+		let recentResultsQuery = supabase
+			.from('semester_results')
+			.select(`
+				id,
+				stu_register_no,
+				semester,
+				gpa,
+				cgpa,
+				pass_status,
+				published_at,
+				examination_sessions(session_name)
+			`)
+			.eq('is_published', true)
+			.order('published_at', { ascending: false })
+			.limit(5)
+
+		if (!isSuperAdmin && userInstitutionId) {
+			const { data: instData } = await supabase
+				.from('institutions')
+				.select('id')
+				.eq('institution_code', userInstitutionId)
+				.single()
+
+			if (instData) {
+				recentResultsQuery = recentResultsQuery.eq('institutions_id', instData.id)
+			}
+		}
+
+		const { data: recentResults, error: resultsError } = await recentResultsQuery
+
+		if (resultsError) {
+			console.error('Error fetching recent results:', resultsError)
+		}
+
+		const transformedResults = (recentResults || []).map(result => ({
+			id: result.id,
+			register_no: result.stu_register_no,
+			semester: result.semester,
+			gpa: result.gpa,
+			cgpa: result.cgpa,
+			pass_status: result.pass_status,
+			published_at: result.published_at,
+			session_name: (result.examination_sessions as any)?.session_name || 'N/A'
+		}))
+
+		// 14. Fetch MyJKKN API data for live counts
+		let myJKKNLearners = 0
+		let myJKKNStaff = 0
+		let myJKKNInstitutions = 0
+		let myJKKNDepartments = 0
+		let myJKKNPrograms = 0
+
+		try {
+			// Fetch learners count from MyJKKN
+			const learnersResponse = await fetchMyJKKNStudents({
+				page: 1,
+				limit: 1,
+				is_active: true,
+				...(userInstitutionId && !isSuperAdmin ? { institution_code: userInstitutionId } : {})
+			})
+			myJKKNLearners = learnersResponse.metadata?.total || 0
+
+			// Fetch staff count from MyJKKN
+			const staffResponse = await fetchMyJKKNStaff({
+				page: 1,
+				limit: 1,
+				is_active: true,
+				...(userInstitutionId && !isSuperAdmin ? { institution_code: userInstitutionId } : {})
+			})
+			myJKKNStaff = staffResponse.metadata?.total || 0
+
+			// Fetch institutions count from MyJKKN (only for super_admin)
+			if (isSuperAdmin) {
+				const institutionsResponse = await fetchMyJKKNInstitutions({
+					page: 1,
+					limit: 1,
+					is_active: true
+				})
+				myJKKNInstitutions = institutionsResponse.metadata?.total || 0
+			}
+
+			// Fetch departments count from MyJKKN
+			const departmentsResponse = await fetchMyJKKNDepartments({
+				page: 1,
+				limit: 1,
+				is_active: true,
+				...(userInstitutionId && !isSuperAdmin ? { institution_code: userInstitutionId } : {})
+			})
+			myJKKNDepartments = departmentsResponse.metadata?.total || 0
+
+			// Fetch programs count from MyJKKN
+			const programsResponse = await fetchMyJKKNPrograms({
+				page: 1,
+				limit: 1,
+				is_active: true,
+				...(userInstitutionId && !isSuperAdmin ? { institution_code: userInstitutionId } : {})
+			})
+			myJKKNPrograms = programsResponse.metadata?.total || 0
+
+		} catch (myJKKNError) {
+			console.error('Error fetching MyJKKN data (non-critical):', myJKKNError)
+			// Continue with local data if MyJKKN API fails
+		}
+
 		// Return all stats
 		return NextResponse.json({
-			totalStudents,
-			activeCourses: activeCourses || 0,
-			totalPrograms: totalPrograms || 0,
+			// Local COE database counts
+			totalLearners: totalStudents,
+			// For courses/programs, if super_admin use filtered count (which equals total), otherwise use filtered
+			activeCourses: isSuperAdmin ? (totalCoursesAll || 0) : (activeCourses || 0),
+			totalPrograms: isSuperAdmin ? (totalProgramsAll || 0) : (totalPrograms || 0),
 			facultyMembers: facultyCount,
+			totalInstitutions: totalInstitutions || 0,
+			totalDepartments: totalDepartments || 0,
+			totalSemesters: totalSemesters || 0,
+			activeExamSessions: activeExamSessions || 0,
+			totalExaminers: totalExaminers || 0,
+			pendingEvaluations: pendingEvaluations || 0,
+			// MyJKKN live counts
+			myJKKN: {
+				learners: myJKKNLearners,
+				staff: myJKKNStaff,
+				institutions: myJKKNInstitutions,
+				departments: myJKKNDepartments,
+				programs: myJKKNPrograms
+			},
 			attendanceRatio: `${attendanceRatio}%`,
 			attendanceDetails: {
 				total: totalAttendanceRecords,
@@ -330,6 +582,7 @@ export async function GET(request: Request) {
 				absent: totalAttendanceRecords - presentCount
 			},
 			upcomingExams: transformedExams,
+			recentResults: transformedResults,
 			isSuperAdmin,
 			institutionId: userInstitutionId,
 			userRole: displayRole,

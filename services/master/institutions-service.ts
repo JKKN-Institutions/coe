@@ -1,9 +1,19 @@
-import type { Institution, InstitutionFormData } from '@/types/institutions'
+import type { Institution, InstitutionFormData, MergedInstitution } from '@/types/institutions'
 
-export async function fetchInstitutions(): Promise<Institution[]> {
+// Fetch institutions with MyJKKN data merged (filtered to only show matched institutions)
+export async function fetchInstitutions(): Promise<MergedInstitution[]> {
   const response = await fetch('/api/master/institutions')
   if (!response.ok) {
     throw new Error('Failed to fetch institutions')
+  }
+  return response.json()
+}
+
+// Fetch only local institutions without MyJKKN merge (for internal use)
+export async function fetchLocalInstitutions(): Promise<Institution[]> {
+  const response = await fetch('/api/master/institutions?local_only=true')
+  if (!response.ok) {
+    throw new Error('Failed to fetch local institutions')
   }
   return response.json()
 }

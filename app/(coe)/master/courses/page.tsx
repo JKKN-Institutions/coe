@@ -1,7 +1,7 @@
 "use client"
 
-import { useState, useEffect, useMemo } from "react"
-import Link from "next/link"
+import { useState, useEffect, useMemo, useCallback } from 'react'
+import Link from 'next/link'
 import {
   Breadcrumb,
   BreadcrumbItem,
@@ -9,27 +9,27 @@ import {
   BreadcrumbList,
   BreadcrumbPage,
   BreadcrumbSeparator,
-} from "@/components/ui/breadcrumb"
-import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
-import { Textarea } from "@/components/ui/textarea"
-import { Label } from "@/components/ui/label"
+} from '@/components/ui/breadcrumb'
+import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
+import { Textarea } from '@/components/ui/textarea'
+import { Label } from '@/components/ui/label'
 import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from "@/components/ui/select"
-import { SearchableSelect, toSearchableOptions } from "@/components/ui/searchable-select"
-import { Card, CardContent, CardHeader } from "@/components/ui/card"
-import { AppSidebar } from "@/components/layout/app-sidebar"
-import { AppHeader } from "@/components/layout/app-header"
-import { AppFooter } from "@/components/layout/app-footer"
-import { PageTransition } from "@/components/common/page-transition"
-import { SidebarProvider, SidebarInset } from "@/components/ui/sidebar"
-import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet"
-import { useToast } from "@/hooks/common/use-toast"
+} from '@/components/ui/select'
+import { SearchableSelect, toSearchableOptions } from '@/components/ui/searchable-select'
+import { Card, CardContent, CardHeader } from '@/components/ui/card'
+import { AppSidebar } from '@/components/layout/app-sidebar'
+import { AppHeader } from '@/components/layout/app-header'
+import { AppFooter } from '@/components/layout/app-footer'
+import { PageTransition } from '@/components/common/page-transition'
+import { SidebarProvider, SidebarInset } from '@/components/ui/sidebar'
+import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet'
+import { useToast } from '@/hooks/common/use-toast'
 import {
   AlertDialog,
   AlertDialogAction,
@@ -40,7 +40,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
   AlertDialogTrigger,
-} from "@/components/ui/alert-dialog"
+} from '@/components/ui/alert-dialog'
 import {
   Download,
   Upload,
@@ -61,9 +61,9 @@ import {
   XCircle,
   Eye,
   FileUp,
-} from "lucide-react"
-import { Switch } from "@/components/ui/switch"
-import { Badge } from "@/components/ui/badge"
+} from 'lucide-react'
+import { Switch } from '@/components/ui/switch'
+import { Badge } from '@/components/ui/badge'
 import {
   Table,
   TableBody,
@@ -71,7 +71,7 @@ import {
   TableHead,
   TableHeader,
   TableRow,
-} from "@/components/ui/table"
+} from '@/components/ui/table'
 import XLSX from '@/lib/utils/excel-compat'
 import type { Course, CourseImportError, UploadSummary } from '@/types/courses'
 import {
@@ -81,8 +81,12 @@ import {
   deleteCourse as deleteCourseService,
   fetchDropdownData,
   downloadTemplate,
+  fetchRegulationsForCourse,
+  fetchDepartmentsForCourse,
+  fetchBoardsForCourse,
 } from '@/services/master/courses-service'
 import { PremiumCourseStats } from '@/components/stats/premium-course-stats'
+import { useInstitutionFilter } from '@/hooks/use-institution-filter'
 
 export default function CoursesPage() {
   const [courses, setCourses] = useState<Course[]>([])
@@ -104,11 +108,14 @@ export default function CoursesPage() {
   const [errors, setErrors] = useState<Record<string, string>>({})
 
   // Dropdown sources
-  const [institutions, setInstitutions] = useState<Array<{ id: string, institution_code: string }>>([])
+  const [institutions, setInstitutions] = useState<Array<{ id: string, institution_code: string, name?: string, counselling_code?: string | null }>>([])
   const [departmentsSrc, setDepartmentsSrc] = useState<Array<{ id: string, department_code: string, department_name?: string }>>([])
-  const [regulations, setRegulations] = useState<Array<{ id: string, regulation_code: string }>>([])
+  const [regulations, setRegulations] = useState<Array<{ id: string, regulation_code: string, regulation_name?: string, effective_year?: number }>>([])
   const [boardsSrc, setBoardsSrc] = useState<Array<{ id: string, board_code: string, board_name?: string }>>([])
   const [codesLoading, setCodesLoading] = useState(false)
+  const [regulationsLoading, setRegulationsLoading] = useState(false)
+  const [departmentsLoading, setDepartmentsLoading] = useState(false)
+  const [boardsLoading, setBoardsLoading] = useState(false)
 
   // Import error handling
   const [errorPopupOpen, setErrorPopupOpen] = useState(false)
@@ -116,25 +123,25 @@ export default function CoursesPage() {
   const [uploadSummary, setUploadSummary] = useState<UploadSummary>({ total: 0, success: 0, failed: 0 })
 
   const [formData, setFormData] = useState({
-    institution_code: "",
-    regulation_code: "",
-    offering_department_code: "",
-    board_code: "",
-    course_code: "",
-    course_title: "",
-    display_code: "",
-    course_category: "",
-    course_type: "",
-    course_part_master: "",
-    credits: "",
+    institution_code: '',
+    regulation_code: '',
+    offering_department_code: '',
+    board_code: '',
+    course_code: '',
+    course_title: '',
+    display_code: '',
+    course_category: '',
+    course_type: '',
+    course_part_master: '',
+    credits: '',
     split_credit: false,
-    theory_credit: "",
-    practical_credit: "",
-    qp_code: "",
-    e_code_name: "",
-    exam_duration: "",
-    evaluation_type: "",
-    result_type: "Mark",
+    theory_credit: '',
+    practical_credit: '',
+    qp_code: '',
+    e_code_name: '',
+    exam_duration: '',
+    evaluation_type: '',
+    result_type: 'Mark',
     self_study_course: false,
     outside_class_course: false,
     open_book: false,
@@ -142,33 +149,57 @@ export default function CoursesPage() {
     dummy_number_required: false,
     annual_course: false,
     multiple_qp_set: false,
-    no_of_qp_setter: "",
-    no_of_scrutinizer: "",
+    no_of_qp_setter: '',
+    no_of_scrutinizer: '',
     fee_exception: false,
-    syllabus_pdf_url: "",
-    description: "",
+    syllabus_pdf_url: '',
+    description: '',
     is_active: true,
     // Required fields for marks and hours
-    class_hours: "0",
-    theory_hours: "0",
-    practical_hours: "0",
-    internal_max_mark: "0",
-    internal_pass_mark: "0",
-    internal_converted_mark: "0",
-    external_max_mark: "0",
-    external_pass_mark: "0",
-    external_converted_mark: "0",
-    total_pass_mark: "0",
-    total_max_mark: "0",
+    class_hours: '0',
+    theory_hours: '0',
+    practical_hours: '0',
+    internal_max_mark: '0',
+    internal_pass_mark: '0',
+    internal_converted_mark: '0',
+    external_max_mark: '0',
+    external_pass_mark: '0',
+    external_converted_mark: '0',
+    total_pass_mark: '0',
+    total_max_mark: '0',
     annual_semester: false,
     registration_based: false,
   })
 
-  // Fetch courses from API
+  // Institution filtering hook - automatically filters data by institution
+  const {
+    filter: institutionFilter,
+    shouldFilter,
+    isReady,
+    institutionCode,
+    appendToUrl,
+    getInstitutionCodeForCreate,
+    mustSelectInstitution
+  } = useInstitutionFilter()
+
+  // Auto-fill institution_code for create based on global filter
+  useEffect(() => {
+    if (!isReady) return
+    if (!formData.institution_code && institutionCode) {
+      setFormData(prev => ({
+        ...prev,
+        institution_code: prev.institution_code || institutionCode,
+      }))
+    }
+  }, [isReady, institutionCode, formData.institution_code])
+
+  // Fetch courses from API with institution filtering
   useEffect(() => {
     const fetchCourses = async () => {
       try {
-        const data = await fetchCoursesService()
+        // Pass institution filter to service - courses are filtered by institution_code
+        // shouldFilter=true for non-super admin ensures empty results if no institution assigned
+        const data = await fetchCoursesService(shouldFilter ? institutionFilter : undefined, shouldFilter)
         setCourses(data)
       } catch (error: any) {
         console.error('Error fetching courses:', error)
@@ -182,23 +213,92 @@ export default function CoursesPage() {
       }
     }
 
-    fetchCourses()
-    // also fetch dropdown codes
+    // Wait for institution context to be ready before fetching
+    if (isReady) {
+      fetchCourses()
+    }
+    // also fetch dropdown codes (regulations are now fetched separately based on selected institution)
     ;(async () => {
       try {
         setCodesLoading(true)
-        const { institutions, departments, regulations, boards } = await fetchDropdownData()
+        const { institutions, departments, boards } = await fetchDropdownData()
         setInstitutions(institutions)
         setDepartmentsSrc(departments)
-        setRegulations(regulations)
         setBoardsSrc(boards)
+        // Note: regulations are no longer pre-loaded - they are fetched dynamically when institution changes
       } catch (e) {
         console.error('Error loading codes:', e)
       } finally {
         setCodesLoading(false)
       }
     })()
-  }, [])
+  }, [institutionFilter, shouldFilter, isReady]) // Re-fetch when institution changes
+
+  // Fetch regulations, departments, and boards in PARALLEL when institution changes
+  useEffect(() => {
+    const loadInstitutionData = async () => {
+      if (!formData.institution_code) {
+        setRegulations([])
+        setDepartmentsSrc([])
+        setBoardsSrc([])
+        return
+      }
+
+      // Find the institution to get its counselling_code for regulations
+      const institution = institutions.find(i => i.institution_code === formData.institution_code)
+      const counsellingCode = institution?.counselling_code
+
+      // Set all loading states at once
+      setRegulationsLoading(true)
+      setDepartmentsLoading(true)
+      setBoardsLoading(true)
+
+      // Fetch all data in parallel for faster loading
+      const [regsResult, deptsResult, boardsResult] = await Promise.allSettled([
+        // Regulations - requires counselling_code
+        counsellingCode
+          ? fetchRegulationsForCourse(counsellingCode)
+          : Promise.resolve([]),
+        // Departments - uses institution_code directly
+        fetchDepartmentsForCourse(formData.institution_code),
+        // Boards - uses institution_code directly
+        fetchBoardsForCourse(formData.institution_code)
+      ])
+
+      // Handle regulations result
+      if (regsResult.status === 'fulfilled') {
+        setRegulations(regsResult.value)
+      } else {
+        console.error('[CoursesPage] Error loading regulations:', regsResult.reason)
+        setRegulations([])
+      }
+      setRegulationsLoading(false)
+
+      // Handle departments result
+      if (deptsResult.status === 'fulfilled') {
+        setDepartmentsSrc(deptsResult.value)
+      } else {
+        console.error('[CoursesPage] Error loading departments:', deptsResult.reason)
+        setDepartmentsSrc([])
+      }
+      setDepartmentsLoading(false)
+
+      // Handle boards result
+      if (boardsResult.status === 'fulfilled') {
+        setBoardsSrc(boardsResult.value)
+      } else {
+        console.error('[CoursesPage] Error loading boards:', boardsResult.reason)
+        setBoardsSrc([])
+      }
+      setBoardsLoading(false)
+
+      if (!counsellingCode && formData.institution_code) {
+        console.warn('[CoursesPage] No counselling_code found for institution:', formData.institution_code)
+      }
+    }
+
+    loadInstitutionData()
+  }, [formData.institution_code, institutions])
 
   // Handle sorting
   const handleSort = (field: 'course_code' | 'course_title' | 'course_category' | 'credits' | 'exam_duration' | 'is_active' | 'qp_code') => {
@@ -265,11 +365,14 @@ export default function CoursesPage() {
     })
   }, [courses, searchTerm, statusFilter, typeFilter, evaluationTypeFilter, sortField, sortDirection])
 
-  // Pagination calculations
-  const totalPages = itemsPerPage === "all" ? 1 : Math.ceil(filteredCourses.length / itemsPerPage) || 1
-  const startIndex = itemsPerPage === "all" ? 0 : (currentPage - 1) * (itemsPerPage as number)
-  const endIndex = itemsPerPage === "all" ? filteredCourses.length : startIndex + (itemsPerPage as number)
-  const pageItems = filteredCourses.slice(startIndex, endIndex)
+  // Memoized pagination calculations
+  const { totalPages, startIndex, endIndex, pageItems } = useMemo(() => {
+    const total = itemsPerPage === "all" ? 1 : Math.ceil(filteredCourses.length / itemsPerPage) || 1
+    const start = itemsPerPage === "all" ? 0 : (currentPage - 1) * (itemsPerPage as number)
+    const end = itemsPerPage === "all" ? filteredCourses.length : start + (itemsPerPage as number)
+    const items = filteredCourses.slice(start, end)
+    return { totalPages: total, startIndex: start, endIndex: end, pageItems: items }
+  }, [filteredCourses, itemsPerPage, currentPage])
 
   // Reset page when filters change
   useEffect(() => setCurrentPage(1), [searchTerm, sortField, sortDirection, itemsPerPage, statusFilter, typeFilter, evaluationTypeFilter])
@@ -295,25 +398,25 @@ export default function CoursesPage() {
 
   const resetForm = () => {
     setFormData({
-      institution_code: "",
-      regulation_code: "",
-      offering_department_code: "",
-      board_code: "",
-      course_code: "",
-      course_title: "",
-      display_code: "",
-      course_category: "",
-      course_type: "",
-      course_part_master: "",
-      credits: "",
+      institution_code: institutionCode || '',
+      regulation_code: '',
+      offering_department_code: '',
+      board_code: '',
+      course_code: '',
+      course_title: '',
+      display_code: '',
+      course_category: '',
+      course_type: '',
+      course_part_master: '',
+      credits: '',
       split_credit: false,
-      theory_credit: "",
-      practical_credit: "",
-      qp_code: "",
-      e_code_name: "",
-      exam_duration: "",
-      evaluation_type: "",
-      result_type: "Mark",
+      theory_credit: '',
+      practical_credit: '',
+      qp_code: '',
+      e_code_name: '',
+      exam_duration: '',
+      evaluation_type: '',
+      result_type: 'Mark',
       self_study_course: false,
       outside_class_course: false,
       open_book: false,
@@ -321,24 +424,24 @@ export default function CoursesPage() {
       dummy_number_required: false,
       annual_course: false,
       multiple_qp_set: false,
-      no_of_qp_setter: "",
-      no_of_scrutinizer: "",
+      no_of_qp_setter: '',
+      no_of_scrutinizer: '',
       fee_exception: false,
-      syllabus_pdf_url: "",
-      description: "",
+      syllabus_pdf_url: '',
+      description: '',
       is_active: true,
       // Required fields for marks and hours
-      class_hours: "0",
-      theory_hours: "0",
-      practical_hours: "0",
-      internal_max_mark: "0",
-      internal_pass_mark: "0",
-      internal_converted_mark: "0",
-      external_max_mark: "0",
-      external_pass_mark: "0",
-      external_converted_mark: "0",
-      total_pass_mark: "0",
-      total_max_mark: "0",
+      class_hours: '0',
+      theory_hours: '0',
+      practical_hours: '0',
+      internal_max_mark: '0',
+      internal_pass_mark: '0',
+      internal_converted_mark: '0',
+      external_max_mark: '0',
+      external_pass_mark: '0',
+      external_converted_mark: '0',
+      total_pass_mark: '0',
+      total_max_mark: '0',
       annual_semester: false,
       registration_based: false,
     })
@@ -350,7 +453,7 @@ export default function CoursesPage() {
   const openEdit = (row: Course) => {
     setEditing(row)
     setFormData({
-      institution_code: row.institution_code || "",
+      institution_code: row.institution_code || institutionCode || "",
       regulation_code: row.regulation_code || "",
       offering_department_code: row.offering_department_code || "",
       board_code: row.board_code || "",
@@ -1439,6 +1542,12 @@ export default function CoursesPage() {
                   <Table>
                     <TableHeader className="bg-slate-50 dark:bg-slate-800 border-b border-slate-200 dark:border-slate-700">
                       <TableRow>
+                        {/* Show Institution column only when "All Institutions" is selected globally */}
+                        {mustSelectInstitution && (
+                          <TableHead className="text-sm font-semibold text-slate-700 dark:text-slate-300">
+                            Institution
+                          </TableHead>
+                        )}
                         <TableHead className="text-sm font-semibold text-slate-700 dark:text-slate-300">
                           <Button variant="ghost" size="sm" onClick={() => handleSort('course_code')} className="px-2 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-lg transition-colors">
                             Course Code
@@ -1481,12 +1590,17 @@ export default function CoursesPage() {
                     <TableBody>
                       {loading ? (
                         <TableRow>
-                          <TableCell colSpan={7} className="h-24 text-center text-sm text-slate-500 dark:text-slate-400">Loading...</TableCell>
+                          <TableCell colSpan={mustSelectInstitution ? 8 : 7} className="h-24 text-center text-sm text-slate-500 dark:text-slate-400">Loading...</TableCell>
                         </TableRow>
                       ) : pageItems.length ? (
                         <>
                           {pageItems.map((course) => (
                             <TableRow key={course.id} className="border-b border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors">
+                              {mustSelectInstitution && (
+                                <TableCell className="text-sm text-slate-600 dark:text-slate-400">
+                                  {course.institution_code || '-'}
+                                </TableCell>
+                              )}
                               <TableCell className="font-medium text-sm text-slate-900 dark:text-slate-100 font-grotesk">{course.course_code}</TableCell>
                               <TableCell className="text-sm text-slate-900 dark:text-slate-100 font-grotesk">{course.course_title}</TableCell>
                               <TableCell className="text-sm text-slate-600 dark:text-slate-400">{course.course_category || '-'}</TableCell>
@@ -1529,11 +1643,11 @@ export default function CoursesPage() {
                             </TableRow>
                           ))}
                         </>
-                      ) : (
-                        <TableRow>
-                          <TableCell colSpan={7} className="h-24 text-center text-sm text-slate-500 dark:text-slate-400">No data</TableCell>
-                        </TableRow>
-                      )}
+                        ) : (
+                          <TableRow>
+                            <TableCell colSpan={mustSelectInstitution ? 8 : 7} className="h-24 text-center text-sm text-slate-500 dark:text-slate-400">No data</TableCell>
+                          </TableRow>
+                        )}
                     </TableBody>
                   </Table>
                 </div>
@@ -1718,40 +1832,50 @@ export default function CoursesPage() {
                     <BookText className="h-4 w-4 text-white" />
                   </div>
                   <h3 className="text-lg font-bold bg-gradient-to-r from-green-600 to-emerald-600 bg-clip-text text-transparent">Basic Information</h3>
-              </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                <div className="space-y-2">
-                  <Label className="text-sm font-semibold">Institution Code <span className="text-red-500">*</span></Label>
-                  <SearchableSelect
-                    value={formData.institution_code}
-                    onValueChange={(v) => setFormData({ ...formData, institution_code: v })}
-                    options={institutions.map(i => ({ value: i.institution_code, label: i.institution_code }))}
-                    placeholder="Select institution"
-                    searchPlaceholder="Search institutions..."
-                    loading={codesLoading}
-                    loadingText="Loading..."
-                    error={!!errors.institution_code}
-                    clearable
-                    wrapText
-                  />
-                  {errors.institution_code && <p className="text-xs text-destructive">{errors.institution_code}</p>}
                 </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  {/* Institution Code - show selector only when user can/must choose institution */}
+                  {(mustSelectInstitution || !shouldFilter || !institutionCode) && (
+                    <div className="space-y-2">
+                      <Label className="text-sm font-semibold">Institution Code <span className="text-red-500">*</span></Label>
+                      <SearchableSelect
+                        value={formData.institution_code}
+                        onValueChange={(v) => setFormData({ ...formData, institution_code: v, regulation_code: "", offering_department_code: "", board_code: "" })}
+                        options={institutions.map(i => ({ value: i.institution_code, label: `${i.institution_code}${i.name ? ` - ${i.name}` : ''}` }))}
+                        placeholder="Select institution"
+                        searchPlaceholder="Search institutions..."
+                        loading={codesLoading}
+                        loadingText="Loading..."
+                        error={!!errors.institution_code}
+                        clearable
+                        wrapText
+                      />
+                      {errors.institution_code && (
+                        <p className="text-xs text-red-600 flex items-center gap-1">
+                          <AlertTriangle className="h-3 w-3" />
+                          {errors.institution_code}
+                        </p>
+                      )}
+                    </div>
+                  )}
                 <div className="space-y-2">
                   <Label className="text-sm font-semibold">Regulation Code <span className="text-red-500">*</span></Label>
                   <SearchableSelect
                     value={formData.regulation_code}
                     onValueChange={(v) => setFormData({ ...formData, regulation_code: v })}
-                    options={regulations.map(r => ({ value: r.regulation_code, label: r.regulation_code }))}
-                    placeholder="Select regulation"
+                    options={regulations.map(r => ({ value: r.regulation_code, label: r.regulation_name ? `${r.regulation_code} - ${r.regulation_name}` : r.regulation_code }))}
+                    placeholder={!formData.institution_code ? "Select institution first" : "Select regulation"}
                     searchPlaceholder="Search regulations..."
-                    loading={codesLoading}
-                    loadingText="Loading..."
+                    loading={regulationsLoading}
+                    loadingText="Loading regulations..."
                     error={!!errors.regulation_code}
                     clearable
                     wrapText
+                    disabled={!formData.institution_code}
                   />
                   {errors.regulation_code && <p className="text-xs text-destructive">{errors.regulation_code}</p>}
+                  {!formData.institution_code && <p className="text-xs text-muted-foreground">Select an institution to load regulations</p>}
                 </div>
                 <div className="space-y-2">
                   <Label className="text-sm font-semibold">Offering Department Code</Label>
@@ -1765,11 +1889,13 @@ export default function CoursesPage() {
                     }))}
                     placeholder="Select department"
                     searchPlaceholder="Search departments..."
-                    loading={codesLoading}
-                    loadingText="Loading..."
+                    loading={departmentsLoading}
+                    loadingText="Loading departments..."
                     clearable
                     wrapText
+                    disabled={!formData.institution_code}
                   />
+                  {!formData.institution_code && <p className="text-xs text-muted-foreground">Select an institution to load departments</p>}
                 </div>
                 <div className="space-y-2">
                   <Label className="text-sm font-semibold">Board Code</Label>
@@ -1783,11 +1909,13 @@ export default function CoursesPage() {
                     }))}
                     placeholder="Select board"
                     searchPlaceholder="Search boards..."
-                    loading={codesLoading}
-                    loadingText="Loading..."
+                    loading={boardsLoading}
+                    loadingText="Loading boards..."
                     clearable
                     wrapText
+                    disabled={!formData.institution_code}
                   />
+                  {!formData.institution_code && <p className="text-xs text-muted-foreground">Select an institution to load boards</p>}
                 </div>
                 <div className="space-y-2 md:col-span-1">
                   <Label className="text-sm font-semibold">Course Code <span className="text-red-500">*</span></Label>

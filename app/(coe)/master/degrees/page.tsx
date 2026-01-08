@@ -19,7 +19,10 @@ import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, 
 import { useToast } from "@/hooks/common/use-toast"
 import { useFormValidation, ValidationPresets } from "@/hooks/common/use-form-validation"
 import Link from "next/link"
-import { PlusCircle, Edit, Trash2, Search, ChevronLeft, ChevronRight, ArrowUpDown, ArrowUp, ArrowDown, GraduationCap, TrendingUp, FileSpreadsheet, RefreshCw, CheckCircle, XCircle, AlertTriangle } from "lucide-react"
+import { PlusCircle, Edit, Trash2, Search, ChevronLeft, ChevronRight, ArrowUpDown, ArrowUp, ArrowDown, GraduationCap, TrendingUp, FileSpreadsheet, RefreshCw, XCircle, AlertTriangle } from "lucide-react"
+import { useInstitutionFilter } from "@/hooks/use-institution-filter"
+import { useInstitutionField } from "@/hooks/use-institution-field"
+import { InstitutionField } from "@/components/form/institution-field"
 
 
 
@@ -65,8 +68,18 @@ export default function DegreePage() {
     failed: number
   }>({ total: 0, success: 0, failed: 0 })
 
-  // Institutions for dropdown
-  const [institutions, setInstitutions] = useState<Array<{ id: string; institution_code: string; name?: string }>>([])
+  // Institution context for filtering and form field
+  const {
+    filter,
+    queryString,
+    shouldFilter,
+    isReady,
+    institutionCode,
+    appendToUrl,
+    getInstitutionCodeForCreate,
+    mustSelectInstitution
+  } = useInstitutionFilter()
+  const { defaultInstitutionCode, availableInstitutions } = useInstitutionField()
 
   const [formData, setFormData] = useState({
     institution_code: "",
@@ -74,7 +87,7 @@ export default function DegreePage() {
     degree_name: "",
     display_name: "",
     description: "",
-        is_active: true,
+    is_active: true,
   })
 
   // Use the custom validation hook
@@ -84,11 +97,13 @@ export default function DegreePage() {
     degree_name: [ValidationPresets.required('Degree name is required')],
   })
 
-  // Fetch data from API
+  // Fetch data from API with institution filtering
   const fetchDegrees = async () => {
     try {
       setLoading(true)
-      const response = await fetch('/api/master/degrees')
+      // Build URL with institution filter if applicable
+      const url = appendToUrl('/api/master/degrees')
+      const response = await fetch(url)
       if (!response.ok) {
         throw new Error('Failed to fetch degrees')
       }
@@ -98,42 +113,23 @@ export default function DegreePage() {
       console.error('Error fetching degrees:', error)
       setItems([])
     } finally {
-    setLoading(false)
+      setLoading(false)
     }
   }
 
-  const fetchInstitutionsList = async () => {
-    try {
-      const res = await fetch('/api/master/institutions')
-      if (res.ok) {
-        const data = await res.json()
-        const mapped = Array.isArray(data)
-          ? data.filter((i: any) => i?.institution_code).map((i: any) => ({
-              id: i.id,
-              institution_code: i.institution_code,
-              name: i.institution_name || i.name,  // Support both field names
-              is_active: i.is_active ?? i.status ?? true
-            }))
-          : []
-        setInstitutions(mapped)
-      }
-    } catch (e) {
-      console.error('Failed to load institutions:', e)
-    }
-  }
-
-  // Load data on component mount
+  // Load data when institution context is ready or filter changes
   useEffect(() => {
-    fetchDegrees()
-    fetchInstitutionsList()
-    // Skip institution_id prefill; Institution Code will be chosen from dropdown
-  }, [])
+    if (isReady) {
+      fetchDegrees()
+    }
+  }, [isReady, filter])
 
 
 
   const resetForm = () => {
     setFormData({
-      institution_code: "",
+      // Auto-fill institution_code from context if available
+      institution_code: defaultInstitutionCode || "",
       degree_code: "",
       degree_name: "",
       display_name: "",
@@ -218,8 +214,8 @@ export default function DegreePage() {
 
     try {
       setLoading(true)
-      // Find the selected institution to get its ID
-      const selectedInstitution = institutions.find(inst => inst.institution_code === formData.institution_code)
+      // Find the selected institution to get its ID from context
+      const selectedInstitution = availableInstitutions.find(inst => inst.institution_code === formData.institution_code)
 
       if (!selectedInstitution) {
         toast({
@@ -232,7 +228,7 @@ export default function DegreePage() {
       }
 
       // Create payload with both institution_code and institutions_id (note: plural)
-      let payload = {
+      const payload = {
         ...formData,
         institutions_id: selectedInstitution.id  // Add institutions_id from selected institution
       }
@@ -336,12 +332,11 @@ export default function DegreePage() {
     }
   }
 
-  const formatDate = (d: string) => new Date(d).toLocaleDateString("en-US", { year: "numeric", month: "short", day: "numeric" })
 
 
 
   // Field validation function
-  const validateDegreeData = (data: any, rowIndex: number) => {
+  const validateDegreeData = (data: any, _rowIndex: number) => {
     const errors: string[] = []
     
     // Required field validations
@@ -491,11 +486,11 @@ export default function DegreePage() {
 
     XLSX.utils.book_append_sheet(wb, ws, 'Template')
 
-    // Sheet 2: Institution Code References
-    if (institutions.length > 0) {
-      const institutionReference = institutions.map(inst => ({
+    // Sheet 2: Institution Code References (from context)
+    if (availableInstitutions.length > 0) {
+      const institutionReference = availableInstitutions.map(inst => ({
         'Institution Code': inst.institution_code,
-        'Institution Name': inst.name || 'N/A',
+        'Institution Name': inst.institution_name || inst.short_name || 'N/A',
         'Status': inst.is_active ? 'Active' : 'Inactive'
       }))
 
@@ -899,12 +894,15 @@ export default function DegreePage() {
                     <Table>
                       <TableHeader className="sticky top-0 z-10 bg-slate-50 dark:bg-slate-900/50">
                         <TableRow>
-                        <TableHead className="w-[140px] text-[11px]">
-                          <Button variant="ghost" size="sm" onClick={() => handleSort("institution_code")} className="h-auto p-0 font-medium hover:bg-transparent">
-                              Institution Code
-                            <span className="ml-1">{getSortIcon("institution_code")}</span>
+                        {/* Show Institution column only when "All Institutions" is selected */}
+                        {mustSelectInstitution && (
+                          <TableHead className="w-[140px] text-[11px]">
+                            <Button variant="ghost" size="sm" onClick={() => handleSort("institution_code")} className="h-auto p-0 font-medium hover:bg-transparent">
+                              Institution
+                              <span className="ml-1">{getSortIcon("institution_code")}</span>
                             </Button>
                           </TableHead>
+                        )}
                           <TableHead className="w-[120px] text-[11px]">
                           <Button variant="ghost" size="sm" onClick={() => handleSort("degree_code")} className="h-auto p-0 font-medium hover:bg-transparent">
                               Degree Code
@@ -930,13 +928,16 @@ export default function DegreePage() {
                       <TableBody>
                         {loading ? (
                           <TableRow>
-                          <TableCell colSpan={6} className="h-24 text-center text-[11px]">Loading…</TableCell>
+                          <TableCell colSpan={mustSelectInstitution ? 6 : 5} className="h-24 text-center text-[11px]">Loading…</TableCell>
                           </TableRow>
                       ) : pageItems.length ? (
                         <>
                           {pageItems.map((row) => (
                             <TableRow key={row.id}>
-                              <TableCell className="text-[11px] font-medium">{row.institution_code}</TableCell>
+                              {/* Show Institution cell only when "All Institutions" is selected */}
+                              {mustSelectInstitution && (
+                                <TableCell className="text-[11px] font-medium">{row.institution_code}</TableCell>
+                              )}
                               <TableCell className="text-[11px]">{row.degree_code}</TableCell>
                               <TableCell className="text-[11px]">{row.degree_name}</TableCell>
                               <TableCell className="text-[11px] text-muted-foreground">{row.display_name || '-'}</TableCell>
@@ -983,7 +984,7 @@ export default function DegreePage() {
                           </>
                         ) : (
                             <TableRow>
-                          <TableCell colSpan={6} className="h-24 text-center text-[11px]">No data</TableCell>
+                          <TableCell colSpan={mustSelectInstitution ? 6 : 5} className="h-24 text-center text-[11px]">No data</TableCell>
                             </TableRow>
                         )}
                       </TableBody>
@@ -1041,30 +1042,13 @@ export default function DegreePage() {
                 <h3 className="text-lg font-bold bg-gradient-to-r from-green-600 to-emerald-600 bg-clip-text text-transparent">Basic Information</h3>
               </div>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {/* Institution Code dropdown */}
-                <div className="space-y-2">
-                  <Label htmlFor="institution_code" className="text-sm font-semibold">
-                    Institution Code <span className="text-red-500">*</span>
-                  </Label>
-                  <Select
-                    value={formData.institution_code}
-                    onValueChange={(code) => {
-                      setFormData(prev => ({ ...prev, institution_code: code }))
-                    }}
-                  >
-                    <SelectTrigger className={`h-10 ${errors.institution_code ? 'border-destructive' : ''}`}>
-                      <SelectValue placeholder="Select Institution Code" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {institutions.map(inst => (
-                        <SelectItem key={inst.id} value={inst.institution_code}>
-                          {inst.institution_code}{inst.name ? ` - ${inst.name}` : ''}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  {errors.institution_code && <p className="text-xs text-destructive">{errors.institution_code}</p>}
-                </div>
+                {/* Institution Field - Smart dropdown that auto-fills based on user role */}
+                <InstitutionField
+                  value={formData.institution_code}
+                  onChange={(code) => setFormData(prev => ({ ...prev, institution_code: code }))}
+                  error={errors.institution_code}
+                  required
+                />
                 <div className="space-y-2">
                   <Label htmlFor="degree_code" className="text-sm font-semibold">
                     Degree Code <span className="text-red-500">*</span>

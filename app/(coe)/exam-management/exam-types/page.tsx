@@ -1,7 +1,9 @@
 "use client"
 
-import { useMemo, useState, useEffect } from "react"
+import { useMemo, useState, useEffect, useCallback } from "react"
 import XLSX from "@/lib/utils/excel-compat"
+import { useMyJKKNInstitutionFilter } from "@/hooks/use-myjkkn-institution-filter"
+import { useInstitutionFilter } from "@/hooks/use-institution-filter"
 import { AppSidebar } from "@/components/layout/app-sidebar"
 import { AppHeader } from "@/components/layout/app-header"
 import { AppFooter } from "@/components/layout/app-footer"
@@ -44,6 +46,18 @@ interface Regulation {
 
 export default function ExamTypesPage() {
 	const { toast } = useToast()
+	const { fetchRegulations: fetchMyJKKNRegulations } = useMyJKKNInstitutionFilter()
+
+	// Institution filter hook for multi-tenant filtering
+	const {
+		filter,
+		isReady,
+		appendToUrl,
+		getInstitutionIdForCreate,
+		mustSelectInstitution,
+		shouldFilter,
+		institutionId
+	} = useInstitutionFilter()
 
 	// State Management
 	const [items, setItems] = useState<ExamType[]>([])
@@ -78,7 +92,7 @@ export default function ExamTypesPage() {
 		institutions_id: "",
 		examination_code: "",
 		examination_name: "",
-		grade_system_code: "" as string,
+		grade_system_codes: [] as string[], // Changed to array for multi-select
 		regulation_id: "",
 		description: "",
 		exam_type: "offline" as 'quizzes' | 'online' | 'offline',
@@ -88,14 +102,17 @@ export default function ExamTypesPage() {
 	const [errors, setErrors] = useState<Record<string, string>>({})
 
 	// Foreign Key Dropdown Data
-	const [institutions, setInstitutions] = useState<Array<{ id: string; institution_code: string; institution_name: string }>>([])
+	const [institutions, setInstitutions] = useState<Array<{ id: string; institution_code: string; institution_name: string; counselling_code: string | null }>>([])
 	const [regulations, setRegulations] = useState<Regulation[]>([])
+	const [regulationsLoading, setRegulationsLoading] = useState(false)
 
-	// Fetch Data
+	// Fetch Data with institution filter
 	const fetchExamTypes = async () => {
 		try {
 			setLoading(true)
-			const response = await fetch('/api/exam-management/exam-types')
+			// Use institution filter for multi-tenant data access
+			const url = appendToUrl('/api/exam-management/exam-types')
+			const response = await fetch(url)
 			if (!response.ok) {
 				throw new Error('Failed to fetch exam types')
 			}
@@ -118,7 +135,8 @@ export default function ExamTypesPage() {
 					? data.filter((i: any) => i?.institution_code).map((i: any) => ({
 						id: i.id,
 						institution_code: i.institution_code,
-						institution_name: i.institution_name || i.name
+						institution_name: i.institution_name || i.name,
+						counselling_code: i.counselling_code || null
 					}))
 					: []
 				setInstitutions(mapped)
@@ -128,30 +146,61 @@ export default function ExamTypesPage() {
 		}
 	}
 
-	const fetchRegulations = async () => {
+	// Fetch regulations from MyJKKN API using hook (two-step lookup with client-side filtering)
+	const fetchRegulations = useCallback(async (institutionId?: string) => {
 		try {
-			const res = await fetch('/api/master/regulations')
-			if (res.ok) {
-				const data = await res.json()
-				const mapped = Array.isArray(data)
-					? data.filter((i: any) => i?.regulation_code).map((i: any) => ({
-						id: i.id,
-						regulation_code: i.regulation_code,
-						regulation_name: i.regulation_name || i.name
-					}))
-					: []
-				setRegulations(mapped)
-			}
-		} catch (e) {
-			console.error('Failed to load regulations:', e)
-		}
-	}
+			setRegulationsLoading(true)
+			setRegulations([])
 
+			// If no institution selected, clear regulations
+			if (!institutionId) {
+				return
+			}
+
+			// Find the institution to get its counselling_code for MyJKKN API filtering
+			const institution = institutions.find(i => i.id === institutionId)
+			const counsellingCode = institution?.counselling_code || undefined
+
+			// Use hook to fetch regulations (handles two-step lookup and deduplication)
+			const regs = await fetchMyJKKNRegulations(counsellingCode)
+
+			// Extra deduplication by regulation_code to ensure no duplicates
+			const seenCodes = new Set<string>()
+			const uniqueRegs = regs.filter(r => {
+				if (seenCodes.has(r.regulation_code)) return false
+				seenCodes.add(r.regulation_code)
+				return true
+			})
+
+			setRegulations(uniqueRegs.map(r => ({
+				id: r.id,
+				regulation_code: r.regulation_code,
+				regulation_name: r.regulation_name || r.regulation_code
+			})))
+		} catch (e) {
+			console.error('[ExamTypes] Failed to load regulations from MyJKKN:', e)
+		} finally {
+			setRegulationsLoading(false)
+		}
+	}, [institutions, fetchMyJKKNRegulations])
+
+	// Load data when institution filter is ready
 	useEffect(() => {
-		fetchExamTypes()
-		fetchInstitutions()
-		fetchRegulations()
-	}, [])
+		if (isReady) {
+			fetchExamTypes()
+			fetchInstitutions()
+		}
+	}, [isReady, filter])
+
+	// Fetch regulations when institution changes (filtered by counselling_code)
+	useEffect(() => {
+		if (formData.institutions_id) {
+			fetchRegulations(formData.institutions_id)
+		} else {
+			// Clear regulations when no institution is selected
+			setRegulations([])
+		}
+	}, [formData.institutions_id, fetchRegulations])
 
 	// Form Validation
 	const validate = () => {
@@ -162,9 +211,10 @@ export default function ExamTypesPage() {
 		if (!formData.examination_code.trim()) e.examination_code = "Examination code is required"
 		if (!formData.examination_name.trim()) e.examination_name = "Examination name is required"
 
-		// Grade system code validation (optional but must be UG or PG if provided)
-		if (formData.grade_system_code && !['UG', 'PG'].includes(formData.grade_system_code)) {
-			e.grade_system_code = "Grade system must be UG or PG"
+		// Grade system codes validation (optional but must be UG or PG if provided)
+		const invalidCodes = formData.grade_system_codes.filter(c => !['UG', 'PG'].includes(c))
+		if (invalidCodes.length > 0) {
+			e.grade_system_codes = "Grade system must be UG or PG"
 		}
 
 		// Format validation
@@ -192,10 +242,21 @@ export default function ExamTypesPage() {
 		try {
 			setLoading(true)
 
+			// Convert grade_system_codes array to comma-separated string for API
+			const gradeSystemCode = formData.grade_system_codes.length > 0
+				? formData.grade_system_codes.join(',')
+				: null
+
 			let payload = {
-				...formData,
-				grade_system_code: formData.grade_system_code || null,
+				institutions_id: formData.institutions_id,
+				examination_code: formData.examination_code,
+				examination_name: formData.examination_name,
+				grade_system_code: gradeSystemCode,
 				regulation_id: formData.regulation_id || null,
+				description: formData.description,
+				exam_type: formData.exam_type,
+				is_coe: formData.is_coe,
+				is_active: formData.is_active,
 			}
 
 			if (editing) {
@@ -299,11 +360,13 @@ export default function ExamTypesPage() {
 
 	// Reset Form
 	const resetForm = () => {
+		// Auto-fill institution_id from context if available
+		const autoInstitutionId = getInstitutionIdForCreate() || ""
 		setFormData({
-			institutions_id: "",
+			institutions_id: autoInstitutionId,
 			examination_code: "",
 			examination_name: "",
-			grade_system_code: "",
+			grade_system_codes: [], // Reset to empty array
 			regulation_id: "",
 			description: "",
 			exam_type: "offline",
@@ -331,10 +394,12 @@ export default function ExamTypesPage() {
 			errors.push('Examination name must be 100 characters or less')
 		}
 
-		// Grade system code validation (optional but must be UG or PG if provided)
+		// Grade system code validation (optional, supports multiple values like "UG,PG")
 		if (data.grade_system_code && data.grade_system_code.trim() !== '') {
-			if (!['UG', 'PG'].includes(data.grade_system_code.toUpperCase())) {
-				errors.push('Grade system code must be UG or PG')
+			const codes = data.grade_system_code.split(',').map((c: string) => c.trim().toUpperCase())
+			const invalidCodes = codes.filter((c: string) => c && !['UG', 'PG'].includes(c))
+			if (invalidCodes.length > 0) {
+				errors.push(`Invalid grade system code(s): ${invalidCodes.join(', ')}. Must be UG or PG`)
 			}
 		}
 
@@ -356,11 +421,12 @@ export default function ExamTypesPage() {
 		return errors
 	}
 
-	// Export to JSON
+	// Export to JSON - exports only filtered data (user's institution)
 	const handleDownload = () => {
 		const exportData = filtered.map(item => {
 			// Find regulation name from regulation_id
 			const regulation = regulations.find(r => r.id === item.regulation_id)
+
 			return {
 				examination_code: item.examination_code,
 				examination_name: item.examination_name,
@@ -386,10 +452,11 @@ export default function ExamTypesPage() {
 		URL.revokeObjectURL(url)
 	}
 
-	// Export to Excel
+	// Export to Excel - exports only filtered data (user's institution)
 	const handleExport = () => {
 		const excelData = filtered.map((r) => {
 			const regulation = regulations.find(reg => reg.id === r.regulation_id)
+
 			return {
 				'Examination Code': r.examination_code,
 				'Examination Name': r.examination_name,
@@ -425,20 +492,33 @@ export default function ExamTypesPage() {
 	}
 
 	// Template Export with Reference Sheets
+	// Note: Institution is NOT included in template - users can only import to their own institution
 	const handleTemplateExport = () => {
 		const wb = XLSX.utils.book_new()
 
-		// Sheet 1: Template with sample row
-		const sample = [{
-			'Examination Code *': 'MTE',
-			'Examination Name *': 'Mid Term Examination',
-			'Grade System Code': 'UG',
-			'Regulation Code': 'REG2024',
-			'Description': 'Mid term examination for all courses',
-			'Exam Type': 'offline',
-			'Is CoE': 'Yes',
-			'Status': 'Active'
-		}]
+		// Sheet 1: Template with sample rows showing single and multi-select grade systems
+		const sample = [
+			{
+				'Examination Code *': 'MTE',
+				'Examination Name *': 'Mid Term Examination',
+				'Grade System Code': 'UG',
+				'Regulation Code': 'REG2024',
+				'Description': 'Mid term examination for undergraduate',
+				'Exam Type': 'offline',
+				'Is CoE': 'Yes',
+				'Status': 'Active'
+			},
+			{
+				'Examination Code *': 'ETE',
+				'Examination Name *': 'End Term Examination',
+				'Grade System Code': 'UG,PG',
+				'Regulation Code': 'REG2024',
+				'Description': 'End term examination for both UG and PG',
+				'Exam Type': 'offline',
+				'Is CoE': 'Yes',
+				'Status': 'Active'
+			}
+		]
 
 		const ws = XLSX.utils.json_to_sheet(sample)
 
@@ -481,7 +561,7 @@ export default function ExamTypesPage() {
 
 		XLSX.utils.book_append_sheet(wb, ws, 'Template')
 
-		// Sheet 2: Regulations Reference
+		// Sheet 2: Regulations Reference (filtered by user's institution)
 		const regulationsRef = regulations.map(item => ({
 			'Regulation Code': item.regulation_code,
 			'Regulation Name': item.regulation_name || 'N/A',
@@ -557,12 +637,15 @@ export default function ExamTypesPage() {
 						// Map regulation_code to regulation_id
 						const regulationCode = String(j['Regulation Code'] || '')
 						const regulation = regulations.find(r => r.regulation_code === regulationCode)
-						const gradeSystemCode = String(j['Grade System Code'] || '').toUpperCase()
+						// Support multiple grade system codes (e.g., "UG,PG" or "UG")
+						const gradeSystemRaw = String(j['Grade System Code'] || '').toUpperCase()
+						const validCodes = gradeSystemRaw.split(',').map(c => c.trim()).filter(c => ['UG', 'PG'].includes(c))
+						const gradeSystemCode = validCodes.length > 0 ? validCodes.join(',') : null
 
 						return {
 							examination_code: String(j['Examination Code *'] || j['Examination Code'] || ''),
 							examination_name: String(j['Examination Name *'] || j['Examination Name'] || ''),
-							grade_system_code: ['UG', 'PG'].includes(gradeSystemCode) ? gradeSystemCode : null,
+							grade_system_code: gradeSystemCode,
 							regulation_id: regulation?.id || null,
 							description: String(j['Description'] || ''),
 							exam_type: String(j['Exam Type'] || 'offline') as 'quizzes' | 'online' | 'offline',
@@ -579,12 +662,15 @@ export default function ExamTypesPage() {
 						// Map regulation_code to regulation_id
 						const regulationCode = String(j['Regulation Code'] || '')
 						const regulation = regulations.find(r => r.regulation_code === regulationCode)
-						const gradeSystemCode = String(j['Grade System Code'] || '').toUpperCase()
+						// Support multiple grade system codes (e.g., "UG,PG" or "UG")
+						const gradeSystemRaw = String(j['Grade System Code'] || '').toUpperCase()
+						const validCodes = gradeSystemRaw.split(',').map(c => c.trim()).filter(c => ['UG', 'PG'].includes(c))
+						const gradeSystemCode = validCodes.length > 0 ? validCodes.join(',') : null
 
 						return {
 							examination_code: String(j['Examination Code *'] || j['Examination Code'] || ''),
 							examination_name: String(j['Examination Name *'] || j['Examination Name'] || ''),
-							grade_system_code: ['UG', 'PG'].includes(gradeSystemCode) ? gradeSystemCode : null,
+							grade_system_code: gradeSystemCode,
 							regulation_id: regulation?.id || null,
 							description: String(j['Description'] || ''),
 							exam_type: String(j['Exam Type'] || 'offline') as 'quizzes' | 'online' | 'offline',
@@ -602,13 +688,33 @@ export default function ExamTypesPage() {
 					errors: string[]
 				}> = []
 
-				// Get first institution ID as default
-				const defaultInstitutionId = institutions[0]?.id || ''
+				// Get institution ID from filter context - users can only import to their own institution
+				const autoInstitutionId = getInstitutionIdForCreate() || ''
+
+				// If "All Institutions" is selected, user must select a specific institution first
+				if (mustSelectInstitution) {
+					toast({
+						title: "❌ Institution Required",
+						description: "Please select a specific institution from the header dropdown before importing data.",
+						variant: "destructive",
+					})
+					return
+				}
+
+				// Validate that user has an institution assigned
+				if (!autoInstitutionId) {
+					toast({
+						title: "❌ No Institution",
+						description: "Unable to determine your institution. Please contact administrator.",
+						variant: "destructive",
+					})
+					return
+				}
 
 				const mapped = rows.map((r, index) => {
 					const itemData = {
 						id: String(Date.now() + Math.random()),
-						institutions_id: defaultInstitutionId,
+						institutions_id: autoInstitutionId, // Always use user's institution
 						examination_code: r.examination_code!,
 						examination_name: r.examination_name!,
 						grade_system_code: r.grade_system_code || null,
@@ -953,10 +1059,14 @@ export default function ExamTypesPage() {
 									<Button variant="outline" size="sm" className="text-xs px-2 h-8" onClick={handleDownload}>Json</Button>
 									<Button variant="outline" size="sm" className="text-xs px-2 h-8" onClick={handleExport}>Download</Button>
 									<Button variant="outline" size="sm" className="text-xs px-2 h-8" onClick={handleImport}>Upload</Button>
-									<Button size="sm" className="text-xs px-2 h-8" onClick={() => { resetForm(); setSheetOpen(true) }} disabled={loading}>
-										<PlusCircle className="h-3 w-3 mr-1" />
-										Add
-									</Button>
+									<Button size="sm" className="text-xs px-2 h-8" onClick={() => {
+									// Open form - institution can be selected in the form if "All Institutions" is selected
+									resetForm()
+									setSheetOpen(true)
+								}} disabled={loading}>
+									<PlusCircle className="h-3 w-3 mr-1" />
+									Add
+								</Button>
 								</div>
 							</div>
 						</CardHeader>
@@ -967,7 +1077,16 @@ export default function ExamTypesPage() {
 									<Table>
 										<TableHeader className="sticky top-0 z-10 bg-slate-50 dark:bg-slate-900/50">
 											<TableRow>
-												<TableHead className="w-[140px] text-[11px]">
+												{/* Show Institution column only when "All Institutions" is selected */}
+												{mustSelectInstitution && (
+													<TableHead className="w-[100px] text-[11px]">
+														<Button variant="ghost" size="sm" onClick={() => handleSort("institutions_id")} className="h-auto p-0 font-medium hover:bg-transparent">
+															Institution
+															<span className="ml-1">{sortColumn === "institutions_id" ? (sortDirection === "asc" ? <ArrowUp className="h-3 w-3" /> : <ArrowDown className="h-3 w-3" />) : <ArrowUpDown className="h-3 w-3 text-muted-foreground" />}</span>
+														</Button>
+													</TableHead>
+												)}
+												<TableHead className="w-[120px] text-[11px]">
 													<Button variant="ghost" size="sm" onClick={() => handleSort("examination_code")} className="h-auto p-0 font-medium hover:bg-transparent">
 														Exam Code
 														<span className="ml-1">{sortColumn === "examination_code" ? (sortDirection === "asc" ? <ArrowUp className="h-3 w-3" /> : <ArrowDown className="h-3 w-3" />) : <ArrowUpDown className="h-3 w-3 text-muted-foreground" />}</span>
@@ -998,18 +1117,24 @@ export default function ExamTypesPage() {
 														<span className="ml-1">{sortColumn === "is_active" ? (sortDirection === "asc" ? <ArrowUp className="h-3 w-3" /> : <ArrowDown className="h-3 w-3" />) : <ArrowUpDown className="h-3 w-3 text-muted-foreground" />}</span>
 													</Button>
 												</TableHead>
-												<TableHead className="w-[120px] text-[11px] text-center">Actions</TableHead>
+												<TableHead className="w-[100px] text-[11px] text-center">Actions</TableHead>
 											</TableRow>
 										</TableHeader>
 										<TableBody>
 											{loading ? (
 												<TableRow>
-													<TableCell colSpan={7} className="h-24 text-center text-[11px]">Loading…</TableCell>
+													<TableCell colSpan={mustSelectInstitution ? 8 : 7} className="h-24 text-center text-[11px]">Loading…</TableCell>
 												</TableRow>
 											) : paginatedItems.length ? (
 												<>
 													{paginatedItems.map((item) => (
 														<TableRow key={item.id}>
+															{/* Show Institution cell only when "All Institutions" is selected */}
+															{mustSelectInstitution && (
+																<TableCell className="text-[11px] font-medium text-muted-foreground">
+																	{institutions.find(i => i.id === item.institutions_id)?.institution_code || '-'}
+																</TableCell>
+															)}
 															<TableCell className="text-[11px] font-medium">{item.examination_code}</TableCell>
 															<TableCell className="text-[11px]">{item.examination_name}</TableCell>
 															<TableCell className="text-[11px] text-muted-foreground">{item.grade_system_code || '-'}</TableCell>
@@ -1053,11 +1178,15 @@ export default function ExamTypesPage() {
 																<div className="flex items-center justify-center gap-1">
 																	<Button variant="outline" size="sm" className="h-7 w-7 p-0" onClick={() => {
 																		setEditing(item)
+																		// Convert comma-separated string to array for multi-select
+																		const gradeCodes = item.grade_system_code
+																			? item.grade_system_code.split(',').map(c => c.trim()).filter(Boolean)
+																			: []
 																		setFormData({
 																			institutions_id: item.institutions_id,
 																			examination_code: item.examination_code,
 																			examination_name: item.examination_name,
-																			grade_system_code: item.grade_system_code || "",
+																			grade_system_codes: gradeCodes,
 																			regulation_id: item.regulation_id || "",
 																			description: item.description || "",
 																			exam_type: item.exam_type,
@@ -1094,7 +1223,7 @@ export default function ExamTypesPage() {
 												</>
 											) : (
 												<TableRow>
-													<TableCell colSpan={7} className="h-24 text-center text-[11px]">No data</TableCell>
+													<TableCell colSpan={mustSelectInstitution ? 8 : 7} className="h-24 text-center text-[11px]">No data</TableCell>
 												</TableRow>
 											)}
 										</TableBody>
@@ -1154,27 +1283,33 @@ export default function ExamTypesPage() {
 							</div>
 
 							<div className="grid grid-cols-1 gap-4">
-								<div className="space-y-2">
-									<Label htmlFor="institutions_id" className="text-sm font-semibold">
-										Institution <span className="text-red-500">*</span>
-									</Label>
-									<Select
-										value={formData.institutions_id}
-										onValueChange={(v) => setFormData({ ...formData, institutions_id: v })}
-									>
-										<SelectTrigger className={`h-10 ${errors.institutions_id ? 'border-destructive' : ''}`}>
-											<SelectValue placeholder="Select institution" />
-										</SelectTrigger>
-										<SelectContent>
-											{institutions.map((inst) => (
-												<SelectItem key={inst.id} value={inst.id}>
-													{inst.institution_code} - {inst.institution_name}
-												</SelectItem>
-											))}
-										</SelectContent>
-									</Select>
-									{errors.institutions_id && <p className="text-xs text-destructive">{errors.institutions_id}</p>}
-								</div>
+								{/* Show institution field when:
+								    1. "All Institutions" is selected globally (mustSelectInstitution = true)
+								    2. User can switch institutions (!shouldFilter || !institutionId)
+								    Hide when a specific institution is selected */}
+								{mustSelectInstitution || !shouldFilter || !institutionId ? (
+									<div className="space-y-2">
+										<Label htmlFor="institutions_id" className="text-sm font-semibold">
+											Institution <span className="text-red-500">*</span>
+										</Label>
+										<Select
+											value={formData.institutions_id}
+											onValueChange={(v) => setFormData({ ...formData, institutions_id: v, regulation_id: '' })}
+										>
+											<SelectTrigger className={`h-10 ${errors.institutions_id ? 'border-destructive' : ''}`}>
+												<SelectValue placeholder="Select institution" />
+											</SelectTrigger>
+											<SelectContent>
+												{institutions.map((inst) => (
+													<SelectItem key={inst.id} value={inst.id}>
+														{inst.institution_code} - {inst.institution_name}
+													</SelectItem>
+												))}
+											</SelectContent>
+										</Select>
+										{errors.institutions_id && <p className="text-xs text-destructive">{errors.institutions_id}</p>}
+									</div>
+								) : null}
 
 								<div className="space-y-2">
 									<Label htmlFor="examination_code" className="text-sm font-semibold">
@@ -1207,22 +1342,45 @@ export default function ExamTypesPage() {
 								</div>
 
 								<div className="space-y-2">
-									<Label htmlFor="grade_system_code" className="text-sm font-semibold">
-										Grade System
+									<Label className="text-sm font-semibold">
+										Grade System <span className="text-muted-foreground font-normal">(multi-select)</span>
 									</Label>
-									<Select
-										value={formData.grade_system_code}
-										onValueChange={(v) => setFormData({ ...formData, grade_system_code: v })}
-									>
-										<SelectTrigger className={`h-10 ${errors.grade_system_code ? 'border-destructive' : ''}`}>
-											<SelectValue placeholder="Select grade system (optional)" />
-										</SelectTrigger>
-										<SelectContent>
-											<SelectItem value="UG">UG - Undergraduate</SelectItem>
-											<SelectItem value="PG">PG - Postgraduate</SelectItem>
-										</SelectContent>
-									</Select>
-									{errors.grade_system_code && <p className="text-xs text-destructive">{errors.grade_system_code}</p>}
+									<div className={`flex gap-4 p-3 border rounded-md ${errors.grade_system_codes ? 'border-destructive' : 'border-input'}`}>
+										<label className="flex items-center gap-2 cursor-pointer">
+											<input
+												type="checkbox"
+												checked={formData.grade_system_codes.includes('UG')}
+												onChange={(e) => {
+													if (e.target.checked) {
+														setFormData({ ...formData, grade_system_codes: [...formData.grade_system_codes, 'UG'] })
+													} else {
+														setFormData({ ...formData, grade_system_codes: formData.grade_system_codes.filter(c => c !== 'UG') })
+													}
+												}}
+												className="h-4 w-4 rounded border-gray-300 text-primary focus:ring-primary"
+											/>
+											<span className="text-sm">UG - Undergraduate</span>
+										</label>
+										<label className="flex items-center gap-2 cursor-pointer">
+											<input
+												type="checkbox"
+												checked={formData.grade_system_codes.includes('PG')}
+												onChange={(e) => {
+													if (e.target.checked) {
+														setFormData({ ...formData, grade_system_codes: [...formData.grade_system_codes, 'PG'] })
+													} else {
+														setFormData({ ...formData, grade_system_codes: formData.grade_system_codes.filter(c => c !== 'PG') })
+													}
+												}}
+												className="h-4 w-4 rounded border-gray-300 text-primary focus:ring-primary"
+											/>
+											<span className="text-sm">PG - Postgraduate</span>
+										</label>
+									</div>
+									{formData.grade_system_codes.length > 0 && (
+										<p className="text-xs text-muted-foreground">Selected: {formData.grade_system_codes.join(', ')}</p>
+									)}
+									{errors.grade_system_codes && <p className="text-xs text-destructive">{errors.grade_system_codes}</p>}
 								</div>
 
 								<div className="space-y-2">
@@ -1232,18 +1390,28 @@ export default function ExamTypesPage() {
 									<Select
 										value={formData.regulation_id}
 										onValueChange={(v) => setFormData({ ...formData, regulation_id: v })}
+										disabled={!formData.institutions_id || regulationsLoading}
 									>
-										<SelectTrigger className="h-10">
-											<SelectValue placeholder="Select regulation (optional)" />
+										<SelectTrigger className={`h-10 ${!formData.institutions_id ? 'bg-muted' : ''}`}>
+											<SelectValue placeholder={
+												!formData.institutions_id
+													? "Select institution first"
+													: regulationsLoading
+														? "Loading regulations..."
+														: "Select regulation (optional)"
+											} />
 										</SelectTrigger>
 										<SelectContent>
 											{regulations.map((reg) => (
 												<SelectItem key={reg.id} value={reg.id}>
-													{reg.regulation_code} - {reg.regulation_name}
+													{reg.regulation_code}
 												</SelectItem>
 											))}
 										</SelectContent>
 									</Select>
+									{!formData.institutions_id && (
+										<p className="text-xs text-muted-foreground">Select an institution to see available regulations from MyJKKN</p>
+									)}
 								</div>
 
 								<div className="space-y-2">

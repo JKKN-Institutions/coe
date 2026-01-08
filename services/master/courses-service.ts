@@ -1,7 +1,31 @@
 import type { Course, CourseFormData } from '@/types/courses'
 
-export async function fetchCourses(): Promise<Course[]> {
-	const response = await fetch('/api/master/courses')
+/**
+ * Fetch courses with optional institution filtering
+ * @param institutionFilter - Optional filter params from useInstitutionFilter hook
+ * @param requireFilter - If true and filter is empty, return empty array (for non-super admin with no institution)
+ * @returns Promise<Course[]>
+ */
+export async function fetchCourses(
+	institutionFilter?: { institution_code?: string; institutions_id?: string },
+	requireFilter: boolean = false
+): Promise<Course[]> {
+	// If filter is required but no valid institution_code provided, return empty array
+	// This handles non-super admin users with no assigned institution
+	if (requireFilter && !institutionFilter?.institution_code) {
+		return []
+	}
+
+	const params = new URLSearchParams()
+	if (institutionFilter?.institution_code) {
+		params.set('institution_code', institutionFilter.institution_code)
+	}
+	if (institutionFilter?.institutions_id) {
+		params.set('institutions_id', institutionFilter.institutions_id)
+	}
+	const queryString = params.toString()
+	const url = queryString ? `/api/master/courses?${queryString}` : '/api/master/courses'
+	const response = await fetch(url)
 	if (!response.ok) {
 		let errorData: any = {}
 		try {
@@ -167,33 +191,247 @@ export async function deleteCourse(id: string): Promise<void> {
 // Dropdown data services
 export async function fetchDropdownData() {
 	try {
-		const [instRes, deptRes, regRes, boardRes] = await Promise.all([
+		const [instRes, deptRes, boardRes] = await Promise.all([
 			fetch('/api/master/institutions').catch(() => null),
 			fetch('/api/master/departments').catch(() => null),
-			fetch('/api/master/regulations').catch(() => null),
 			fetch('/api/master/boards').catch(() => null),
 		])
 
 		const institutions = instRes && instRes.ok
-			? (await instRes.json()).filter((i: any) => i?.institution_code).map((i: any) => ({ id: i.id, institution_code: i.institution_code }))
+			? (await instRes.json()).filter((i: any) => i?.institution_code).map((i: any) => ({
+				id: i.id,
+				institution_code: i.institution_code,
+				name: i.name || i.myjkkn_name || i.institution_name,
+				counselling_code: i.counselling_code || null
+			}))
 			: []
 
 		const departments = deptRes && deptRes.ok
 			? (await deptRes.json()).filter((d: any) => d?.department_code).map((d: any) => ({ id: d.id, department_code: d.department_code, department_name: d.department_name }))
 			: []
 
-		const regulations = regRes && regRes.ok
-			? (await regRes.json()).filter((r: any) => r?.regulation_code).map((r: any) => ({ id: r.id, regulation_code: r.regulation_code }))
-			: []
-
 		const boards = boardRes && boardRes.ok
 			? (await boardRes.json()).filter((b: any) => b?.board_code).map((b: any) => ({ id: b.id, board_code: b.board_code, board_name: b.board_name }))
 			: []
 
-		return { institutions, departments, regulations, boards }
+		// Regulations are now fetched separately based on selected institution
+		return { institutions, departments, regulations: [], boards }
 	} catch (error) {
 		console.error('Error loading dropdown codes:', error)
 		return { institutions: [], departments: [], regulations: [], boards: [] }
+	}
+}
+
+/**
+ * Fetch MyJKKN institution IDs by counselling_code
+ * MyJKKN may have multiple institutions (self/SF and aided) for the same counselling_code
+ * @param counsellingCode - The institution's counselling_code from COE
+ * @returns Promise<string[]> - Array of MyJKKN institution UUIDs
+ */
+export async function fetchMyJKKNInstitutionIds(counsellingCode: string): Promise<string[]> {
+	try {
+		// Fetch all active institutions (search param may not be supported by MyJKKN API)
+		const params = new URLSearchParams()
+		params.set('limit', '500')
+		params.set('is_active', 'true')
+
+		const res = await fetch(`/api/myjkkn/institutions?${params.toString()}`)
+		if (res.ok) {
+			const response = await res.json()
+			const data = response.data || response || []
+			// Filter institutions that match the counselling_code exactly (client-side filter)
+			// MyJKKN uses counselling_code field to store the institution code
+			const matchingInstitutions = Array.isArray(data)
+				? data.filter((inst: any) => inst?.counselling_code === counsellingCode && inst.is_active !== false)
+				: []
+
+			console.log('[fetchMyJKKNInstitutionIds] counsellingCode:', counsellingCode, 'found:', matchingInstitutions.length, 'institutions')
+
+			return matchingInstitutions.map((inst: any) => inst.id)
+		}
+		return []
+	} catch (error) {
+		console.error('[fetchMyJKKNInstitutionIds] Error:', error)
+		return []
+	}
+}
+
+/**
+ * Fetch regulations from MyJKKN API filtered by institution's counselling_code
+ * Uses two-step lookup:
+ * 1. Get MyJKKN institution ID(s) by counselling_code
+ * 2. Fetch regulations filtered by institution_id
+ *
+ * @param counsellingCode - Optional institution counselling_code to filter regulations
+ * @returns Promise<Array<{ id: string, regulation_code: string, regulation_name?: string, effective_year?: number }>>
+ */
+export async function fetchRegulationsForCourse(counsellingCode?: string): Promise<Array<{
+	id: string
+	regulation_code: string
+	regulation_name?: string
+	effective_year?: number
+}>> {
+	try {
+		// If no counselling code provided, fetch all active regulations
+		if (!counsellingCode) {
+			const params = new URLSearchParams()
+			params.set('limit', '1000')
+			params.set('is_active', 'true')
+
+			const res = await fetch(`/api/myjkkn/regulations?${params.toString()}`)
+			if (res.ok) {
+				const response = await res.json()
+				const data = response.data || response || []
+				return Array.isArray(data)
+					? data.filter((r: any) => r?.regulation_code && r.is_active !== false).map((r: any) => ({
+						id: r.id,
+						regulation_code: r.regulation_code,
+						regulation_name: r.regulation_name || r.name,
+						effective_year: r.effective_year
+					}))
+					: []
+			}
+			return []
+		}
+
+		// Step 1: Get MyJKKN institution IDs by counselling_code
+		const institutionIds = await fetchMyJKKNInstitutionIds(counsellingCode)
+
+		console.log('[fetchRegulationsForCourse] counsellingCode:', counsellingCode, 'institutionIds:', institutionIds)
+
+		if (institutionIds.length === 0) {
+			console.warn('[fetchRegulationsForCourse] No MyJKKN institutions found for counsellingCode:', counsellingCode)
+			return []
+		}
+
+		// Step 2: Fetch regulations for each institution ID and combine results
+		const allRegulations: Array<{
+			id: string
+			regulation_code: string
+			regulation_name?: string
+			effective_year?: number
+		}> = []
+
+		const seenCodes = new Set<string>() // Deduplicate by regulation_code, not id
+
+		for (const institutionId of institutionIds) {
+			const params = new URLSearchParams()
+			params.set('limit', '1000')
+			params.set('is_active', 'true')
+			params.set('institution_id', institutionId)
+
+			console.log('[fetchRegulationsForCourse] Fetching regulations for institution_id:', institutionId)
+
+			const res = await fetch(`/api/myjkkn/regulations?${params.toString()}`)
+			if (res.ok) {
+				const response = await res.json()
+				const data = response.data || response || []
+				// Client-side filter by institution_id since MyJKKN API may not filter server-side
+				const regulations = Array.isArray(data)
+					? data
+						.filter((r: any) => r?.regulation_code && r.is_active !== false && r.institution_id === institutionId)
+						.map((r: any) => ({
+							id: r.id,
+							regulation_code: r.regulation_code,
+							regulation_name: r.regulation_name || r.name,
+							effective_year: r.effective_year
+						}))
+					: []
+
+				console.log('[fetchRegulationsForCourse] Regulations for institution', institutionId, ':', regulations.length, 'of', data.length, 'total')
+
+				// Add unique regulations by regulation_code (avoid duplicates across aided/self-financing)
+				for (const reg of regulations) {
+					if (!seenCodes.has(reg.regulation_code)) {
+						seenCodes.add(reg.regulation_code)
+						allRegulations.push(reg)
+					}
+				}
+			}
+		}
+
+		console.log('[fetchRegulationsForCourse] Total filtered regulations:', allRegulations.length)
+
+		return allRegulations
+	} catch (error) {
+		console.error('[fetchRegulationsForCourse] Error:', error)
+		return []
+	}
+}
+
+/**
+ * Fetch departments filtered by institution_code
+ * @param institutionCode - Optional institution_code to filter departments
+ * @returns Promise<Array<{ id: string, department_code: string, department_name?: string, institution_code?: string }>>
+ */
+export async function fetchDepartmentsForCourse(institutionCode?: string): Promise<Array<{
+	id: string
+	department_code: string
+	department_name?: string
+	institution_code?: string
+}>> {
+	try {
+		const params = new URLSearchParams()
+		if (institutionCode) {
+			params.set('institution_code', institutionCode)
+		}
+		const queryString = params.toString()
+		const url = queryString ? `/api/master/departments?${queryString}` : '/api/master/departments'
+
+		const res = await fetch(url)
+		if (res.ok) {
+			const data = await res.json()
+			return Array.isArray(data)
+				? data.filter((d: any) => d?.department_code).map((d: any) => ({
+					id: d.id,
+					department_code: d.department_code,
+					department_name: d.department_name,
+					institution_code: d.institution_code
+				}))
+				: []
+		}
+		return []
+	} catch (error) {
+		console.error('[fetchDepartmentsForCourse] Error:', error)
+		return []
+	}
+}
+
+/**
+ * Fetch boards filtered by institution_code
+ * @param institutionCode - Optional institution_code to filter boards
+ * @returns Promise<Array<{ id: string, board_code: string, board_name?: string, institution_code?: string }>>
+ */
+export async function fetchBoardsForCourse(institutionCode?: string): Promise<Array<{
+	id: string
+	board_code: string
+	board_name?: string
+	institution_code?: string
+}>> {
+	try {
+		const params = new URLSearchParams()
+		if (institutionCode) {
+			params.set('institution_code', institutionCode)
+		}
+		const queryString = params.toString()
+		const url = queryString ? `/api/master/boards?${queryString}` : '/api/master/boards'
+
+		const res = await fetch(url)
+		if (res.ok) {
+			const data = await res.json()
+			return Array.isArray(data)
+				? data.filter((b: any) => b?.board_code).map((b: any) => ({
+					id: b.id,
+					board_code: b.board_code,
+					board_name: b.board_name,
+					institution_code: b.institution_code
+				}))
+				: []
+		}
+		return []
+	} catch (error) {
+		console.error('[fetchBoardsForCourse] Error:', error)
+		return []
 	}
 }
 

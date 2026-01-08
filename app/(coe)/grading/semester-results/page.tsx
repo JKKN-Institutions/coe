@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect, useMemo, useRef } from "react"
+import { useState, useEffect, useMemo, useRef, useCallback } from "react"
 import XLSX from "@/lib/utils/excel-compat"
 import { AppSidebar } from "@/components/layout/app-sidebar"
 import { AppHeader } from "@/components/layout/app-header"
@@ -22,6 +22,7 @@ import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, Command
 import { Checkbox } from "@/components/ui/checkbox"
 import { useToast } from "@/hooks/common/use-toast"
 import { useAuth } from "@/lib/auth/auth-context-parent"
+import { useInstitutionFilter } from "@/hooks/use-institution-filter"
 import Link from "next/link"
 import {
 	Calculator,
@@ -546,6 +547,17 @@ export default function SemesterResultsPage() {
 	const { toast } = useToast()
 	const { user } = useAuth()
 
+	// Institution filter hook
+	const {
+		filter,
+		isReady,
+		appendToUrl,
+		getInstitutionIdForCreate,
+		mustSelectInstitution,
+		shouldFilter,
+		institutionId
+	} = useInstitutionFilter()
+
 	// Selection state - updated for multi-select
 	const [selectedInstitution, setSelectedInstitution] = useState("")
 	const [selectedSession, setSelectedSession] = useState("")
@@ -591,16 +603,31 @@ export default function SemesterResultsPage() {
 	const [creatingBacklogs, setCreatingBacklogs] = useState(false)
 	const [resultsExist, setResultsExist] = useState(false)
 
-	// Fetch institutions on mount
+	// Fetch institutions on mount when ready
 	useEffect(() => {
-		fetchInstitutions()
-	}, [])
+		if (isReady) {
+			fetchInstitutions()
+		}
+	}, [isReady, fetchInstitutions])
 
-	// Fetch sessions and programs when institution changes
+	// Auto-fill institution from context when available
+	useEffect(() => {
+		if (isReady && !mustSelectInstitution && institutions.length > 0) {
+			const autoId = getInstitutionIdForCreate()
+			if (autoId && !selectedInstitution) {
+				setSelectedInstitution(autoId)
+			}
+		}
+	}, [isReady, mustSelectInstitution, institutions, getInstitutionIdForCreate, selectedInstitution])
+
+	// Fetch sessions and programs in parallel when institution changes
 	useEffect(() => {
 		if (selectedInstitution) {
-			fetchSessions(selectedInstitution)
-			fetchPrograms(selectedInstitution)
+			// Fetch sessions and programs in parallel for better performance
+			Promise.all([
+				fetchSessions(selectedInstitution),
+				fetchPrograms(selectedInstitution)
+			])
 		} else {
 			setSessions([])
 			setPrograms([])
@@ -612,7 +639,7 @@ export default function SemesterResultsPage() {
 		setLearnerResults([])
 		setSummary(null)
 		setProgramType(null)
-	}, [selectedInstitution])
+	}, [selectedInstitution, fetchSessions, fetchPrograms])
 
 	// Fetch semesters when programs and session change
 	useEffect(() => {
@@ -669,9 +696,10 @@ export default function SemesterResultsPage() {
 		checkExistingResults()
 	}, [selectedInstitution, selectedSession, selectedPrograms, selectedSemesters])
 
-	const fetchInstitutions = async () => {
+	const fetchInstitutions = useCallback(async () => {
 		try {
-			const res = await fetch('/api/grading/final-marks?action=institutions')
+			const url = appendToUrl('/api/grading/final-marks?action=institutions')
+			const res = await fetch(url)
 			if (res.ok) {
 				const data = await res.json()
 				setInstitutions(data.map((i: any) => ({
@@ -683,9 +711,9 @@ export default function SemesterResultsPage() {
 		} catch (e) {
 			console.error('Failed to fetch institutions:', e)
 		}
-	}
+	}, [appendToUrl])
 
-	const fetchSessions = async (institutionId: string) => {
+	const fetchSessions = useCallback(async (institutionId: string) => {
 		try {
 			const res = await fetch(`/api/grading/final-marks?action=sessions&institutionId=${institutionId}`)
 			if (res.ok) {
@@ -699,9 +727,9 @@ export default function SemesterResultsPage() {
 		} catch (e) {
 			console.error('Failed to fetch sessions:', e)
 		}
-	}
+	}, [])
 
-	const fetchPrograms = async (institutionId: string) => {
+	const fetchPrograms = useCallback(async (institutionId: string) => {
 		try {
 			const res = await fetch(`/api/grading/final-marks?action=programs&institutionId=${institutionId}`)
 			if (res.ok) {
@@ -716,9 +744,9 @@ export default function SemesterResultsPage() {
 		} catch (e) {
 			console.error('Failed to fetch programs:', e)
 		}
-	}
+	}, [])
 
-	const fetchSemesters = async (institutionId: string, programId: string, sessionId: string) => {
+	const fetchSemesters = useCallback(async (institutionId: string, programId: string, sessionId: string) => {
 		try {
 			const res = await fetch(`/api/grading/semester-results?action=semesters&institutionId=${institutionId}&programId=${programId}&sessionId=${sessionId}`)
 			if (res.ok) {
@@ -728,7 +756,7 @@ export default function SemesterResultsPage() {
 		} catch (e) {
 			console.error('Failed to fetch semesters:', e)
 		}
-	}
+	}, [])
 
 	const fetchResults = async () => {
 		if (!selectedInstitution || !selectedSession || selectedPrograms.length === 0) {
@@ -1317,16 +1345,19 @@ export default function SemesterResultsPage() {
 							</div>
 						</CardHeader>
 						<CardContent className="space-y-4">
-							<div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-								<div className="space-y-2">
-									<Label>Institution *</Label>
-									<SearchableSelect
-										options={institutions}
-										value={selectedInstitution}
-										onValueChange={setSelectedInstitution}
-										placeholder="Select institution"
-									/>
-								</div>
+							<div className={`grid grid-cols-1 gap-4 ${mustSelectInstitution ? 'md:grid-cols-4' : 'md:grid-cols-3'}`}>
+								{/* Institution - Show only when mustSelectInstitution is true */}
+								{mustSelectInstitution && (
+									<div className="space-y-2">
+										<Label>Institution *</Label>
+										<SearchableSelect
+											options={institutions}
+											value={selectedInstitution}
+											onValueChange={setSelectedInstitution}
+											placeholder="Select institution"
+										/>
+									</div>
+								)}
 								<div className="space-y-2">
 									<Label>Examination Session *</Label>
 									<SearchableSelect
@@ -1334,7 +1365,7 @@ export default function SemesterResultsPage() {
 										value={selectedSession}
 										onValueChange={setSelectedSession}
 										placeholder="Select session"
-										disabled={!selectedInstitution}
+										disabled={mustSelectInstitution && !selectedInstitution}
 									/>
 								</div>
 								<div className="space-y-2">
@@ -1344,7 +1375,7 @@ export default function SemesterResultsPage() {
 										selectedIds={selectedPrograms}
 										onSelectionChange={setSelectedPrograms}
 										placeholder="Select program(s)"
-										disabled={!selectedInstitution}
+										disabled={mustSelectInstitution && !selectedInstitution}
 									/>
 								</div>
 								<div className="space-y-2">

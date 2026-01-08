@@ -34,14 +34,9 @@ export function validateCourseOfferingData(
 		errors.program_id = 'Program is required'
 	}
 
-	if (!formData.semester.trim()) {
-		errors.semester = 'Semester is required'
-	}
-
-	// Semester range validation (1-12)
-	const semester = parseInt(formData.semester)
-	if (formData.semester && (isNaN(semester) || semester < 1 || semester > 12)) {
-		errors.semester = 'Semester must be between 1 and 12'
+	// Validate semester_code instead of semester
+	if (!formData.semester_code || !formData.semester_code.trim()) {
+		errors.semester_code = 'Semester is required'
 	}
 
 	// Enrollment validation

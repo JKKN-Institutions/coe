@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useCallback } from "react"
+import { useState, useCallback, useEffect } from "react"
 import { SidebarProvider, SidebarInset } from "@/components/ui/sidebar"
 import { AppSidebar } from "@/components/layout/app-sidebar"
 import { AppHeaderWhite } from "@/components/layout/app-header-white"
@@ -17,6 +17,7 @@ import { ScrollArea } from "@/components/ui/scroll-area"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
 import { useToast } from "@/hooks/common/use-toast"
+import { useInstitution, useInstitutionFilter } from "@/context/institution-context"
 import {
 	Building2,
 	GraduationCap,
@@ -41,7 +42,8 @@ import {
 	ExternalLink,
 	UserCircle,
 	FileText,
-	FolderOpen
+	FolderOpen,
+	AlertTriangle
 } from "lucide-react"
 
 // Entity configuration
@@ -77,6 +79,10 @@ interface ApiResponse {
 export default function MyJKKNApiExplorerPage() {
 	const { toast } = useToast()
 
+	// Institution filtering - for non-super admin users
+	const { canSwitchInstitution, currentInstitutionId, currentInstitutionCode } = useInstitution()
+	const { shouldFilter, isLoading: institutionLoading } = useInstitutionFilter()
+
 	// State
 	const [selectedEntity, setSelectedEntity] = useState<EntityKey>('institutions')
 	const [loading, setLoading] = useState(false)
@@ -91,8 +97,18 @@ export default function MyJKKNApiExplorerPage() {
 	const [institutionId, setInstitutionId] = useState('')
 	const [programId, setProgramId] = useState('')
 
+	// For non-super admin users, auto-set institution filter
+	useEffect(() => {
+		if (!canSwitchInstitution && currentInstitutionId && !institutionId) {
+			setInstitutionId(currentInstitutionId)
+		}
+	}, [canSwitchInstitution, currentInstitutionId, institutionId])
+
 	// Get current entity config
 	const currentEntity = ENTITIES.find(e => e.key === selectedEntity)!
+
+	// Check if non-super admin has no institution (should show no data)
+	const noInstitutionAccess = shouldFilter && !currentInstitutionId
 
 	// Build query params
 	const buildQueryParams = useCallback(() => {
@@ -100,13 +116,25 @@ export default function MyJKKNApiExplorerPage() {
 		params.set('page', String(page))
 		params.set('limit', String(limit))
 		if (search) params.set('search', search)
-		if (institutionId) params.set('institution_id', institutionId)
+		// For non-super admin, always use their institution_id
+		const effectiveInstitutionId = !canSwitchInstitution && currentInstitutionId
+			? currentInstitutionId
+			: institutionId
+		if (effectiveInstitutionId) params.set('institution_id', effectiveInstitutionId)
 		if (programId) params.set('program_id', programId)
 		return params.toString()
-	}, [page, limit, search, institutionId, programId])
+	}, [page, limit, search, institutionId, programId, canSwitchInstitution, currentInstitutionId])
 
 	// Fetch data
 	const fetchData = useCallback(async () => {
+		// If non-super admin has no institution, show empty results
+		if (noInstitutionAccess) {
+			setResponse({ data: [], metadata: { page: 1, totalPages: 0, total: 0 } })
+			setError(null)
+			setLoading(false)
+			return
+		}
+
 		setLoading(true)
 		setError(null)
 
@@ -141,7 +169,7 @@ export default function MyJKKNApiExplorerPage() {
 		} finally {
 			setLoading(false)
 		}
-	}, [currentEntity.endpoint, buildQueryParams, selectedEntity, toast])
+	}, [currentEntity.endpoint, buildQueryParams, selectedEntity, toast, noInstitutionAccess])
 
 	// Copy JSON to clipboard
 	const copyJson = useCallback(() => {
@@ -235,10 +263,28 @@ export default function MyJKKNApiExplorerPage() {
 									</h1>
 									<p className="text-sm text-white/80 mt-1">
 										Test and explore MyJKKN external API endpoints
+										{!canSwitchInstitution && currentInstitutionCode && (
+											<span className="ml-2 text-amber-200">
+												• Filtered by your institution: {currentInstitutionCode}
+											</span>
+										)}
 									</p>
 								</div>
 							</div>
 						</div>
+
+						{/* No Institution Warning */}
+						{noInstitutionAccess && (
+							<div className="flex items-center gap-3 rounded-lg bg-amber-50 border border-amber-200 p-4 text-amber-800">
+								<AlertTriangle className="h-5 w-5 text-amber-500 shrink-0" />
+								<div>
+									<p className="font-medium">No Institution Assigned</p>
+									<p className="text-sm text-amber-600">
+										You don't have an institution assigned to your account. Please contact an administrator to get access.
+									</p>
+								</div>
+							</div>
+						)}
 
 						{/* Entity Selection - Horizontal Pills */}
 						<Card>
@@ -338,12 +384,18 @@ export default function MyJKKNApiExplorerPage() {
 										/>
 									</div>
 									<div className="space-y-1">
-										<Label className="text-xs">Institution ID</Label>
+										<Label className="text-xs">
+											Institution ID
+											{!canSwitchInstitution && currentInstitutionId && (
+												<span className="ml-2 text-[10px] text-amber-600">(locked to your institution)</span>
+											)}
+										</Label>
 										<Input
 											placeholder="UUID..."
-											value={institutionId}
-											onChange={(e) => setInstitutionId(e.target.value)}
+											value={!canSwitchInstitution && currentInstitutionId ? currentInstitutionId : institutionId}
+											onChange={(e) => canSwitchInstitution && setInstitutionId(e.target.value)}
 											className="h-8 text-sm font-mono"
+											disabled={!canSwitchInstitution && !!currentInstitutionId}
 										/>
 									</div>
 									<div className="space-y-1">

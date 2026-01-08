@@ -16,6 +16,7 @@ import { Badge } from "@/components/ui/badge"
 import { Label } from "@/components/ui/label"
 import { Checkbox } from "@/components/ui/checkbox"
 import { useToast } from "@/hooks/common/use-toast"
+import { useInstitutionFilter } from "@/hooks/use-institution-filter"
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog"
 import Link from "next/link"
 import {
@@ -77,6 +78,17 @@ export default function GenerateFinalMarksPage() {
 	const { toast } = useToast()
 	const steps = ['Select Program', 'Select Courses', 'Generate Results', 'Save & Export']
 
+	// Institution filter hook
+	const {
+		filter,
+		isReady,
+		appendToUrl,
+		getInstitutionIdForCreate,
+		mustSelectInstitution,
+		shouldFilter,
+		institutionId
+	} = useInstitutionFilter()
+
 	// Step state
 	const [currentStep, setCurrentStep] = useState(0)
 
@@ -120,10 +132,22 @@ export default function GenerateFinalMarksPage() {
 	const [confirmDialogOpen, setConfirmDialogOpen] = useState(false)
 	const itemsPerPage = 15
 
-	// Fetch institutions on mount
+	// Fetch institutions on mount when ready
 	useEffect(() => {
-		fetchInstitutions()
-	}, [])
+		if (isReady) {
+			fetchInstitutions()
+		}
+	}, [isReady])
+
+	// Auto-fill institution from context when available
+	useEffect(() => {
+		if (isReady && !mustSelectInstitution && institutions.length > 0) {
+			const autoId = getInstitutionIdForCreate()
+			if (autoId && !selectedInstitution) {
+				setSelectedInstitution(autoId)
+			}
+		}
+	}, [isReady, mustSelectInstitution, institutions, getInstitutionIdForCreate, selectedInstitution])
 
 	// Fetch sessions and programs when institution changes
 	useEffect(() => {
@@ -164,7 +188,8 @@ export default function GenerateFinalMarksPage() {
 
 	const fetchInstitutions = async () => {
 		try {
-			const res = await fetch('/api/grading/final-marks?action=institutions')
+			const url = appendToUrl('/api/grading/final-marks?action=institutions')
+			const res = await fetch(url)
 			if (res.ok) {
 				const data = await res.json()
 				setInstitutions(data.map((i: any) => ({
@@ -532,25 +557,28 @@ export default function GenerateFinalMarksPage() {
 								</div>
 							</CardHeader>
 							<CardContent className="space-y-4">
-								<div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-									<div className="space-y-2">
-										<Label>Institution *</Label>
-										<Select value={selectedInstitution} onValueChange={setSelectedInstitution}>
-											<SelectTrigger>
-												<SelectValue placeholder="Select institution" />
-											</SelectTrigger>
-											<SelectContent>
-												{institutions.map(inst => (
-													<SelectItem key={inst.id} value={inst.id}>
-														{inst.institution_code} - {inst.name}
-													</SelectItem>
-												))}
-											</SelectContent>
-										</Select>
-									</div>
+								<div className={`grid grid-cols-1 gap-4 ${mustSelectInstitution ? 'md:grid-cols-3' : 'md:grid-cols-2'}`}>
+									{/* Institution - Show only when mustSelectInstitution is true */}
+									{mustSelectInstitution && (
+										<div className="space-y-2">
+											<Label>Institution *</Label>
+											<Select value={selectedInstitution} onValueChange={setSelectedInstitution}>
+												<SelectTrigger>
+													<SelectValue placeholder="Select institution" />
+												</SelectTrigger>
+												<SelectContent>
+													{institutions.map(inst => (
+														<SelectItem key={inst.id} value={inst.id}>
+															{inst.institution_code} - {inst.name}
+														</SelectItem>
+													))}
+												</SelectContent>
+											</Select>
+										</div>
+									)}
 									<div className="space-y-2">
 										<Label>Examination Session *</Label>
-										<Select value={selectedSession} onValueChange={setSelectedSession} disabled={!selectedInstitution}>
+										<Select value={selectedSession} onValueChange={setSelectedSession} disabled={mustSelectInstitution && !selectedInstitution}>
 											<SelectTrigger>
 												<SelectValue placeholder="Select session" />
 											</SelectTrigger>
@@ -565,7 +593,7 @@ export default function GenerateFinalMarksPage() {
 									</div>
 									<div className="space-y-2">
 										<Label>Program *</Label>
-										<Select value={selectedProgram} onValueChange={setSelectedProgram} disabled={!selectedInstitution}>
+										<Select value={selectedProgram} onValueChange={setSelectedProgram} disabled={mustSelectInstitution && !selectedInstitution}>
 											<SelectTrigger>
 												<SelectValue placeholder="Select program" />
 											</SelectTrigger>

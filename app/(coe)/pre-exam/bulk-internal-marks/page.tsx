@@ -18,6 +18,7 @@ import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, 
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { useToast } from "@/hooks/common/use-toast"
 import { useAuth } from "@/lib/auth/auth-context-parent"
+import { useInstitutionFilter } from "@/hooks/use-institution-filter"
 import Link from "next/link"
 import {
 	Trash2,
@@ -127,6 +128,18 @@ interface Course {
 export default function BulkInternalMarksPage() {
 	const { toast } = useToast()
 	const { user } = useAuth()
+
+	// Institution filter hook
+	const {
+		filter,
+		isReady,
+		appendToUrl,
+		getInstitutionIdForCreate,
+		mustSelectInstitution,
+		shouldFilter,
+		institutionId
+	} = useInstitutionFilter()
+
 	const [items, setItems] = useState<InternalMark[]>([])
 	const [loading, setLoading] = useState(false)
 	const [searchTerm, setSearchTerm] = useState("")
@@ -165,10 +178,22 @@ export default function BulkInternalMarksPage() {
 		skipped: 0
 	})
 
-	// Fetch institutions on mount
+	// Fetch institutions on mount when ready
 	useEffect(() => {
-		fetchInstitutions()
-	}, [])
+		if (isReady) {
+			fetchInstitutions()
+		}
+	}, [isReady])
+
+	// Auto-fill institution from context when available
+	useEffect(() => {
+		if (isReady && !mustSelectInstitution && institutions.length > 0) {
+			const autoId = getInstitutionIdForCreate()
+			if (autoId && !selectedInstitution) {
+				setSelectedInstitution(autoId)
+			}
+		}
+	}, [isReady, mustSelectInstitution, institutions, getInstitutionIdForCreate, selectedInstitution])
 
 	// Fetch sessions when institution changes
 	useEffect(() => {
@@ -195,7 +220,8 @@ export default function BulkInternalMarksPage() {
 
 	const fetchInstitutions = async () => {
 		try {
-			const res = await fetch('/api/pre-exam/internal-marks?action=institutions')
+			const url = appendToUrl('/api/pre-exam/internal-marks?action=institutions')
+			const res = await fetch(url)
 			if (res.ok) {
 				const data = await res.json()
 				setInstitutions(data)
@@ -1122,20 +1148,23 @@ export default function BulkInternalMarksPage() {
 
 							{/* Filters Row 1 */}
 							<div className="flex flex-wrap gap-2 mb-2">
-								<Select value={selectedInstitution} onValueChange={setSelectedInstitution}>
-									<SelectTrigger className="w-[180px] h-8">
-										<SelectValue placeholder="Select Institution" />
-									</SelectTrigger>
-									<SelectContent>
-										{institutions.map(inst => (
-											<SelectItem key={inst.id} value={inst.id}>
-												{inst.name || inst.institution_code}
-											</SelectItem>
-										))}
-									</SelectContent>
-								</Select>
+								{/* Institution - Show only when mustSelectInstitution is true */}
+								{mustSelectInstitution && (
+									<Select value={selectedInstitution} onValueChange={setSelectedInstitution}>
+										<SelectTrigger className="w-[180px] h-8">
+											<SelectValue placeholder="Select Institution" />
+										</SelectTrigger>
+										<SelectContent>
+											{institutions.map(inst => (
+												<SelectItem key={inst.id} value={inst.id}>
+													{inst.name || inst.institution_code}
+												</SelectItem>
+											))}
+										</SelectContent>
+									</Select>
+								)}
 
-								<Select value={selectedSession || "all"} onValueChange={(v) => setSelectedSession(v === "all" ? "" : v)} disabled={!selectedInstitution}>
+								<Select value={selectedSession || "all"} onValueChange={(v) => setSelectedSession(v === "all" ? "" : v)} disabled={mustSelectInstitution && !selectedInstitution}>
 									<SelectTrigger className="w-[180px] h-8">
 										<SelectValue placeholder="Select Session" />
 									</SelectTrigger>
@@ -1149,7 +1178,7 @@ export default function BulkInternalMarksPage() {
 									</SelectContent>
 								</Select>
 
-								<Select value={selectedProgram || "all"} onValueChange={(v) => setSelectedProgram(v === "all" ? "" : v)} disabled={!selectedInstitution}>
+								<Select value={selectedProgram || "all"} onValueChange={(v) => setSelectedProgram(v === "all" ? "" : v)} disabled={mustSelectInstitution && !selectedInstitution}>
 									<SelectTrigger className="w-[180px] h-8">
 										<SelectValue placeholder="Select Program" />
 									</SelectTrigger>
@@ -1163,7 +1192,7 @@ export default function BulkInternalMarksPage() {
 									</SelectContent>
 								</Select>
 
-								<Select value={selectedCourse || "all"} onValueChange={(v) => setSelectedCourse(v === "all" ? "" : v)} disabled={!selectedInstitution}>
+								<Select value={selectedCourse || "all"} onValueChange={(v) => setSelectedCourse(v === "all" ? "" : v)} disabled={mustSelectInstitution && !selectedInstitution}>
 									<SelectTrigger className="w-[180px] h-8">
 										<SelectValue placeholder="Select Course" />
 									</SelectTrigger>

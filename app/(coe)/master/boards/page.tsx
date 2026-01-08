@@ -2,7 +2,6 @@
 
 import { useMemo, useState, useEffect } from "react"
 import XLSX from "@/lib/utils/excel-compat"
-import supabaseAuthService from "@/services/auth/supabase-auth-service"
 import { AppSidebar } from "@/components/layout/app-sidebar"
 import { AppHeader } from "@/components/layout/app-header"
 import { AppFooter } from "@/components/layout/app-footer"
@@ -18,6 +17,7 @@ import { Label } from "@/components/ui/label"
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet"
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog"
 import { useToast } from "@/hooks/common/use-toast"
+import { useInstitutionFilter } from "@/hooks/use-institution-filter"
 import Link from "next/link"
 import { PlusCircle, Edit, Trash2, Search, ChevronLeft, ChevronRight, ArrowUpDown, ArrowUp, ArrowDown, Clipboard, TrendingUp, FileSpreadsheet, RefreshCw, CheckCircle, XCircle, AlertTriangle } from "lucide-react"
 
@@ -36,6 +36,18 @@ interface Board {
 
 export default function BoardPage() {
 	const { toast } = useToast()
+	const {
+		filter,
+		shouldFilter,
+		isReady,
+		institutionCode,
+		institutionId,
+		appendToUrl,
+		getInstitutionCodeForCreate,
+		getInstitutionIdForCreate,
+		mustSelectInstitution
+	} = useInstitutionFilter()
+
 	const [boards, setBoards] = useState<Board[]>([])
 	const [loading, setLoading] = useState(true)
 	const [searchTerm, setSearchTerm] = useState("")
@@ -77,11 +89,12 @@ export default function BoardPage() {
 	// Institution Dropdown Data
 	const [institutions, setInstitutions] = useState<Array<{ id: string; institution_code: string; institution_name?: string }>>([])
 
-	// Fetch boards
+	// Fetch boards with institution filter
 	const fetchBoards = async () => {
 		try {
 			setLoading(true)
-			const response = await fetch('/api/master/boards')
+			const url = appendToUrl('/api/master/boards')
+			const response = await fetch(url)
 			if (!response.ok) {
 				throw new Error('Failed to fetch boards')
 			}
@@ -98,7 +111,8 @@ export default function BoardPage() {
 	// Fetch institutions dropdown data
 	const fetchInstitutions = async () => {
 		try {
-			const res = await fetch('/api/master/institutions')
+			const url = appendToUrl('/api/master/institutions')
+			const res = await fetch(url)
 			if (res.ok) {
 				const data = await res.json()
 				const mapped = Array.isArray(data)
@@ -115,11 +129,12 @@ export default function BoardPage() {
 		}
 	}
 
-	// Load data on mount
+	// Load data when institution filter is ready
 	useEffect(() => {
+		if (!isReady) return
 		fetchBoards()
 		fetchInstitutions()
-	}, [])
+	}, [isReady, filter])
 
 	// Validation
 	const validate = () => {
@@ -674,8 +689,10 @@ export default function BoardPage() {
 	}
 
 	const resetForm = () => {
+		// Auto-populate institution for non-super_admin users
+		const autoInstitutionCode = getInstitutionCodeForCreate() || ""
 		setFormData({
-			institution_code: "",
+			institution_code: autoInstitutionCode,
 			board_code: "",
 			board_name: "",
 			display_name: "",
@@ -759,6 +776,25 @@ export default function BoardPage() {
 	const getSortIcon = (column: string) => {
 		if (sortColumn !== column) return <ArrowUpDown className="h-3 w-3 text-muted-foreground" />
 		return sortDirection === "asc" ? <ArrowUp className="h-3 w-3" /> : <ArrowDown className="h-3 w-3" />
+	}
+
+	// Show loading state while institution filter is initializing
+	if (!isReady) {
+		return (
+			<SidebarProvider>
+				<AppSidebar />
+				<SidebarInset className="flex flex-col min-h-screen">
+					<AppHeader />
+					<div className="flex flex-1 items-center justify-center">
+						<div className="flex items-center gap-2 text-muted-foreground">
+							<RefreshCw className="h-4 w-4 animate-spin" />
+							<span>Loading...</span>
+						</div>
+					</div>
+					<AppFooter />
+				</SidebarInset>
+			</SidebarProvider>
+		)
 	}
 
 	return (
@@ -887,7 +923,10 @@ export default function BoardPage() {
 									<Button variant="outline" size="sm" className="text-xs px-2 h-8" onClick={handleDownload}>Json</Button>
 									<Button variant="outline" size="sm" className="text-xs px-2 h-8" onClick={handleExport}>Download</Button>
 									<Button variant="outline" size="sm" className="text-xs px-2 h-8" onClick={handleImport}>Upload</Button>
-									<Button size="sm" className="text-xs px-2 h-8" onClick={() => { resetForm(); setSheetOpen(true) }} disabled={loading}>
+									<Button size="sm" className="text-xs px-2 h-8" onClick={() => {
+										resetForm()
+										setSheetOpen(true)
+									}} disabled={loading}>
 										<PlusCircle className="h-3 w-3 mr-1" />
 										Add
 									</Button>
@@ -901,12 +940,15 @@ export default function BoardPage() {
 									<Table>
 										<TableHeader className="sticky top-0 z-10 bg-slate-50 dark:bg-slate-900/50">
 											<TableRow>
-												<TableHead className="w-[120px] text-[11px]">
-													<Button variant="ghost" size="sm" onClick={() => handleSort('institution_code')} className="h-auto p-0 font-medium hover:bg-transparent">
-														Institution
-														<span className="ml-1">{getSortIcon('institution_code')}</span>
-													</Button>
-												</TableHead>
+												{/* Show Institution column only when "All Institutions" is selected */}
+												{mustSelectInstitution && (
+													<TableHead className="w-[120px] text-[11px]">
+														<Button variant="ghost" size="sm" onClick={() => handleSort('institution_code')} className="h-auto p-0 font-medium hover:bg-transparent">
+															Institution
+															<span className="ml-1">{getSortIcon('institution_code')}</span>
+														</Button>
+													</TableHead>
+												)}
 												<TableHead className="w-[120px] text-[11px]">
 													<Button variant="ghost" size="sm" onClick={() => handleSort('board_code')} className="h-auto p-0 font-medium hover:bg-transparent">
 														Board Code
@@ -939,13 +981,16 @@ export default function BoardPage() {
 										<TableBody>
 											{loading ? (
 												<TableRow>
-													<TableCell colSpan={8} className="h-24 text-center text-[11px]">Loading…</TableCell>
+													<TableCell colSpan={mustSelectInstitution ? 8 : 7} className="h-24 text-center text-[11px]">Loading…</TableCell>
 												</TableRow>
 											) : paginatedItems.length ? (
 												<>
 													{paginatedItems.map((board) => (
 														<TableRow key={board.id}>
-															<TableCell className="text-[11px] font-medium">{board.institution_code}</TableCell>
+															{/* Show Institution cell only when "All Institutions" is selected */}
+															{mustSelectInstitution && (
+																<TableCell className="text-[11px] font-medium">{board.institution_code}</TableCell>
+															)}
 															<TableCell className="text-[11px]">{board.board_code}</TableCell>
 															<TableCell className="text-[11px]">{board.board_name}</TableCell>
 															<TableCell className="text-[11px] text-muted-foreground">{board.display_name || '-'}</TableCell>
@@ -994,7 +1039,7 @@ export default function BoardPage() {
 												</>
 											) : (
 												<TableRow>
-													<TableCell colSpan={8} className="h-24 text-center text-[11px]">No data</TableCell>
+													<TableCell colSpan={mustSelectInstitution ? 8 : 7} className="h-24 text-center text-[11px]">No data</TableCell>
 												</TableRow>
 											)}
 										</TableBody>
@@ -1054,27 +1099,30 @@ export default function BoardPage() {
 									<h3 className="text-lg font-bold bg-gradient-to-r from-green-600 to-emerald-600 bg-clip-text text-transparent">Basic Information</h3>
 								</div>
 								<div className="grid grid-cols-1 gap-4">
-									<div className="space-y-2">
-										<Label htmlFor="institution_code" className="text-sm font-semibold">
-											Institution <span className="text-red-500">*</span>
-										</Label>
-										<Select
-											value={formData.institution_code}
-											onValueChange={(value) => setFormData({ ...formData, institution_code: value })}
-										>
-											<SelectTrigger className={`h-10 ${errors.institution_code ? 'border-destructive' : ''}`}>
-												<SelectValue placeholder="Select institution" />
-											</SelectTrigger>
-											<SelectContent>
-												{institutions.map((inst) => (
-													<SelectItem key={inst.id} value={inst.institution_code}>
-														{inst.institution_code} - {inst.institution_name}
-													</SelectItem>
-												))}
-											</SelectContent>
-										</Select>
-										{errors.institution_code && <p className="text-xs text-destructive">{errors.institution_code}</p>}
-									</div>
+									{/* Institution field - show only when needed */}
+									{(mustSelectInstitution || !shouldFilter || !institutionId) && (
+										<div className="space-y-2">
+											<Label htmlFor="institution_code" className="text-sm font-semibold">
+												Institution <span className="text-red-500">*</span>
+											</Label>
+											<Select
+												value={formData.institution_code}
+												onValueChange={(value) => setFormData({ ...formData, institution_code: value })}
+											>
+												<SelectTrigger className={`h-10 ${errors.institution_code ? 'border-destructive' : ''}`}>
+													<SelectValue placeholder="Select institution" />
+												</SelectTrigger>
+												<SelectContent>
+													{institutions.map((inst) => (
+														<SelectItem key={inst.id} value={inst.institution_code}>
+															{inst.institution_code} - {inst.institution_name}
+														</SelectItem>
+													))}
+												</SelectContent>
+											</Select>
+											{errors.institution_code && <p className="text-xs text-destructive">{errors.institution_code}</p>}
+										</div>
+									)}
 
 									<div className="space-y-2">
 										<Label htmlFor="board_code" className="text-sm font-semibold">

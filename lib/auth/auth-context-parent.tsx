@@ -53,18 +53,31 @@ function AuthProviderInner({
 	const pathname = usePathname()
 
 	// Sync session with local database (updates last_login, sessions, user_sessions, and fetches permissions)
-	// Returns the local avatar_url and permissions if available
-	const syncSession = useCallback(async (userData: ParentAppUser, accessToken?: string, refreshToken?: string, expiresIn?: number): Promise<{ avatar_url: string | null; permissions: string[]; roles: string[] }> => {
+	// Returns the local avatar_url, permissions, institution details if available
+	const syncSession = useCallback(async (userData: ParentAppUser, accessToken?: string, refreshToken?: string, expiresIn?: number): Promise<{
+		avatar_url: string | null
+		permissions: string[]
+		roles: string[]
+		institution_id: string | null
+		institution_code: string | null
+		institution_name: string | null
+		counselling_code: string | null
+		myjkkn_institution_ids: string[] | null
+	}> => {
 		try {
 			const response = await fetch('/api/auth/sync-session', {
 				method: 'POST',
 				headers: { 'Content-Type': 'application/json' },
+				credentials: 'include',
 				body: JSON.stringify({
 					email: userData.email,
 					user_id: userData.id,
 					full_name: userData.full_name,
 					avatar_url: userData.avatar_url,
 					role: userData.role,
+					// Send institution_id (UUID) from MyJKKN session
+					// sync-session will call MyJKKN API to get counselling_code and use it as institution_code
+					institution_id: userData.institution_id,
 					access_token: accessToken,
 					refresh_token: refreshToken,
 					expires_in: expiresIn || 3600, // Use actual expiry from parent app, default 1 hour
@@ -73,18 +86,41 @@ function AuthProviderInner({
 
 			if (response.ok) {
 				const data = await response.json()
-				// Return local avatar_url and permissions from database
+				// Return local avatar_url, permissions, and full institution details from database
 				return {
 					avatar_url: data.avatar_url || null,
 					permissions: data.permissions || [],
-					roles: data.roles || []
+					roles: data.roles || [],
+					institution_id: data.institution_id || null,
+					institution_code: data.institution_code || null,
+					institution_name: data.institution_name || null,
+					counselling_code: data.counselling_code || null,
+					myjkkn_institution_ids: data.myjkkn_institution_ids || null
 				}
 			}
-			return { avatar_url: null, permissions: [], roles: [] }
+			return {
+				avatar_url: null,
+				permissions: [],
+				roles: [],
+				institution_id: null,
+				institution_code: null,
+				institution_name: null,
+				counselling_code: null,
+				myjkkn_institution_ids: null
+			}
 		} catch (err) {
 			// Non-critical - just log and continue
 			console.warn('Failed to sync session with local DB:', err)
-			return { avatar_url: null, permissions: [], roles: [] }
+			return {
+				avatar_url: null,
+				permissions: [],
+				roles: [],
+				institution_id: null,
+				institution_code: null,
+				institution_name: null,
+				counselling_code: null,
+				myjkkn_institution_ids: null
+			}
 		}
 	}, [])
 
@@ -123,20 +159,34 @@ function AuthProviderInner({
 				)
 
 				if (authenticatedUser) {
-					// Sync session with local database and fetch permissions
-					const { permissions, roles, avatar_url } = await syncSession(
+					// Sync session with local database and fetch permissions + full institution details
+					const {
+						permissions,
+						roles,
+						avatar_url,
+						institution_id,
+						institution_code,
+						institution_name,
+						counselling_code,
+						myjkkn_institution_ids
+					} = await syncSession(
 						authenticatedUser,
 						token,
 						refreshToken || undefined,
 						tokenExpirySeconds
 					)
 
-					// Merge permissions from database into the user object
+					// Merge permissions and full institution details from database into the user object
 					const userWithPermissions: ParentAppUser = {
 						...authenticatedUser,
 						permissions: permissions.length > 0 ? permissions : authenticatedUser.permissions,
 						roles: roles.length > 0 ? roles : authenticatedUser.roles,
-						avatar_url: avatar_url || authenticatedUser.avatar_url
+						avatar_url: avatar_url || authenticatedUser.avatar_url,
+						institution_id: institution_id || authenticatedUser.institution_id,
+						institution_code: institution_code || authenticatedUser.institution_code,
+						institution_name: institution_name || authenticatedUser.institution_name,
+						counselling_code: counselling_code || authenticatedUser.counselling_code,
+						myjkkn_institution_ids: myjkkn_institution_ids || authenticatedUser.myjkkn_institution_ids
 					}
 
 					setUser(userWithPermissions)
@@ -200,8 +250,38 @@ function AuthProviderInner({
 						}
 					}
 				} else {
-					// Use cached user data
-					setUser(storedUser)
+					// Use cached user data, but check if institution details are missing
+					// If user has institution_id but no institution_name, fetch latest details from server
+					const needsInstitutionRefresh = storedUser.institution_id && !storedUser.institution_name
+
+					if (needsInstitutionRefresh) {
+						// Fetch latest institution details from sync-session
+						const {
+							institution_id,
+							institution_code,
+							institution_name,
+							counselling_code,
+							permissions,
+							roles
+						} = await syncSession(storedUser, accessToken)
+
+						// Update user with fresh institution details
+						const updatedUser: ParentAppUser = {
+							...storedUser,
+							institution_id: institution_id || storedUser.institution_id,
+							institution_code: institution_code || storedUser.institution_code,
+							institution_name: institution_name || storedUser.institution_name,
+							counselling_code: counselling_code || storedUser.counselling_code,
+							permissions: permissions.length > 0 ? permissions : storedUser.permissions,
+							roles: roles.length > 0 ? roles : storedUser.roles
+						}
+
+						setUser(updatedUser)
+						localStorage.setItem('user_data', JSON.stringify(updatedUser))
+					} else {
+						// Use cached user data as-is
+						setUser(storedUser)
+					}
 				}
 			} else {
 				setUser(null)
@@ -213,7 +293,7 @@ function AuthProviderInner({
 		} finally {
 			setLoading(false)
 		}
-	}, [searchParams, handleOAuthCallback, autoValidate])
+	}, [searchParams, handleOAuthCallback, autoValidate, syncSession])
 
 	useEffect(() => {
 		initializeAuth()
@@ -246,7 +326,9 @@ function AuthProviderInner({
 		if (!user) return
 
 		try {
-			const response = await fetch(`/api/auth/permissions/by-role?role=${encodeURIComponent(user.role)}&email=${encodeURIComponent(user.email)}`)
+			const response = await fetch(`/api/auth/permissions/by-role?role=${encodeURIComponent(user.role)}&email=${encodeURIComponent(user.email)}`, {
+				credentials: 'include'
+			})
 			if (response.ok) {
 				const data = await response.json()
 				const updatedUser: ParentAppUser = {
