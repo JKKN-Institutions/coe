@@ -10,6 +10,7 @@ import { useMyJKKNReferenceLookup } from '@/hooks/myjkkn/use-myjkkn-reference-lo
 import { AppSidebar } from '@/components/layout/app-sidebar'
 import { AppHeader } from '@/components/layout/app-header'
 import { AppFooter } from '@/components/layout/app-footer'
+import { PageTransition } from '@/components/common/page-transition'
 import { SidebarInset, SidebarProvider } from '@/components/ui/sidebar'
 import { Breadcrumb, BreadcrumbItem, BreadcrumbLink, BreadcrumbList, BreadcrumbPage, BreadcrumbSeparator } from '@/components/ui/breadcrumb'
 import { Card, CardContent, CardHeader } from '@/components/ui/card'
@@ -23,7 +24,7 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sh
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog'
 import { useToast } from '@/hooks/common/use-toast'
 import Link from 'next/link'
-import { PlusCircle, Edit, Trash2, Search, ChevronLeft, ChevronRight, ArrowUpDown, ArrowUp, ArrowDown, BookOpen, TrendingUp, FileSpreadsheet, RefreshCw, CheckCircle, XCircle, AlertTriangle, Users, Upload, Loader2 } from 'lucide-react'
+import { PlusCircle, Edit, Trash2, Search, ChevronLeft, ChevronRight, ArrowUpDown, ArrowUp, ArrowDown, BookOpen, TrendingUp, FileSpreadsheet, RefreshCw, CheckCircle, XCircle, AlertTriangle, Users, Upload, Loader2, FileJson, Download } from 'lucide-react'
 
 // Import types from centralized module
 import type {
@@ -95,11 +96,13 @@ export default function CourseOfferingPage() {
 	const [sortColumn, setSortColumn] = useState<string | null>(null)
 	const [sortDirection, setSortDirection] = useState<"asc" | "desc">("asc")
 	const [currentPage, setCurrentPage] = useState(1)
-	const itemsPerPage = 10
+	const [itemsPerPage, setItemsPerPage] = useState<number | "all">(10)
 
 	const [sheetOpen, setSheetOpen] = useState(false)
 	const [editing, setEditing] = useState<CourseOffering | null>(null)
 	const [statusFilter, setStatusFilter] = useState("all")
+	const [programFilter, setProgramFilter] = useState("all")
+	const [semesterFilter, setSemesterFilter] = useState("all")
 	const [errorPopupOpen, setErrorPopupOpen] = useState(false)
 	const [importErrors, setImportErrors] = useState<Array<{
 		row: number
@@ -687,6 +690,8 @@ export default function CourseOfferingPage() {
 				].filter(Boolean).some((v) => String(v).toLowerCase().includes(q))
 			})
 			.filter((i) => statusFilter === "all" || (statusFilter === "active" ? i.is_active : !i.is_active))
+			.filter((i) => programFilter === "all" || i.program_id === programFilter || i.program_code === programFilter)
+			.filter((i) => semesterFilter === "all" || i.semester?.toString() === semesterFilter)
 
 		if (!sortColumn) return data
 		const sorted = [...data].sort((a, b) => {
@@ -697,14 +702,14 @@ export default function CourseOfferingPage() {
 			return av < bv ? 1 : -1
 		})
 		return sorted
-	}, [items, searchTerm, sortColumn, sortDirection, statusFilter, courses, examinationSessions, programs])
+	}, [items, searchTerm, sortColumn, sortDirection, statusFilter, programFilter, semesterFilter, courses, examinationSessions, programs, programsMap])
 
-	const totalPages = Math.ceil(filtered.length / itemsPerPage) || 1
-	const startIndex = (currentPage - 1) * itemsPerPage
-	const endIndex = startIndex + itemsPerPage
+	const totalPages = itemsPerPage === "all" ? 1 : Math.ceil(filtered.length / itemsPerPage) || 1
+	const startIndex = itemsPerPage === "all" ? 0 : (currentPage - 1) * itemsPerPage
+	const endIndex = itemsPerPage === "all" ? filtered.length : startIndex + itemsPerPage
 	const pageItems = filtered.slice(startIndex, endIndex)
 
-	useEffect(() => setCurrentPage(1), [searchTerm, sortColumn, sortDirection, statusFilter])
+	useEffect(() => setCurrentPage(1), [searchTerm, sortColumn, sortDirection, statusFilter, programFilter, semesterFilter, itemsPerPage])
 
 	const openAdd = () => {
 		resetForm()
@@ -1018,8 +1023,8 @@ export default function CourseOfferingPage() {
 			console.log('[Template Export] Sessions:', targetSessions.length)
 			console.log('[Template Export] Courses:', courses.length)
 
-			// Export with filtered data
-			exportTemplate(
+			// Export with filtered data (exportTemplate is async)
+			await exportTemplate(
 				targetInstitutions,
 				courses,
 				targetSessions,
@@ -1043,7 +1048,7 @@ export default function CourseOfferingPage() {
 				? examinationSessions.filter(s => (s as any).institutions_id === contextInstitutionId)
 				: examinationSessions
 
-			exportTemplate(targetInstitutions, courses, targetSessions, programs)
+			await exportTemplate(targetInstitutions, courses, targetSessions, programs)
 
 			toast({
 				title: "⚠️ Template Downloaded",
@@ -1326,8 +1331,8 @@ export default function CourseOfferingPage() {
 			<AppSidebar />
 			<SidebarInset className="flex flex-col min-h-screen">
 				<AppHeader />
-
-				<div className="flex flex-1 flex-col gap-4 p-4 pt-0 overflow-y-auto">
+				<PageTransition>
+					<div className="flex flex-1 flex-col gap-3 p-4 pt-0 overflow-y-auto">
 					<div className="flex items-center gap-2">
 						<Breadcrumb>
 							<BreadcrumbList>
@@ -1344,83 +1349,111 @@ export default function CourseOfferingPage() {
 						</Breadcrumb>
 					</div>
 
-					{/* Scorecard Section */}
-					<div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3 flex-shrink-0">
-						<Card>
-							<CardContent className="p-3">
-							<div className="flex items-center justify-between">
+					{/* Premium Stats Cards */}
+					<div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+						<Card className="border-slate-200 shadow-sm rounded-2xl">
+							<CardContent className="p-6">
+								<div className="flex items-center justify-between">
 									<div>
-										<p className="text-xs font-medium text-muted-foreground">Total Offerings</p>
-										<p className="text-xl font-bold">{items.length}</p>
+										<p className="text-sm text-slate-600">Total Offerings</p>
+										<p className="text-3xl font-bold text-slate-900 mt-1 font-grotesk">{items.length}</p>
 									</div>
-									<div className="h-7 w-7 rounded-full bg-blue-100 dark:bg-blue-900/20 flex items-center justify-center">
-										<BookOpen className="h-3 w-3 text-blue-600 dark:text-blue-400" />
+									<div className="h-12 w-12 rounded-xl bg-blue-50 flex items-center justify-center ring-1 ring-blue-100">
+										<BookOpen className="h-6 w-6 text-blue-600" />
 									</div>
 								</div>
 							</CardContent>
 						</Card>
-						<Card>
-							<CardContent className="p-3">
+
+						<Card className="border-slate-200 shadow-sm rounded-2xl">
+							<CardContent className="p-6">
 								<div className="flex items-center justify-between">
 									<div>
-										<p className="text-xs font-medium text-muted-foreground">Active Offerings</p>
-										<p className="text-xl font-bold text-green-600">{items.filter(i => i.is_active).length}</p>
+										<p className="text-sm text-slate-600">Active</p>
+										<p className="text-3xl font-bold text-emerald-600 mt-1 font-grotesk">{items.filter(i => i.is_active).length}</p>
 									</div>
-									<div className="h-7 w-7 rounded-full bg-green-100 dark:bg-green-900/20 flex items-center justify-center">
-										<CheckCircle className="h-3 w-3 text-green-600 dark:text-green-400" />
+									<div className="h-12 w-12 rounded-xl bg-emerald-50 flex items-center justify-center ring-1 ring-emerald-100">
+										<CheckCircle className="h-6 w-6 text-emerald-600" />
 									</div>
 								</div>
 							</CardContent>
 						</Card>
-						<Card>
-							<CardContent className="p-3">
+
+						<Card className="border-slate-200 shadow-sm rounded-2xl">
+							<CardContent className="p-6">
 								<div className="flex items-center justify-between">
 									<div>
-										<p className="text-xs font-medium text-muted-foreground">Total Enrolled</p>
-										<p className="text-xl font-bold text-purple-600">{items.reduce((sum, i) => sum + i.enrolled_count, 0)}</p>
+										<p className="text-sm text-slate-600">Total Enrolled</p>
+										<p className="text-3xl font-bold text-purple-600 mt-1 font-grotesk">{items.reduce((sum, i) => sum + i.enrolled_count, 0)}</p>
 									</div>
-									<div className="h-7 w-7 rounded-full bg-purple-100 dark:bg-purple-900/20 flex items-center justify-center">
-										<Users className="h-3 w-3 text-purple-600 dark:text-purple-400" />
+									<div className="h-12 w-12 rounded-xl bg-purple-50 flex items-center justify-center ring-1 ring-purple-100">
+										<Users className="h-6 w-6 text-purple-600" />
 									</div>
 								</div>
 							</CardContent>
 						</Card>
-						<Card>
-							<CardContent className="p-3">
+
+						<Card className="border-slate-200 shadow-sm rounded-2xl">
+							<CardContent className="p-6">
 								<div className="flex items-center justify-between">
 									<div>
-										<p className="text-xs font-medium text-muted-foreground">Avg Enrollment</p>
-										<p className="text-xl font-bold text-blue-600">
+										<p className="text-sm text-slate-600">Avg Enrollment</p>
+										<p className="text-3xl font-bold text-amber-600 mt-1 font-grotesk">
 											{items.length > 0 ? Math.round(items.reduce((sum, i) => sum + i.enrolled_count, 0) / items.length) : 0}
 										</p>
 									</div>
-									<div className="h-7 w-7 rounded-full bg-orange-100 dark:bg-orange-900/20 flex items-center justify-center">
-										<TrendingUp className="h-3 w-3 text-orange-600 dark:text-orange-400" />
+									<div className="h-12 w-12 rounded-xl bg-amber-50 flex items-center justify-center ring-1 ring-amber-100">
+										<TrendingUp className="h-6 w-6 text-amber-600" />
 									</div>
 								</div>
 							</CardContent>
 						</Card>
 					</div>
 
-					<Card className="flex-1 flex flex-col min-h-0">
-						<CardHeader className="flex-shrink-0 p-3">
-							<div className="flex items-center justify-between mb-2">
-								<div className="flex items-center gap-2">
-									<div className="h-7 w-7 rounded-lg bg-primary/10 flex items-center justify-center">
-										<BookOpen className="h-3 w-3 text-primary" />
+					<Card className="flex-1 flex flex-col min-h-0 border-slate-200 shadow-sm rounded-2xl">
+						<CardHeader className="flex-shrink-0 px-8 py-6 border-b border-slate-200">
+							<div className="space-y-4">
+								{/* Row 1: Title (Left) & Action Buttons (Right) - Same Line */}
+								<div className="flex items-center justify-between">
+									{/* Title Section - Left */}
+									<div className="flex items-center gap-3">
+										<div className="h-12 w-12 rounded-xl bg-emerald-50 flex items-center justify-center ring-1 ring-emerald-100">
+											<BookOpen className="h-6 w-6 text-emerald-600" />
+										</div>
+										<div>
+											<h2 className="text-xl font-bold text-slate-900 font-grotesk">All Course Offers</h2>
+											<p className="text-sm text-slate-600">Manage course offerings by program and semester</p>
+										</div>
 									</div>
-									<div>
-										<h2 className="text-sm font-semibold">Course Offers</h2>
-										<p className="text-[11px] text-muted-foreground">Manage Course Offers</p>
+
+									{/* Action Buttons - Icon Only */}
+									<div className="flex items-center gap-2">
+										<Button variant="outline" size="sm" onClick={fetchCourseOfferings} disabled={loading} className="h-9 w-9 rounded-lg hover:bg-slate-100 text-slate-600 hover:text-slate-900 transition-colors border border-slate-300 p-0" title="Refresh">
+											<RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
+										</Button>
+										<Button variant="outline" size="sm" onClick={handleTemplateExport} className="h-9 w-9 rounded-lg hover:bg-slate-100 text-slate-600 hover:text-slate-900 transition-colors border border-slate-300 p-0" title="Download Template">
+											<FileSpreadsheet className="h-4 w-4" />
+										</Button>
+										<Button variant="outline" size="sm" onClick={handleDownload} className="h-9 w-9 rounded-lg hover:bg-slate-100 text-slate-600 hover:text-slate-900 transition-colors border border-slate-300 p-0" title="Export JSON">
+											<FileJson className="h-4 w-4" />
+										</Button>
+										<Button variant="outline" size="sm" onClick={handleExport} className="h-9 w-9 rounded-lg hover:bg-slate-100 text-slate-600 hover:text-slate-900 transition-colors border border-slate-300 p-0" title="Export Excel">
+											<Download className="h-4 w-4" />
+										</Button>
+										<Button variant="outline" size="sm" onClick={handleImport} className="h-9 w-9 rounded-lg hover:bg-slate-100 text-slate-600 hover:text-slate-900 transition-colors border border-slate-300 p-0" title="Import File">
+											<Upload className="h-4 w-4" />
+										</Button>
+										<Button size="sm" onClick={openAdd} disabled={loading} className="h-9 px-4 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white transition-all duration-200 shadow-sm disabled:opacity-50 disabled:cursor-not-allowed" title="Add Course Offer">
+											<PlusCircle className="h-4 w-4 mr-2" />
+											Add Offer
+										</Button>
 									</div>
 								</div>
-								<div className="hidden" />
-							</div>
 
-							<div className="flex flex-col lg:flex-row gap-2 items-start lg:items-center justify-between">
-								<div className="flex flex-col sm:flex-row gap-2 w-full lg:w-auto">
+								{/* Row 2: Filter and Search Row */}
+								<div className="flex items-center gap-2 flex-wrap">
 									<Select value={statusFilter} onValueChange={setStatusFilter}>
-										<SelectTrigger className="w-[140px] h-8">
+										<SelectTrigger className="h-9 rounded-lg border-slate-300 focus:border-emerald-500 w-[130px]">
 											<SelectValue placeholder="All Status" />
 										</SelectTrigger>
 										<SelectContent>
@@ -1430,164 +1463,229 @@ export default function CourseOfferingPage() {
 										</SelectContent>
 									</Select>
 
-									<div className="relative w-full sm:w-[220px]">
-										<Search className="absolute left-2 top-1/2 h-3 w-3 -translate-y-1/2 text-muted-foreground" />
-										<Input value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} placeholder="Search…" className="pl-8 h-8 text-xs" />
-									</div>
-								</div>
+									<Select value={programFilter} onValueChange={setProgramFilter}>
+										<SelectTrigger className="h-9 rounded-lg border-slate-300 focus:border-emerald-500 w-[180px]">
+											<SelectValue placeholder="All Programs" />
+										</SelectTrigger>
+										<SelectContent>
+											<SelectItem value="all">All Programs</SelectItem>
+											{/* Get unique programs from items */}
+											{Array.from(new Set(items.map(i => i.program_id).filter(Boolean))).map(progId => {
+												const programData = programsMap.get(progId) || programs.find(p => p.id === progId)
+												return programData ? (
+													<SelectItem key={progId} value={progId}>
+														{programData.program_code} - {programData.program_name}
+													</SelectItem>
+												) : null
+											})}
+										</SelectContent>
+									</Select>
 
-								<div className="flex gap-1 flex-wrap">
-									<Button variant="outline" size="sm" className="text-xs px-2 h-8" onClick={fetchCourseOfferings} disabled={loading}>
-										<RefreshCw className={`h-3 w-3 mr-1 ${loading ? 'animate-spin' : ''}`} />
-										Refresh
-									</Button>
-									<Button variant="outline" size="sm" className="text-xs px-2 h-8" onClick={handleTemplateExport}>
-										<FileSpreadsheet className="h-3 w-3 mr-1" />
-										Template
-									</Button>
-									<Button variant="outline" size="sm" className="text-xs px-2 h-8" onClick={handleDownload}>Json</Button>
-									<Button variant="outline" size="sm" className="text-xs px-2 h-8" onClick={handleExport}>Download</Button>
-									<Button variant="outline" size="sm" className="text-xs px-2 h-8" onClick={handleImport}>Upload</Button>
-									<Button size="sm" className="text-xs px-2 h-8" onClick={openAdd} disabled={loading}>
-										<PlusCircle className="h-3 w-3 mr-1" />
-										Add
-									</Button>
+									<Select value={semesterFilter} onValueChange={setSemesterFilter}>
+										<SelectTrigger className="h-9 rounded-lg border-slate-300 focus:border-emerald-500 w-[140px]">
+											<SelectValue placeholder="All Semesters" />
+										</SelectTrigger>
+										<SelectContent>
+											<SelectItem value="all">All Semesters</SelectItem>
+											{/* Get unique semesters from items */}
+											{Array.from(new Set(items.map(i => i.semester).filter(Boolean))).sort((a, b) => a - b).map(sem => (
+												<SelectItem key={sem} value={sem.toString()}>
+													Semester {sem}
+												</SelectItem>
+											))}
+										</SelectContent>
+									</Select>
+
+									<div className="relative flex-1 max-w-sm">
+										<Search className="absolute left-2 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
+										<Input
+											value={searchTerm}
+											onChange={(e) => setSearchTerm(e.target.value)}
+											placeholder="Search course offerings..."
+											className="pl-8 h-9 rounded-lg border-slate-300 focus:border-emerald-500 focus:ring-emerald-500/20"
+										/>
+									</div>
 								</div>
 							</div>
 						</CardHeader>
-						<CardContent className="p-3 pt-0 flex-1 flex flex-col min-h-0">
-
-							<div className="rounded-md border overflow-hidden" style={{ height: "440px" }}>
-								<div className="h-full overflow-auto">
-									<Table>
-										<TableHeader className="sticky top-0 z-10 bg-slate-50 dark:bg-slate-900/50">
-											<TableRow>
-												{/* Show Institution column only when "All Institutions" is selected globally */}
-												{mustSelectInstitution && (
-													<TableHead className="w-[100px] text-[11px]">
-														<Button variant="ghost" size="sm" onClick={() => handleSort("institution_code")} className="h-auto p-0 font-medium hover:bg-transparent">
-															Institution Code
-															<span className="ml-1">{getSortIcon("institution_code")}</span>
-														</Button>
-													</TableHead>
-												)}
-												<TableHead className="text-[11px]">
-													<Button variant="ghost" size="sm" onClick={() => handleSort("course_code")} className="h-auto p-0 font-medium hover:bg-transparent">
-														Course Code
-														<span className="ml-1">{getSortIcon("course_code")}</span>
+						<CardContent className="flex-1 overflow-auto px-8 py-6 bg-slate-50/50">
+							<div className="rounded-xl border border-slate-200 overflow-hidden bg-white">
+								<Table>
+									<TableHeader className="bg-slate-50 border-b border-slate-200">
+										<TableRow>
+											{/* Show Institution column only when "All Institutions" is selected globally */}
+											{mustSelectInstitution && (
+												<TableHead className="text-sm font-semibold text-slate-700">
+													<Button variant="ghost" size="sm" onClick={() => handleSort("institution_code")} className="px-2 hover:bg-slate-100 rounded-lg transition-colors">
+														Institution
+														<span className="ml-1">{getSortIcon("institution_code")}</span>
 													</Button>
 												</TableHead>
-												<TableHead className="text-[11px]">
-													<Button variant="ghost" size="sm" onClick={() => handleSort("program_code")} className="h-auto p-0 font-medium hover:bg-transparent">
-														Program
-														<span className="ml-1">{getSortIcon("program_code")}</span>
-													</Button>
-												</TableHead>
-												<TableHead className="w-[120px] text-[11px]">
-													<Button variant="ghost" size="sm" onClick={() => handleSort("semester")} className="h-auto p-0 font-medium hover:bg-transparent">
-														Semester
-														<span className="ml-1">{getSortIcon("semester")}</span>
-													</Button>
-												</TableHead>
-												<TableHead className="w-[100px] text-[11px]">
-													<Button variant="ghost" size="sm" onClick={() => handleSort("is_active")} className="h-auto p-0 font-medium hover:bg-transparent">
-														Status
-														<span className="ml-1">{getSortIcon("is_active")}</span>
-													</Button>
-												</TableHead>
-												<TableHead className="w-[120px] text-[11px] text-center">Actions</TableHead>
-											</TableRow>
-										</TableHeader>
-										<TableBody>
-											{loading ? (
-												<TableRow>
-													<TableCell colSpan={mustSelectInstitution ? 7 : 6} className="h-24 text-center text-[11px]">Loading…</TableCell>
-												</TableRow>
-											) : pageItems.length ? (
-												<>
-													{pageItems.map((row) => {
-														const course = courses.find(c => c.id === row.course_id)
-														// Use programsMap for index view (from MyJKKN), fallback to programs array (for form)
-														const programData = programsMap.get(row.program_id) || programs.find(p => p.id === row.program_id)
-														const programDisplay = programData 
-															? `${programData.program_code} - ${programData.program_name}`
-															: row.program_code || 'N/A'
-														return (
-															<TableRow key={row.id}>
-																{mustSelectInstitution && (
-																	<TableCell className="text-[11px]">{row.institution_code || '-'}</TableCell>
-																)}
-																<TableCell className="text-[11px]">{row.course_code || 'N/A'}</TableCell>
-																<TableCell className="text-[11px]">{programDisplay}</TableCell>
-																<TableCell className="text-[11px] font-medium">{row.semester}</TableCell>
-																<TableCell>
-																	<Badge
-																		variant={row.is_active ? "default" : "secondary"}
-																		className={`text-[11px] ${row.is_active
-																			? 'bg-green-100 text-green-800 hover:bg-green-200 dark:bg-green-900 dark:text-green-200'
-																			: 'bg-red-100 text-red-800 hover:bg-red-200 dark:bg-red-900 dark:text-red-200'
-																			}`}
-																	>
-																		{row.is_active ? "Active" : "Inactive"}
-																	</Badge>
-																</TableCell>
-																<TableCell>
-																	<div className="flex items-center justify-center gap-1">
-																		<Button variant="outline" size="sm" className="h-7 w-7 p-0" onClick={() => openEdit(row)}>
-																			<Edit className="h-3 w-3" />
-																		</Button>
-																		<AlertDialog>
-																			<AlertDialogTrigger asChild>
-																				<Button variant="outline" size="sm" className="h-7 w-7 p-0 text-red-600 hover:text-red-700 hover:bg-red-50">
-																					<Trash2 className="h-3 w-3" />
-																				</Button>
-																			</AlertDialogTrigger>
-																			<AlertDialogContent>
-																				<AlertDialogHeader>
-																					<AlertDialogTitle>Delete Course Offer</AlertDialogTitle>
-																					<AlertDialogDescription>
-																						Are you sure you want to delete this Course Offer? This action cannot be undone.
-																					</AlertDialogDescription>
-																				</AlertDialogHeader>
-																				<AlertDialogFooter>
-																					<AlertDialogCancel>Cancel</AlertDialogCancel>
-																					<AlertDialogAction onClick={() => remove(row.id)} className="bg-red-600 hover:bg-red-700">Delete</AlertDialogAction>
-																				</AlertDialogFooter>
-																			</AlertDialogContent>
-																		</AlertDialog>
-																	</div>
-																</TableCell>
-															</TableRow>
-														)
-													})}
-												</>
-											) : (
-												<TableRow>
-													<TableCell colSpan={mustSelectInstitution ? 7 : 6} className="h-24 text-center text-[11px]">No data</TableCell>
-												</TableRow>
 											)}
-										</TableBody>
-									</Table>
-								</div>
+											<TableHead className="text-sm font-semibold text-slate-700">
+												<Button variant="ghost" size="sm" onClick={() => handleSort("course_code")} className="px-2 hover:bg-slate-100 rounded-lg transition-colors">
+													Course Code
+													<span className="ml-1">{getSortIcon("course_code")}</span>
+												</Button>
+											</TableHead>
+											<TableHead className="text-sm font-semibold text-slate-700">
+												<Button variant="ghost" size="sm" onClick={() => handleSort("program_code")} className="px-2 hover:bg-slate-100 rounded-lg transition-colors">
+													Program
+													<span className="ml-1">{getSortIcon("program_code")}</span>
+												</Button>
+											</TableHead>
+											<TableHead className="text-sm font-semibold text-slate-700">
+												<Button variant="ghost" size="sm" onClick={() => handleSort("semester")} className="px-2 hover:bg-slate-100 rounded-lg transition-colors">
+													Semester
+													<span className="ml-1">{getSortIcon("semester")}</span>
+												</Button>
+											</TableHead>
+											<TableHead className="text-sm font-semibold text-slate-700">
+												<Button variant="ghost" size="sm" onClick={() => handleSort("is_active")} className="px-2 hover:bg-slate-100 rounded-lg transition-colors">
+													Status
+													<span className="ml-1">{getSortIcon("is_active")}</span>
+												</Button>
+											</TableHead>
+											<TableHead className="text-center text-sm font-semibold text-slate-700">Actions</TableHead>
+										</TableRow>
+									</TableHeader>
+									<TableBody>
+										{loading ? (
+											<TableRow>
+												<TableCell colSpan={mustSelectInstitution ? 6 : 5} className="h-24 text-center text-sm text-slate-500">Loading…</TableCell>
+											</TableRow>
+										) : pageItems.length ? (
+											<>
+												{pageItems.map((row) => {
+													// Use programsMap for index view (from MyJKKN), fallback to programs array (for form)
+													const programData = programsMap.get(row.program_id) || programs.find(p => p.id === row.program_id)
+													const programDisplay = programData
+														? `${programData.program_code} - ${programData.program_name}`
+														: row.program_code || 'N/A'
+													return (
+														<TableRow key={row.id} className="border-b border-slate-200 hover:bg-slate-50 transition-colors">
+															{mustSelectInstitution && (
+																<TableCell className="text-sm text-slate-700">{row.institution_code || '-'}</TableCell>
+															)}
+															<TableCell className="font-medium text-sm text-slate-900 font-grotesk">{row.course_code || 'N/A'}</TableCell>
+															<TableCell className="text-sm text-slate-700">{programDisplay}</TableCell>
+															<TableCell className="text-sm text-slate-600 font-medium font-grotesk">{row.semester}</TableCell>
+															<TableCell>
+																<Badge
+																	variant={row.is_active ? "default" : "secondary"}
+																	className={`text-xs ${row.is_active
+																		? 'bg-emerald-100 text-emerald-700 border-emerald-200'
+																		: 'bg-slate-100 text-slate-700 border-slate-200'
+																		}`}
+																>
+																	{row.is_active ? "Active" : "Inactive"}
+																</Badge>
+															</TableCell>
+															<TableCell className="text-center">
+																<div className="flex items-center justify-center gap-1">
+																	<Button
+																		variant="ghost"
+																		size="sm"
+																		className="h-8 w-8 p-0 rounded-lg hover:bg-emerald-100 text-emerald-600 transition-colors"
+																		onClick={() => openEdit(row)}
+																		title="Edit"
+																	>
+																		<Edit className="h-4 w-4" />
+																	</Button>
+																	<AlertDialog>
+																		<AlertDialogTrigger asChild>
+																			<Button
+																				variant="ghost"
+																				size="sm"
+																				className="h-8 w-8 p-0 rounded-lg hover:bg-red-100 text-red-600 transition-colors"
+																				title="Delete"
+																			>
+																				<Trash2 className="h-4 w-4" />
+																			</Button>
+																		</AlertDialogTrigger>
+																		<AlertDialogContent>
+																			<AlertDialogHeader>
+																				<AlertDialogTitle>Delete Course Offer</AlertDialogTitle>
+																				<AlertDialogDescription>
+																					Are you sure you want to delete this Course Offer? This action cannot be undone.
+																				</AlertDialogDescription>
+																			</AlertDialogHeader>
+																			<AlertDialogFooter>
+																				<AlertDialogCancel>Cancel</AlertDialogCancel>
+																				<AlertDialogAction onClick={() => remove(row.id)} className="bg-red-600 hover:bg-red-700">Delete</AlertDialogAction>
+																			</AlertDialogFooter>
+																		</AlertDialogContent>
+																	</AlertDialog>
+																</div>
+															</TableCell>
+														</TableRow>
+													)
+												})}
+											</>
+										) : (
+											<TableRow>
+												<TableCell colSpan={mustSelectInstitution ? 6 : 5} className="h-24 text-center text-sm text-slate-500">No data</TableCell>
+											</TableRow>
+										)}
+									</TableBody>
+								</Table>
 							</div>
 
-							<div className="flex items-center justify-between space-x-2 py-2 mt-2">
-								<div className="text-xs text-muted-foreground">
-									Showing {filtered.length === 0 ? 0 : startIndex + 1}-{Math.min(endIndex, filtered.length)} of {filtered.length}
+							{/* Pagination */}
+							<div className="flex items-center justify-between mt-4 pt-4 border-t border-slate-200">
+								<div className="flex items-center gap-4">
+									<div className="text-sm text-slate-600">
+										Showing {filtered.length === 0 ? 0 : startIndex + 1}-{Math.min(endIndex, filtered.length)} of {filtered.length} offerings
+									</div>
+									<div className="flex items-center gap-2">
+										<Label htmlFor="page-size" className="text-sm text-slate-600">
+											Rows per page:
+										</Label>
+										<Select
+											value={String(itemsPerPage)}
+											onValueChange={(value) => setItemsPerPage(value === "all" ? "all" : Number(value))}
+										>
+											<SelectTrigger id="page-size" className="h-9 rounded-lg border-slate-300 w-[100px]">
+												<SelectValue />
+											</SelectTrigger>
+											<SelectContent>
+												<SelectItem value="10">10</SelectItem>
+												<SelectItem value="20">20</SelectItem>
+												<SelectItem value="50">50</SelectItem>
+												<SelectItem value="100">100</SelectItem>
+												<SelectItem value="all">All</SelectItem>
+											</SelectContent>
+										</Select>
+									</div>
 								</div>
 								<div className="flex items-center gap-2">
-									<Button variant="outline" size="sm" onClick={() => setCurrentPage((p) => Math.max(1, p - 1))} disabled={currentPage === 1} className="h-7 px-2 text-xs">
-										<ChevronLeft className="h-3 w-3 mr-1" /> Previous
+									<Button
+										variant="outline"
+										size="sm"
+										onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+										disabled={currentPage === 1 || itemsPerPage === "all"}
+										className="h-9 px-4 rounded-lg border-slate-300 hover:bg-slate-50 transition-colors disabled:opacity-50"
+									>
+										<ChevronLeft className="h-4 w-4 mr-1" /> Previous
 									</Button>
-									<div className="text-xs text-muted-foreground px-2">Page {currentPage} of {totalPages}</div>
-									<Button variant="outline" size="sm" onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))} disabled={currentPage >= totalPages} className="h-7 px-2 text-xs">
-										Next <ChevronRight className="h-3 w-3 ml-1" />
+									<div className="text-sm text-slate-600 px-2">
+										Page {currentPage} of {totalPages}
+									</div>
+									<Button
+										variant="outline"
+										size="sm"
+										onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+										disabled={currentPage >= totalPages || itemsPerPage === "all"}
+										className="h-9 px-4 rounded-lg border-slate-300 hover:bg-slate-50 transition-colors disabled:opacity-50"
+									>
+										Next <ChevronRight className="h-4 w-4 ml-1" />
 									</Button>
 								</div>
 							</div>
 						</CardContent>
 					</Card>
 				</div>
+				</PageTransition>
 				<AppFooter />
 			</SidebarInset>
 

@@ -12,14 +12,9 @@ export async function GET(request: Request) {
 		const registration_status = searchParams.get('registration_status')
 		const program_id = searchParams.get('program_id')
 
-		// Pagination parameters
-		const page = parseInt(searchParams.get('page') || '1')
-		const pageSize = parseInt(searchParams.get('pageSize') || '10000') // Default to 10k for backward compatibility
-		const from = (page - 1) * pageSize
-		const to = from + pageSize - 1
-
-		// Debug logging
-		console.log('📊 Pagination params:', { page, pageSize, from, to, program_id })
+		// Check if client wants all records (for bulk operations)
+		const fetchAll = searchParams.get('fetchAll') === 'true'
+		const requestedPageSize = parseInt(searchParams.get('pageSize') || '10000')
 
 		// If program_id filter is provided, first get matching course_offering_ids
 		let courseOfferingIds: string[] | null = null
@@ -37,71 +32,110 @@ export async function GET(request: Request) {
 			}
 		}
 
-		let query = supabase
-			.from('exam_registrations')
-			.select(`
-				*,
-				institution:institutions(id, institution_code, name),
-				student:students(id, register_number, first_name, last_name),
-				examination_session:examination_sessions(id, session_name, session_code, exam_start_date, exam_end_date),
-				course_offering:course_offerings(id, course_code, program_code)
-			`, { count: 'exact' })
-			.order('created_at', { ascending: false })
-			.range(from, to) // Dynamic pagination range
+		// Paginate to bypass Supabase 1000 row limit - fetch up to 1,000,000 records
+		let allRegistrations: any[] = []
+		const pageSize = 1000 // Internal page size for fetching
+		let page = 0
+		let hasMore = true
+		let totalCount = 0
 
-		if (institutions_id) {
-			query = query.eq('institutions_id', institutions_id)
-		}
-		if (student_id) {
-			query = query.eq('student_id', student_id)
-		}
-		if (examination_session_id) {
-			query = query.eq('examination_session_id', examination_session_id)
-		}
-		if (registration_status) {
-			query = query.eq('registration_status', registration_status)
-		}
-		// Filter by program_id through course_offering_ids
-		if (courseOfferingIds !== null) {
-			if (courseOfferingIds.length === 0) {
-				// No matching course offerings, return empty result
-				return NextResponse.json([])
+		while (hasMore) {
+			let query = supabase
+				.from('exam_registrations')
+				.select(`
+					*,
+					institution:institutions(id, institution_code, name),
+					examination_session:examination_sessions(id, session_name, session_code, exam_start_date, exam_end_date),
+					course_offering:course_offerings(id, course_code, program_code)
+				`, { count: page === 0 ? 'exact' : undefined })
+				.order('created_at', { ascending: false })
+				.range(page * pageSize, (page + 1) * pageSize - 1)
+
+			if (institutions_id) {
+				query = query.eq('institutions_id', institutions_id)
 			}
-			query = query.in('course_offering_id', courseOfferingIds)
-		}
+			if (student_id) {
+				query = query.eq('student_id', student_id)
+			}
+			if (examination_session_id) {
+				query = query.eq('examination_session_id', examination_session_id)
+			}
+			if (registration_status) {
+				query = query.eq('registration_status', registration_status)
+			}
+			// Filter by program_id through course_offering_ids
+			if (courseOfferingIds !== null) {
+				if (courseOfferingIds.length === 0) {
+					// No matching course offerings, return empty result
+					return NextResponse.json([])
+				}
+				query = query.in('course_offering_id', courseOfferingIds)
+			}
 
-		const { data, error, count } = await query
+			const { data, error, count } = await query
+
+			if (error) {
+				console.error('Exam registrations table error (page ' + page + '):', error)
+				return NextResponse.json({ error: 'Failed to fetch exam registrations' }, { status: 500 })
+			}
+
+			// Store total count from first page
+			if (page === 0 && count !== null) {
+				totalCount = count
+			}
+
+			if (data && data.length > 0) {
+				allRegistrations = allRegistrations.concat(data)
+				page++
+				// Continue if we got a full page AND haven't exceeded 1,000,000 records AND haven't reached requested pageSize
+				hasMore = data.length === pageSize &&
+					allRegistrations.length < 1000000 &&
+					(fetchAll || allRegistrations.length < requestedPageSize)
+			} else {
+				hasMore = false
+			}
+		}
 
 		// Debug logging
 		console.log('📊 Query result:', {
-			rowsFetched: data?.length || 0,
-			totalCount: count,
-			error: error?.message
+			rowsFetched: allRegistrations.length,
+			totalCount: totalCount,
+			pages: page
 		})
 
-		if (error) {
-			console.error('Exam registrations table error:', error)
-			return NextResponse.json({ error: 'Failed to fetch exam registrations' }, { status: 500 })
-		}
-
 		// Fetch course names from courses table to enrich course_offering data
-		const { data: courses, error: coursesError } = await supabase
-			.from('courses')
-			.select('course_code, course_name')
-			.range(0, 9999) // Increase limit from default 1000 rows
+		// Also paginate this query to handle large course tables
+		let allCourses: any[] = []
+		let coursePage = 0
+		let courseHasMore = true
 
-		if (coursesError) {
-			console.error('Courses fetch error:', coursesError)
-			// Continue without course names rather than failing completely
+		while (courseHasMore) {
+			const { data: coursesData, error: coursesError } = await supabase
+				.from('courses')
+				.select('course_code, course_name')
+				.range(coursePage * 1000, (coursePage + 1) * 1000 - 1)
+
+			if (coursesError) {
+				console.error('Courses fetch error:', coursesError)
+				break
+			}
+
+			if (coursesData && coursesData.length > 0) {
+				allCourses = allCourses.concat(coursesData)
+				coursePage++
+				courseHasMore = coursesData.length === 1000
+			} else {
+				courseHasMore = false
+			}
 		}
 
 		// Create a map for quick lookup
 		const courseMap = new Map(
-			(courses || []).map((c: any) => [c.course_code, c.course_name])
+			allCourses.map((c: any) => [c.course_code, c.course_name])
 		)
 
 		// Transform the data to include course_name in course_offering
-		const transformedData = (data || []).map((item: any) => ({
+		const transformedData = allRegistrations.map((item: any) => ({
 			...item,
 			course_offering: item.course_offering ? {
 				...item.course_offering,
@@ -112,18 +146,18 @@ export async function GET(request: Request) {
 		// Return with pagination metadata
 		// Check if pagination is explicitly requested (when page or pageSize params are provided)
 		const usePagination = searchParams.has('page') || searchParams.has('pageSize')
-		const totalPages = count ? Math.ceil(count / pageSize) : 0
+		const totalPages = totalCount ? Math.ceil(totalCount / requestedPageSize) : 0
 
 		if (usePagination) {
 			// Return paginated response with metadata
 			return NextResponse.json({
 				data: transformedData,
 				pagination: {
-					page,
-					pageSize,
-					total: count || 0,
-					totalPages,
-					hasMore: page < totalPages
+					page: 1,
+					pageSize: transformedData.length,
+					total: totalCount || transformedData.length,
+					totalPages: 1,
+					hasMore: false
 				}
 			})
 		} else {
@@ -148,9 +182,11 @@ export async function POST(request: Request) {
 				error: 'institutions_id is required'
 			}, { status: 400 })
 		}
-		if (!body.student_id) {
+		// student_id is optional for bulk import - stu_register_no can be used instead
+		// At least one of student_id or stu_register_no must be provided
+		if (!body.student_id && !body.stu_register_no) {
 			return NextResponse.json({
-				error: 'student_id is required'
+				error: 'Either student_id or stu_register_no is required'
 			}, { status: 400 })
 		}
 		if (!body.examination_session_id) {
@@ -166,7 +202,7 @@ export async function POST(request: Request) {
 
 		const insertPayload: any = {
 			institutions_id: body.institutions_id,
-			student_id: body.student_id,
+			student_id: body.student_id || null, // Can be null for bulk import
 			examination_session_id: body.examination_session_id,
 			course_offering_id: body.course_offering_id,
 			stu_register_no: body.stu_register_no ?? null,
@@ -182,6 +218,10 @@ export async function POST(request: Request) {
 			remarks: body.remarks ?? null,
 			approved_by: body.approved_by ?? null,
 			approved_date: body.approved_date ?? null,
+			// Store code values for easier querying (denormalized)
+			institution_code: body.institution_code ?? null,
+			session_code: body.session_code ?? null,
+			course_code: body.course_code ?? null,
 		}
 
 		const { data, error } = await supabase
@@ -190,7 +230,6 @@ export async function POST(request: Request) {
 			.select(`
 				*,
 				institution:institutions(id, institution_code, name),
-				student:students(id, roll_number, first_name, last_name),
 				examination_session:examination_sessions(id, session_name, session_code, exam_start_date, exam_end_date),
 				course_offering:course_offerings(id, course_code)
 			`)
@@ -198,22 +237,64 @@ export async function POST(request: Request) {
 
 		if (error) {
 			console.error('Error creating exam registration:', error)
+			console.error('Error details:', {
+				code: error.code,
+				message: error.message,
+				details: error.details,
+				hint: error.hint,
+				payload: insertPayload
+			})
 
 			// Handle duplicate key constraint violation
 			if (error.code === '23505') {
 				return NextResponse.json({
-					error: 'This exam registration already exists for this student, session, and course.'
+					error: `Duplicate entry: Registration already exists for student "${body.stu_register_no || body.student_id}" in this session and course`
 				}, { status: 400 })
 			}
 
 			// Handle foreign key constraint violation
 			if (error.code === '23503') {
+				// Parse the error message to identify which foreign key failed
+				let fieldName = 'reference'
+				if (error.message?.includes('institutions_id')) fieldName = 'Institution'
+				else if (error.message?.includes('student_id')) fieldName = 'Student'
+				else if (error.message?.includes('examination_session_id')) fieldName = 'Examination Session'
+				else if (error.message?.includes('course_offering_id')) fieldName = 'Course Offering'
 				return NextResponse.json({
-					error: 'Invalid reference. Please select valid institution, student, session, or course.'
+					error: `Invalid ${fieldName}: The specified ${fieldName.toLowerCase()} does not exist in the system`
 				}, { status: 400 })
 			}
 
-			return NextResponse.json({ error: 'Failed to create exam registration' }, { status: 500 })
+			// Handle NOT NULL violation
+			if (error.code === '23502') {
+				// Parse field name from error
+				const fieldMatch = error.message?.match(/column "(\w+)"/)
+				const fieldName = fieldMatch ? fieldMatch[1].replace(/_/g, ' ') : 'required field'
+				return NextResponse.json({
+					error: `Missing required field: ${fieldName} cannot be empty`
+				}, { status: 400 })
+			}
+
+			// Handle check constraint violation
+			if (error.code === '23514') {
+				return NextResponse.json({
+					error: `Data validation failed: ${error.message || 'Value does not meet requirements'}`
+				}, { status: 400 })
+			}
+
+			// Handle timezone or date parsing errors
+			if (error.message?.includes('time zone') || error.message?.includes('timestamp')) {
+				return NextResponse.json({
+					error: `Invalid date format: Please use YYYY-MM-DD format for dates`
+				}, { status: 400 })
+			}
+
+			// Generic error with full details for debugging
+			return NextResponse.json({
+				error: `Database error: ${error.message || 'Unknown error occurred'}`,
+				code: error.code,
+				hint: error.hint
+			}, { status: 500 })
 		}
 
 		// Enrich with course_name
@@ -267,6 +348,10 @@ export async function PUT(request: Request) {
 			approved_by: body.approved_by ?? null,
 			approved_date: body.approved_date ?? null,
 			updated_at: new Date().toISOString(),
+			// Store code values for easier querying (denormalized)
+			institution_code: body.institution_code ?? null,
+			session_code: body.session_code ?? null,
+			course_code: body.course_code ?? null,
 		}
 
 		const { data, error } = await supabase
@@ -276,7 +361,6 @@ export async function PUT(request: Request) {
 			.select(`
 				*,
 				institution:institutions(id, institution_code, name),
-				student:students(id, roll_number, first_name, last_name),
 				examination_session:examination_sessions(id, session_name, session_code, exam_start_date, exam_end_date),
 				course_offering:course_offerings(id, course_code)
 			`)

@@ -254,6 +254,7 @@ async function handleBulkUpload(supabase: any, body: any) {
 		examination_session_id,
 		program_id,
 		course_id,
+		lookup_mode = 'dummy_number', // 'dummy_number' or 'register_number'
 		marks_data,
 		file_name,
 		file_size,
@@ -466,6 +467,72 @@ async function handleBulkUpload(supabase: any, body: any) {
 		.select('id, course_code, external_max_mark')
 		.eq('institutions_id', institutions_id)
 
+	// Get sessions for validation (for register_number mode)
+	const { data: examSessions } = await supabase
+		.from('examination_sessions')
+		.select('id, session_code')
+		.eq('institutions_id', institutions_id)
+
+	// Build session map: session_code -> session_id
+	const sessionMap = new Map<string, string>(
+		examSessions?.map((s: any) => [s.session_code?.toLowerCase()?.trim(), s.id]) || []
+	)
+
+	// For register_number mode, fetch exam_registrations with stu_register_no
+	let examRegistrations: any[] = []
+	if (lookup_mode === 'register_number') {
+		let regPage = 0
+		let regHasMore = true
+		const regPageSize = 1000
+
+		while (regHasMore) {
+			const { data: regData, error: regError } = await supabase
+				.from('exam_registrations')
+				.select(`
+					id,
+					stu_register_no,
+					student_id,
+					student_name,
+					institutions_id,
+					examination_session_id,
+					course_offering_id,
+					examination_sessions!inner (
+						id,
+						session_code
+					),
+					course_offerings!inner (
+						id,
+						course_id,
+						program_id,
+						courses!inner (
+							id,
+							course_code,
+							external_max_mark
+						)
+					)
+				`)
+				.eq('institutions_id', institutions_id)
+				.not('stu_register_no', 'is', null)
+				.range(regPage * regPageSize, (regPage + 1) * regPageSize - 1)
+
+			if (regError) {
+				console.error('Error fetching exam registrations page:', regPage, regError)
+				break
+			}
+
+			if (regData && regData.length > 0) {
+				examRegistrations = examRegistrations.concat(regData)
+				regPage++
+				regHasMore = regData.length === regPageSize
+			} else {
+				regHasMore = false
+			}
+		}
+
+		console.log('=== DEBUG: Exam Registrations (register_number mode) ===')
+		console.log('Total exam registrations fetched:', examRegistrations.length)
+	}
+
 	// Build maps for fast lookup
 	// Map: dummy_number + course_code -> student info
 	const dummyMap = new Map<string, {
@@ -511,6 +578,61 @@ async function handleBulkUpload(supabase: any, body: any) {
 		}
 	})
 
+	// Map for register_number mode: register_number + subject_code + session_code -> student info
+	const registerMap = new Map<string, {
+		exam_registration_id: string
+		student_id: string
+		student_name: string
+		register_number: string
+		course_id: string
+		course_code: string
+		course_offering_id: string
+		program_id: string
+		examination_session_id: string
+		external_max_mark: number
+		is_absent: boolean
+		attendance_status: string
+	}>()
+
+	// Also need to find the student_dummy_number for register_number mode
+	// Build a map: exam_registration_id -> student_dummy_number_id
+	const regToDummyMap = new Map<string, string>()
+	dummyNumbers?.forEach((dn: any) => {
+		const examRegId = dn.exam_registrations?.id
+		if (examRegId) {
+			regToDummyMap.set(examRegId, dn.id)
+		}
+	})
+
+	if (lookup_mode === 'register_number') {
+		examRegistrations?.forEach((reg: any) => {
+			const registerNo = reg.stu_register_no?.toLowerCase()?.trim()
+			const courseCode = reg.course_offerings?.courses?.course_code?.toLowerCase()?.trim()
+			const sessionCode = reg.examination_sessions?.session_code?.toLowerCase()?.trim()
+			const courseId = reg.course_offerings?.courses?.id
+			const examRegId = reg.id
+
+			if (registerNo && courseCode && sessionCode && courseId && examRegId) {
+				const key = `${registerNo}|${courseCode}|${sessionCode}`
+				const attendance = attendanceMap.get(examRegId)
+				registerMap.set(key, {
+					exam_registration_id: examRegId,
+					student_id: reg.student_id,
+					student_name: reg.student_name,
+					register_number: reg.stu_register_no,
+					course_id: courseId,
+					course_code: reg.course_offerings.courses.course_code,
+					course_offering_id: reg.course_offerings.id,
+					program_id: reg.course_offerings.program_id,
+					examination_session_id: reg.examination_session_id,
+					external_max_mark: reg.course_offerings.courses.external_max_mark || 100,
+					is_absent: attendance?.is_absent || false,
+					attendance_status: attendance?.attendance_status || 'Present'
+				})
+			}
+		})
+	}
+
 	const courseMap = new Map<string, { id: string; course_code: string; external_max_mark: number }>(
 		courses?.map((c: any) => [c.course_code?.toLowerCase(), c]) || []
 	)
@@ -519,10 +641,18 @@ async function handleBulkUpload(supabase: any, body: any) {
 		dummyNumbers?.map((dn: any) => dn.dummy_number?.toLowerCase()?.trim()).filter(Boolean) || []
 	)
 
+	const validRegisterNumbers = new Set<string>(
+		examRegistrations?.map((reg: any) => reg.stu_register_no?.toLowerCase()?.trim()).filter(Boolean) || []
+	)
+
 	console.log('=== DEBUG: Lookup Maps ===')
+	console.log('Lookup mode:', lookup_mode)
 	console.log('dummyMap keys (first 10):', Array.from(dummyMap.keys()).slice(0, 10))
+	console.log('registerMap keys (first 10):', Array.from(registerMap.keys()).slice(0, 10))
 	console.log('validDummyNumbers (first 10):', Array.from(validDummyNumbers).slice(0, 10))
+	console.log('validRegisterNumbers (first 10):', Array.from(validRegisterNumbers).slice(0, 10))
 	console.log('courseMap keys:', Array.from(courseMap.keys()))
+	console.log('sessionMap keys:', Array.from(sessionMap.keys()))
 
 	// Process each row
 	for (let i = 0; i < marks_data.length; i++) {
@@ -530,41 +660,117 @@ async function handleBulkUpload(supabase: any, body: any) {
 		const rowNumber = i + 2 // +2 for Excel header row
 		const rowErrors: string[] = []
 
-		// Look up student by dummy_number + course_code
-		const dummyNo = String(row.dummy_number || '').toLowerCase().trim()
-		const courseCode = String(row.course_code || '').toLowerCase().trim()
-		const lookupKey = `${dummyNo}|${courseCode}`
-		const studentInfo = dummyMap.get(lookupKey)
+		// Lookup based on mode
+		let studentInfo: any = null
+		let studentDummyId: string | null = null
+		let displayIdentifier = ''
 
-		if (i < 3) {
-			console.log(`=== DEBUG: Row ${i + 1} Lookup ===`)
-			console.log('Looking for:', { dummyNo, courseCode, lookupKey })
-			console.log('Found:', studentInfo ? 'YES' : 'NO')
-			if (studentInfo) {
-				console.log('Attendance:', {
-					is_absent: studentInfo.is_absent,
-					attendance_status: studentInfo.attendance_status
+		if (lookup_mode === 'register_number') {
+			// Register number mode: register_number + subject_code + session_code
+			const registerNo = String(row.register_number || '').toLowerCase().trim()
+			const subjectCode = String(row.subject_code || row.course_code || '').toLowerCase().trim()
+			const sessionCode = String(row.session_code || '').toLowerCase().trim()
+			const lookupKey = `${registerNo}|${subjectCode}|${sessionCode}`
+			displayIdentifier = row.register_number || 'N/A'
+
+			const regInfo = registerMap.get(lookupKey)
+
+			if (i < 3) {
+				console.log(`=== DEBUG: Row ${i + 1} Lookup (register_number mode) ===`)
+				console.log('Looking for:', { registerNo, subjectCode, sessionCode, lookupKey })
+				console.log('Found:', regInfo ? 'YES' : 'NO')
+			}
+
+			if (!regInfo) {
+				if (!validRegisterNumbers.has(registerNo)) {
+					rowErrors.push(`Student with register number "${row.register_number}" not found`)
+				} else if (!courseMap.has(subjectCode)) {
+					rowErrors.push(`Subject/Course with code "${row.subject_code || row.course_code}" not found`)
+				} else if (!sessionMap.has(sessionCode)) {
+					rowErrors.push(`Session with code "${row.session_code}" not found`)
+				} else {
+					rowErrors.push(`No exam registration found for register number "${row.register_number}" in subject "${row.subject_code || row.course_code}" for session "${row.session_code}"`)
+				}
+				results.failed++
+				results.validation_errors.push({
+					row: rowNumber,
+					dummy_number: displayIdentifier,
+					course_code: row.subject_code || row.course_code || 'N/A',
+					errors: rowErrors
 				})
+				continue
 			}
-		}
 
-		// Provide specific error messages if not found
-		if (!studentInfo) {
-			if (!validDummyNumbers.has(dummyNo)) {
-				rowErrors.push(`Student with dummy number "${row.dummy_number}" not found`)
-			} else if (!courseMap.has(courseCode)) {
-				rowErrors.push(`Course with code "${row.course_code}" not found`)
-			} else {
-				rowErrors.push(`No exam registration found for dummy number "${row.dummy_number}" in course "${row.course_code}"`)
+			// Get the student_dummy_number_id from regToDummyMap
+			studentDummyId = regToDummyMap.get(regInfo.exam_registration_id) || null
+
+			if (!studentDummyId) {
+				rowErrors.push(`No dummy number assigned for register number "${row.register_number}" in this session. Please ensure dummy numbers are allocated first.`)
+				results.failed++
+				results.validation_errors.push({
+					row: rowNumber,
+					dummy_number: displayIdentifier,
+					course_code: row.subject_code || row.course_code || 'N/A',
+					errors: rowErrors
+				})
+				continue
 			}
-			results.failed++
-			results.validation_errors.push({
-				row: rowNumber,
-				dummy_number: row.dummy_number || 'N/A',
-				course_code: row.course_code || 'N/A',
-				errors: rowErrors
-			})
-			continue
+
+			// Convert to common format
+			studentInfo = {
+				student_dummy_id: studentDummyId,
+				dummy_number: displayIdentifier, // Use register number as display
+				exam_registration_id: regInfo.exam_registration_id,
+				student_id: regInfo.student_id,
+				student_name: regInfo.student_name,
+				course_id: regInfo.course_id,
+				course_code: regInfo.course_code,
+				course_offering_id: regInfo.course_offering_id,
+				program_id: regInfo.program_id,
+				examination_session_id: regInfo.examination_session_id,
+				external_max_mark: regInfo.external_max_mark,
+				is_absent: regInfo.is_absent,
+				attendance_status: regInfo.attendance_status
+			}
+		} else {
+			// Dummy number mode (default): dummy_number + course_code
+			const dummyNo = String(row.dummy_number || '').toLowerCase().trim()
+			const courseCode = String(row.course_code || '').toLowerCase().trim()
+			const lookupKey = `${dummyNo}|${courseCode}`
+			displayIdentifier = row.dummy_number || 'N/A'
+
+			studentInfo = dummyMap.get(lookupKey)
+
+			if (i < 3) {
+				console.log(`=== DEBUG: Row ${i + 1} Lookup (dummy_number mode) ===`)
+				console.log('Looking for:', { dummyNo, courseCode, lookupKey })
+				console.log('Found:', studentInfo ? 'YES' : 'NO')
+				if (studentInfo) {
+					console.log('Attendance:', {
+						is_absent: studentInfo.is_absent,
+						attendance_status: studentInfo.attendance_status
+					})
+				}
+			}
+
+			// Provide specific error messages if not found
+			if (!studentInfo) {
+				if (!validDummyNumbers.has(dummyNo)) {
+					rowErrors.push(`Student with dummy number "${row.dummy_number}" not found`)
+				} else if (!courseMap.has(courseCode)) {
+					rowErrors.push(`Course with code "${row.course_code}" not found`)
+				} else {
+					rowErrors.push(`No exam registration found for dummy number "${row.dummy_number}" in course "${row.course_code}"`)
+				}
+				results.failed++
+				results.validation_errors.push({
+					row: rowNumber,
+					dummy_number: displayIdentifier,
+					course_code: row.course_code || 'N/A',
+					errors: rowErrors
+				})
+				continue
+			}
 		}
 
 		// ATTENDANCE VALIDATION - Critical requirement
@@ -573,8 +779,8 @@ async function handleBulkUpload(supabase: any, body: any) {
 			results.failed++
 			results.validation_errors.push({
 				row: rowNumber,
-				dummy_number: row.dummy_number || 'N/A',
-				course_code: row.course_code || 'N/A',
+				dummy_number: displayIdentifier,
+				course_code: row.subject_code || row.course_code || 'N/A',
 				errors: rowErrors
 			})
 			continue
@@ -604,8 +810,8 @@ async function handleBulkUpload(supabase: any, body: any) {
 			results.failed++
 			results.validation_errors.push({
 				row: rowNumber,
-				dummy_number: row.dummy_number || 'N/A',
-				course_code: row.course_code || 'N/A',
+				dummy_number: displayIdentifier,
+				course_code: row.subject_code || row.course_code || 'N/A',
 				errors: rowErrors
 			})
 			continue
@@ -626,8 +832,8 @@ async function handleBulkUpload(supabase: any, body: any) {
 				results.skipped++
 				results.validation_errors.push({
 					row: rowNumber,
-					dummy_number: row.dummy_number || 'N/A',
-					course_code: row.course_code || 'N/A',
+					dummy_number: displayIdentifier,
+					course_code: row.subject_code || row.course_code || 'N/A',
 					errors: [`Marks already exist for this student (${existing.total_marks_obtained} marks). Skipped to prevent overwrite.`]
 				})
 				continue
@@ -679,8 +885,8 @@ async function handleBulkUpload(supabase: any, body: any) {
 			}
 			results.errors.push({
 				row: rowNumber,
-				dummy_number: row.dummy_number,
-				course_code: row.course_code,
+				dummy_number: displayIdentifier,
+				course_code: row.subject_code || row.course_code,
 				error: errorMessage
 			})
 		}

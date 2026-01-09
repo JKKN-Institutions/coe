@@ -36,8 +36,21 @@ import {
 	XCircle,
 	AlertTriangle,
 	FileUp,
-	ClipboardList
+	ClipboardList,
+	FileJson,
+	Loader2
 } from "lucide-react"
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
+
+// Import export/import utilities
+import {
+	exportToJSON,
+	exportToExcel,
+	exportTemplate,
+	parseImportFile,
+	mapImportRow,
+	type InternalMarkExport
+} from "@/lib/utils/internal-marks/export-import"
 
 // Types
 interface InternalMark {
@@ -177,6 +190,8 @@ export default function BulkInternalMarksPage() {
 		failed: 0,
 		skipped: 0
 	})
+	const [templateExportLoading, setTemplateExportLoading] = useState(false)
+	const [importInProgress, setImportInProgress] = useState(false)
 
 	// Fetch institutions on mount when ready
 	useEffect(() => {
@@ -374,254 +389,84 @@ export default function BulkInternalMarksPage() {
 		setSelectAll(newSelected.size === pageItems.length)
 	}
 
-	// Download Template
-	const handleDownloadTemplate = () => {
-		const wb = XLSX.utils.book_new()
+	// Download Template - uses utility function with loading state
+	const handleDownloadTemplate = async () => {
+		setTemplateExportLoading(true)
+		toast({
+			title: "Generating template...",
+			description: "Fetching reference data for template",
+		})
 
-		// Template sheet with ALL required columns
-		// Based on internal_marks table requirements
-		const templateData = [
-			{
-				'Register No *': 'STU001',
-				'Course Code *': 'CS101',
-				'Session Code': 'APR2024',
-				'Program Code': 'BCA',
-				'Assignment Marks': 8,
-				'Quiz Marks': 9,
-				'Mid Term Marks': 35,
-				'Presentation Marks': '',
-				'Attendance Marks': 5,
-				'Lab Marks': '',
-				'Project Marks': '',
-				'Seminar Marks': '',
-				'Viva Marks': '',
-				'Test 1 Mark': '',
-				'Test 2 Mark': '',
-				'Test 3 Mark': '',
-				'Other Marks': '',
-				'Max Internal Marks *': 100,
-				'Remarks': 'Good performance'
-			},
-			{
-				'Register No *': 'STU002',
-				'Course Code *': 'CS101',
-				'Session Code': 'APR2024',
-				'Program Code': 'BCA',
-				'Assignment Marks': 7,
-				'Quiz Marks': 8,
-				'Mid Term Marks': 30,
-				'Presentation Marks': '',
-				'Attendance Marks': 4,
-				'Lab Marks': '',
-				'Project Marks': '',
-				'Seminar Marks': '',
-				'Viva Marks': '',
-				'Test 1 Mark': '',
-				'Test 2 Mark': '',
-				'Test 3 Mark': '',
-				'Other Marks': '',
-				'Max Internal Marks *': 100,
-				'Remarks': ''
-			}
-		]
+		try {
+			// Use the utility function with current reference data
+			exportTemplate(institutions, sessions, programs, courses)
 
-		const ws = XLSX.utils.json_to_sheet(templateData)
+			toast({
+				title: "✅ Template Downloaded",
+				description: "Internal marks template with reference sheets has been downloaded successfully.",
+				className: "bg-green-50 border-green-200 text-green-800 dark:bg-green-900/20 dark:border-green-800 dark:text-green-200",
+			})
+		} catch (error) {
+			console.error('Template export error:', error)
+			toast({
+				title: "❌ Template Export Failed",
+				description: "Failed to generate template. Please try again.",
+				variant: "destructive",
+			})
+		} finally {
+			setTemplateExportLoading(false)
+		}
+	}
 
-		// Set column widths
-		ws['!cols'] = [
-			{ wch: 18 }, // Register No
-			{ wch: 15 }, // Course Code
-			{ wch: 15 }, // Session Code
-			{ wch: 15 }, // Program Code
-			{ wch: 18 }, // Assignment Marks
-			{ wch: 12 }, // Quiz Marks
-			{ wch: 16 }, // Mid Term Marks
-			{ wch: 18 }, // Presentation Marks
-			{ wch: 18 }, // Attendance Marks
-			{ wch: 12 }, // Lab Marks
-			{ wch: 14 }, // Project Marks
-			{ wch: 14 }, // Seminar Marks
-			{ wch: 12 }, // Viva Marks
-			{ wch: 12 }, // Test 1 Mark
-			{ wch: 12 }, // Test 2 Mark
-			{ wch: 12 }, // Test 3 Mark
-			{ wch: 12 }, // Other Marks
-			{ wch: 20 }, // Max Internal Marks
-			{ wch: 30 }  // Remarks
-		]
-
-		// Style the header row to make mandatory fields red
-		const range = XLSX.utils.decode_range(ws['!ref'] || 'A1')
-		const mandatoryFields = ['Register No *', 'Course Code *', 'Max Internal Marks *']
-
-		for (let col = range.s.c; col <= range.e.c; col++) {
-			const cellAddress = XLSX.utils.encode_cell({ r: 0, c: col })
-			if (!ws[cellAddress]) continue
-
-			const cell = ws[cellAddress]
-			const isMandatory = mandatoryFields.includes(cell.v as string)
-
-			if (isMandatory) {
-				// Make mandatory field headers red
-				cell.s = {
-					font: { color: { rgb: 'FF0000' }, bold: true },
-					fill: { fgColor: { rgb: 'FFE6E6' } }
-				}
-			} else {
-				// Regular field headers
-				cell.s = {
-					font: { bold: true },
-					fill: { fgColor: { rgb: 'F0F0F0' } }
-				}
-			}
+	// JSON Export handler
+	const handleExportJSON = () => {
+		if (!items || items.length === 0) {
+			toast({
+				title: "⚠️ No Data to Export",
+				description: "Please load some data before exporting.",
+				variant: "destructive",
+				className: "bg-yellow-50 border-yellow-200 text-yellow-800 dark:bg-yellow-900/20 dark:border-yellow-800 dark:text-yellow-200",
+			})
+			return
 		}
 
-		XLSX.utils.book_append_sheet(wb, ws, 'Internal Marks Template')
+		const exportData: InternalMarkExport[] = items.map(item => ({
+			register_no: item.register_no || '',
+			student_name: item.student_name || '',
+			course_code: item.course_code || '',
+			course_name: item.course_name || '',
+			program_name: item.program_name || '',
+			session_name: item.session_name || '',
+			assignment_marks: item.assignment_marks,
+			quiz_marks: item.quiz_marks,
+			mid_term_marks: item.mid_term_marks,
+			presentation_marks: item.presentation_marks,
+			attendance_marks: item.attendance_marks,
+			lab_marks: item.lab_marks,
+			project_marks: item.project_marks,
+			seminar_marks: item.seminar_marks,
+			viva_marks: item.viva_marks,
+			other_marks: item.other_marks,
+			test_1_mark: item.test_1_mark,
+			test_2_mark: item.test_2_mark,
+			test_3_mark: item.test_3_mark,
+			total_internal_marks: item.total_internal_marks,
+			max_internal_marks: item.max_internal_marks,
+			internal_percentage: item.internal_percentage,
+			marks_status: item.marks_status || 'Draft',
+			remarks: item.remarks
+		}))
 
-		// Reference sheet for internal types/columns explanation
-		const columnsReference = [
-			{ 'Column Name': 'Register No *', 'Required': 'Yes', 'Description': 'Student registration number', 'Example': 'STU001' },
-			{ 'Column Name': 'Course Code *', 'Required': 'Yes', 'Description': 'Course code from courses table', 'Example': 'CS101' },
-			{ 'Column Name': 'Session Code', 'Required': 'No', 'Description': 'Examination session code', 'Example': 'APR2024' },
-			{ 'Column Name': 'Program Code', 'Required': 'No', 'Description': 'Program code from programs table', 'Example': 'BCA' },
-			{ 'Column Name': 'Assignment Marks', 'Required': 'No', 'Description': 'Assignment marks (0-100)', 'Example': '8' },
-			{ 'Column Name': 'Quiz Marks', 'Required': 'No', 'Description': 'Quiz marks (0-100)', 'Example': '9' },
-			{ 'Column Name': 'Mid Term Marks', 'Required': 'No', 'Description': 'Mid term exam marks (0-100)', 'Example': '35' },
-			{ 'Column Name': 'Presentation Marks', 'Required': 'No', 'Description': 'Presentation marks (0-100)', 'Example': '10' },
-			{ 'Column Name': 'Attendance Marks', 'Required': 'No', 'Description': 'Attendance marks (0-100)', 'Example': '5' },
-			{ 'Column Name': 'Lab Marks', 'Required': 'No', 'Description': 'Lab/practical marks (0-100)', 'Example': '15' },
-			{ 'Column Name': 'Project Marks', 'Required': 'No', 'Description': 'Project marks (0-100)', 'Example': '20' },
-			{ 'Column Name': 'Seminar Marks', 'Required': 'No', 'Description': 'Seminar marks (0-100)', 'Example': '10' },
-			{ 'Column Name': 'Viva Marks', 'Required': 'No', 'Description': 'Viva marks (0-100)', 'Example': '15' },
-			{ 'Column Name': 'Other Marks', 'Required': 'No', 'Description': 'Other assessment marks (0-100)', 'Example': '5' },
-			{ 'Column Name': 'Max Internal Marks *', 'Required': 'Yes', 'Description': 'Maximum internal marks for the course', 'Example': '100' },
-			{ 'Column Name': 'Remarks', 'Required': 'No', 'Description': 'Any additional remarks', 'Example': 'Good performance' }
-		]
-
-		const wsColumns = XLSX.utils.json_to_sheet(columnsReference)
-		wsColumns['!cols'] = [{ wch: 22 }, { wch: 10 }, { wch: 40 }, { wch: 20 }]
-
-		// Style header row
-		const colRange = XLSX.utils.decode_range(wsColumns['!ref'] || 'A1')
-		for (let col = colRange.s.c; col <= colRange.e.c; col++) {
-			const cellAddress = XLSX.utils.encode_cell({ r: 0, c: col })
-			if (wsColumns[cellAddress]) {
-				wsColumns[cellAddress].s = {
-					font: { bold: true, color: { rgb: '1F2937' } },
-					fill: { fgColor: { rgb: 'DBEAFE' } }
-				}
-			}
-		}
-
-		XLSX.utils.book_append_sheet(wb, wsColumns, 'Column Reference')
-
-		// Sessions reference if available
-		if (sessions.length > 0) {
-			const sessionsRef = sessions.map(s => ({
-				'Session Code': s.session_code,
-				'Session Name': s.session_name
-			}))
-			const wsSessions = XLSX.utils.json_to_sheet(sessionsRef)
-			wsSessions['!cols'] = [{ wch: 15 }, { wch: 40 }]
-
-			// Style header row
-			const sessRange = XLSX.utils.decode_range(wsSessions['!ref'] || 'A1')
-			for (let col = sessRange.s.c; col <= sessRange.e.c; col++) {
-				const cellAddress = XLSX.utils.encode_cell({ r: 0, c: col })
-				if (wsSessions[cellAddress]) {
-					wsSessions[cellAddress].s = {
-						font: { bold: true, color: { rgb: '1F2937' } },
-						fill: { fgColor: { rgb: 'DBEAFE' } }
-					}
-				}
-			}
-
-			XLSX.utils.book_append_sheet(wb, wsSessions, 'Sessions Reference')
-		}
-
-		// Programs reference if available
-		if (programs.length > 0) {
-			const programsRef = programs.map(p => ({
-				'Program Code': p.program_code,
-				'Program Name': p.program_name
-			}))
-			const wsPrograms = XLSX.utils.json_to_sheet(programsRef)
-			wsPrograms['!cols'] = [{ wch: 15 }, { wch: 40 }]
-
-			// Style header row
-			const progRange = XLSX.utils.decode_range(wsPrograms['!ref'] || 'A1')
-			for (let col = progRange.s.c; col <= progRange.e.c; col++) {
-				const cellAddress = XLSX.utils.encode_cell({ r: 0, c: col })
-				if (wsPrograms[cellAddress]) {
-					wsPrograms[cellAddress].s = {
-						font: { bold: true, color: { rgb: '1F2937' } },
-						fill: { fgColor: { rgb: 'DBEAFE' } }
-					}
-				}
-			}
-
-			XLSX.utils.book_append_sheet(wb, wsPrograms, 'Programs Reference')
-		}
-
-		// Courses reference if available
-		if (courses.length > 0) {
-			const coursesRef = courses.map(c => ({
-				'Course Code': c.course_code,
-				'Course Name': c.course_name,
-				'Max Internal Marks': c.internal_max_mark || 100
-			}))
-			const wsCourses = XLSX.utils.json_to_sheet(coursesRef)
-			wsCourses['!cols'] = [{ wch: 15 }, { wch: 40 }, { wch: 20 }]
-
-			// Style header row
-			const courseRange = XLSX.utils.decode_range(wsCourses['!ref'] || 'A1')
-			for (let col = courseRange.s.c; col <= courseRange.e.c; col++) {
-				const cellAddress = XLSX.utils.encode_cell({ r: 0, c: col })
-				if (wsCourses[cellAddress]) {
-					wsCourses[cellAddress].s = {
-						font: { bold: true, color: { rgb: '1F2937' } },
-						fill: { fgColor: { rgb: 'DBEAFE' } }
-					}
-				}
-			}
-
-			XLSX.utils.book_append_sheet(wb, wsCourses, 'Courses Reference')
-		}
-
-		// Institutions reference if available
-		if (institutions.length > 0) {
-			const institutionsRef = institutions.map(i => ({
-				'Institution Code': i.institution_code,
-				'Institution Name': i.name
-			}))
-			const wsInst = XLSX.utils.json_to_sheet(institutionsRef)
-			wsInst['!cols'] = [{ wch: 20 }, { wch: 40 }]
-
-			// Style header row
-			const instRange = XLSX.utils.decode_range(wsInst['!ref'] || 'A1')
-			for (let col = instRange.s.c; col <= instRange.e.c; col++) {
-				const cellAddress = XLSX.utils.encode_cell({ r: 0, c: col })
-				if (wsInst[cellAddress]) {
-					wsInst[cellAddress].s = {
-						font: { bold: true, color: { rgb: '1F2937' } },
-						fill: { fgColor: { rgb: 'DBEAFE' } }
-					}
-				}
-			}
-
-			XLSX.utils.book_append_sheet(wb, wsInst, 'Institutions Reference')
-		}
-
-		XLSX.writeFile(wb, `internal_marks_template_${new Date().toISOString().split('T')[0]}.xlsx`)
+		exportToJSON(exportData)
 
 		toast({
-			title: "✅ Template Downloaded",
-			description: "Internal marks template with reference sheets has been downloaded successfully.",
+			title: "✅ JSON Exported",
+			description: `Successfully exported ${items.length} record${items.length > 1 ? 's' : ''} to JSON.`,
 			className: "bg-green-50 border-green-200 text-green-800 dark:bg-green-900/20 dark:border-green-800 dark:text-green-200",
 		})
 	}
 
-	// Export Current Data
+	// Export Current Data - uses utility function
 	const handleExportData = () => {
 		if (!items || items.length === 0) {
 			toast({
@@ -633,80 +478,38 @@ export default function BulkInternalMarksPage() {
 			return
 		}
 
-		const exportData = items.map(item => ({
-			'Register No': item.register_no || 'N/A',
-			'Student Name': item.student_name || '',
-			'Course Code': item.course_code || '',
-			'Course Name': item.course_name || '',
-			'Program': item.program_name || '',
-			'Session': item.session_name || '',
-			'Assignment Marks': item.assignment_marks ?? '',
-			'Quiz Marks': item.quiz_marks ?? '',
-			'Mid Term Marks': item.mid_term_marks ?? '',
-			'Presentation Marks': item.presentation_marks ?? '',
-			'Attendance Marks': item.attendance_marks ?? '',
-			'Lab Marks': item.lab_marks ?? '',
-			'Project Marks': item.project_marks ?? '',
-			'Seminar Marks': item.seminar_marks ?? '',
-			'Viva Marks': item.viva_marks ?? '',
-			'Test 1 Mark': item.test_1_mark ?? '',
-			'Test 2 Mark': item.test_2_mark ?? '',
-			'Test 3 Mark': item.test_3_mark ?? '',
-			'Other Marks': item.other_marks ?? '',
-			'Total Internal Marks': item.total_internal_marks ?? 0,
-			'Max Internal Marks': item.max_internal_marks ?? 100,
-			'Internal Percentage': item.internal_percentage ?? 0,
-			'Status': item.marks_status || 'Draft',
-			'Remarks': item.remarks || ''
+		const exportData: InternalMarkExport[] = items.map(item => ({
+			register_no: item.register_no || '',
+			student_name: item.student_name || '',
+			course_code: item.course_code || '',
+			course_name: item.course_name || '',
+			program_name: item.program_name || '',
+			session_name: item.session_name || '',
+			assignment_marks: item.assignment_marks,
+			quiz_marks: item.quiz_marks,
+			mid_term_marks: item.mid_term_marks,
+			presentation_marks: item.presentation_marks,
+			attendance_marks: item.attendance_marks,
+			lab_marks: item.lab_marks,
+			project_marks: item.project_marks,
+			seminar_marks: item.seminar_marks,
+			viva_marks: item.viva_marks,
+			other_marks: item.other_marks,
+			test_1_mark: item.test_1_mark,
+			test_2_mark: item.test_2_mark,
+			test_3_mark: item.test_3_mark,
+			total_internal_marks: item.total_internal_marks,
+			max_internal_marks: item.max_internal_marks,
+			internal_percentage: item.internal_percentage,
+			marks_status: item.marks_status || 'Draft',
+			remarks: item.remarks
 		}))
 
-		const wb = XLSX.utils.book_new()
-		const ws = XLSX.utils.json_to_sheet(exportData)
+		const institutionCode = selectedInstitution
+			? institutions.find(i => i.id === selectedInstitution)?.institution_code
+			: undefined
 
-		// Set column widths
-		ws['!cols'] = [
-			{ wch: 18 }, // Register No
-			{ wch: 25 }, // Student Name
-			{ wch: 15 }, // Course Code
-			{ wch: 35 }, // Course Name
-			{ wch: 25 }, // Program
-			{ wch: 20 }, // Session
-			{ wch: 15 }, // Assignment Marks
-			{ wch: 12 }, // Quiz Marks
-			{ wch: 15 }, // Mid Term Marks
-			{ wch: 18 }, // Presentation Marks
-			{ wch: 17 }, // Attendance Marks
-			{ wch: 12 }, // Lab Marks
-			{ wch: 14 }, // Project Marks
-			{ wch: 15 }, // Seminar Marks
-			{ wch: 12 }, // Viva Marks
-			{ wch: 13 }, // Test 1 Mark
-			{ wch: 13 }, // Test 2 Mark
-			{ wch: 13 }, // Test 3 Mark
-			{ wch: 13 }, // Other Marks
-			{ wch: 18 }, // Total Internal Marks
-			{ wch: 18 }, // Max Internal Marks
-			{ wch: 18 }, // Internal Percentage
-			{ wch: 12 }, // Status
-			{ wch: 30 }  // Remarks
-		]
-
-		// Style header row
-		const range = XLSX.utils.decode_range(ws['!ref'] || 'A1')
-		for (let col = range.s.c; col <= range.e.c; col++) {
-			const cellAddress = XLSX.utils.encode_cell({ r: 0, c: col })
-			if (!ws[cellAddress]) continue
-			ws[cellAddress].s = {
-				font: { bold: true, color: { rgb: "FFFFFF" } },
-				fill: { fgColor: { rgb: "4472C4" } },
-				alignment: { horizontal: "center", vertical: "center" }
-			}
-		}
-
-		XLSX.utils.book_append_sheet(wb, ws, 'Internal Marks Data')
-
-		const fileName = `internal_marks_export_${selectedInstitution ? institutions.find(i => i.id === selectedInstitution)?.institution_code || 'all' : 'all'}_${new Date().toISOString().split('T')[0]}.xlsx`
-		XLSX.writeFile(wb, fileName)
+		exportToExcel(exportData, institutionCode)
 
 		toast({
 			title: "✅ Data Exported",
@@ -715,154 +518,82 @@ export default function BulkInternalMarksPage() {
 		})
 	}
 
-	// Import File
+	// Import File - uses utility functions
 	const handleImportFile = () => {
 		const input = document.createElement('input')
 		input.type = 'file'
-		input.accept = '.xlsx,.xls,.csv'
+		input.accept = '.xlsx,.xls,.csv,.json'
 		input.onchange = async (e) => {
 			const file = (e.target as HTMLInputElement).files?.[0]
 			if (!file) return
 
+			setImportInProgress(true)
+			toast({
+				title: "📂 Processing File...",
+				description: `Reading ${file.name}`,
+			})
+
 			try {
-				let rows: any[] = []
+				// Parse file using utility function
+				const rows = await parseImportFile(file)
 
-				if (file.name.endsWith('.csv')) {
-					const text = await file.text()
-					const lines = text.split('\n').filter(line => line.trim())
-					if (lines.length < 2) {
-						toast({
-							title: "❌ Invalid CSV File",
-							description: "CSV file must have at least a header row and one data row",
-							variant: "destructive",
-						})
-						return
-					}
-
-					const headers = lines[0].split(',').map(h => h.trim().replace(/"/g, ''))
-					rows = lines.slice(1).map(line => {
-						const values = line.split(',').map(v => v.trim().replace(/"/g, ''))
-						const row: Record<string, string> = {}
-						headers.forEach((header, index) => {
-							row[header] = values[index] || ''
-						})
-						return row
+				if (rows.length === 0) {
+					toast({
+						title: "❌ Empty File",
+						description: "The file contains no data rows.",
+						variant: "destructive",
 					})
-				} else {
-					const data = new Uint8Array(await file.arrayBuffer())
-					const wb = XLSX.read(data, { type: 'array' })
-					const ws = wb.Sheets[wb.SheetNames[0]]
-					rows = XLSX.utils.sheet_to_json(ws) as Record<string, unknown>[]
+					setImportInProgress(false)
+					return
 				}
 
-				// Parse and validate
+				// Map and validate rows using utility function
 				const previewData: ImportPreviewRow[] = rows.map((row, index) => {
-					const errors: string[] = []
-
-					// Parse all fields from the row
-					const registerNo = String(row['Register No *'] || row['Register No'] || row['register_no'] || '').trim()
-					const courseCode = String(row['Course Code *'] || row['Course Code'] || row['course_code'] || '').trim()
-					const sessionCode = String(row['Session Code'] || row['session_code'] || '').trim()
-					const programCode = String(row['Program Code'] || row['program_code'] || '').trim()
-
-					// Parse marks for each type (now integers)
-					const parseMarks = (value: any): number | null => {
-						if (value === '' || value === null || value === undefined) return null
-						const num = parseInt(String(value), 10)
-						return isNaN(num) ? null : num
-					}
-
-					const assignmentMarks = parseMarks(row['Assignment Marks'] || row['assignment_marks'])
-					const quizMarks = parseMarks(row['Quiz Marks'] || row['quiz_marks'])
-					const midTermMarks = parseMarks(row['Mid Term Marks'] || row['mid_term_marks'])
-					const presentationMarks = parseMarks(row['Presentation Marks'] || row['presentation_marks'])
-					const attendanceMarks = parseMarks(row['Attendance Marks'] || row['attendance_marks'])
-					const labMarks = parseMarks(row['Lab Marks'] || row['lab_marks'])
-					const projectMarks = parseMarks(row['Project Marks'] || row['project_marks'])
-					const seminarMarks = parseMarks(row['Seminar Marks'] || row['seminar_marks'])
-					const vivaMarks = parseMarks(row['Viva Marks'] || row['viva_marks'])
-					const otherMarks = parseMarks(row['Other Marks'] || row['other_marks'])
-					const test1Mark = parseMarks(row['Test 1 Mark'] || row['test_1_mark'])
-					const test2Mark = parseMarks(row['Test 2 Mark'] || row['test_2_mark'])
-					const test3Mark = parseMarks(row['Test 3 Mark'] || row['test_3_mark'])
-
-					const maxInternalMarksStr = String(row['Max Internal Marks *'] || row['Max Internal Marks'] || row['max_internal_marks'] || '100').trim()
-					const maxInternalMarks = parseFloat(maxInternalMarksStr)
-					const remarks = String(row['Remarks'] || row['remarks'] || '').trim()
-
-					// Validate required fields
-					if (!registerNo) errors.push('Register No is required')
-					if (!courseCode) errors.push('Course Code is required')
-					if (isNaN(maxInternalMarks) || maxInternalMarks <= 0) errors.push('Max Internal Marks must be a positive number')
-
-					// Validate marks ranges (each must be 0-100 if provided)
-					const validateMarksRange = (name: string, value: number | null) => {
-						if (value !== null) {
-							if (value < 0) errors.push(`${name} cannot be negative`)
-							if (value > 100) errors.push(`${name} cannot exceed 100`)
-						}
-					}
-
-					validateMarksRange('Assignment Marks', assignmentMarks)
-					validateMarksRange('Quiz Marks', quizMarks)
-					validateMarksRange('Mid Term Marks', midTermMarks)
-					validateMarksRange('Presentation Marks', presentationMarks)
-					validateMarksRange('Attendance Marks', attendanceMarks)
-					validateMarksRange('Lab Marks', labMarks)
-					validateMarksRange('Project Marks', projectMarks)
-					validateMarksRange('Seminar Marks', seminarMarks)
-					validateMarksRange('Viva Marks', vivaMarks)
-					validateMarksRange('Test 1 Mark', test1Mark)
-					validateMarksRange('Test 2 Mark', test2Mark)
-					validateMarksRange('Test 3 Mark', test3Mark)
-					validateMarksRange('Other Marks', otherMarks)
-
-					// Check if at least one marks type is provided
-					const hasAnyMarks = assignmentMarks !== null || quizMarks !== null || midTermMarks !== null ||
-						presentationMarks !== null || attendanceMarks !== null || labMarks !== null ||
-						projectMarks !== null || seminarMarks !== null || vivaMarks !== null || otherMarks !== null ||
-						test1Mark !== null || test2Mark !== null || test3Mark !== null
-
-					if (!hasAnyMarks) {
-						errors.push('At least one marks type must be provided')
-					}
-
+					const mapped = mapImportRow(row, index)
 					return {
-						row: index + 2,
-						register_no: registerNo,
-						course_code: courseCode,
-						session_code: sessionCode,
-						program_code: programCode,
-						assignment_marks: assignmentMarks,
-						quiz_marks: quizMarks,
-						mid_term_marks: midTermMarks,
-						presentation_marks: presentationMarks,
-						attendance_marks: attendanceMarks,
-						lab_marks: labMarks,
-						project_marks: projectMarks,
-						seminar_marks: seminarMarks,
-						viva_marks: vivaMarks,
-						other_marks: otherMarks,
-						test_1_mark: test1Mark,
-						test_2_mark: test2Mark,
-						test_3_mark: test3Mark,
-						max_internal_marks: isNaN(maxInternalMarks) ? 100 : maxInternalMarks,
-						remarks,
-						errors,
-						isValid: errors.length === 0
+						row: mapped.rowNumber,
+						register_no: mapped.register_no,
+						course_code: mapped.course_code,
+						session_code: mapped.session_code,
+						program_code: mapped.program_code,
+						assignment_marks: mapped.assignment_marks,
+						quiz_marks: mapped.quiz_marks,
+						mid_term_marks: mapped.mid_term_marks,
+						presentation_marks: mapped.presentation_marks,
+						attendance_marks: mapped.attendance_marks,
+						lab_marks: mapped.lab_marks,
+						project_marks: mapped.project_marks,
+						seminar_marks: mapped.seminar_marks,
+						viva_marks: mapped.viva_marks,
+						other_marks: mapped.other_marks,
+						test_1_mark: mapped.test_1_mark,
+						test_2_mark: mapped.test_2_mark,
+						test_3_mark: mapped.test_3_mark,
+						max_internal_marks: mapped.max_internal_marks,
+						remarks: mapped.remarks,
+						errors: mapped.errors,
+						isValid: mapped.status === 'valid'
 					}
 				})
 
 				setImportPreviewData(previewData)
 				setPreviewDialogOpen(true)
 
+				toast({
+					title: "✅ File Parsed Successfully",
+					description: `${previewData.length} rows found. ${previewData.filter(r => r.isValid).length} valid, ${previewData.filter(r => !r.isValid).length} with errors.`,
+					className: "bg-green-50 border-green-200 text-green-800 dark:bg-green-900/20 dark:border-green-800 dark:text-green-200",
+				})
+
 			} catch (error) {
 				console.error('Import error:', error)
 				toast({
 					title: "❌ Import Error",
-					description: "Failed to parse the file. Please check the format.",
+					description: error instanceof Error ? error.message : "Failed to parse the file. Please check the format.",
 					variant: "destructive",
 				})
+			} finally {
+				setImportInProgress(false)
 			}
 		}
 		input.click()
@@ -1234,56 +965,123 @@ export default function BulkInternalMarksPage() {
 									</div>
 								</div>
 
-								<div className="flex gap-1 flex-wrap">
-									<Button
-										variant="outline"
-										size="sm"
-										className="text-xs px-2 h-8"
-										onClick={fetchMarks}
-										disabled={loading || !selectedInstitution}
-									>
-										<RefreshCw className={`h-3 w-3 mr-1 ${loading ? 'animate-spin' : ''}`} />
-										Refresh
-									</Button>
-									<Button
-										variant="outline"
-										size="sm"
-										className="text-xs px-2 h-8"
-										onClick={handleDownloadTemplate}
-									>
-										<Download className="h-3 w-3 mr-1" />
-										Template
-									</Button>
-									<Button
-										variant="outline"
-										size="sm"
-										className="text-xs px-2 h-8 bg-blue-50 hover:bg-blue-100 text-blue-700 border-blue-200 dark:bg-blue-900/20 dark:hover:bg-blue-900/30 dark:text-blue-300 dark:border-blue-800"
-										onClick={handleExportData}
-										disabled={!items || items.length === 0}
-									>
-										<FileSpreadsheet className="h-3 w-3 mr-1" />
-										Export
-									</Button>
-									<Button
-										variant="outline"
-										size="sm"
-										className="text-xs px-2 h-8"
-										onClick={handleImportFile}
-										disabled={!selectedInstitution}
-									>
-										<Upload className="h-3 w-3 mr-1" />
-										Import
-									</Button>
-									<Button
-										variant="destructive"
-										size="sm"
-										className="text-xs px-2 h-8"
-										onClick={() => setDeleteDialogOpen(true)}
-										disabled={selectedIds.size === 0}
-									>
-										<Trash2 className="h-3 w-3 mr-1" />
-										Delete ({selectedIds.size})
-									</Button>
+								<div className="flex gap-1 flex-wrap items-center">
+									{/* Refresh */}
+									<TooltipProvider>
+										<Tooltip>
+											<TooltipTrigger asChild>
+												<Button
+													variant="outline"
+													size="icon"
+													className="h-8 w-8"
+													onClick={fetchMarks}
+													disabled={loading || !selectedInstitution}
+												>
+													<RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
+												</Button>
+											</TooltipTrigger>
+											<TooltipContent>Refresh Data</TooltipContent>
+										</Tooltip>
+									</TooltipProvider>
+
+									{/* Template Download */}
+									<TooltipProvider>
+										<Tooltip>
+											<TooltipTrigger asChild>
+												<Button
+													variant="outline"
+													size="icon"
+													className="h-8 w-8"
+													onClick={handleDownloadTemplate}
+													disabled={templateExportLoading}
+												>
+													{templateExportLoading ? (
+														<Loader2 className="h-4 w-4 animate-spin" />
+													) : (
+														<FileSpreadsheet className="h-4 w-4" />
+													)}
+												</Button>
+											</TooltipTrigger>
+											<TooltipContent>Download Template</TooltipContent>
+										</Tooltip>
+									</TooltipProvider>
+
+									{/* Import */}
+									<TooltipProvider>
+										<Tooltip>
+											<TooltipTrigger asChild>
+												<Button
+													variant="outline"
+													size="icon"
+													className="h-8 w-8"
+													onClick={handleImportFile}
+													disabled={!selectedInstitution || importInProgress}
+												>
+													{importInProgress ? (
+														<Loader2 className="h-4 w-4 animate-spin" />
+													) : (
+														<Upload className="h-4 w-4" />
+													)}
+												</Button>
+											</TooltipTrigger>
+											<TooltipContent>Import File</TooltipContent>
+										</Tooltip>
+									</TooltipProvider>
+
+									{/* Export Excel */}
+									<TooltipProvider>
+										<Tooltip>
+											<TooltipTrigger asChild>
+												<Button
+													variant="outline"
+													size="icon"
+													className="h-8 w-8 bg-blue-50 hover:bg-blue-100 text-blue-700 border-blue-200 dark:bg-blue-900/20 dark:hover:bg-blue-900/30 dark:text-blue-300 dark:border-blue-800"
+													onClick={handleExportData}
+													disabled={!items || items.length === 0}
+												>
+													<Download className="h-4 w-4" />
+												</Button>
+											</TooltipTrigger>
+											<TooltipContent>Export Excel</TooltipContent>
+										</Tooltip>
+									</TooltipProvider>
+
+									{/* Export JSON */}
+									<TooltipProvider>
+										<Tooltip>
+											<TooltipTrigger asChild>
+												<Button
+													variant="outline"
+													size="icon"
+													className="h-8 w-8"
+													onClick={handleExportJSON}
+													disabled={!items || items.length === 0}
+												>
+													<FileJson className="h-4 w-4" />
+												</Button>
+											</TooltipTrigger>
+											<TooltipContent>Download JSON</TooltipContent>
+										</Tooltip>
+									</TooltipProvider>
+
+									{/* Delete Selected */}
+									<TooltipProvider>
+										<Tooltip>
+											<TooltipTrigger asChild>
+												<Button
+													variant="destructive"
+													size="sm"
+													className="text-xs px-2 h-8"
+													onClick={() => setDeleteDialogOpen(true)}
+													disabled={selectedIds.size === 0}
+												>
+													<Trash2 className="h-3 w-3 mr-1" />
+													Delete ({selectedIds.size})
+												</Button>
+											</TooltipTrigger>
+											<TooltipContent>Delete Selected Records</TooltipContent>
+										</Tooltip>
+									</TooltipProvider>
 								</div>
 							</div>
 						</CardHeader>
@@ -1453,7 +1251,7 @@ export default function BulkInternalMarksPage() {
 				</AlertDialogContent>
 			</AlertDialog>
 
-			{/* Import Preview Dialog */}
+			{/* Import Preview Dialog - follows skill pattern */}
 			<Dialog open={previewDialogOpen} onOpenChange={setPreviewDialogOpen}>
 				<DialogContent className="max-w-4xl max-h-[80vh] overflow-hidden flex flex-col">
 					<DialogHeader>
@@ -1462,7 +1260,9 @@ export default function BulkInternalMarksPage() {
 							Import Preview
 						</DialogTitle>
 						<DialogDescription>
-							Review the imported data before uploading. Rows with errors will be highlighted.
+							Review the data before importing.{' '}
+							<span className="text-green-600 font-medium">{importPreviewData.filter(i => i.isValid).length} valid</span>,{' '}
+							<span className="text-red-600 font-medium">{importPreviewData.filter(i => !i.isValid).length} with errors</span>
 						</DialogDescription>
 					</DialogHeader>
 
@@ -1471,11 +1271,12 @@ export default function BulkInternalMarksPage() {
 							<TableHeader className="sticky top-0 bg-muted">
 								<TableRow>
 									<TableHead className="w-[60px] text-xs">Row</TableHead>
+									<TableHead className="text-xs">Status</TableHead>
 									<TableHead className="text-xs">Register No</TableHead>
 									<TableHead className="text-xs">Course Code</TableHead>
 									<TableHead className="text-xs">Marks Summary</TableHead>
 									<TableHead className="text-xs text-center">Max</TableHead>
-									<TableHead className="text-xs">Status</TableHead>
+									<TableHead className="text-xs">Errors</TableHead>
 								</TableRow>
 							</TableHeader>
 							<TableBody>
@@ -1502,21 +1303,21 @@ export default function BulkInternalMarksPage() {
 											className={row.isValid ? '' : 'bg-red-50 dark:bg-red-900/10'}
 										>
 											<TableCell className="text-xs font-mono">{row.row}</TableCell>
-											<TableCell className="text-xs">{row.register_no || '-'}</TableCell>
+											<TableCell>
+												{row.isValid ? (
+													<Badge className="bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300">Valid</Badge>
+												) : (
+													<Badge variant="destructive">Error</Badge>
+												)}
+											</TableCell>
+											<TableCell className="text-xs font-medium">{row.register_no || '-'}</TableCell>
 											<TableCell className="text-xs font-mono">{row.course_code || '-'}</TableCell>
-											<TableCell className="text-xs">
+											<TableCell className="text-xs max-w-[200px] truncate">
 												{marksSummary.length > 0 ? marksSummary.join(', ') : '-'}
 											</TableCell>
 											<TableCell className="text-xs text-center">{row.max_internal_marks}</TableCell>
-											<TableCell>
-												{row.isValid ? (
-													<CheckCircle className="h-4 w-4 text-green-600" />
-												) : (
-													<div className="flex items-start gap-1">
-														<XCircle className="h-4 w-4 text-red-600 flex-shrink-0 mt-0.5" />
-														<span className="text-xs text-red-600">{row.errors.join(', ')}</span>
-													</div>
-												)}
+											<TableCell className="text-red-600 text-xs max-w-[200px]">
+												{row.errors.join(', ')}
 											</TableCell>
 										</TableRow>
 									)
@@ -1554,13 +1355,13 @@ export default function BulkInternalMarksPage() {
 						>
 							{loading ? (
 								<>
-									<RefreshCw className="h-4 w-4 mr-2 animate-spin" />
-									Uploading...
+									<Loader2 className="h-4 w-4 mr-2 animate-spin" />
+									Importing...
 								</>
 							) : (
 								<>
 									<Upload className="h-4 w-4 mr-2" />
-									Upload {importPreviewData.filter(r => r.isValid).length} Records
+									Import {importPreviewData.filter(r => r.isValid).length} Records
 								</>
 							)}
 						</Button>

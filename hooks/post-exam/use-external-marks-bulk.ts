@@ -14,7 +14,8 @@ import type {
 	Course,
 	ImportPreviewRow,
 	UploadSummary,
-	UploadError
+	UploadError,
+	LookupMode
 } from '@/types/external-marks'
 import {
 	fetchInstitutions as fetchInstitutionsApi,
@@ -91,7 +92,8 @@ interface UseExternalMarksBulkReturn {
 	refreshData: () => Promise<void>
 	uploadMarks: (
 		validRows: ImportPreviewRow[],
-		userId: string | undefined
+		userId: string | undefined,
+		lookupMode?: LookupMode
 	) => Promise<{ success: boolean; result?: any; error?: string }>
 	deleteSelected: () => Promise<{ success: boolean; result?: any; error?: string }>
 }
@@ -288,7 +290,8 @@ export function useExternalMarksBulk(): UseExternalMarksBulkReturn {
 	// Upload marks
 	const uploadMarks = useCallback(async (
 		validRows: ImportPreviewRow[],
-		userId: string | undefined
+		userId: string | undefined,
+		lookupMode: LookupMode = 'dummy_number'
 	) => {
 		if (!selectedInstitution) {
 			return { success: false, error: 'Please select an institution before uploading marks.' }
@@ -303,6 +306,8 @@ export function useExternalMarksBulk(): UseExternalMarksBulkReturn {
 		try {
 			const marksData = validRows.map(row => ({
 				dummy_number: row.dummy_number,
+				register_number: row.register_number,
+				subject_code: row.subject_code,
 				course_code: row.course_code,
 				session_code: row.session_code,
 				program_code: row.program_code,
@@ -317,6 +322,7 @@ export function useExternalMarksBulk(): UseExternalMarksBulkReturn {
 				examination_session_id: selectedSession || null,
 				program_id: selectedProgram || null,
 				course_id: selectedCourse || null,
+				lookup_mode: lookupMode,
 				marks_data: marksData,
 				file_name: 'bulk_upload.xlsx',
 				file_type: 'XLSX',

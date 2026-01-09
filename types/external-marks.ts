@@ -26,9 +26,15 @@ export interface ExternalMark {
 	created_at: string
 }
 
+// Lookup mode for bulk upload - either by dummy number or student register number
+export type LookupMode = 'dummy_number' | 'register_number'
+
 export interface ImportPreviewRow {
 	row: number
+	// Either dummy_number or register_number will be used based on lookup_mode
 	dummy_number: string
+	register_number: string
+	subject_code: string // Maps to course_code internally
 	course_code: string
 	session_code: string
 	program_code: string
@@ -37,6 +43,7 @@ export interface ImportPreviewRow {
 	remarks: string
 	errors: string[]
 	isValid: boolean
+	lookup_mode: LookupMode
 }
 
 export interface Institution {
@@ -93,8 +100,11 @@ export interface BulkUploadPayload {
 	examination_session_id: string | null
 	program_id: string | null
 	course_id: string | null
+	lookup_mode: LookupMode // 'dummy_number' or 'register_number'
 	marks_data: {
 		dummy_number: string
+		register_number: string
+		subject_code: string // Maps to course_code
 		course_code: string
 		session_code: string
 		program_code: string

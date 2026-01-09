@@ -6,8 +6,10 @@ import { Input } from '@/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command'
-import { Check, ChevronsUpDown, Search, RefreshCw, Download, Upload, FileSpreadsheet, Trash2 } from 'lucide-react'
-import type { Institution, ExamSession, Program, Course } from '@/types/external-marks'
+import { Label } from '@/components/ui/label'
+import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
+import { Check, ChevronsUpDown, Search, RefreshCw, Download, Upload, FileSpreadsheet, Trash2, Hash, User } from 'lucide-react'
+import type { Institution, ExamSession, Program, Course, LookupMode } from '@/types/external-marks'
 
 interface ExternalMarksFiltersProps {
 	// Data
@@ -23,6 +25,7 @@ interface ExternalMarksFiltersProps {
 	selectedCourse: string
 	statusFilter: string
 	searchTerm: string
+	lookupMode: LookupMode
 
 	// Handlers
 	onInstitutionChange: (id: string) => void
@@ -31,6 +34,7 @@ interface ExternalMarksFiltersProps {
 	onCourseChange: (id: string) => void
 	onStatusChange: (status: string) => void
 	onSearchChange: (term: string) => void
+	onLookupModeChange: (mode: LookupMode) => void
 
 	// Actions
 	onRefresh: () => void
@@ -56,12 +60,14 @@ export function ExternalMarksFilters({
 	selectedCourse,
 	statusFilter,
 	searchTerm,
+	lookupMode,
 	onInstitutionChange,
 	onSessionChange,
 	onProgramChange,
 	onCourseChange,
 	onStatusChange,
 	onSearchChange,
+	onLookupModeChange,
 	onRefresh,
 	onDownloadTemplate,
 	onExportData,
@@ -79,6 +85,31 @@ export function ExternalMarksFilters({
 
 	return (
 		<>
+			{/* Upload Mode Selection */}
+			<div className="flex items-center gap-4 mb-3 p-2 bg-muted/50 rounded-lg border">
+				<span className="text-xs font-medium text-muted-foreground">Upload Mode:</span>
+				<RadioGroup
+					value={lookupMode}
+					onValueChange={(value) => onLookupModeChange(value as LookupMode)}
+					className="flex gap-4"
+				>
+					<div className="flex items-center space-x-2">
+						<RadioGroupItem value="dummy_number" id="mode-dummy" />
+						<Label htmlFor="mode-dummy" className="flex items-center gap-1.5 text-xs cursor-pointer">
+							<Hash className="h-3.5 w-3.5" />
+							Dummy Number
+						</Label>
+					</div>
+					<div className="flex items-center space-x-2">
+						<RadioGroupItem value="register_number" id="mode-register" />
+						<Label htmlFor="mode-register" className="flex items-center gap-1.5 text-xs cursor-pointer">
+							<User className="h-3.5 w-3.5" />
+							Register Number + Subject Code + Session Code
+						</Label>
+					</div>
+				</RadioGroup>
+			</div>
+
 			{/* Filters Row 1 - Searchable Dropdowns */}
 			<div className="flex flex-wrap gap-2 mb-2">
 				{/* Institution Dropdown */}

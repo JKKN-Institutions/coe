@@ -15,6 +15,7 @@ import {
 	deleteExamRegistration,
 	fetchInstitutions,
 	fetchStudents,
+	fetchLearners,
 	fetchExaminationSessions,
 	fetchCourseOfferings
 } from '@/services/exam-management/exam-registrations-service'
@@ -42,14 +43,60 @@ export function useExamRegistrations(programId?: string) {
 	const [allExaminationSessions, setAllExaminationSessions] = useState<ExaminationSessionOption[]>([])
 	const [allCourseOfferings, setAllCourseOfferings] = useState<CourseOfferingOption[]>([])
 
+	// MyJKKN learners (loaded dynamically by institution)
+	const [myjkknLearners, setMyjkknLearners] = useState<StudentOption[]>([])
+	const [learnersLoading, setLearnersLoading] = useState(false)
+
 	// Filtered dropdowns based on selected institution (for form use)
 	const [selectedInstitutionId, setSelectedInstitutionId] = useState<string>('')
 
-	// Filter dropdowns by institution
+	// Get institution_code for the selected institution
+	const selectedInstitutionCode = useMemo(() => {
+		if (!selectedInstitutionId) return undefined
+		const inst = institutions.find(i => i.id === selectedInstitutionId)
+		return inst?.institution_code
+	}, [selectedInstitutionId, institutions])
+
+	// Load learners from MyJKKN when institution changes
+	const loadMyJKKNLearners = useCallback(async (institutionCode: string) => {
+		if (!institutionCode) {
+			setMyjkknLearners([])
+			return
+		}
+
+		try {
+			setLearnersLoading(true)
+			console.log('[useExamRegistrations] Loading learners for institution:', institutionCode)
+			const learners = await fetchLearners(institutionCode)
+			console.log('[useExamRegistrations] Loaded', learners.length, 'learners from MyJKKN')
+			setMyjkknLearners(learners)
+		} catch (error) {
+			console.error('[useExamRegistrations] Failed to load MyJKKN learners:', error)
+			setMyjkknLearners([])
+		} finally {
+			setLearnersLoading(false)
+		}
+	}, [])
+
+	// Load learners when institution changes
+	useEffect(() => {
+		if (selectedInstitutionCode) {
+			loadMyJKKNLearners(selectedInstitutionCode)
+		} else {
+			setMyjkknLearners([])
+		}
+	}, [selectedInstitutionCode, loadMyJKKNLearners])
+
+	// Use MyJKKN learners if available, fallback to local students
 	const filteredStudents = useMemo(() => {
 		if (!selectedInstitutionId) return []
+		// Prefer MyJKKN learners if available
+		if (myjkknLearners.length > 0) {
+			return myjkknLearners
+		}
+		// Fallback to local students filtered by institution
 		return allStudents.filter(s => s.institution_id === selectedInstitutionId)
-	}, [allStudents, selectedInstitutionId])
+	}, [myjkknLearners, allStudents, selectedInstitutionId])
 
 	const filteredExaminationSessions = useMemo(() => {
 		if (!selectedInstitutionId) return []
@@ -233,6 +280,8 @@ export function useExamRegistrations(programId?: string) {
 		filteredStudents,
 		filteredExaminationSessions,
 		filteredCourseOfferings,
+		// Learners loading state (from MyJKKN)
+		learnersLoading,
 		// Dropdown control
 		selectedInstitutionId,
 		setSelectedInstitutionId,

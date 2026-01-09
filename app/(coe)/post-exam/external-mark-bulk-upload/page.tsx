@@ -28,7 +28,7 @@ import { useState } from "react"
 import { useExternalMarksBulk } from "@/hooks/post-exam/use-external-marks-bulk"
 
 // Types
-import type { ImportPreviewRow } from "@/types/external-marks"
+import type { ImportPreviewRow, LookupMode } from "@/types/external-marks"
 
 // Components
 import {
@@ -48,6 +48,9 @@ export default function ExternalMarkBulkUploadPage() {
 	const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
 	const [previewDialogOpen, setPreviewDialogOpen] = useState(false)
 	const [errorDialogOpen, setErrorDialogOpen] = useState(false)
+
+	// Upload Mode: 'dummy_number' or 'register_number'
+	const [lookupMode, setLookupMode] = useState<LookupMode>('dummy_number')
 
 	// Use custom hook for all state management
 	const {
@@ -118,56 +121,105 @@ export default function ExternalMarkBulkUploadPage() {
 	const handleDownloadTemplate = () => {
 		const wb = XLSX.utils.book_new()
 
-		// Template sheet
-		const templateData = [
-			{
-				'Dummy Number *': 'D001',
-				'Course Code *': 'CS101',
-				'Session Code': 'APR2024',
-				'Program Code': 'BCA',
-				'Total Marks Obtained *': 75,
-				'Marks Out Of *': 100,
-				'Remarks': 'Good performance'
-			},
-			{
-				'Dummy Number *': 'D002',
-				'Course Code *': 'CS101',
-				'Session Code': 'APR2024',
-				'Program Code': 'BCA',
-				'Total Marks Obtained *': 82,
-				'Marks Out Of *': 100,
-				'Remarks': 'Excellent'
-			}
-		]
+		// Template sheet - based on lookup mode
+		let templateData: any[]
+		let columnsReference: any[]
+		let sheetName: string
+
+		if (lookupMode === 'register_number') {
+			// Register Number mode template
+			templateData = [
+				{
+					'Register Number *': 'REG001',
+					'Subject Code *': 'CS101',
+					'Session Code *': 'APR2024',
+					'Total Marks Obtained *': 75,
+					'Marks Out Of *': 100,
+					'Remarks': 'Good performance'
+				},
+				{
+					'Register Number *': 'REG002',
+					'Subject Code *': 'CS101',
+					'Session Code *': 'APR2024',
+					'Total Marks Obtained *': 82,
+					'Marks Out Of *': 100,
+					'Remarks': 'Excellent'
+				}
+			]
+
+			columnsReference = [
+				{ 'Column Name': 'Register Number *', 'Required': 'Yes', 'Description': 'Student register number (stu_register_no from exam registration)', 'Example': 'REG001' },
+				{ 'Column Name': 'Subject Code *', 'Required': 'Yes', 'Description': 'Subject/Course code from courses table', 'Example': 'CS101' },
+				{ 'Column Name': 'Session Code *', 'Required': 'Yes', 'Description': 'Examination session code', 'Example': 'APR2024' },
+				{ 'Column Name': 'Total Marks Obtained *', 'Required': 'Yes', 'Description': 'External marks obtained', 'Example': '75' },
+				{ 'Column Name': 'Marks Out Of *', 'Required': 'Yes', 'Description': 'Maximum marks for the course', 'Example': '100' },
+				{ 'Column Name': 'Remarks', 'Required': 'No', 'Description': 'Any additional remarks', 'Example': 'Good performance' }
+			]
+			sheetName = 'Register Number Template'
+		} else {
+			// Dummy Number mode template (default)
+			templateData = [
+				{
+					'Dummy Number *': 'D001',
+					'Course Code *': 'CS101',
+					'Session Code': 'APR2024',
+					'Program Code': 'BCA',
+					'Total Marks Obtained *': 75,
+					'Marks Out Of *': 100,
+					'Remarks': 'Good performance'
+				},
+				{
+					'Dummy Number *': 'D002',
+					'Course Code *': 'CS101',
+					'Session Code': 'APR2024',
+					'Program Code': 'BCA',
+					'Total Marks Obtained *': 82,
+					'Marks Out Of *': 100,
+					'Remarks': 'Excellent'
+				}
+			]
+
+			columnsReference = [
+				{ 'Column Name': 'Dummy Number *', 'Required': 'Yes', 'Description': 'Student dummy number from exam registration', 'Example': 'D001' },
+				{ 'Column Name': 'Course Code *', 'Required': 'Yes', 'Description': 'Course code from courses table', 'Example': 'CS101' },
+				{ 'Column Name': 'Session Code', 'Required': 'No', 'Description': 'Examination session code', 'Example': 'APR2024' },
+				{ 'Column Name': 'Program Code', 'Required': 'No', 'Description': 'Program code from programs table', 'Example': 'BCA' },
+				{ 'Column Name': 'Total Marks Obtained *', 'Required': 'Yes', 'Description': 'External marks obtained', 'Example': '75' },
+				{ 'Column Name': 'Marks Out Of *', 'Required': 'Yes', 'Description': 'Maximum marks for the course', 'Example': '100' },
+				{ 'Column Name': 'Remarks', 'Required': 'No', 'Description': 'Any additional remarks', 'Example': 'Good performance' }
+			]
+			sheetName = 'Dummy Number Template'
+		}
 
 		const ws = XLSX.utils.json_to_sheet(templateData)
 
-		// Set column widths
-		ws['!cols'] = [
-			{ wch: 20 }, // Dummy Number
-			{ wch: 15 }, // Course Code
-			{ wch: 15 }, // Session Code
-			{ wch: 15 }, // Program Code
-			{ wch: 25 }, // Total Marks Obtained
-			{ wch: 18 }, // Marks Out Of
-			{ wch: 30 }  // Remarks
-		]
+		// Set column widths based on mode
+		if (lookupMode === 'register_number') {
+			ws['!cols'] = [
+				{ wch: 20 }, // Register Number
+				{ wch: 15 }, // Subject Code
+				{ wch: 15 }, // Session Code
+				{ wch: 25 }, // Total Marks Obtained
+				{ wch: 18 }, // Marks Out Of
+				{ wch: 30 }  // Remarks
+			]
+		} else {
+			ws['!cols'] = [
+				{ wch: 20 }, // Dummy Number
+				{ wch: 15 }, // Course Code
+				{ wch: 15 }, // Session Code
+				{ wch: 15 }, // Program Code
+				{ wch: 25 }, // Total Marks Obtained
+				{ wch: 18 }, // Marks Out Of
+				{ wch: 30 }  // Remarks
+			]
+		}
 
-		XLSX.utils.book_append_sheet(wb, ws, 'External Marks Template')
+		XLSX.utils.book_append_sheet(wb, ws, sheetName)
 
 		// Column Reference sheet
-		const columnsReference = [
-			{ 'Column Name': 'Dummy Number *', 'Required': 'Yes', 'Description': 'Student dummy number from exam registration', 'Example': 'D001' },
-			{ 'Column Name': 'Course Code *', 'Required': 'Yes', 'Description': 'Course code from courses table', 'Example': 'CS101' },
-			{ 'Column Name': 'Session Code', 'Required': 'No', 'Description': 'Examination session code', 'Example': 'APR2024' },
-			{ 'Column Name': 'Program Code', 'Required': 'No', 'Description': 'Program code from programs table', 'Example': 'BCA' },
-			{ 'Column Name': 'Total Marks Obtained *', 'Required': 'Yes', 'Description': 'External marks obtained', 'Example': '75' },
-			{ 'Column Name': 'Marks Out Of *', 'Required': 'Yes', 'Description': 'Maximum marks for the course', 'Example': '100' },
-			{ 'Column Name': 'Remarks', 'Required': 'No', 'Description': 'Any additional remarks', 'Example': 'Good performance' }
-		]
-
 		const wsColumns = XLSX.utils.json_to_sheet(columnsReference)
-		wsColumns['!cols'] = [{ wch: 25 }, { wch: 10 }, { wch: 45 }, { wch: 20 }]
+		wsColumns['!cols'] = [{ wch: 25 }, { wch: 10 }, { wch: 50 }, { wch: 20 }]
 		XLSX.utils.book_append_sheet(wb, wsColumns, 'Column Reference')
 
 		// Add reference sheets
@@ -212,11 +264,12 @@ export default function ExternalMarkBulkUploadPage() {
 			XLSX.utils.book_append_sheet(wb, wsInst, 'Institutions Reference')
 		}
 
-		XLSX.writeFile(wb, `external_marks_template_${new Date().toISOString().split('T')[0]}.xlsx`)
+		const modeLabel = lookupMode === 'register_number' ? 'register_number' : 'dummy_number'
+		XLSX.writeFile(wb, `external_marks_template_${modeLabel}_${new Date().toISOString().split('T')[0]}.xlsx`)
 
 		toast({
 			title: "Template Downloaded",
-			description: "External marks template with reference sheets has been downloaded successfully.",
+			description: `External marks template (${lookupMode === 'register_number' ? 'Register Number' : 'Dummy Number'} mode) with reference sheets has been downloaded successfully.`,
 			className: "bg-green-50 border-green-200 text-green-800 dark:bg-green-900/20 dark:border-green-800 dark:text-green-200",
 		})
 	}
@@ -307,19 +360,61 @@ export default function ExternalMarkBulkUploadPage() {
 				} else {
 					const data = new Uint8Array(await file.arrayBuffer())
 					const wb = XLSX.read(data, { type: 'array' })
+					if (!wb.SheetNames || wb.SheetNames.length === 0) {
+						toast({
+							title: "Invalid Excel File",
+							description: "The Excel file has no sheets. Please check the file.",
+							variant: "destructive",
+						})
+						return
+					}
 					const ws = wb.Sheets[wb.SheetNames[0]]
+					if (!ws) {
+						toast({
+							title: "Invalid Excel File",
+							description: "Could not read the first sheet. Please check the file.",
+							variant: "destructive",
+						})
+						return
+					}
 					rows = XLSX.utils.sheet_to_json(ws) as Record<string, unknown>[]
 				}
 
-				// Parse and validate
+				// Parse and validate based on lookup mode
 				const previewData: ImportPreviewRow[] = rows.map((row, index) => {
 					const errors: string[] = []
 
-					// Parse all fields from the row
-					const dummyNumber = String(row['Dummy Number *'] || row['Dummy Number'] || row['dummy_number'] || '').trim()
-					const courseCode = String(row['Course Code *'] || row['Course Code'] || row['course_code'] || '').trim()
-					const sessionCode = String(row['Session Code'] || row['session_code'] || '').trim()
-					const programCode = String(row['Program Code'] || row['program_code'] || '').trim()
+					// Parse fields based on lookup mode
+					let dummyNumber = ''
+					let registerNumber = ''
+					let subjectCode = ''
+					let courseCode = ''
+					let sessionCode = ''
+					let programCode = ''
+
+					if (lookupMode === 'register_number') {
+						// Register Number mode - register_number + subject_code + session_code
+						registerNumber = String(row['Register Number *'] || row['Register Number'] || row['register_number'] || '').trim()
+						subjectCode = String(row['Subject Code *'] || row['Subject Code'] || row['subject_code'] || '').trim()
+						sessionCode = String(row['Session Code *'] || row['Session Code'] || row['session_code'] || '').trim()
+						courseCode = subjectCode // Subject code maps to course_code internally
+
+						// Validate required fields for register_number mode
+						if (!registerNumber) errors.push('Register Number is required')
+						if (!subjectCode) errors.push('Subject Code is required')
+						if (!sessionCode) errors.push('Session Code is required')
+					} else {
+						// Dummy Number mode (default)
+						dummyNumber = String(row['Dummy Number *'] || row['Dummy Number'] || row['dummy_number'] || '').trim()
+						courseCode = String(row['Course Code *'] || row['Course Code'] || row['course_code'] || '').trim()
+						sessionCode = String(row['Session Code'] || row['session_code'] || '').trim()
+						programCode = String(row['Program Code'] || row['program_code'] || '').trim()
+						subjectCode = courseCode
+
+						// Validate required fields for dummy_number mode
+						if (!dummyNumber) errors.push('Dummy Number is required')
+						if (!courseCode) errors.push('Course Code is required')
+					}
 
 					const totalMarksStr = String(row['Total Marks Obtained *'] || row['Total Marks Obtained'] || row['total_marks_obtained'] || '').trim()
 					const totalMarks = parseFloat(totalMarksStr)
@@ -328,10 +423,6 @@ export default function ExternalMarkBulkUploadPage() {
 					const marksOutOf = parseFloat(marksOutOfStr)
 
 					const remarks = String(row['Remarks'] || row['remarks'] || '').trim()
-
-					// Validate required fields
-					if (!dummyNumber) errors.push('Dummy Number is required')
-					if (!courseCode) errors.push('Course Code is required')
 
 					// Validate marks - strict validation
 					if (isNaN(totalMarks)) {
@@ -351,6 +442,8 @@ export default function ExternalMarkBulkUploadPage() {
 					return {
 						row: index + 2,
 						dummy_number: dummyNumber,
+						register_number: registerNumber,
+						subject_code: subjectCode,
 						course_code: courseCode,
 						session_code: sessionCode,
 						program_code: programCode,
@@ -358,7 +451,8 @@ export default function ExternalMarkBulkUploadPage() {
 						marks_out_of: isNaN(marksOutOf) ? 100 : marksOutOf,
 						remarks,
 						errors,
-						isValid: errors.length === 0
+						isValid: errors.length === 0,
+						lookup_mode: lookupMode
 					}
 				})
 
@@ -400,7 +494,7 @@ export default function ExternalMarkBulkUploadPage() {
 
 		setPreviewDialogOpen(false)
 
-		const result = await uploadMarks(validRows, user?.id)
+		const result = await uploadMarks(validRows, user?.id, lookupMode)
 
 		if (result.success && result.result) {
 			const { successful, failed, batch_number } = result.result
@@ -528,7 +622,7 @@ export default function ExternalMarkBulkUploadPage() {
 									</div>
 									<div>
 										<h2 className="text-sm font-semibold">External Marks Bulk Upload</h2>
-										<p className="text-[11px] text-muted-foreground">Import and manage external marks in bulk using dummy numbers</p>
+										<p className="text-[11px] text-muted-foreground">Import and manage external marks in bulk using dummy numbers or register numbers</p>
 									</div>
 								</div>
 							</div>
@@ -545,12 +639,14 @@ export default function ExternalMarkBulkUploadPage() {
 								selectedCourse={selectedCourse}
 								statusFilter={statusFilter}
 								searchTerm={searchTerm}
+								lookupMode={lookupMode}
 								onInstitutionChange={setSelectedInstitution}
 								onSessionChange={setSelectedSession}
 								onProgramChange={setSelectedProgram}
 								onCourseChange={setSelectedCourse}
 								onStatusChange={setStatusFilter}
 								onSearchChange={setSearchTerm}
+								onLookupModeChange={setLookupMode}
 								onRefresh={refreshData}
 								onDownloadTemplate={handleDownloadTemplate}
 								onExportData={handleExportData}
@@ -607,6 +703,7 @@ export default function ExternalMarkBulkUploadPage() {
 				previewData={importPreviewData}
 				loading={loading}
 				onUpload={handleUploadMarks}
+				lookupMode={lookupMode}
 			/>
 
 			<UploadErrorDialog

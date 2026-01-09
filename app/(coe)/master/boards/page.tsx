@@ -393,18 +393,18 @@ export default function BoardPage() {
 		XLSX.writeFile(wb, `boards_export_${new Date().toISOString().split('T')[0]}.xlsx`)
 	}
 
-	// Template Export with Reference Sheets
-	const handleTemplateExport = () => {
+	// Template Export with Reference Sheets and Dropdown Validation
+	const handleTemplateExport = async () => {
 		const wb = XLSX.utils.book_new()
 
-		// Sheet 1: Template with sample row
+		// Sheet 1: Template with empty row for user to fill
 		const sample = [{
-			'Institution Code *': 'JKKN',
-			'Board Code *': 'CBSE',
-			'Board Name *': 'Central Board of Secondary Education',
-			'Display Name': 'CBSE',
-			'Board Type': 'National',
-			'Board Order': '1',
+			'Institution Code *': '',
+			'Board Code *': '',
+			'Board Name *': '',
+			'Display Name': '',
+			'Board Type': '',
+			'Board Order': '',
 			'Status': 'Active'
 		}]
 
@@ -418,52 +418,94 @@ export default function BoardPage() {
 			{ wch: 30 }, // Display Name
 			{ wch: 20 }, // Board Type
 			{ wch: 15 }, // Board Order
-			{ wch: 10 }, // Status
+			{ wch: 12 }, // Status
 		]
 		ws['!cols'] = colWidths
 
-		// Style mandatory field headers red with asterisk
-		const range = XLSX.utils.decode_range(ws['!ref'] || 'A1')
-		const mandatoryFields = ['Institution Code *', 'Board Code *', 'Board Name *']
+		// ═══════════════════════════════════════════════════════════════
+		// ADD DATA VALIDATIONS (DROPDOWN LISTS)
+		// ═══════════════════════════════════════════════════════════════
+		const validations: any[] = []
 
-		for (let col = range.s.c; col <= range.e.c; col++) {
-			const cellAddress = XLSX.utils.encode_cell({ r: 0, c: col })
-			if (!ws[cellAddress]) continue
-
-			const cell = ws[cellAddress]
-			const isMandatory = mandatoryFields.includes(cell.v as string)
-
-			if (isMandatory) {
-				cell.s = {
-					font: { color: { rgb: 'FF0000' }, bold: true },
-					fill: { fgColor: { rgb: 'FFE6E6' } }
-				}
-			} else {
-				cell.s = {
-					font: { bold: true },
-					fill: { fgColor: { rgb: 'F0F0F0' } }
-				}
-			}
+		// Column A: Institution Code dropdown from institutions table
+		const instCodes = institutions.map(i => i.institution_code)
+		if (instCodes.length > 0 && instCodes.join(',').length < 255) {
+			validations.push({
+				type: 'list',
+				sqref: 'A2:A1000',
+				formula1: `"${instCodes.join(',')}"`,
+				showDropDown: true,
+				showErrorMessage: true,
+				errorTitle: 'Invalid Institution',
+				error: 'Please select from the dropdown list',
+			})
 		}
+
+		// Column E: Board Type dropdown (common enum values)
+		const boardTypes = ['National', 'State', 'International', 'Private', 'University']
+		validations.push({
+			type: 'list',
+			sqref: 'E2:E1000',
+			formula1: `"${boardTypes.join(',')}"`,
+			showDropDown: true,
+			showErrorMessage: true,
+			errorTitle: 'Invalid Board Type',
+			error: 'Select: National, State, International, Private, or University',
+		})
+
+		// Column G: Status dropdown
+		validations.push({
+			type: 'list',
+			sqref: 'G2:G1000',
+			formula1: '"Active,Inactive"',
+			showDropDown: true,
+			showErrorMessage: true,
+			errorTitle: 'Invalid Status',
+			error: 'Select: Active or Inactive',
+		})
+
+		// Attach validations to worksheet
+		ws['!dataValidation'] = validations
 
 		XLSX.utils.book_append_sheet(wb, ws, 'Template')
 
-		// Sheet 2: Institution Reference
-		const institutionRef = institutions.map(item => ({
-			'Institution Code': item.institution_code,
-			'Institution Name': item.institution_name || 'N/A',
-		}))
+		// ═══════════════════════════════════════════════════════════════
+		// Sheet 2: Combined Reference Data (for documentation + fallback)
+		// ═══════════════════════════════════════════════════════════════
+		const boardTypes2 = ['National', 'State', 'International', 'Private', 'University']
+		const referenceData: any[] = []
 
-		const wsRef = XLSX.utils.json_to_sheet(institutionRef)
-		const refColWidths = [
-			{ wch: 20 },
-			{ wch: 40 },
-		]
-		wsRef['!cols'] = refColWidths
+		// Institution codes
+		referenceData.push({ 'Type': '═══ INSTITUTION CODES ═══', 'Code': '', 'Name/Description': '' })
+		institutions.forEach(inst => {
+			referenceData.push({
+				'Type': 'Institution',
+				'Code': inst.institution_code,
+				'Name/Description': inst.institution_name || 'N/A'
+			})
+		})
 
-		XLSX.utils.book_append_sheet(wb, wsRef, 'Institution Reference')
+		// Board types
+		referenceData.push({ 'Type': '═══ BOARD TYPES ═══', 'Code': '', 'Name/Description': '' })
+		boardTypes2.forEach(type => {
+			referenceData.push({ 'Type': 'Board Type', 'Code': type, 'Name/Description': type })
+		})
 
-		XLSX.writeFile(wb, `boards_template_${new Date().toISOString().split('T')[0]}.xlsx`)
+		// Status values
+		referenceData.push({ 'Type': '═══ STATUS VALUES ═══', 'Code': '', 'Name/Description': '' })
+		;['Active', 'Inactive'].forEach(status => {
+			referenceData.push({
+				'Type': 'Status',
+				'Code': status,
+				'Name/Description': status === 'Active' ? 'Board is active' : 'Board is inactive'
+			})
+		})
+
+		const wsRef = XLSX.utils.json_to_sheet(referenceData)
+		wsRef['!cols'] = [{ wch: 25 }, { wch: 20 }, { wch: 40 }]
+		XLSX.utils.book_append_sheet(wb, wsRef, 'Reference Codes')
+
+		await XLSX.writeFile(wb, `boards_template_${new Date().toISOString().split('T')[0]}.xlsx`)
 	}
 
 	// Import with Detailed Error Tracking

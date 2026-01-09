@@ -118,91 +118,101 @@ export async function GET(request: Request) {
 					return NextResponse.json({ error: 'Institution ID is required' }, { status: 400 })
 				}
 
-				let query = supabase
-					.from('internal_marks')
-					.select(`
-						id,
-						institutions_id,
-						examination_session_id,
-						program_id,
-						course_id,
-						student_id,
-						assignment_marks,
-						quiz_marks,
-						mid_term_marks,
-						presentation_marks,
-						attendance_marks,
-						lab_marks,
-						project_marks,
-						seminar_marks,
-						viva_marks,
-						other_marks,
-						test_1_mark,
-						test_2_mark,
-						test_3_mark,
-						total_internal_marks,
-						max_internal_marks,
-						internal_percentage,
-						marks_status,
-						remarks,
-						is_active,
-						created_at,
-						students:student_id (
-							id,
-							first_name,
-							last_name
-						),
-						exam_registrations:exam_registration_id (
-							id,
-							stu_register_no,
-							student_name
-						),
-						courses:course_id (
-							id,
-							course_code,
-							course_name
-						),
-						programs:program_id (
-							id,
-							program_code,
-							program_name
-						),
-						examination_sessions:examination_session_id (
-							id,
-							session_name,
-							session_code
-						)
-					`)
-					.eq('institutions_id', institutionId)
-					.eq('is_active', true)
-					.order('created_at', { ascending: false })
+				// Paginate to bypass Supabase 1000 row limit - fetch up to 1,000,000 records
+				let allMarks: any[] = []
+				const pageSize = 1000
+				let page = 0
+				let hasMore = true
 
-				if (sessionId) {
-					query = query.eq('examination_session_id', sessionId)
-				}
-				if (programId) {
-					query = query.eq('program_id', programId)
-				}
-				if (courseId) {
-					query = query.eq('course_id', courseId)
-				}
+				while (hasMore) {
+					let query = supabase
+						.from('internal_marks')
+						.select(`
+							id,
+							institutions_id,
+							examination_session_id,
+							program_id,
+							course_id,
+							student_id,
+							assignment_marks,
+							quiz_marks,
+							mid_term_marks,
+							presentation_marks,
+							attendance_marks,
+							lab_marks,
+							project_marks,
+							seminar_marks,
+							viva_marks,
+							other_marks,
+							test_1_mark,
+							test_2_mark,
+							test_3_mark,
+							total_internal_marks,
+							max_internal_marks,
+							internal_percentage,
+							marks_status,
+							remarks,
+							is_active,
+							created_at,
+							exam_registrations:exam_registration_id (
+								id,
+								stu_register_no,
+								student_name
+							),
+							courses:course_id (
+								id,
+								course_code,
+								course_name
+							),
+							programs:program_id (
+								id,
+								program_code,
+								program_name
+							),
+							examination_sessions:examination_session_id (
+								id,
+								session_name,
+								session_code
+							)
+						`)
+						.eq('institutions_id', institutionId)
+						.eq('is_active', true)
+						.order('created_at', { ascending: false })
+						.range(page * pageSize, (page + 1) * pageSize - 1)
 
-				const { data, error } = await query
+					if (sessionId) {
+						query = query.eq('examination_session_id', sessionId)
+					}
+					if (programId) {
+						query = query.eq('program_id', programId)
+					}
+					if (courseId) {
+						query = query.eq('course_id', courseId)
+					}
 
-				if (error) {
-					console.error('Error fetching internal marks:', error)
-					return NextResponse.json({ error: 'Failed to fetch internal marks' }, { status: 400 })
+					const { data, error } = await query
+
+					if (error) {
+						console.error('Error fetching internal marks page:', page, error)
+						return NextResponse.json({ error: 'Failed to fetch internal marks' }, { status: 400 })
+					}
+
+					if (data && data.length > 0) {
+						allMarks = allMarks.concat(data)
+						page++
+						// Continue if we got a full page AND haven't exceeded 1,000,000 records
+						hasMore = data.length === pageSize && allMarks.length < 1000000
+					} else {
+						hasMore = false
+					}
 				}
 
 				// Transform data for display
-				const transformedData = data?.map(mark => {
+				const transformedData = allMarks.map(mark => {
 					const examReg = mark.exam_registrations as any
-					const student = mark.students as any
 
-					// Prefer exam_registration data, fallback to students table
-					const studentName = examReg?.student_name ||
-						[student?.first_name, student?.last_name].filter(Boolean).join(' ') ||
-						'Unknown'
+					// Get student info from exam_registration (student_id is from MyJKKN API, not a local table)
+					const studentName = examReg?.student_name || 'Unknown'
 
 					return {
 						...mark,

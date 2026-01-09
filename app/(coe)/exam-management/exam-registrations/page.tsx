@@ -4,9 +4,10 @@ import { useState, useEffect, useMemo } from "react"
 import XLSX from "@/lib/utils/excel-compat"
 import type { ExamRegistration, ExamRegistrationImportError, UploadSummary } from "@/types/exam-registrations"
 import { useExamRegistrations } from "@/hooks/exam-management/use-exam-registrations"
+import { fetchLearners } from "@/services/exam-management/exam-registrations-service"
 import { useMyJKKNPrograms } from "@/hooks/myjkkn/use-myjkkn-data"
 import { validateExamRegistrationData, validateExamRegistrationImport } from "@/lib/utils/exam-registrations/validation"
-import { exportToJSON, exportToExcel, exportTemplate } from "@/lib/utils/exam-registrations/export-import"
+import { exportToJSON, exportToExcel, exportTemplate, type TemplateReferenceData } from "@/lib/utils/exam-registrations/export-import"
 import { AppSidebar } from "@/components/layout/app-sidebar"
 import { AppHeader } from "@/components/layout/app-header"
 import { AppFooter } from "@/components/layout/app-footer"
@@ -25,7 +26,7 @@ import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, 
 import { useToast } from "@/hooks/common/use-toast"
 import { Switch } from "@/components/ui/switch"
 import Link from "next/link"
-import { PlusCircle, Edit, Trash2, Search, ChevronLeft, ChevronRight, ArrowUpDown, ArrowUp, ArrowDown, ClipboardCheck, TrendingUp, FileSpreadsheet, RefreshCw, CheckCircle, XCircle, AlertTriangle, FileJson, Download, Upload } from "lucide-react"
+import { PlusCircle, Edit, Trash2, Search, ChevronLeft, ChevronRight, ArrowUpDown, ArrowUp, ArrowDown, ClipboardCheck, TrendingUp, FileSpreadsheet, RefreshCw, CheckCircle, XCircle, AlertTriangle, FileJson, Download, Upload, Loader2 } from "lucide-react"
 
 
 export default function ExamRegistrationsPage() {
@@ -52,6 +53,8 @@ export default function ExamRegistrationsPage() {
 		filteredStudents,
 		filteredExaminationSessions,
 		filteredCourseOfferings,
+		// Learners loading state (from MyJKKN)
+		learnersLoading,
 		// Dropdown control
 		selectedInstitutionId,
 		setSelectedInstitutionId,
@@ -92,6 +95,9 @@ export default function ExamRegistrationsPage() {
 	const [errorPopupOpen, setErrorPopupOpen] = useState(false)
 	const [importErrors, setImportErrors] = useState<ExamRegistrationImportError[]>([])
 	const [uploadSummary, setUploadSummary] = useState<UploadSummary>({ total: 0, success: 0, failed: 0 })
+	const [failedRowsData, setFailedRowsData] = useState<Record<string, unknown>[]>([])
+	const [importInProgress, setImportInProgress] = useState(false)
+	const [importProgress, setImportProgress] = useState({ current: 0, total: 0 })
 
 	const [formData, setFormData] = useState({
 		institutions_id: "",
@@ -340,29 +346,256 @@ export default function ExamRegistrationsPage() {
 		})
 	}
 
-	// Use imported template export function
-	const handleTemplateExport = () => {
-		exportTemplate()
+	// Use imported template export function with reference data for dropdowns
+	const handleTemplateExport = async () => {
+		try {
+			// Prepare reference data for template dropdowns and reference codes sheet
+			const referenceData: TemplateReferenceData = {
+				institutions: institutions.map(i => ({
+					id: i.id,
+					institution_code: i.institution_code,
+					name: i.name
+				})),
+				examinationSessions: allExaminationSessions.map(s => ({
+					id: s.id,
+					session_code: s.session_code,
+					session_name: s.session_name,
+					institutions_id: s.institutions_id
+				})),
+				courseOfferings: allCourseOfferings.map(c => ({
+					id: c.id,
+					course_code: c.course_code,
+					course_name: c.course_name,
+					institutions_id: c.institutions_id
+				}))
+			}
+
+			await exportTemplate(referenceData)
+			toast({
+				title: '✅ Template Downloaded',
+				description: 'Exam registration upload template with dropdown validation has been downloaded successfully.',
+				className: 'bg-green-50 border-green-200 text-green-800 dark:bg-green-900/20 dark:border-green-800 dark:text-green-200'
+			})
+		} catch (error) {
+			console.error('Template export error:', error)
+			toast({
+				title: '❌ Export Failed',
+				description: 'Failed to generate template. Please try again.',
+				variant: 'destructive'
+			})
+		}
+	}
+
+	// Download failed rows as Excel file (same format as import template + Error Reason column)
+	const handleDownloadFailedRows = () => {
+		if (failedRowsData.length === 0) return
+
+		// Create a map of errors by student_register_no + course_code for matching
+		const errorMap = new Map<string, string>()
+		importErrors.forEach(err => {
+			const key = `${err.student_register_no}|${err.course_code}`
+			errorMap.set(key, err.errors.join('; '))
+		})
+
+		// Define column order to match template format exactly
+		const templateColumns = [
+			'Institution Code',
+			'Student Register No',
+			'Student Name',
+			'Session Code',
+			'Course Code',
+			'Registration Date',
+			'Status',
+			'Regular Student',
+			'Attempt Number',
+			'Fee Paid',
+			'Fee Amount',
+			'Payment Date',
+			'Transaction ID',
+			'Remarks',
+			'Approved By',
+			'Approved Date',
+			'Error Reason'
+		]
+
+		// Add "Error Reason" column to each failed row with explicit column ordering
+		const rowsWithErrors = failedRowsData.map((row, index) => {
+			const studentRegNo = String(row['Student Register No'] || '').trim()
+			const courseCode = String(row['Course Code'] || '').trim()
+			const key = `${studentRegNo || 'N/A'}|${courseCode || 'N/A'}`
+
+			// Try to find matching error, fallback to index-based match
+			let errorReason = errorMap.get(key)
+			if (!errorReason && importErrors[index]) {
+				errorReason = importErrors[index].errors.join('; ')
+			}
+
+			// Create row with explicit column order to ensure all columns appear
+			const orderedRow: Record<string, unknown> = {}
+			templateColumns.forEach(col => {
+				if (col === 'Error Reason') {
+					orderedRow[col] = errorReason || 'Unknown error'
+				} else {
+					orderedRow[col] = row[col] ?? ''
+				}
+			})
+
+			return orderedRow
+		})
+
+		// Create worksheet from failed rows with error reasons
+		const ws = XLSX.utils.json_to_sheet(rowsWithErrors, { header: templateColumns })
+
+		// Set column widths to match template format
+		const colWidths = [
+			{ wch: 18 }, // Institution Code
+			{ wch: 20 }, // Student Register No
+			{ wch: 25 }, // Student Name
+			{ wch: 25 }, // Session Code
+			{ wch: 15 }, // Course Code
+			{ wch: 18 }, // Registration Date
+			{ wch: 15 }, // Status
+			{ wch: 18 }, // Regular Student
+			{ wch: 18 }, // Attempt Number
+			{ wch: 12 }, // Fee Paid
+			{ wch: 15 }, // Fee Amount
+			{ wch: 15 }, // Payment Date
+			{ wch: 20 }, // Transaction ID
+			{ wch: 30 }, // Remarks
+			{ wch: 20 }, // Approved By
+			{ wch: 15 }, // Approved Date
+			{ wch: 50 }  // Error Reason (wider to show full error messages)
+		]
+		ws['!cols'] = colWidths
+
+		// Create workbook
+		const wb = XLSX.utils.book_new()
+		XLSX.utils.book_append_sheet(wb, ws, 'Failed Rows')
+
+		// Generate filename with timestamp
+		const timestamp = new Date().toISOString().slice(0, 10)
+		const filename = `exam-registrations-failed-${timestamp}.xlsx`
+
+		// Download the file
+		XLSX.writeFile(wb, filename)
+
 		toast({
-			title: '✅ Template Downloaded',
-			description: 'Exam registration upload template has been downloaded successfully.',
-			className: 'bg-green-50 border-green-200 text-green-800 dark:bg-green-900/20 dark:border-green-800 dark:text-green-200'
+			title: "📥 Downloaded",
+			description: `${failedRowsData.length} failed row${failedRowsData.length > 1 ? 's' : ''} with error reasons exported to ${filename}`,
+			className: "bg-blue-50 border-blue-200 text-blue-800 dark:bg-blue-900/20 dark:border-blue-800 dark:text-blue-200",
 		})
 	}
 
+	// Helper function to normalize date values from Excel
+	// Excel can return dates as serial numbers, Date objects, or strings with timezone info
+	const normalizeDate = (value: unknown): string | null => {
+		if (!value) return null
+
+		// If it's already a clean date string (YYYY-MM-DD), return it
+		if (typeof value === 'string') {
+			const trimmed = value.trim()
+			// Already in YYYY-MM-DD format
+			if (/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) {
+				return trimmed
+			}
+			// Try to parse various date formats
+			try {
+				// Remove timezone info if present (e.g., "GMT+0530")
+				const cleanedDate = trimmed.replace(/\s*(GMT|UTC)[+-]\d{4}\s*/gi, ' ').trim()
+				const parsed = new Date(cleanedDate)
+				if (!isNaN(parsed.getTime())) {
+					return parsed.toISOString().split('T')[0]
+				}
+			} catch {
+				// Fall through to return null
+			}
+		}
+
+		// If it's a number (Excel serial date)
+		if (typeof value === 'number') {
+			// Excel serial date: days since 1900-01-01 (with a bug for 1900 leap year)
+			const excelEpoch = new Date(1899, 11, 30) // Dec 30, 1899
+			const date = new Date(excelEpoch.getTime() + value * 24 * 60 * 60 * 1000)
+			return date.toISOString().split('T')[0]
+		}
+
+		// If it's a Date object
+		if (value instanceof Date && !isNaN(value.getTime())) {
+			return value.toISOString().split('T')[0]
+		}
+
+		return null
+	}
+
 	const handleImport = () => {
+		console.log('[handleImport] Button clicked, opening file dialog...')
 		const input = document.createElement('input')
 		input.type = 'file'
 		input.accept = '.json,.csv,.xlsx,.xls'
 		input.onchange = async (e) => {
+			console.log('[handleImport] File selected')
 			const file = (e.target as HTMLInputElement).files?.[0]
-			if (!file) return
+			if (!file) {
+				console.log('[handleImport] No file selected')
+				return
+			}
+
+			console.log('[handleImport] Processing file:', file.name, 'Size:', file.size)
+			setLoading(true)
+			setImportInProgress(true)
+			setImportProgress({ current: 0, total: 0 })
+			toast({
+				title: "📂 Processing File...",
+				description: `Reading ${file.name}`,
+			})
+
+			// CRITICAL: Fetch fresh institutions data before validation
+			// This ensures we have the latest data and avoids stale/empty cache issues
+			let freshInstitutions: typeof institutions = []
+			try {
+				console.log('[handleImport] Fetching fresh institutions data...')
+				const instRes = await fetch('/api/master/institutions?pageSize=10000')
+				if (instRes.ok) {
+					const instResult = await instRes.json()
+					const instData = Array.isArray(instResult) ? instResult : instResult.data || []
+					freshInstitutions = instData
+						.filter((i: any) => i?.institution_code)
+						.map((i: any) => ({
+							id: i.id,
+							institution_code: i.institution_code,
+							name: i.name || i.institution_name
+						}))
+					console.log('[handleImport] Loaded', freshInstitutions.length, 'institutions:', freshInstitutions.map(i => i.institution_code))
+				}
+			} catch (instError) {
+				console.error('[handleImport] Failed to fetch institutions:', instError)
+			}
+
+			// Fall back to cached institutions if fresh fetch failed
+			const institutionsToUse = freshInstitutions.length > 0 ? freshInstitutions : institutions
+			console.log('[handleImport] Using', institutionsToUse.length, 'institutions for validation')
+
+			if (institutionsToUse.length === 0) {
+				toast({
+					title: "❌ Cannot Import",
+					description: "No institutions loaded. Please refresh the page and try again.",
+					variant: "destructive",
+					className: "bg-red-50 border-red-200 text-red-800 dark:bg-red-900/20 dark:border-red-800 dark:text-red-200",
+				})
+				setLoading(false)
+				return
+			}
+
 			try {
 				let rows: any[] = []
+				console.log('[handleImport] Detecting file type...')
 				if (file.name.endsWith('.json')) {
+					console.log('[handleImport] Parsing JSON...')
 					const text = await file.text()
 					rows = JSON.parse(text)
+					console.log('[handleImport] JSON parsed, rows:', rows.length)
 				} else if (file.name.endsWith('.csv')) {
+					console.log('[handleImport] Parsing CSV...')
 					const text = await file.text()
 					const lines = text.split('\n').filter(line => line.trim())
 					if (lines.length < 2) {
@@ -372,6 +605,7 @@ export default function ExamRegistrationsPage() {
 							variant: "destructive",
 							className: "bg-red-50 border-red-200 text-red-800 dark:bg-red-900/20 dark:border-red-800 dark:text-red-200",
 						})
+						setLoading(false)
 						return
 					}
 
@@ -386,11 +620,98 @@ export default function ExamRegistrationsPage() {
 					})
 
 					rows = dataRows
+					console.log('[handleImport] CSV parsed, rows:', rows.length)
 				} else if (file.name.endsWith('.xlsx') || file.name.endsWith('.xls')) {
+					console.log('[handleImport] Parsing Excel file...')
 					const data = new Uint8Array(await file.arrayBuffer())
-					const wb = XLSX.read(data, { type: 'array' })
+					console.log('[handleImport] File buffer loaded, size:', data.length)
+					const wb = await XLSX.read(data, { type: 'array' })
+					console.log('[handleImport] XLSX read complete, sheets:', wb.SheetNames)
+					if (!wb.SheetNames || wb.SheetNames.length === 0) {
+						toast({
+							title: "Invalid Excel File",
+							description: "The Excel file has no sheets. Please check the file.",
+							variant: "destructive",
+						})
+						setLoading(false)
+						return
+					}
 					const ws = wb.Sheets[wb.SheetNames[0]]
+					if (!ws) {
+						toast({
+							title: "Invalid Excel File",
+							description: "Could not read the first sheet. Please check the file.",
+							variant: "destructive",
+						})
+						setLoading(false)
+						return
+					}
 					rows = XLSX.utils.sheet_to_json(ws) as Record<string, unknown>[]
+					console.log('[handleImport] Excel parsed, rows:', rows.length)
+				}
+
+				// Filter out empty rows (rows where all values are empty/null/undefined)
+				rows = rows.filter(row => {
+					const values = Object.values(row)
+					return values.some(val => val !== null && val !== undefined && String(val).trim() !== '')
+				})
+
+				console.log('[handleImport] File parsing complete, total rows after filtering empty:', rows.length)
+
+				// Normalize headers: strip asterisks and map template headers to expected names
+				const headerMapping: Record<string, string> = {
+					// Template headers (with asterisks stripped) -> Expected headers
+					'Institution Code': 'Institution Code',
+					'Student Register No': 'Student Register No',
+					'Student Name': 'Student Name',
+					'Session Code': 'Session Code',
+					'Course Code': 'Course Code',
+					'Registration Date': 'Registration Date',
+					'Status': 'Status',
+					'Regular Student': 'Regular Student',
+					'Attempt Number': 'Attempt Number',
+					'Fee Paid': 'Fee Paid',
+					'Fee Amount': 'Fee Amount',
+					'Payment Date': 'Payment Date',
+					'Transaction ID': 'Transaction ID',
+					'Remarks': 'Remarks',
+					'Approved By': 'Approved By',
+					'Approved Date': 'Approved Date'
+				}
+
+				rows = rows.map(row => {
+					const normalizedRow: Record<string, unknown> = {}
+					for (const [key, value] of Object.entries(row)) {
+						// Strip asterisks and whitespace from header names
+						const cleanKey = key.replace(/\s*\*\s*$/, '').trim()
+						const mappedKey = headerMapping[cleanKey] || cleanKey
+						normalizedRow[mappedKey] = value
+					}
+					return normalizedRow
+				})
+
+				console.log('[handleImport] Headers normalized, sample row keys:', rows.length > 0 ? Object.keys(rows[0]) : [])
+
+				// Fetch MyJKKN learners for all unique institution codes in the import
+				const uniqueInstitutionCodes = [...new Set(
+					rows
+						.map(r => String(r['Institution Code'] || '').trim())
+						.filter(code => code !== '')
+				)]
+				console.log('[handleImport] Unique institution codes:', uniqueInstitutionCodes)
+
+				// Fetch learners from MyJKKN API for each institution
+				const myjkknLearnersMap = new Map<string, any[]>()
+				for (const instCode of uniqueInstitutionCodes) {
+					try {
+						console.log(`[handleImport] Fetching learners for institution: ${instCode}`)
+						const learners = await fetchLearners(instCode)
+						console.log(`[handleImport] Loaded ${learners.length} learners for ${instCode}`)
+						myjkknLearnersMap.set(instCode, learners)
+					} catch (error) {
+						console.error(`[handleImport] Failed to fetch learners for ${instCode}:`, error)
+						myjkknLearnersMap.set(instCode, [])
+					}
 				}
 
 				const now = new Date().toISOString()
@@ -400,57 +721,73 @@ export default function ExamRegistrationsPage() {
 					course_code: string
 					errors: string[]
 				}> = []
+				const failedRows: Record<string, unknown>[] = [] // Store original row data for failed rows
 
 				// Map rows to exam registrations with pre-validation
 				const mapped = []
+				const mappedRowIndices: number[] = [] // Track which rows were successfully mapped
+				// Debug: Log available institutions
+				console.log('[Import] Available institutions:', institutionsToUse.map(i => ({ code: i.institution_code, name: i.name })))
+
 				for (let i = 0; i < rows.length; i++) {
 					const r = rows[i]
 					const rowNumber = i + 2
 
 					// Step 1: Validate Institution Code
 					const institutionCode = String(r['Institution Code'] || '').trim()
+					console.log(`[Import] Row ${rowNumber}: Looking for institution code "${institutionCode}"`)
 					if (!institutionCode) {
 						preValidationErrors.push({
 							row: rowNumber,
-							student_register_no: String(r['Student Register Number'] || 'N/A'),
+							student_register_no: String(r['Student Register No'] || 'N/A'),
 							course_code: String(r['Course Code'] || 'N/A'),
 							errors: ['Institution Code is required']
 						})
+						failedRows.push(r)
 						continue
 					}
 
-					const institution = institutions.find(inst => inst.institution_code === institutionCode)
+					// Case-insensitive institution code lookup
+					const institution = institutionsToUse.find(inst =>
+						inst.institution_code.toUpperCase() === institutionCode.toUpperCase()
+					)
 					if (!institution) {
+						// Show available institution codes to help user
+						const availableCodes = institutionsToUse.map(i => i.institution_code).slice(0, 5).join(', ')
+						const moreText = institutionsToUse.length > 5 ? ` and ${institutionsToUse.length - 5} more` : ''
 						preValidationErrors.push({
 							row: rowNumber,
-							student_register_no: String(r['Student Register Number'] || 'N/A'),
+							student_register_no: String(r['Student Register No'] || 'N/A'),
 							course_code: String(r['Course Code'] || 'N/A'),
-							errors: [`Institution Code "${institutionCode}" not found. Please ensure the institution exists in the system.`]
+							errors: [`Institution Code "${institutionCode}" not found. Available codes: ${availableCodes}${moreText}`]
 						})
+						failedRows.push(r)
 						continue
 					}
 
 					// Step 2: Validate Student Register Number
-					const studentRegisterNo = String(r['Student Register Number'] || '').trim()
+					const studentRegisterNo = String(r['Student Register No'] || '').trim()
 					if (!studentRegisterNo) {
 						preValidationErrors.push({
 							row: rowNumber,
 							student_register_no: 'N/A',
 							course_code: String(r['Course Code'] || 'N/A'),
-							errors: ['Student Register Number is required']
+							errors: ['Student Register No is required']
 						})
+						failedRows.push(r)
 						continue
 					}
 
 					// Step 3: Validate Examination Session Code
-					const sessionCode = String(r['Examination Session Code'] || '').trim()
+					const sessionCode = String(r['Session Code'] || '').trim()
 					if (!sessionCode) {
 						preValidationErrors.push({
 							row: rowNumber,
 							student_register_no: studentRegisterNo,
 							course_code: String(r['Course Code'] || 'N/A'),
-							errors: ['Examination Session Code is required']
+							errors: ['Session Code is required']
 						})
+						failedRows.push(r)
 						continue
 					}
 
@@ -460,8 +797,9 @@ export default function ExamRegistrationsPage() {
 							row: rowNumber,
 							student_register_no: studentRegisterNo,
 							course_code: String(r['Course Code'] || 'N/A'),
-							errors: [`Examination Session Code "${sessionCode}" not found. Please ensure the session exists in the system.`]
+							errors: [`Session Code "${sessionCode}" not found. Please ensure the session exists in the system.`]
 						})
+						failedRows.push(r)
 						continue
 					}
 
@@ -474,6 +812,7 @@ export default function ExamRegistrationsPage() {
 							course_code: 'N/A',
 							errors: ['Course Code is required']
 						})
+						failedRows.push(r)
 						continue
 					}
 
@@ -485,6 +824,7 @@ export default function ExamRegistrationsPage() {
 							course_code: courseCode,
 							errors: [`Course Code "${courseCode}" not found. Please ensure the course exists in the system.`]
 						})
+						failedRows.push(r)
 						continue
 					}
 
@@ -504,23 +844,36 @@ export default function ExamRegistrationsPage() {
 							course_code: courseCode,
 							errors: fkErrors
 						})
+						failedRows.push(r)
 						continue
 					}
 
-					// Step 6: Find student by register_number in students table
-					// Must match both register_number AND belong to the same institution
-					const matchingStudent = allStudents.find(s =>
-						s.register_number === studentRegisterNo && s.institution_id === institution.id
+					// Step 6: Look up student from MyJKKN learner profiles (REQUIRED)
+					// Match by register_number to get the student_id (learner profile ID)
+					// If not found, row is rejected - student must exist in learners_profiles
+					const institutionLearners = myjkknLearnersMap.get(institutionCode) || []
+					const matchingLearner = institutionLearners.find(l =>
+						l.register_number === studentRegisterNo
 					)
 
-					if (!matchingStudent) {
+					if (!matchingLearner) {
 						preValidationErrors.push({
 							row: rowNumber,
 							student_register_no: studentRegisterNo,
 							course_code: courseCode,
-							errors: [`Student with Register Number "${studentRegisterNo}" not found in Institution "${institutionCode}". Please ensure the student exists in the students table.`]
+							errors: [`Student with register number "${studentRegisterNo}" not found in learners profiles`]
 						})
+						failedRows.push(r)
 						continue
+					}
+
+					// Get student name from Excel or from MyJKKN learner profile
+					let studentName = String(r['Student Name'] || '').trim()
+					if (!studentName) {
+						// Auto-fill from MyJKKN learner profile
+						const firstName = matchingLearner.first_name || ''
+						const lastName = matchingLearner.last_name || ''
+						studentName = `${firstName} ${lastName}`.trim()
 					}
 
 					// Step 7: Validate data types and constraints
@@ -538,21 +891,25 @@ export default function ExamRegistrationsPage() {
 					}
 
 					// Validate registration status
-					const status = String(r['Registration Status'] || 'Pending')
-					if (!['Pending', 'Approved', 'Rejected', 'Cancelled'].includes(status)) {
-						dataErrors.push('Registration Status must be one of: Pending, Approved, Rejected, Cancelled')
+					const status = String(r['Status'] || 'Pending')
+					if (!['Pending', 'Approved', 'Rejected', 'Cancelled', 'Completed'].includes(status)) {
+						dataErrors.push('Registration Status must be one of: Pending, Approved, Rejected, Cancelled, Completed')
 					}
 
-					// Validate boolean fields
-					const isRegular = String(r['Is Regular'] || 'TRUE').toUpperCase()
-					if (!['TRUE', 'FALSE'].includes(isRegular)) {
-						dataErrors.push('Is Regular must be TRUE or FALSE')
+					// Validate boolean fields - accept Yes/No, TRUE/FALSE, 1/0
+					const isRegularRaw = String(r['Regular Student'] || 'Yes').toUpperCase().trim()
+					const isRegularValid = ['TRUE', 'FALSE', 'YES', 'NO', '1', '0'].includes(isRegularRaw)
+					if (!isRegularValid) {
+						dataErrors.push('Regular Student must be Yes/No or TRUE/FALSE')
 					}
+					const isRegular = ['TRUE', 'YES', '1'].includes(isRegularRaw)
 
-					const feePaid = String(r['Fee Paid'] || 'FALSE').toUpperCase()
-					if (!['TRUE', 'FALSE'].includes(feePaid)) {
-						dataErrors.push('Fee Paid must be TRUE or FALSE')
+					const feePaidRaw = String(r['Fee Paid'] || 'No').toUpperCase().trim()
+					const feePaidValid = ['TRUE', 'FALSE', 'YES', 'NO', '1', '0'].includes(feePaidRaw)
+					if (!feePaidValid) {
+						dataErrors.push('Fee Paid must be Yes/No or TRUE/FALSE')
 					}
+					const feePaid = ['TRUE', 'YES', '1'].includes(feePaidRaw)
 
 					if (dataErrors.length > 0) {
 						preValidationErrors.push({
@@ -561,26 +918,34 @@ export default function ExamRegistrationsPage() {
 							course_code: courseCode,
 							errors: dataErrors
 						})
+						failedRows.push(r)
 						continue
 					}
 
 					// Step 8: Create registration data with all validated IDs
+					// student_id comes from MyJKKN learner profile (learners_profiles.id)
 					const registrationData = {
 						institutions_id: institution.id,
-						student_id: matchingStudent.id,
+						student_id: matchingLearner.id, // From MyJKKN learner profile (required)
 						examination_session_id: session.id,
 						course_offering_id: course.id,
 						stu_register_no: studentRegisterNo,
-						student_name: String(r['Student Name'] || '') || null,
-						registration_date: String(r['Registration Date'] || new Date().toISOString().split('T')[0]),
+						student_name: studentName || null,
+						registration_date: normalizeDate(r['Registration Date']) || new Date().toISOString().split('T')[0],
 						registration_status: status,
-						is_regular: isRegular === 'TRUE',
+						is_regular: isRegular,
 						attempt_number: attemptNum,
-						fee_paid: feePaid === 'TRUE',
+						fee_paid: feePaid,
 						fee_amount: r['Fee Amount'] ? Number(r['Fee Amount']) : null,
-						payment_date: String(r['Payment Date'] || '') || null,
-						payment_transaction_id: String(r['Payment Transaction ID'] || '') || null,
+						payment_date: normalizeDate(r['Payment Date']),
+						payment_transaction_id: String(r['Transaction ID'] || '') || null,
 						remarks: String(r['Remarks'] || '') || null,
+						// Store code values (denormalized) for easier querying
+						institution_code: institutionCode,
+						session_code: sessionCode,
+						course_code: courseCode,
+						// Store original row data for potential re-export if API fails
+						_originalRow: r,
 						// Store original codes for error display
 						_displayCodes: {
 							studentRegisterNo: studentRegisterNo,
@@ -589,32 +954,39 @@ export default function ExamRegistrationsPage() {
 					}
 
 					mapped.push(registrationData)
+					mappedRowIndices.push(i)
 				}
 
-				// If there are pre-validation errors, show them in popup
-				if (preValidationErrors.length > 0) {
-					setImportErrors(preValidationErrors)
-					setUploadSummary({
-						total: rows.length,
-						success: 0,
-						failed: preValidationErrors.length
-					})
-					setErrorPopupOpen(true)
-					return
-				}
-
+				// If ALL rows failed pre-validation, show errors and return
 				if (mapped.length === 0) {
-					toast({
-						title: "❌ No Valid Data",
-						description: "No valid data found in the file. Please check required fields.",
-						variant: "destructive",
-						className: "bg-red-50 border-red-200 text-red-800 dark:bg-red-900/20 dark:border-red-800 dark:text-red-200",
-					})
+					if (preValidationErrors.length > 0) {
+						setImportErrors(preValidationErrors)
+						setUploadSummary({
+							total: rows.length,
+							success: 0,
+							failed: preValidationErrors.length
+						})
+						setFailedRowsData(failedRows) // Store failed rows for download
+						setErrorPopupOpen(true)
+					} else {
+						toast({
+							title: "❌ No Valid Data",
+							description: "No valid data found in the file. Please check required fields.",
+							variant: "destructive",
+							className: "bg-red-50 border-red-200 text-red-800 dark:bg-red-900/20 dark:border-red-800 dark:text-red-200",
+						})
+					}
+					setLoading(false)
 					return
 				}
+
+				// Log summary of pre-validation
+				console.log(`[Import] Pre-validation complete: ${mapped.length} valid, ${preValidationErrors.length} failed out of ${rows.length} total`)
+
+				// Update progress indicator with total
+				setImportProgress({ current: 0, total: mapped.length })
 
 				// Save each registration to the database
-				setLoading(true)
 				let successCount = 0
 				let errorCount = 0
 				const uploadErrors: Array<{
@@ -624,15 +996,28 @@ export default function ExamRegistrationsPage() {
 					errors: string[]
 				}> = []
 
+				const apiFailedRows: Record<string, unknown>[] = [] // Track rows that fail during API upload
 				for (let i = 0; i < mapped.length; i++) {
 					const registration = mapped[i]
-					const rowNumber = i + 2
+					const rowNumber = mappedRowIndices[i] + 2 // Use original row index
 					const displayCodes = (registration as any)._displayCodes
+					const originalRow = (registration as any)._originalRow
 
-					// Remove display codes before sending to API
-					const { _displayCodes, ...registrationPayload } = registration as any
+					// Update progress
+					setImportProgress({ current: i + 1, total: mapped.length })
+
+					// Remove internal fields before sending to API
+					const { _displayCodes, _originalRow, ...registrationPayload } = registration as any
 
 					try {
+						console.log(`[Import] Sending row ${rowNumber}:`, {
+							institutions_id: registrationPayload.institutions_id,
+							student_id: registrationPayload.student_id,
+							stu_register_no: registrationPayload.stu_register_no,
+							examination_session_id: registrationPayload.examination_session_id,
+							course_offering_id: registrationPayload.course_offering_id,
+						})
+
 						const response = await fetch('/api/exam-management/exam-registrations', {
 							method: 'POST',
 							headers: {
@@ -646,61 +1031,92 @@ export default function ExamRegistrationsPage() {
 							setItems(prev => [savedRegistration, ...prev])
 							successCount++
 						} else {
-							const errorData = await response.json()
+							let errorMessage = 'Failed to create exam registration'
+							try {
+								const errorData = await response.json()
+								errorMessage = errorData.error || errorData.message || errorMessage
+								// Add more context for common errors
+								if (response.status === 400) {
+									errorMessage = `Validation error: ${errorMessage}`
+								} else if (response.status === 409 || errorMessage.includes('already exists')) {
+									errorMessage = `Duplicate entry: This registration already exists for this student, session, and course`
+								} else if (response.status === 500) {
+									errorMessage = `Server error: ${errorMessage}`
+								}
+							} catch {
+								errorMessage = `HTTP ${response.status}: ${response.statusText || 'Unknown error'}`
+							}
 							errorCount++
 							uploadErrors.push({
 								row: rowNumber,
 								student_register_no: displayCodes?.studentRegisterNo || 'N/A',
 								course_code: displayCodes?.courseCode || 'N/A',
-								errors: [errorData.error || 'Failed to create exam registration']
+								errors: [errorMessage]
 							})
+							if (originalRow) apiFailedRows.push(originalRow)
+							console.error(`[Import] Row ${rowNumber} failed:`, errorMessage)
 						}
 					} catch (error) {
 						errorCount++
+						let errorMessage = 'Network error - please check your connection'
+						if (error instanceof Error) {
+							if (error.message.includes('fetch failed')) {
+								errorMessage = 'Network request failed - server may be unavailable or request timed out'
+							} else if (error.message.includes('timeout')) {
+								errorMessage = 'Request timed out - please try again'
+							} else {
+								errorMessage = `Error: ${error.message}`
+							}
+						}
 						uploadErrors.push({
 							row: rowNumber,
 							student_register_no: displayCodes?.studentRegisterNo || 'N/A',
 							course_code: displayCodes?.courseCode || 'N/A',
-							errors: [error instanceof Error ? error.message : 'Network error']
+							errors: [errorMessage]
 						})
+						if (originalRow) apiFailedRows.push(originalRow)
+						console.error(`[Import] Row ${rowNumber} exception:`, error)
 					}
 				}
 
 				setLoading(false)
+				setImportInProgress(false)
 
-				const totalRows = mapped.length
+				const totalRows = rows.length // Use original total rows
 
 				// Update upload summary
 				setUploadSummary({
 					total: totalRows,
 					success: successCount,
-					failed: errorCount
+					failed: preValidationErrors.length + errorCount
 				})
 
-				// Show detailed results with error dialog if needed
-				if (uploadErrors.length > 0) {
-					setImportErrors(uploadErrors)
-					setErrorPopupOpen(true)
-				}
+				// Combine pre-validation failed rows with API failed rows
+				const allFailedRows = [...failedRows, ...apiFailedRows]
+				setFailedRowsData(allFailedRows)
+
+				// Show detailed results dialog - always show for transparency
+				setImportErrors([...preValidationErrors, ...uploadErrors])
+				setErrorPopupOpen(true)
 
 				if (successCount > 0 && errorCount === 0) {
 					toast({
 						title: "✅ Upload Complete",
-						description: `Successfully uploaded all ${successCount} row${successCount > 1 ? 's' : ''} (${successCount} exam registration${successCount > 1 ? 's' : ''}) to the database.`,
+						description: `Successfully uploaded ${successCount} exam registration${successCount > 1 ? 's' : ''}.`,
 						className: "bg-green-50 border-green-200 text-green-800 dark:bg-green-900/20 dark:border-green-800 dark:text-green-200",
 						duration: 5000,
 					})
 				} else if (successCount > 0 && errorCount > 0) {
 					toast({
-						title: "⚠️ Partial Upload Success",
-						description: `Processed ${totalRows} row${totalRows > 1 ? 's' : ''}: ${successCount} successful, ${errorCount} failed. View error details below.`,
+						title: "⚠️ Partial Upload",
+						description: `${successCount} successful, ${errorCount} failed. View details.`,
 						className: "bg-yellow-50 border-yellow-200 text-yellow-800 dark:bg-yellow-900/20 dark:border-yellow-800 dark:text-yellow-200",
 						duration: 6000,
 					})
 				} else if (errorCount > 0) {
 					toast({
 						title: "❌ Upload Failed",
-						description: `Processed ${totalRows} row${totalRows > 1 ? 's' : ''}: 0 successful, ${errorCount} failed. View error details below.`,
+						description: `All ${errorCount} row${errorCount > 1 ? 's' : ''} failed. View details.`,
 						variant: "destructive",
 						className: "bg-red-50 border-red-200 text-red-800 dark:bg-red-900/20 dark:border-red-800 dark:text-red-200",
 						duration: 6000,
@@ -709,6 +1125,7 @@ export default function ExamRegistrationsPage() {
 			} catch (err) {
 				console.error('Import error:', err)
 				setLoading(false)
+				setImportInProgress(false)
 				toast({
 					title: "❌ Import Error",
 					description: "Import failed. Please check your file format and try again.",
@@ -722,6 +1139,43 @@ export default function ExamRegistrationsPage() {
 
 	return (
 		<SidebarProvider>
+			{/* Import Loading Overlay */}
+			{importInProgress && (
+				<div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-[100] flex items-center justify-center">
+					<div className="bg-white dark:bg-slate-800 rounded-2xl p-8 shadow-2xl max-w-md w-full mx-4">
+						<div className="flex flex-col items-center gap-4">
+							<div className="relative">
+								<Loader2 className="h-12 w-12 text-blue-600 animate-spin" />
+							</div>
+							<div className="text-center">
+								<h3 className="text-lg font-semibold text-slate-900 dark:text-slate-100">
+									Importing Exam Registrations
+								</h3>
+								<p className="text-sm text-slate-500 dark:text-slate-400 mt-1">
+									Please wait while the data is being processed...
+								</p>
+							</div>
+							{importProgress.total > 0 && (
+								<div className="w-full space-y-2">
+									<div className="flex justify-between text-sm text-slate-600 dark:text-slate-300">
+										<span>Progress</span>
+										<span>{importProgress.current} / {importProgress.total}</span>
+									</div>
+									<div className="w-full bg-slate-200 dark:bg-slate-700 rounded-full h-2.5">
+										<div
+											className="bg-blue-600 h-2.5 rounded-full transition-all duration-300"
+											style={{ width: `${(importProgress.current / importProgress.total) * 100}%` }}
+										/>
+									</div>
+									<p className="text-xs text-center text-slate-500 dark:text-slate-400">
+										{Math.round((importProgress.current / importProgress.total) * 100)}% complete
+									</p>
+								</div>
+							)}
+						</div>
+					</div>
+				</div>
+			)}
 			<AppSidebar />
 			<SidebarInset className="flex flex-col min-h-screen">
 				<AppHeader />
@@ -1152,21 +1606,30 @@ export default function ExamRegistrationsPage() {
 										onValueChange={(id) => {
 											setFormData(prev => ({ ...prev, student_id: id }))
 										}}
-										disabled={!formData.institutions_id}
+										disabled={!formData.institutions_id || learnersLoading}
 									>
-										<SelectTrigger className={`h-10 ${errors.student_id ? 'border-destructive' : ''} ${!formData.institutions_id ? 'bg-muted cursor-not-allowed' : ''}`}>
-											<SelectValue placeholder={!formData.institutions_id ? "Select Institution First" : filteredStudents.length === 0 ? "No Learners Available" : "Select Learner"} />
+										<SelectTrigger className={`h-10 ${errors.student_id ? 'border-destructive' : ''} ${!formData.institutions_id || learnersLoading ? 'bg-muted cursor-not-allowed' : ''}`}>
+											<SelectValue placeholder={
+												!formData.institutions_id
+													? "Select Institution First"
+													: learnersLoading
+														? "Loading Learners..."
+														: filteredStudents.length === 0
+															? "No Learners Available"
+															: "Select Learner"
+											} />
 										</SelectTrigger>
 										<SelectContent>
 											{filteredStudents.map(student => (
 												<SelectItem key={student.id} value={student.id}>
-													{student.roll_number}{student.first_name ? ` - ${student.first_name} ${student.last_name}` : ''}
+													{student.register_number || student.roll_number}{student.first_name ? ` - ${student.first_name} ${student.last_name || ''}` : ''}
 												</SelectItem>
 											))}
 										</SelectContent>
 									</Select>
 									{errors.student_id && <p className="text-xs text-destructive">{errors.student_id}</p>}
 									{!formData.institutions_id && <p className="text-xs text-muted-foreground">Please select an institution first</p>}
+									{learnersLoading && <p className="text-xs text-muted-foreground">Fetching learners from MyJKKN...</p>}
 								</div>
 
 								{/* Examination Session dropdown */}
@@ -1410,30 +1873,37 @@ export default function ExamRegistrationsPage() {
 				</SheetContent>
 			</Sheet>
 
-			{/* Error Popup Dialog */}
+			{/* Upload Results Dialog */}
 			<AlertDialog open={errorPopupOpen} onOpenChange={setErrorPopupOpen}>
 				<AlertDialogContent className="max-w-4xl max-h-[80vh] overflow-y-auto rounded-3xl border-slate-200">
 					<AlertDialogHeader>
 						<div className="flex items-center gap-3">
 							<div className={`h-10 w-10 rounded-full flex items-center justify-center ${
-								importErrors.length === 0 ? 'bg-green-100' : 'bg-red-100'
+								uploadSummary.failed === 0 ? 'bg-green-100' :
+								uploadSummary.success > 0 ? 'bg-amber-100' : 'bg-red-100'
 							}`}>
-								{importErrors.length === 0 ? (
+								{uploadSummary.failed === 0 ? (
 									<CheckCircle className="h-5 w-5 text-green-600" />
+								) : uploadSummary.success > 0 ? (
+									<AlertTriangle className="h-5 w-5 text-amber-600" />
 								) : (
 									<XCircle className="h-5 w-5 text-red-600" />
 								)}
 							</div>
 							<div>
 								<AlertDialogTitle className={`text-xl font-bold ${
-									importErrors.length === 0 ? 'text-green-600' : 'text-red-600'
+									uploadSummary.failed === 0 ? 'text-green-600' :
+									uploadSummary.success > 0 ? 'text-amber-600' : 'text-red-600'
 								}`}>
-									{importErrors.length === 0 ? 'Upload Successful' : 'Data Validation Errors'}
+									{uploadSummary.failed === 0 ? 'Upload Successful' :
+									 uploadSummary.success > 0 ? 'Partial Upload Complete' : 'Upload Failed'}
 								</AlertDialogTitle>
 								<AlertDialogDescription className="text-sm text-muted-foreground mt-1">
-									{importErrors.length === 0
-										? 'All exam registrations have been successfully uploaded to the database'
-										: 'Please fix the following errors before importing the data'}
+									{uploadSummary.failed === 0
+										? `All ${uploadSummary.success} exam registration${uploadSummary.success > 1 ? 's' : ''} have been successfully uploaded`
+										: uploadSummary.success > 0
+											? `${uploadSummary.success} of ${uploadSummary.total} registrations uploaded. ${uploadSummary.failed} failed.`
+											: `All ${uploadSummary.failed} row${uploadSummary.failed > 1 ? 's' : ''} failed validation`}
 								</AlertDialogDescription>
 							</div>
 						</div>
@@ -1514,56 +1984,71 @@ export default function ExamRegistrationsPage() {
 							</div>
 						)}
 
-						{/* Helpful Tips */}
-						<div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-							<div className="flex items-start gap-2">
-								<div className="h-5 w-5 rounded-full bg-blue-100 flex items-center justify-center mt-0.5">
-									<span className="text-xs font-bold text-blue-600">i</span>
-								</div>
-								<div>
-									<h4 className="font-semibold text-blue-800 text-sm mb-1">Required Excel Format & Tips:</h4>
-									<ul className="text-xs text-blue-700 space-y-1">
-										<li>• <strong>Institution Code</strong> (required): Must match existing institution (e.g., JKKNCAS)</li>
-										<li>• <strong>Learner Register Number</strong> (required): e.g., 24JUGEN6001</li>
-										<li>• <strong>Learner Name</strong> (required): Full name of the learner</li>
-										<li>• <strong>Examination Session Code</strong> (required): Must match existing session (e.g., JKKNCAS-NOV-DEC-2025)</li>
-										<li>• <strong>Course Code</strong> (required): Must match existing course offering (e.g., 24UENS03)</li>
-										<li>• <strong>Registration Status</strong> (required): Pending, Approved, Rejected, or Cancelled</li>
-										<li>• <strong>Is Regular</strong> (optional): TRUE/FALSE (default: TRUE)</li>
-										<li>• <strong>Attempt Number</strong> (optional): 1-10 (default: 1)</li>
-										<li>• <strong>Fee Paid</strong> (optional): TRUE/FALSE (default: FALSE)</li>
-										<li>• <strong>Fee Amount</strong> (optional): Cannot be negative</li>
-										<li>• <strong>Payment Date</strong> (optional): Format DD-MM-YYYY</li>
-										<li>• <strong>Registration Date</strong> (optional): Format DD-MM-YYYY (default: today)</li>
-									</ul>
-									<div className="mt-2 pt-2 border-t border-blue-200">
-										<p className="text-xs text-blue-700 font-medium">Common Fixes:</p>
-										<ul className="text-xs text-blue-700 space-y-1 mt-1">
-											<li>• <strong>Important:</strong> Examination Session and Course Offering must belong to the specified Institution</li>
-											<li>• Examination Session Code format: INSTITUTION-MONTH-YEAR (e.g., JKKNCAS-NOV-DEC-2025)</li>
-											<li>• Course Code format: YearCodeSubject (e.g., 24UENS03)</li>
-											<li>• Ensure no empty required fields</li>
-											<li>• Check field length constraints and data formats</li>
+						{/* Helpful Tips - Only show if there are errors */}
+						{importErrors.length > 0 && (
+							<div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+								<div className="flex items-start gap-2">
+									<div className="h-5 w-5 rounded-full bg-blue-100 flex items-center justify-center mt-0.5">
+										<span className="text-xs font-bold text-blue-600">i</span>
+									</div>
+									<div>
+										<h4 className="font-semibold text-blue-800 text-sm mb-1">Required Excel Format & Tips:</h4>
+										<ul className="text-xs text-blue-700 space-y-1">
+											<li>• <strong>Institution Code</strong> (required): Must match existing institution (e.g., JKKNCAS)</li>
+											<li>• <strong>Learner Register Number</strong> (required): e.g., 24JUGEN6001</li>
+											<li>• <strong>Learner Name</strong> (required): Full name of the learner</li>
+											<li>• <strong>Examination Session Code</strong> (required): Must match existing session (e.g., JKKNCAS-NOV-DEC-2025)</li>
+											<li>• <strong>Course Code</strong> (required): Must match existing course offering (e.g., 24UENS03)</li>
+											<li>• <strong>Registration Status</strong> (required): Pending, Approved, Rejected, or Cancelled</li>
+											<li>• <strong>Is Regular</strong> (optional): TRUE/FALSE (default: TRUE)</li>
+											<li>• <strong>Attempt Number</strong> (optional): 1-10 (default: 1)</li>
+											<li>• <strong>Fee Paid</strong> (optional): TRUE/FALSE (default: FALSE)</li>
+											<li>• <strong>Fee Amount</strong> (optional): Cannot be negative</li>
+											<li>• <strong>Payment Date</strong> (optional): Format DD-MM-YYYY</li>
+											<li>• <strong>Registration Date</strong> (optional): Format DD-MM-YYYY (default: today)</li>
 										</ul>
+										<div className="mt-2 pt-2 border-t border-blue-200">
+											<p className="text-xs text-blue-700 font-medium">Common Fixes:</p>
+											<ul className="text-xs text-blue-700 space-y-1 mt-1">
+												<li>• <strong>Important:</strong> Examination Session and Course Offering must belong to the specified Institution</li>
+												<li>• Examination Session Code format: INSTITUTION-MONTH-YEAR (e.g., JKKNCAS-NOV-DEC-2025)</li>
+												<li>• Course Code format: YearCodeSubject (e.g., 24UENS03)</li>
+												<li>• Ensure no empty required fields</li>
+												<li>• Check field length constraints and data formats</li>
+											</ul>
+										</div>
 									</div>
 								</div>
 							</div>
-						</div>
+						)}
 					</div>
 
-					<AlertDialogFooter>
+					<AlertDialogFooter className="flex-col sm:flex-row gap-2">
 						<AlertDialogCancel className="bg-gray-100 hover:bg-gray-200">
 							Close
 						</AlertDialogCancel>
-						<Button
-							onClick={() => {
-								setErrorPopupOpen(false)
-								setImportErrors([])
-							}}
-							className="bg-blue-600 hover:bg-blue-700 text-white"
-						>
-							Try Again
-						</Button>
+						{failedRowsData.length > 0 && (
+							<Button
+								onClick={handleDownloadFailedRows}
+								variant="outline"
+								className="border-amber-500 text-amber-700 hover:bg-amber-50"
+							>
+								<Download className="h-4 w-4 mr-2" />
+								Download Failed Rows ({failedRowsData.length})
+							</Button>
+						)}
+						{importErrors.length > 0 && (
+							<Button
+								onClick={() => {
+									setErrorPopupOpen(false)
+									setImportErrors([])
+									setFailedRowsData([])
+								}}
+								className="bg-blue-600 hover:bg-blue-700 text-white"
+							>
+								Try Again
+							</Button>
+						)}
 					</AlertDialogFooter>
 				</AlertDialogContent>
 			</AlertDialog>

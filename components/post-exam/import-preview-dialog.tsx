@@ -4,7 +4,7 @@ import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { FileSpreadsheet, Upload, RefreshCw, CheckCircle, XCircle } from 'lucide-react'
-import type { ImportPreviewRow } from '@/types/external-marks'
+import type { ImportPreviewRow, LookupMode } from '@/types/external-marks'
 
 interface ImportPreviewDialogProps {
 	open: boolean
@@ -12,6 +12,7 @@ interface ImportPreviewDialogProps {
 	previewData: ImportPreviewRow[]
 	loading: boolean
 	onUpload: () => void
+	lookupMode?: LookupMode
 }
 
 export function ImportPreviewDialog({
@@ -19,10 +20,15 @@ export function ImportPreviewDialog({
 	onOpenChange,
 	previewData,
 	loading,
-	onUpload
+	onUpload,
+	lookupMode = 'dummy_number'
 }: ImportPreviewDialogProps) {
 	const validCount = previewData.filter(r => r.isValid).length
 	const invalidCount = previewData.filter(r => !r.isValid).length
+
+	// Determine mode from first row if available, fallback to prop
+	const effectiveMode = previewData.length > 0 ? previewData[0].lookup_mode : lookupMode
+	const isRegisterMode = effectiveMode === 'register_number'
 
 	return (
 		<Dialog open={open} onOpenChange={onOpenChange}>
@@ -30,7 +36,7 @@ export function ImportPreviewDialog({
 				<DialogHeader>
 					<DialogTitle className="flex items-center gap-2">
 						<FileSpreadsheet className="h-5 w-5" />
-						Import Preview
+						Import Preview {isRegisterMode ? '(Register Number Mode)' : '(Dummy Number Mode)'}
 					</DialogTitle>
 					<DialogDescription>
 						Review the imported data before uploading. Rows with errors will be highlighted.
@@ -42,8 +48,18 @@ export function ImportPreviewDialog({
 						<TableHeader className="sticky top-0 bg-muted">
 							<TableRow>
 								<TableHead className="w-[60px] text-xs">Row</TableHead>
-								<TableHead className="text-xs">Dummy No</TableHead>
-								<TableHead className="text-xs">Course Code</TableHead>
+								{isRegisterMode ? (
+									<>
+										<TableHead className="text-xs">Register No</TableHead>
+										<TableHead className="text-xs">Subject Code</TableHead>
+										<TableHead className="text-xs">Session Code</TableHead>
+									</>
+								) : (
+									<>
+										<TableHead className="text-xs">Dummy No</TableHead>
+										<TableHead className="text-xs">Course Code</TableHead>
+									</>
+								)}
 								<TableHead className="text-xs text-center">Marks</TableHead>
 								<TableHead className="text-xs text-center">Out Of</TableHead>
 								<TableHead className="text-xs">Status</TableHead>
@@ -56,8 +72,18 @@ export function ImportPreviewDialog({
 									className={row.isValid ? '' : 'bg-red-50 dark:bg-red-900/10'}
 								>
 									<TableCell className="text-xs font-mono">{row.row}</TableCell>
-									<TableCell className="text-xs">{row.dummy_number || '-'}</TableCell>
-									<TableCell className="text-xs font-mono">{row.course_code || '-'}</TableCell>
+									{isRegisterMode ? (
+										<>
+											<TableCell className="text-xs">{row.register_number || '-'}</TableCell>
+											<TableCell className="text-xs font-mono">{row.subject_code || '-'}</TableCell>
+											<TableCell className="text-xs font-mono">{row.session_code || '-'}</TableCell>
+										</>
+									) : (
+										<>
+											<TableCell className="text-xs">{row.dummy_number || '-'}</TableCell>
+											<TableCell className="text-xs font-mono">{row.course_code || '-'}</TableCell>
+										</>
+									)}
 									<TableCell className="text-xs text-center">{row.total_marks_obtained}</TableCell>
 									<TableCell className="text-xs text-center">{row.marks_out_of}</TableCell>
 									<TableCell>

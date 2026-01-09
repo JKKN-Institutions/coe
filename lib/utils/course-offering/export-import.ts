@@ -157,26 +157,26 @@ export interface TemplateExportOptions {
  * @param semesters - Array of semesters from MyJKKN API for reference (filtered by institution/program)
  * @param options - Optional settings for template export
  */
-export function exportTemplate(
+export async function exportTemplate(
 	institutions: Institution[],
 	courses: Course[],
 	sessions: ExaminationSession[],
 	programs: Program[],
 	semesters?: TemplateSemester[],
 	options?: TemplateExportOptions
-): void {
+): Promise<void> {
 	const wb = XLSX.utils.book_new()
 
-	// Sheet 1: Template with sample row
+	// Sheet 1: Template with empty row for user to fill
 	// Only required fields: Institution Code, Course Code, Session Code, Program Code, Semester Name
 	// Semester Name allows end users to select by name (e.g., "Semester I")
 	// System will find semester_code and semester_order from MyJKKN API
 	const sample = [{
-		'Institution Code': 'JKKN',
-		'Course Code': 'CS101',
-		'Session Code': 'SEM1-2025',
-		'Program Code': 'BCA',
-		'Semester Name': 'Semester I',
+		'Institution Code *': '',
+		'Course Code *': '',
+		'Session Code *': '',
+		'Program Code *': '',
+		'Semester Name *': '',
 		'Status': 'Active'
 	}]
 
@@ -184,39 +184,111 @@ export function exportTemplate(
 
 	// Set column widths
 	const colWidths = [
-		{ wch: 18 }, // Institution Code
-		{ wch: 15 }, // Course Code
-		{ wch: 20 }, // Session Code
+		{ wch: 20 }, // Institution Code
+		{ wch: 18 }, // Course Code
+		{ wch: 22 }, // Session Code
 		{ wch: 20 }, // Program Code
 		{ wch: 20 }, // Semester Name
-		{ wch: 10 }  // Status
+		{ wch: 12 }  // Status
 	]
 	ws['!cols'] = colWidths
 
-	// Style mandatory field headers with red and asterisk
-	const range = XLSX.utils.decode_range(ws['!ref'] || 'A1')
-	const mandatoryFields = ['Institution Code', 'Course Code', 'Session Code', 'Program Code', 'Semester Name']
+	// ═══════════════════════════════════════════════════════════════
+	// ADD DATA VALIDATIONS (DROPDOWN LISTS)
+	// excel-compat handles long lists (>255 chars) using hidden _ValidCodes sheet
+	// ═══════════════════════════════════════════════════════════════
+	const validations: any[] = []
 
-	for (let col = range.s.c; col <= range.e.c; col++) {
-		const cellAddress = XLSX.utils.encode_cell({ r: 0, c: col })
-		if (!ws[cellAddress]) continue
+	// Column A: Institution Code dropdown
+	const activeInstitutions = institutions.filter(i => i.is_active !== false)
+	const instCodes = activeInstitutions.map(i => i.institution_code).filter(Boolean)
+	if (instCodes.length > 0) {
+		validations.push({
+			type: 'list',
+			sqref: 'A2:A1000',
+			formula1: `"${instCodes.join(',')}"`,
+			showDropDown: true,
+			showErrorMessage: true,
+			errorTitle: 'Invalid Institution',
+			error: 'Please select from the dropdown list',
+		})
+	}
 
-		const cell = ws[cellAddress]
-		const isMandatory = mandatoryFields.includes(cell.v as string)
+	// Column B: Course Code dropdown
+	const activeCourses = courses.filter(c => c.is_active !== false)
+	const courseCodes = activeCourses.map(c => c.course_code).filter(Boolean)
+	if (courseCodes.length > 0) {
+		validations.push({
+			type: 'list',
+			sqref: 'B2:B1000',
+			formula1: `"${courseCodes.join(',')}"`,
+			showDropDown: true,
+			showErrorMessage: true,
+			errorTitle: 'Invalid Course',
+			error: 'Please select from the dropdown list',
+		})
+	}
 
-		if (isMandatory) {
-			cell.v = cell.v + ' *'
-			cell.s = {
-				font: { color: { rgb: 'FF0000' }, bold: true },
-				fill: { fgColor: { rgb: 'FFE6E6' } }
-			}
-		} else {
-			cell.s = {
-				font: { bold: true },
-				fill: { fgColor: { rgb: 'F0F0F0' } }
-			}
+	// Column C: Session Code dropdown
+	const activeSessions = sessions.filter(s => s.is_active !== false)
+	const sessionCodes = activeSessions.map(s => s.session_code).filter(Boolean)
+	if (sessionCodes.length > 0) {
+		validations.push({
+			type: 'list',
+			sqref: 'C2:C1000',
+			formula1: `"${sessionCodes.join(',')}"`,
+			showDropDown: true,
+			showErrorMessage: true,
+			errorTitle: 'Invalid Session',
+			error: 'Please select from the dropdown list',
+		})
+	}
+
+	// Column D: Program Code dropdown
+	const activePrograms = programs.filter(p => p.is_active !== false)
+	const programCodes = activePrograms.map(p => p.program_code).filter(Boolean)
+	if (programCodes.length > 0) {
+		validations.push({
+			type: 'list',
+			sqref: 'D2:D1000',
+			formula1: `"${programCodes.join(',')}"`,
+			showDropDown: true,
+			showErrorMessage: true,
+			errorTitle: 'Invalid Program',
+			error: 'Please select from the dropdown list',
+		})
+	}
+
+	// Column E: Semester Name dropdown
+	if (semesters && semesters.length > 0) {
+		// Get unique semester names
+		const semesterNames = Array.from(new Set(semesters.map(s => s.semester_name).filter(Boolean)))
+		if (semesterNames.length > 0) {
+			validations.push({
+				type: 'list',
+				sqref: 'E2:E1000',
+				formula1: `"${semesterNames.join(',')}"`,
+				showDropDown: true,
+				showErrorMessage: true,
+				errorTitle: 'Invalid Semester',
+				error: 'Please select from the dropdown list',
+			})
 		}
 	}
+
+	// Column F: Status dropdown
+	validations.push({
+		type: 'list',
+		sqref: 'F2:F1000',
+		formula1: '"Active,Inactive"',
+		showDropDown: true,
+		showErrorMessage: true,
+		errorTitle: 'Invalid Status',
+		error: 'Select: Active or Inactive',
+	})
+
+	// Attach validations to worksheet
+	ws['!dataValidation'] = validations
 
 	XLSX.utils.book_append_sheet(wb, ws, 'Template')
 
@@ -233,9 +305,9 @@ export function exportTemplate(
 	})
 
 	// Add Institution Codes (already filtered by institution context from page)
-	const activeInstitutions = institutions.filter(i => i.is_active !== false)
+	// Note: activeInstitutions, activeSessions, activePrograms, activeCourses are reused from data validation section
 	if (activeInstitutions.length > 0) {
-		referenceData.push({ 'Type': 'INSTITUTION CODES', 'Code': '', 'Name': '', 'Institution': '' })
+		referenceData.push({ 'Type': '═══ INSTITUTION CODES ═══', 'Code': '', 'Name': '', 'Institution': '' })
 		activeInstitutions.forEach(item => {
 			referenceData.push({
 				'Type': 'Institution',
@@ -249,9 +321,8 @@ export function exportTemplate(
 
 	// Add Session Codes (already filtered by institution context from page)
 	// Sessions are now institution-specific
-	const activeSessions = sessions.filter(s => s.is_active !== false)
 	if (activeSessions.length > 0) {
-		referenceData.push({ 'Type': 'SESSION CODES', 'Code': '', 'Name': '', 'Institution': '' })
+		referenceData.push({ 'Type': '═══ SESSION CODES ═══', 'Code': '', 'Name': '', 'Institution': '' })
 		activeSessions.forEach(item => {
 			// Get institution code for this session
 			const sessionInst = institutions.find(i => i.id === (item as any).institutions_id)
@@ -267,16 +338,14 @@ export function exportTemplate(
 
 	// Add Program Codes (already filtered by institution via MyJKKN from page)
 	// Sort by program_order for consistent display
-	const activePrograms = programs
-		.filter(p => p.is_active !== false)
-		.sort((a, b) => {
-			const orderA = (a as any).program_order ?? 999
-			const orderB = (b as any).program_order ?? 999
-			return orderA - orderB
-		})
-	if (activePrograms.length > 0) {
-		referenceData.push({ 'Type': 'PROGRAM CODES', 'Code': '', 'Name': '', 'Institution': '' })
-		activePrograms.forEach(item => {
+	const sortedActivePrograms = [...activePrograms].sort((a, b) => {
+		const orderA = (a as any).program_order ?? 999
+		const orderB = (b as any).program_order ?? 999
+		return orderA - orderB
+	})
+	if (sortedActivePrograms.length > 0) {
+		referenceData.push({ 'Type': '═══ PROGRAM CODES ═══', 'Code': '', 'Name': '', 'Institution': '' })
+		sortedActivePrograms.forEach(item => {
 			referenceData.push({
 				'Type': 'Program',
 				'Code': item.program_code,
@@ -288,9 +357,8 @@ export function exportTemplate(
 	}
 
 	// Add Course Codes (Code only, no title) - filtered by institution from page
-	const activeCourses = courses.filter(c => c.is_active !== false)
 	if (activeCourses.length > 0) {
-		referenceData.push({ 'Type': 'COURSE CODES', 'Code': '', 'Name': '', 'Institution': '' })
+		referenceData.push({ 'Type': '═══ COURSE CODES ═══', 'Code': '', 'Name': '', 'Institution': '' })
 		activeCourses.forEach(item => {
 			// Get institution code for this course
 			const courseInst = institutions.find(i => i.id === (item as any).institutions_id)
@@ -307,7 +375,7 @@ export function exportTemplate(
 	// Add Semester Names (from MyJKKN API) - Already filtered by institution/program from page
 	// Sort by semester_order or semester_number for consistent display
 	if (semesters && semesters.length > 0) {
-		referenceData.push({ 'Type': 'SEMESTER NAMES', 'Code': '', 'Name': '', 'Institution': '' })
+		referenceData.push({ 'Type': '═══ SEMESTER NAMES ═══', 'Code': '', 'Name': '', 'Institution': '' })
 
 		// Get unique semesters with their order, keyed by semester_name
 		const semesterMap = new Map<string, { name: string; order: number }>()
@@ -333,11 +401,23 @@ export function exportTemplate(
 		})
 	}
 
+	// Add Status Values
+	referenceData.push({ 'Type': '', 'Code': '', 'Name': '', 'Institution': '' }) // Empty row separator
+	referenceData.push({ 'Type': '═══ STATUS VALUES ═══', 'Code': '', 'Name': '', 'Institution': '' })
+	;['Active', 'Inactive'].forEach(status => {
+		referenceData.push({
+			'Type': 'Status',
+			'Code': status,
+			'Name': status === 'Active' ? 'Course offering is active' : 'Course offering is inactive',
+			'Institution': '-'
+		})
+	})
+
 	// Create reference sheet if we have data
 	if (referenceData.length > 0) {
 		const wsRef = XLSX.utils.json_to_sheet(referenceData)
 		const refColWidths = [
-			{ wch: 20 }, // Type
+			{ wch: 28 }, // Type
 			{ wch: 25 }, // Code (Semester Name)
 			{ wch: 35 }, // Name (Program Name)
 			{ wch: 15 }  // Institution
@@ -346,5 +426,6 @@ export function exportTemplate(
 		XLSX.utils.book_append_sheet(wb, wsRef, 'Reference Codes')
 	}
 
-	XLSX.writeFile(wb, `course_offerings_template_${new Date().toISOString().split('T')[0]}.xlsx`)
+	// Use await since XLSX.writeFile is async (ExcelJS under the hood)
+	await XLSX.writeFile(wb, `course_offerings_template_${new Date().toISOString().split('T')[0]}.xlsx`)
 }

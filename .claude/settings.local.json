@@ -65,7 +65,9 @@
       "Bash(rm:*)",
       "Bash(psql:*)",
       "Bash(timeout 30 npm run dev:*)",
-      "Bash(copy \"d:\\\\JKKN\\\\Development\\\\Application\\\\COE\\\\jkkncoe\\\\services\\\\users\\\\students-service.ts\" \"d:\\\\JKKN\\\\Development\\\\Application\\\\COE\\\\jkkncoe\\\\services\\\\users\\\\learners-service.ts\")"
+      "Bash(copy \"d:\\\\JKKN\\\\Development\\\\Application\\\\COE\\\\jkkncoe\\\\services\\\\users\\\\students-service.ts\" \"d:\\\\JKKN\\\\Development\\\\Application\\\\COE\\\\jkkncoe\\\\services\\\\users\\\\learners-service.ts\")",
+      "Bash(mkdir:*)",
+      "Bash(xxd:*)"
     ],
     "deny": [
       "mcp__filesystem__*"

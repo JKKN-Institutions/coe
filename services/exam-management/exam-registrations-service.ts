@@ -102,8 +102,10 @@ export async function fetchInstitutions(): Promise<InstitutionOption[]> {
 }
 
 export async function fetchStudents(): Promise<StudentOption[]> {
+	// Note: This function is kept for backward compatibility
+	// For new code, use fetchLearners() which fetches from MyJKKN API
 	try {
-		const res = await fetch('/api/users/students?pageSize=10000')
+		const res = await fetch('/api/users/learners?pageSize=10000')
 		if (!res.ok) return []
 
 		const result = await res.json()
@@ -118,6 +120,40 @@ export async function fetchStudents(): Promise<StudentOption[]> {
 		}))
 	} catch (e) {
 		console.error('Failed to load students:', e)
+		return []
+	}
+}
+
+/**
+ * Fetch learners from MyJKKN API
+ * This is the preferred method for getting learner data
+ */
+export async function fetchLearners(institutionCode?: string): Promise<StudentOption[]> {
+	try {
+		let url = '/api/myjkkn/learner-profiles?fetchAll=true'
+		if (institutionCode) {
+			url += `&institution_code=${encodeURIComponent(institutionCode)}`
+		}
+
+		const res = await fetch(url)
+		if (!res.ok) return []
+
+		const result = await res.json()
+		const data = Array.isArray(result) ? result : result.data || []
+
+		return data.map((s: any) => ({
+			id: s.id,
+			roll_number: s.roll_number || '',
+			register_number: s.register_number || '',
+			first_name: s.first_name || s.learner_name?.split(' ')[0] || '',
+			last_name: s.last_name || s.learner_name?.split(' ').slice(1).join(' ') || '',
+			institution_id: s.institution_id || '',
+			institution_code: s.institution_code || '',
+			program_code: s.program_code || '',
+			current_semester: s.current_semester || null,
+		}))
+	} catch (e) {
+		console.error('Failed to load learners from MyJKKN:', e)
 		return []
 	}
 }

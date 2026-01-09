@@ -15,9 +15,23 @@ export interface ColumnWidth {
   wch: number
 }
 
+export interface DataValidation {
+  type: 'list' | 'whole' | 'decimal' | 'date' | 'time' | 'textLength' | 'custom'
+  sqref: string
+  formula1: string
+  showDropDown?: boolean
+  showErrorMessage?: boolean
+  errorTitle?: string
+  error?: string
+  showInputMessage?: boolean
+  promptTitle?: string
+  prompt?: string
+}
+
 export interface WorksheetCompat {
   '!cols'?: ColumnWidth[]
   '!ref'?: string
+  '!dataValidation'?: DataValidation[]
   [key: string]: any
 }
 
@@ -229,6 +243,114 @@ export async function writeFile(wb: WorkbookCompat, filename: string): Promise<v
         if (worksheet.columns[index]) {
           worksheet.columns[index].width = colWidth.wch
         }
+      })
+    }
+
+    // Apply data validation (dropdown lists) for columns with validation rules
+    if (wsCompat['!dataValidation'] && wsCompat['!dataValidation'].length > 0) {
+      // Create a hidden sheet for valid values lookup (for conditional formatting)
+      const validationSheet = workbook.addWorksheet('_ValidCodes')
+      validationSheet.state = 'hidden' // Use 'hidden' instead of 'veryHidden' for better compatibility
+
+      let colIndex = 1 // Start from column A
+
+      wsCompat['!dataValidation'].forEach(validation => {
+        const sqref = validation.sqref
+
+        // Parse formula1 to get values: '"AHS,CAS,COE"' -> ['AHS', 'CAS', 'COE']
+        let values: string[] = []
+        if (validation.formula1) {
+          let formula = validation.formula1
+          if (formula.startsWith('"') && formula.endsWith('"')) {
+            formula = formula.slice(1, -1)
+          }
+          values = formula.split(',')
+        }
+
+        if (values.length === 0) return
+
+        // Write valid values to hidden sheet column (always needed for conditional formatting)
+        values.forEach((value, rowIdx) => {
+          validationSheet.getCell(rowIdx + 1, colIndex).value = value
+        })
+
+        // Apply data validation to target range (creates dropdown)
+        const rangeMatch = sqref.match(/([A-Z]+)(\d+):([A-Z]+)(\d+)/)
+        if (rangeMatch) {
+          const targetCol = rangeMatch[1]
+          const startRow = parseInt(rangeMatch[2])
+          const endRow = Math.min(parseInt(rangeMatch[4]), startRow + 99) // Limit to 100 rows
+
+          // Get column index from letter (A=1, B=2, etc.)
+          const colNum = targetCol.charCodeAt(0) - 64
+
+          // Check if values fit in Excel's 255 character limit for inline formula
+          const inlineFormula = `"${values.join(',')}"`
+          const canUseInlineDropdown = inlineFormula.length <= 255
+
+          // Reference to hidden sheet for long lists
+          const sheetRef = `'_ValidCodes'!$${String.fromCharCode(64 + colIndex)}$1:$${String.fromCharCode(64 + colIndex)}$${values.length}`
+
+          // Apply data validation with dropdown list for each row in the range
+          // Only add dropdown if within Excel's limit, otherwise just use conditional formatting
+          if (canUseInlineDropdown) {
+            for (let row = startRow; row <= endRow; row++) {
+              const cell = worksheet.getCell(row, colNum)
+              cell.dataValidation = {
+                type: 'list',
+                allowBlank: true,
+                formulae: [inlineFormula],
+                showErrorMessage: validation.showErrorMessage ?? true,
+                errorTitle: validation.errorTitle || 'Invalid Value',
+                error: validation.error || 'Please select a valid value from the dropdown list',
+                errorStyle: 'warning' // 'stop', 'warning', or 'information'
+              }
+            }
+          } else {
+            // For long lists, try using sheet reference for dropdown
+            // Note: This may not work in all Excel versions
+            for (let row = startRow; row <= endRow; row++) {
+              const cell = worksheet.getCell(row, colNum)
+              cell.dataValidation = {
+                type: 'list',
+                allowBlank: true,
+                formulae: [sheetRef],
+                showErrorMessage: validation.showErrorMessage ?? true,
+                errorTitle: validation.errorTitle || 'Invalid Value',
+                error: validation.error || 'Please select a valid value from the dropdown list',
+                errorStyle: 'warning'
+              }
+            }
+          }
+
+          // ALWAYS add conditional formatting to highlight invalid values in red
+          // This works regardless of dropdown, provides visual feedback for invalid entries
+          const colLetter = String.fromCharCode(64 + colIndex)
+          const validRange = `'_ValidCodes'!$${colLetter}$1:$${colLetter}$${values.length}`
+
+          worksheet.addConditionalFormatting({
+            ref: `${targetCol}${startRow}:${targetCol}${endRow}`,
+            rules: [
+              {
+                type: 'expression',
+                formulae: [`AND(${targetCol}${startRow}<>"",COUNTIF(${validRange},${targetCol}${startRow})=0)`],
+                style: {
+                  fill: {
+                    type: 'pattern',
+                    pattern: 'solid',
+                    fgColor: { argb: 'FFFFC7CE' } // Light red background
+                  },
+                  font: {
+                    color: { argb: 'FF9C0006' } // Dark red text
+                  }
+                },
+                priority: 1
+              }
+            ]
+          })
+        }
+
+        colIndex++
       })
     }
   }
