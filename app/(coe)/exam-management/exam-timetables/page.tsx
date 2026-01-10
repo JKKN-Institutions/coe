@@ -17,16 +17,19 @@ import { Badge } from "@/components/ui/badge"
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog"
 import { useToast } from "@/hooks/common/use-toast"
 import Link from "next/link"
-import { PlusCircle, Edit, Trash2, Search, ChevronLeft, ChevronRight, ArrowUpDown, ArrowUp, ArrowDown, Calendar, TrendingUp, CheckCircle, XCircle, FileSpreadsheet, Upload, AlertTriangle, RefreshCw, ChevronDown, ChevronUp, DoorOpen, Users, MapPin } from "lucide-react"
+import { PlusCircle, Edit, Trash2, Search, ChevronLeft, ChevronRight, ArrowUpDown, ArrowUp, ArrowDown, Calendar, TrendingUp, CheckCircle, XCircle, FileSpreadsheet, Upload, AlertTriangle, RefreshCw, ChevronDown, ChevronUp, DoorOpen, Users, MapPin, Download, Loader2 } from "lucide-react"
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Label } from "@/components/ui/label"
 import { useInstitutionFilter } from "@/hooks/use-institution-filter"
+import { DateRangePicker } from "@/components/ui/date-range-picker"
+import { DateRange } from "react-day-picker"
 
 interface ExamTimetable {
 	id: string
 	institutions_id: string
 	examination_session_id: string
-	course_offering_id: string
+	course_id?: string
+	course_code?: string
 	exam_date: string
 	session: string
 	exam_mode: string
@@ -38,12 +41,10 @@ interface ExamTimetable {
 	institution_name?: string
 	session_code?: string
 	session_name?: string
-	course_code?: string
 	course_name?: string
 	program_code?: string
 	program_name?: string
 	student_count?: number
-	course_count?: number
 	seat_alloc_count?: number
 }
 
@@ -100,6 +101,50 @@ export default function ExamTimetablesListPage() {
 	const [statusFilter, setStatusFilter] = useState("all")
 	const [sessionFilter, setSessionFilter] = useState("all")
 	const [modeFilter, setModeFilter] = useState("all")
+	const [examSessionFilter, setExamSessionFilter] = useState("") // Will be set to latest session after fetch
+
+	// Date range filter - default "upcoming" to show upcoming exams
+	const [dateRangePreset, setDateRangePreset] = useState("upcoming") // upcoming, today, this_week, this_month, custom, all
+	const [customDateRange, setCustomDateRange] = useState<DateRange | undefined>(undefined)
+
+	// Reference data for filters and template
+	const [examinationSessions, setExaminationSessions] = useState<Array<{id: string, session_code: string, session_name: string}>>([])
+	const [institutions, setInstitutions] = useState<Array<{id: string, institution_code: string, name: string}>>([])
+	const [courses, setCourses] = useState<Array<{id: string, course_code: string, course_name: string}>>([])
+
+	// Fetch reference data for filters and template
+	const fetchReferenceData = async () => {
+		try {
+			// Fetch examination sessions
+			const sessionsRes = await fetch('/api/exam-management/examination-sessions')
+			if (sessionsRes.ok) {
+				const sessionsData = await sessionsRes.json()
+				setExaminationSessions(sessionsData || [])
+
+				// Auto-select the latest session (first in array since sorted by created_at desc)
+				// Only set if examSessionFilter is empty (initial load)
+				if (sessionsData && sessionsData.length > 0 && !examSessionFilter) {
+					setExamSessionFilter(sessionsData[0].id)
+				}
+			}
+
+			// Fetch institutions (for template)
+			const instRes = await fetch('/api/master/institutions')
+			if (instRes.ok) {
+				const instData = await instRes.json()
+				setInstitutions(instData || [])
+			}
+
+			// Fetch courses (for template)
+			const coursesRes = await fetch('/api/master/courses')
+			if (coursesRes.ok) {
+				const coursesData = await coursesRes.json()
+				setCourses(coursesData || [])
+			}
+		} catch (error) {
+			console.error('Error fetching reference data:', error)
+		}
+	}
 
 	// Upload state
 	const [uploadSummary, setUploadSummary] = useState<{
@@ -113,9 +158,15 @@ export default function ExamTimetablesListPage() {
 		course_code: string
 		exam_date: string
 		errors: string[]
+		// Store original row data for failed download
+		originalRow?: Record<string, any>
 	}>>([])
 
 	const [showErrorDialog, setShowErrorDialog] = useState(false)
+
+	// Import progress tracking state
+	const [importInProgress, setImportInProgress] = useState(false)
+	const [importProgress, setImportProgress] = useState({ current: 0, total: 0 })
 
 	// Hall allocation state
 	const [showHallAllocation, setShowHallAllocation] = useState(false)
@@ -144,17 +195,9 @@ export default function ExamTimetablesListPage() {
 				data = data.filter((item: any) => item.institutions_id === institutionId)
 			}
 
-			// Transform nested data for display
-			const transformed = data.map((item: any) => ({
-				...item,
-				institution_name: item.institutions?.institution_name || 'N/A',
-				session_name: item.examination_sessions?.session_name || 'N/A',
-				course_code: item.course_offerings?.courses?.course_code || 'N/A',
-				course_title: item.course_offerings?.courses?.course_title || 'N/A',
-				program_name: item.course_offerings?.programs?.program_name || 'N/A',
-			}))
-
-			setItems(transformed)
+			// API route already returns flattened data with course_code, course_name, etc.
+			// Just use the data directly
+			setItems(data)
 		} catch (error) {
 			console.error('Error fetching exam timetables:', error)
 			setItems([])
@@ -172,13 +215,14 @@ export default function ExamTimetablesListPage() {
 	useEffect(() => {
 		if (!isReady) return
 		fetchExamTimetables()
+		fetchReferenceData()
 	}, [isReady, filter])
 
 	// Delete handler
 	const remove = async (id: string) => {
 		try {
 			setLoading(true)
-			const itemName = items.find(i => i.id === id)?.course_title || 'Exam Timetable'
+			const itemName = items.find(i => i.id === id)?.course_name || 'Exam Timetable'
 
 			const response = await fetch(`/api/exam-management/exam-timetables?id=${id}`, {
 				method: 'DELETE',
@@ -210,18 +254,76 @@ export default function ExamTimetablesListPage() {
 		}
 	}
 
+	// Get date boundaries for filtering
+	const dateBoundaries = useMemo(() => {
+		const now = new Date()
+		const today = now.toISOString().split('T')[0]
+
+		// This week (Monday to Sunday)
+		const dayOfWeek = now.getDay()
+		const mondayOffset = dayOfWeek === 0 ? -6 : 1 - dayOfWeek
+		const weekStart = new Date(now)
+		weekStart.setDate(now.getDate() + mondayOffset)
+		const weekEnd = new Date(weekStart)
+		weekEnd.setDate(weekStart.getDate() + 6)
+
+		// This month
+		const monthStart = new Date(now.getFullYear(), now.getMonth(), 1)
+		const monthEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0)
+
+		return {
+			today,
+			weekStart: weekStart.toISOString().split('T')[0],
+			weekEnd: weekEnd.toISOString().split('T')[0],
+			monthStart: monthStart.toISOString().split('T')[0],
+			monthEnd: monthEnd.toISOString().split('T')[0],
+		}
+	}, [])
+
+	// Get date range based on preset
+	const getDateRange = useMemo(() => {
+		switch (dateRangePreset) {
+			case "today":
+				return { from: dateBoundaries.today, to: dateBoundaries.today }
+			case "this_week":
+				return { from: dateBoundaries.weekStart, to: dateBoundaries.weekEnd }
+			case "this_month":
+				return { from: dateBoundaries.monthStart, to: dateBoundaries.monthEnd }
+			case "custom":
+				return {
+					from: customDateRange?.from ? customDateRange.from.toISOString().split('T')[0] : "",
+					to: customDateRange?.to ? customDateRange.to.toISOString().split('T')[0] : ""
+				}
+			case "upcoming":
+				return { from: dateBoundaries.today, to: "" } // From today onwards
+			case "all":
+			default:
+				return { from: "", to: "" }
+		}
+	}, [dateRangePreset, dateBoundaries, customDateRange])
+
 	// Filter, sort, and paginate
 	const filtered = useMemo(() => {
 		const q = searchTerm.toLowerCase()
+		const { from: dateFrom, to: dateTo } = getDateRange
+
 		const data = items
 			.filter((i) =>
-				[i.course_code, i.course_title, i.session_name, i.institution_name, i.program_name]
+				[i.course_code, i.course_name, i.session_name, i.institution_name, i.program_name]
 					.filter(Boolean)
 					.some((v) => String(v).toLowerCase().includes(q))
 			)
 			.filter((i) => statusFilter === "all" || (statusFilter === "published" ? i.is_published : !i.is_published))
 			.filter((i) => sessionFilter === "all" || i.session === sessionFilter)
 			.filter((i) => modeFilter === "all" || i.exam_mode?.toLowerCase() === modeFilter.toLowerCase())
+			.filter((i) => !examSessionFilter || examSessionFilter === "all" || i.examination_session_id === examSessionFilter)
+			// Date range filter
+			.filter((i) => {
+				if (!dateFrom && !dateTo) return true // No date filter (all)
+				if (dateFrom && !dateTo) return i.exam_date >= dateFrom // From date onwards
+				if (!dateFrom && dateTo) return i.exam_date <= dateTo // Up to date
+				return i.exam_date >= dateFrom && i.exam_date <= dateTo // Between dates
+			})
 
 		if (!sortColumn) return data
 		const sorted = [...data].sort((a, b) => {
@@ -232,14 +334,14 @@ export default function ExamTimetablesListPage() {
 			return av < bv ? 1 : -1
 		})
 		return sorted
-	}, [items, searchTerm, sortColumn, sortDirection, statusFilter, sessionFilter, modeFilter])
+	}, [items, searchTerm, sortColumn, sortDirection, statusFilter, sessionFilter, modeFilter, examSessionFilter, getDateRange])
 
 	const totalPages = Math.ceil(filtered.length / itemsPerPage) || 1
 	const startIndex = (currentPage - 1) * itemsPerPage
 	const endIndex = startIndex + itemsPerPage
 	const paginatedItems = filtered.slice(startIndex, endIndex)
 
-	useEffect(() => setCurrentPage(1), [searchTerm, sortColumn, sortDirection])
+	useEffect(() => setCurrentPage(1), [searchTerm, sortColumn, sortDirection, dateRangePreset, customDateRange, examSessionFilter])
 
 	const handleSort = (column: string) => {
 		if (sortColumn === column) {
@@ -263,105 +365,265 @@ export default function ExamTimetablesListPage() {
 		})
 	}
 
-	// Template Export
-	const handleTemplateExport = () => {
+	// Template Export with dropdown validations
+	const handleTemplateExport = async () => {
 		const wb = XLSX.utils.book_new()
 
-		// Sheet 1: Template with sample row
+		// Sheet 1: Template with empty row for user to fill
 		const sample = [{
-			'Institution Code': 'JKKN001',
-			'Examination Session Code': 'APR2025',
-			'Course Offering ID': 'xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx',
-			'Exam Date': '2025-04-15',
-			'Session (FN/AN)': 'FN',
+			'Institution Code *': '',
+			'Examination Session Code *': '',
+			'Course Code *': '',
+			'Exam Date *': '',
+			'Session (FN/AN) *': '',
 			'Exam Mode': 'Offline',
 			'Is Published': 'No',
-			'Instructions': 'Calculators are allowed'
+			'Instructions': ''
 		}]
 
 		const ws = XLSX.utils.json_to_sheet(sample)
 
 		// Set column widths
 		const colWidths = [
-			{ wch: 18 }, // Institution Code
-			{ wch: 25 }, // Examination Session Code
-			{ wch: 40 }, // Course Offering ID
+			{ wch: 20 }, // Institution Code
+			{ wch: 28 }, // Examination Session Code
+			{ wch: 20 }, // Course Code
 			{ wch: 15 }, // Exam Date
-			{ wch: 15 }, // Session
-			{ wch: 12 }, // Exam Mode
-			{ wch: 12 }, // Is Published
-			{ wch: 30 }  // Instructions
+			{ wch: 18 }, // Session
+			{ wch: 14 }, // Exam Mode
+			{ wch: 14 }, // Is Published
+			{ wch: 35 }  // Instructions
 		]
 		ws['!cols'] = colWidths
 
-		// Style the header row - mandatory fields in red
-		const range = XLSX.utils.decode_range(ws['!ref'] || 'A1')
-		const mandatoryFields = ['Institution Code', 'Examination Session Code', 'Course Offering ID', 'Exam Date', 'Session (FN/AN)']
+		// Add data validations (dropdown lists + conditional formatting)
+		const validations: any[] = []
 
-		for (let col = range.s.c; col <= range.e.c; col++) {
-			const cellAddress = XLSX.utils.encode_cell({ r: 0, c: col })
-			if (!ws[cellAddress]) continue
-
-			const cell = ws[cellAddress]
-			const isMandatory = mandatoryFields.includes(cell.v as string)
-
-			if (isMandatory) {
-				cell.v = cell.v + ' *'
-				cell.s = {
-					font: { color: { rgb: 'FF0000' }, bold: true },
-					fill: { fgColor: { rgb: 'FFE6E6' } }
-				}
-			} else {
-				cell.s = {
-					font: { bold: true },
-					fill: { fgColor: { rgb: 'F0F0F0' } }
-				}
-			}
+		// Column A: Institution Code dropdown
+		// For normal users, only show their institution
+		const instCodes = shouldFilter && institutionId
+			? institutions.filter(i => i.id === institutionId).map(i => i.institution_code)
+			: institutions.map(i => i.institution_code).filter(Boolean)
+		if (instCodes.length > 0) {
+			validations.push({
+				type: 'list',
+				sqref: 'A2:A1000',
+				formula1: `"${instCodes.join(',')}"`,
+				showDropDown: true,
+				showErrorMessage: true,
+				errorTitle: 'Invalid Institution',
+				error: 'Please select from the dropdown list',
+			})
 		}
+
+		// Column B: Examination Session Code dropdown
+		const examSessionCodes = examinationSessions.map(s => s.session_code).filter(Boolean)
+		if (examSessionCodes.length > 0) {
+			validations.push({
+				type: 'list',
+				sqref: 'B2:B1000',
+				formula1: `"${examSessionCodes.join(',')}"`,
+				showDropDown: true,
+				showErrorMessage: true,
+				errorTitle: 'Invalid Session Code',
+				error: 'Please select from the dropdown list',
+			})
+		}
+
+		// Column C: Course Code dropdown
+		const courseCodes = courses.map(c => c.course_code).filter(Boolean)
+		if (courseCodes.length > 0) {
+			validations.push({
+				type: 'list',
+				sqref: 'C2:C1000',
+				formula1: `"${courseCodes.join(',')}"`,
+				showDropDown: true,
+				showErrorMessage: true,
+				errorTitle: 'Invalid Course Code',
+				error: 'Please select from the dropdown list',
+			})
+		}
+
+		// Column E: Session (FN/AN) dropdown
+		validations.push({
+			type: 'list',
+			sqref: 'E2:E1000',
+			formula1: '"FN,AN"',
+			showDropDown: true,
+			showErrorMessage: true,
+			errorTitle: 'Invalid Session',
+			error: 'Select: FN or AN',
+		})
+
+		// Column F: Exam Mode dropdown
+		validations.push({
+			type: 'list',
+			sqref: 'F2:F1000',
+			formula1: '"Offline,Online"',
+			showDropDown: true,
+			showErrorMessage: true,
+			errorTitle: 'Invalid Exam Mode',
+			error: 'Select: Offline or Online',
+		})
+
+		// Column G: Is Published dropdown
+		validations.push({
+			type: 'list',
+			sqref: 'G2:G1000',
+			formula1: '"Yes,No"',
+			showDropDown: true,
+			showErrorMessage: true,
+			errorTitle: 'Invalid Value',
+			error: 'Select: Yes or No',
+		})
+
+		// Attach validations to worksheet
+		ws['!dataValidation'] = validations
 
 		XLSX.utils.book_append_sheet(wb, ws, 'Template')
 
-		// Sheet 2: Session Reference
-		const sessionReference = [
-			{ 'Session Code': 'FN', 'Session Name': 'Forenoon', 'Typical Time': '10:00 AM - 1:00 PM' },
-			{ 'Session Code': 'AN', 'Session Name': 'Afternoon', 'Typical Time': '2:00 PM - 5:00 PM' }
-		]
+		// Sheet 2: Reference Codes (for user documentation)
+		const referenceData: any[] = []
 
-		const wsSession = XLSX.utils.json_to_sheet(sessionReference)
-		wsSession['!cols'] = [{ wch: 15 }, { wch: 20 }, { wch: 25 }]
-		XLSX.utils.book_append_sheet(wb, wsSession, 'Session Reference')
+		// Institution codes section
+		referenceData.push({ 'Type': '═══ INSTITUTION CODES ═══', 'Code': '', 'Name/Description': '' })
+		institutions.forEach(inst => {
+			referenceData.push({
+				'Type': 'Institution',
+				'Code': inst.institution_code,
+				'Name/Description': inst.name || 'N/A'
+			})
+		})
 
-		// Sheet 3: Exam Mode Reference
-		const modeReference = [
-			{ 'Mode': 'Offline', 'Description': 'Traditional paper-based examination' },
-			{ 'Mode': 'Online', 'Description': 'Computer-based online examination' }
-		]
+		// Examination session codes section
+		referenceData.push({ 'Type': '═══ EXAMINATION SESSION CODES ═══', 'Code': '', 'Name/Description': '' })
+		examinationSessions.forEach(session => {
+			referenceData.push({
+				'Type': 'Exam Session',
+				'Code': session.session_code,
+				'Name/Description': session.session_name || 'N/A'
+			})
+		})
 
-		const wsMode = XLSX.utils.json_to_sheet(modeReference)
-		wsMode['!cols'] = [{ wch: 15 }, { wch: 40 }]
-		XLSX.utils.book_append_sheet(wb, wsMode, 'Mode Reference')
+		// Course codes section
+		referenceData.push({ 'Type': '═══ COURSE CODES ═══', 'Code': '', 'Name/Description': '' })
+		courses.forEach(course => {
+			referenceData.push({
+				'Type': 'Course',
+				'Code': course.course_code,
+				'Name/Description': course.course_name || 'N/A'
+			})
+		})
 
-		// Sheet 4: Instructions
-		const instructions = [
-			{ 'Field': 'Institution Code', 'Format': 'Text (e.g., JKKN001)', 'Example': 'JKKN001', 'Required': 'Yes' },
-			{ 'Field': 'Examination Session Code', 'Format': 'Text (e.g., APR2025)', 'Example': 'APR2025', 'Required': 'Yes' },
-			{ 'Field': 'Course Offering ID', 'Format': 'UUID', 'Example': 'xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx', 'Required': 'Yes' },
-			{ 'Field': 'Exam Date', 'Format': 'YYYY-MM-DD', 'Example': '2025-04-15', 'Required': 'Yes' },
-			{ 'Field': 'Session (FN/AN)', 'Format': 'FN or AN', 'Example': 'FN', 'Required': 'Yes' },
+		// Session values section
+		referenceData.push({ 'Type': '═══ SESSION VALUES ═══', 'Code': '', 'Name/Description': '' })
+		referenceData.push({ 'Type': 'Session', 'Code': 'FN', 'Name/Description': 'Forenoon (10:00 AM - 1:00 PM)' })
+		referenceData.push({ 'Type': 'Session', 'Code': 'AN', 'Name/Description': 'Afternoon (2:00 PM - 5:00 PM)' })
+
+		// Exam mode values section
+		referenceData.push({ 'Type': '═══ EXAM MODE VALUES ═══', 'Code': '', 'Name/Description': '' })
+		referenceData.push({ 'Type': 'Exam Mode', 'Code': 'Offline', 'Name/Description': 'Traditional paper-based examination' })
+		referenceData.push({ 'Type': 'Exam Mode', 'Code': 'Online', 'Name/Description': 'Computer-based online examination' })
+
+		// Is Published values section
+		referenceData.push({ 'Type': '═══ PUBLISHED STATUS ═══', 'Code': '', 'Name/Description': '' })
+		referenceData.push({ 'Type': 'Published', 'Code': 'Yes', 'Name/Description': 'Timetable is visible to students' })
+		referenceData.push({ 'Type': 'Published', 'Code': 'No', 'Name/Description': 'Timetable is in draft mode' })
+
+		const wsRef = XLSX.utils.json_to_sheet(referenceData)
+		wsRef['!cols'] = [{ wch: 35 }, { wch: 25 }, { wch: 50 }]
+		XLSX.utils.book_append_sheet(wb, wsRef, 'Reference Codes')
+
+		// Sheet 3: Instructions
+		const instructionsData = [
+			{ 'Field': 'Institution Code *', 'Format': 'Select from dropdown', 'Example': institutions[0]?.institution_code || 'JKKN001', 'Required': 'Yes' },
+			{ 'Field': 'Examination Session Code *', 'Format': 'Select from dropdown', 'Example': examinationSessions[0]?.session_code || 'APR2025', 'Required': 'Yes' },
+			{ 'Field': 'Course Code *', 'Format': 'Select from dropdown', 'Example': courses[0]?.course_code || '23BCA101', 'Required': 'Yes' },
+			{ 'Field': 'Exam Date *', 'Format': 'YYYY-MM-DD', 'Example': '2025-04-15', 'Required': 'Yes' },
+			{ 'Field': 'Session (FN/AN) *', 'Format': 'FN or AN', 'Example': 'FN', 'Required': 'Yes' },
 			{ 'Field': 'Exam Mode', 'Format': 'Offline or Online', 'Example': 'Offline', 'Required': 'No (default: Offline)' },
-			{ 'Field': 'Is Published', 'Format': 'Yes/No', 'Example': 'No', 'Required': 'No (default: No)' },
-			{ 'Field': 'Instructions', 'Format': 'Text', 'Example': 'Calculators allowed', 'Required': 'No' }
+			{ 'Field': 'Is Published', 'Format': 'Yes or No', 'Example': 'No', 'Required': 'No (default: No)' },
+			{ 'Field': 'Instructions', 'Format': 'Free text', 'Example': 'Calculators allowed', 'Required': 'No' }
 		]
 
-		const wsInstructions = XLSX.utils.json_to_sheet(instructions)
-		wsInstructions['!cols'] = [{ wch: 28 }, { wch: 25 }, { wch: 40 }, { wch: 25 }]
+		const wsInstructions = XLSX.utils.json_to_sheet(instructionsData)
+		wsInstructions['!cols'] = [{ wch: 28 }, { wch: 25 }, { wch: 35 }, { wch: 25 }]
 		XLSX.utils.book_append_sheet(wb, wsInstructions, 'Instructions')
 
-		XLSX.writeFile(wb, `exam_timetable_template_${new Date().toISOString().split('T')[0]}.xlsx`)
+		// IMPORTANT: await is required - XLSX.writeFile is async (ExcelJS)
+		await XLSX.writeFile(wb, `exam_timetable_template_${new Date().toISOString().split('T')[0]}.xlsx`)
 
 		toast({
 			title: "✅ Template Downloaded",
-			description: "Template file with reference sheets has been downloaded successfully.",
+			description: "Template file with dropdown validations and reference sheets has been downloaded.",
+			className: "bg-green-50 border-green-200 text-green-800 dark:bg-green-900/20 dark:border-green-800 dark:text-green-200",
+		})
+	}
+
+	// Export current filtered data to Excel
+	const handleDataExport = async () => {
+		if (filtered.length === 0) {
+			toast({
+				title: "❌ No Data",
+				description: "No exam timetables to export. Apply different filters or add data first.",
+				variant: "destructive",
+			})
+			return
+		}
+
+		const wb = XLSX.utils.book_new()
+
+		// Map data for export
+		const exportData = filtered.map((item, index) => ({
+			'S.No': index + 1,
+			'Institution Code': item.institution_code || 'N/A',
+			'Session Code': item.session_code || 'N/A',
+			'Session Name': item.session_name || 'N/A',
+			'Course Code': item.course_code || 'N/A',
+			'Course Name': item.course_name || 'N/A',
+			'Program Code': item.program_code || 'N/A',
+			'Exam Date': item.exam_date || '',
+			'Session (FN/AN)': item.session || '',
+			'Exam Mode': item.exam_mode || 'Offline',
+			'Status': item.is_published ? 'Published' : 'Draft',
+			'Learners': item.student_count || 0,
+			'Seats Allocated': item.seat_alloc_count || 0,
+			'Instructions': item.instructions || ''
+		}))
+
+		const ws = XLSX.utils.json_to_sheet(exportData)
+
+		// Set column widths
+		ws['!cols'] = [
+			{ wch: 6 },   // S.No
+			{ wch: 18 },  // Institution Code
+			{ wch: 18 },  // Session Code
+			{ wch: 30 },  // Session Name
+			{ wch: 15 },  // Course Code
+			{ wch: 35 },  // Course Name
+			{ wch: 15 },  // Program Code
+			{ wch: 12 },  // Exam Date
+			{ wch: 14 },  // Session
+			{ wch: 12 },  // Exam Mode
+			{ wch: 10 },  // Status
+			{ wch: 10 },  // Learners
+			{ wch: 15 },  // Seats Allocated
+			{ wch: 40 }   // Instructions
+		]
+
+		XLSX.utils.book_append_sheet(wb, ws, 'Exam Timetables')
+
+		// Generate filename with date and session filter
+		const sessionName = examSessionFilter !== 'all'
+			? examinationSessions.find(s => s.id === examSessionFilter)?.session_code || ''
+			: 'all'
+		const filename = `exam_timetables_${sessionName}_${new Date().toISOString().split('T')[0]}.xlsx`
+
+		await XLSX.writeFile(wb, filename)
+
+		toast({
+			title: "✅ Data Exported",
+			description: `${filtered.length} exam timetable(s) exported successfully.`,
 			className: "bg-green-50 border-green-200 text-green-800 dark:bg-green-900/20 dark:border-green-800 dark:text-green-200",
 		})
 	}
@@ -377,6 +639,8 @@ export default function ExamTimetablesListPage() {
 
 			try {
 				setLoading(true)
+				setImportInProgress(true)
+				setImportProgress({ current: 0, total: 0 })
 				let rows: any[] = []
 
 				if (file.name.endsWith('.csv')) {
@@ -404,9 +668,30 @@ export default function ExamTimetablesListPage() {
 
 					rows = dataRows
 				} else if (file.name.endsWith('.xlsx') || file.name.endsWith('.xls')) {
-					const data = new Uint8Array(await file.arrayBuffer())
-					const wb = XLSX.read(data, { type: 'array' })
+					const data = await file.arrayBuffer()
+					const wb = await XLSX.read(data)
+
+					if (!wb || !wb.SheetNames || wb.SheetNames.length === 0) {
+						toast({
+							title: "❌ Invalid File",
+							description: "The Excel file appears to be empty or corrupted.",
+							variant: "destructive",
+						})
+						setLoading(false)
+						return
+					}
+
 					const ws = wb.Sheets[wb.SheetNames[0]]
+					if (!ws) {
+						toast({
+							title: "❌ Invalid File",
+							description: "Could not read the worksheet from the Excel file.",
+							variant: "destructive",
+						})
+						setLoading(false)
+						return
+					}
+
 					rows = XLSX.utils.sheet_to_json(ws) as Record<string, unknown>[]
 				}
 
@@ -430,6 +715,7 @@ export default function ExamTimetablesListPage() {
 					variant: "destructive",
 				})
 				setLoading(false)
+				setImportInProgress(false)
 			}
 		}
 		input.click()
@@ -439,24 +725,51 @@ export default function ExamTimetablesListPage() {
 	const processUpload = async (rows: any[]) => {
 		let successCount = 0
 		let errorCount = 0
-		const uploadErrors: Array<{
+		const uploadErrorsList: Array<{
 			row: number
 			course_code: string
 			exam_date: string
 			errors: string[]
+			originalRow?: Record<string, any>
 		}> = []
 
+		// Set import progress total
+		setImportProgress({ current: 0, total: rows.length })
+
+		// Get allowed institution code for normal users
+		const userInstitution = shouldFilter && institutionId
+			? institutions.find(i => i.id === institutionId)
+			: null
+
 		for (let i = 0; i < rows.length; i++) {
+			// Update progress
+			setImportProgress({ current: i + 1, total: rows.length })
+
 			const row = rows[i]
 			const rowNumber = i + 2 // +2 for header row in Excel
 			const validationErrors: string[] = []
 
-			// Extract fields
-			const institution_code = String(row['Institution Code'] || row.institution_code || '').trim()
-			const examination_session_code = String(row['Examination Session Code'] || row.examination_session_code || '').trim()
-			const course_offering_id = String(row['Course Offering ID'] || row.course_offering_id || '').trim()
-			const exam_date = String(row['Exam Date'] || row.exam_date || '').trim()
-			const session = String(row['Session (FN/AN)'] || row['Session'] || row.session || '').trim()
+			// Extract fields - support both old headers and new headers with * suffix
+			const institution_code = String(row['Institution Code *'] || row['Institution Code'] || row.institution_code || '').trim()
+			const examination_session_code = String(row['Examination Session Code *'] || row['Examination Session Code'] || row.examination_session_code || '').trim()
+			const course_code = String(row['Course Code *'] || row['Course Code'] || row.course_code || '').trim()
+
+			// Handle date - Excel may return Date object or string
+			const rawExamDate = row['Exam Date *'] || row['Exam Date'] || row.exam_date || ''
+			let exam_date = ''
+			if (rawExamDate instanceof Date) {
+				// Convert Date object to YYYY-MM-DD
+				exam_date = rawExamDate.toISOString().split('T')[0]
+			} else if (typeof rawExamDate === 'number') {
+				// Excel serial date number - convert to Date then to string
+				const excelEpoch = new Date(1899, 11, 30) // Excel epoch is Dec 30, 1899
+				const dateObj = new Date(excelEpoch.getTime() + rawExamDate * 86400000)
+				exam_date = dateObj.toISOString().split('T')[0]
+			} else {
+				exam_date = String(rawExamDate).trim()
+			}
+
+			const session = String(row['Session (FN/AN) *'] || row['Session (FN/AN)'] || row['Session'] || row.session || '').trim()
 			const exam_mode = String(row['Exam Mode'] || row.exam_mode || 'Offline').trim()
 			const is_published = String(row['Is Published'] || row.is_published || 'No').toLowerCase() === 'yes'
 			const instructions = String(row['Instructions'] || row.instructions || '').trim()
@@ -464,9 +777,14 @@ export default function ExamTimetablesListPage() {
 			// Validation
 			if (!institution_code) validationErrors.push('Institution Code required')
 			if (!examination_session_code) validationErrors.push('Examination Session Code required')
-			if (!course_offering_id) validationErrors.push('Course Offering ID required')
+			if (!course_code) validationErrors.push('Course Code required')
 			if (!exam_date) validationErrors.push('Exam Date required')
 			if (!session) validationErrors.push('Session required')
+
+			// Restrict normal users to upload only their own institution
+			if (userInstitution && institution_code && institution_code !== userInstitution.institution_code) {
+				validationErrors.push(`You can only upload data for your institution (${userInstitution.institution_code})`)
+			}
 
 			// Format validation
 			if (session && !['FN', 'AN'].includes(session.toUpperCase())) {
@@ -482,19 +800,14 @@ export default function ExamTimetablesListPage() {
 				validationErrors.push('Exam Date must be in YYYY-MM-DD format')
 			}
 
-			// UUID validation for course_offering_id
-			const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
-			if (course_offering_id && !uuidRegex.test(course_offering_id)) {
-				validationErrors.push('Course Offering ID must be a valid UUID')
-			}
-
 			if (validationErrors.length > 0) {
 				errorCount++
-				uploadErrors.push({
+				uploadErrorsList.push({
 					row: rowNumber,
-					course_code: course_offering_id.substring(0, 8) + '...',
+					course_code: course_code || 'N/A',
 					exam_date: exam_date || 'N/A',
-					errors: validationErrors
+					errors: validationErrors,
+					originalRow: row
 				})
 				continue
 			}
@@ -504,24 +817,26 @@ export default function ExamTimetablesListPage() {
 				const institutionResponse = await fetch(`/api/master/institutions?code=${institution_code}`)
 				if (!institutionResponse.ok) {
 					errorCount++
-					uploadErrors.push({
+					uploadErrorsList.push({
 						row: rowNumber,
-						course_code: course_offering_id.substring(0, 8) + '...',
+						course_code: course_code,
 						exam_date: exam_date,
-						errors: [`Institution with code "${institution_code}" not found`]
+						errors: [`Institution with code "${institution_code}" not found`],
+						originalRow: row
 					})
 					continue
 				}
-				const institutions = await institutionResponse.json()
-				const institution = institutions.find((inst: any) => inst.institution_code === institution_code)
+				const institutionsList = await institutionResponse.json()
+				const institution = institutionsList.find((inst: any) => inst.institution_code === institution_code)
 
 				if (!institution) {
 					errorCount++
-					uploadErrors.push({
+					uploadErrorsList.push({
 						row: rowNumber,
-						course_code: course_offering_id.substring(0, 8) + '...',
+						course_code: course_code,
 						exam_date: exam_date,
-						errors: [`Institution with code "${institution_code}" not found`]
+						errors: [`Institution with code "${institution_code}" not found`],
+						originalRow: row
 					})
 					continue
 				}
@@ -530,11 +845,12 @@ export default function ExamTimetablesListPage() {
 				const sessionResponse = await fetch(`/api/exam-management/examination-sessions`)
 				if (!sessionResponse.ok) {
 					errorCount++
-					uploadErrors.push({
+					uploadErrorsList.push({
 						row: rowNumber,
-						course_code: course_offering_id.substring(0, 8) + '...',
+						course_code: course_code,
 						exam_date: exam_date,
-						errors: [`Examination session with code "${examination_session_code}" not found`]
+						errors: [`Examination session with code "${examination_session_code}" not found`],
+						originalRow: row
 					})
 					continue
 				}
@@ -543,20 +859,22 @@ export default function ExamTimetablesListPage() {
 
 				if (!examSession) {
 					errorCount++
-					uploadErrors.push({
+					uploadErrorsList.push({
 						row: rowNumber,
-						course_code: course_offering_id.substring(0, 8) + '...',
+						course_code: course_code,
 						exam_date: exam_date,
-						errors: [`Examination session with code "${examination_session_code}" not found`]
+						errors: [`Examination session with code "${examination_session_code}" not found`],
+						originalRow: row
 					})
 					continue
 				}
 
-				// Create payload
+				// Create payload - API will look up course_offering_id from course_code
+				// duration_minutes will be auto-populated by the API from course's exam_duration (hours × 60)
 				const payload = {
 					institutions_id: institution.id,
 					examination_session_id: examSession.id,
-					course_offering_id: course_offering_id,
+					course_code: course_code,
 					exam_date: exam_date,
 					session: session.toUpperCase(),
 					exam_mode: exam_mode,
@@ -578,25 +896,28 @@ export default function ExamTimetablesListPage() {
 				} else {
 					const errorData = await response.json()
 					errorCount++
-					uploadErrors.push({
+					uploadErrorsList.push({
 						row: rowNumber,
-						course_code: course_offering_id.substring(0, 8) + '...',
+						course_code: course_code,
 						exam_date: exam_date,
-						errors: [errorData.error || 'Failed to save']
+						errors: [errorData.error || 'Failed to save'],
+						originalRow: row
 					})
 				}
 			} catch (error) {
 				errorCount++
-				uploadErrors.push({
+				uploadErrorsList.push({
 					row: rowNumber,
-					course_code: course_offering_id.substring(0, 8) + '...',
+					course_code: course_code,
 					exam_date: exam_date,
-					errors: [error instanceof Error ? error.message : 'Network error']
+					errors: [error instanceof Error ? error.message : 'Network error'],
+					originalRow: row
 				})
 			}
 		}
 
 		setLoading(false)
+		setImportInProgress(false)
 		const totalRows = rows.length
 
 		// Update upload summary
@@ -607,8 +928,8 @@ export default function ExamTimetablesListPage() {
 		})
 
 		// Show error dialog if needed
-		if (uploadErrors.length > 0) {
-			setUploadErrors(uploadErrors)
+		if (uploadErrorsList.length > 0) {
+			setUploadErrors(uploadErrorsList)
 			setShowErrorDialog(true)
 		}
 
@@ -643,8 +964,106 @@ export default function ExamTimetablesListPage() {
 		}
 	}
 
+	// Download failed rows as Excel file with error message column
+	const handleDownloadFailedRows = async () => {
+		if (uploadErrors.length === 0) return
+
+		try {
+			// Create workbook with failed rows data + error column
+			const wb = XLSX.utils.book_new()
+
+			// Build rows data in the same format as template with Error Message column
+			const failedRowsData = uploadErrors.map(error => {
+				const originalRow = error.originalRow || {}
+				return {
+					'Institution Code *': originalRow['Institution Code *'] || originalRow['Institution Code'] || originalRow.institution_code || '',
+					'Examination Session Code *': originalRow['Examination Session Code *'] || originalRow['Examination Session Code'] || originalRow.examination_session_code || '',
+					'Course Code *': originalRow['Course Code *'] || originalRow['Course Code'] || originalRow.course_code || error.course_code || '',
+					'Exam Date *': originalRow['Exam Date *'] || originalRow['Exam Date'] || originalRow.exam_date || error.exam_date || '',
+					'Session (FN/AN) *': originalRow['Session (FN/AN) *'] || originalRow['Session (FN/AN)'] || originalRow['Session'] || originalRow.session || '',
+					'Exam Mode': originalRow['Exam Mode'] || originalRow.exam_mode || 'Offline',
+					'Is Published': originalRow['Is Published'] || originalRow.is_published || 'No',
+					'Instructions': originalRow['Instructions'] || originalRow.instructions || '',
+					'Error Message': error.errors.join('; '),
+					'Row #': error.row
+				}
+			})
+
+			const ws = XLSX.utils.json_to_sheet(failedRowsData)
+
+			// Set column widths
+			ws['!cols'] = [
+				{ wch: 20 },  // Institution Code
+				{ wch: 25 },  // Examination Session Code
+				{ wch: 20 },  // Course Code
+				{ wch: 15 },  // Exam Date
+				{ wch: 15 },  // Session
+				{ wch: 12 },  // Exam Mode
+				{ wch: 12 },  // Is Published
+				{ wch: 30 },  // Instructions
+				{ wch: 50 },  // Error Message
+				{ wch: 8 },   // Row #
+			]
+
+			XLSX.utils.book_append_sheet(wb, ws, 'Failed Rows')
+
+			// Download the file
+			await XLSX.writeFile(wb, `exam_timetables_failed_rows_${new Date().toISOString().split('T')[0]}.xlsx`)
+
+			toast({
+				title: "✅ Download Complete",
+				description: `Downloaded ${uploadErrors.length} failed row${uploadErrors.length > 1 ? 's' : ''} with error messages.`,
+				className: "bg-green-50 border-green-200 text-green-800 dark:bg-green-900/20 dark:border-green-800 dark:text-green-200",
+			})
+		} catch (err) {
+			console.error('Error downloading failed rows:', err)
+			toast({
+				title: "❌ Download Error",
+				description: "Failed to download failed rows. Please try again.",
+				variant: "destructive",
+			})
+		}
+	}
+
 	return (
 		<SidebarProvider>
+			{/* Import Loading Overlay */}
+			{importInProgress && (
+				<div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-[100] flex items-center justify-center">
+					<div className="bg-white dark:bg-slate-800 rounded-2xl p-8 shadow-2xl max-w-md w-full mx-4">
+						<div className="flex flex-col items-center gap-4">
+							<div className="relative">
+								<Loader2 className="h-12 w-12 text-blue-600 animate-spin" />
+							</div>
+							<div className="text-center">
+								<h3 className="text-lg font-semibold text-slate-900 dark:text-slate-100">
+									Importing Exam Timetables
+								</h3>
+								<p className="text-sm text-slate-500 dark:text-slate-400 mt-1">
+									Please wait while the data is being processed...
+								</p>
+							</div>
+							{importProgress.total > 0 && (
+								<div className="w-full space-y-2">
+									<div className="flex justify-between text-sm text-slate-600 dark:text-slate-300">
+										<span>Progress</span>
+										<span>{importProgress.current} / {importProgress.total}</span>
+									</div>
+									<div className="w-full bg-slate-200 dark:bg-slate-700 rounded-full h-2.5">
+										<div
+											className="bg-blue-600 h-2.5 rounded-full transition-all duration-300"
+											style={{ width: `${(importProgress.current / importProgress.total) * 100}%` }}
+										/>
+									</div>
+									<p className="text-xs text-center text-slate-500 dark:text-slate-400">
+										{Math.round((importProgress.current / importProgress.total) * 100)}% complete
+									</p>
+								</div>
+							)}
+						</div>
+					</div>
+				</div>
+			)}
 			<AppSidebar />
 			<SidebarInset>
 				<AppHeader />
@@ -664,62 +1083,63 @@ export default function ExamTimetablesListPage() {
 						</BreadcrumbList>
 					</Breadcrumb>
 
-					{/* Scorecards */}
-					<div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3 flex-shrink-0">
-						<Card>
-							<CardContent className="p-3">
+					{/* Premium Stats Cards - Based on filtered data */}
+					<div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+						<Card className="border-slate-200 shadow-sm rounded-2xl">
+							<CardContent className="p-6">
 								<div className="flex items-center justify-between">
 									<div>
-										<p className="text-xs font-medium text-muted-foreground">Total Timetables</p>
-										<p className="text-xl font-bold">{items.length}</p>
+										<p className="text-sm text-slate-600">Total Timetables</p>
+										<p className="text-3xl font-bold text-slate-900 mt-1 font-grotesk">{filtered.length}</p>
 									</div>
-									<div className="h-7 w-7 rounded-full bg-blue-100 dark:bg-blue-900/20 flex items-center justify-center">
-										<Calendar className="h-3 w-3 text-blue-600 dark:text-blue-400" />
+									<div className="h-12 w-12 rounded-xl bg-blue-50 flex items-center justify-center ring-1 ring-blue-100">
+										<Calendar className="h-6 w-6 text-blue-600" />
 									</div>
 								</div>
 							</CardContent>
 						</Card>
-						<Card>
-							<CardContent className="p-3">
+						<Card className="border-slate-200 shadow-sm rounded-2xl">
+							<CardContent className="p-6">
 								<div className="flex items-center justify-between">
 									<div>
-										<p className="text-xs font-medium text-muted-foreground">Published</p>
-										<p className="text-xl font-bold text-green-600">{items.filter(i => i.is_published).length}</p>
+										<p className="text-sm text-slate-600">Published</p>
+										<p className="text-3xl font-bold text-emerald-600 mt-1 font-grotesk">{filtered.filter(i => i.is_published).length}</p>
 									</div>
-									<div className="h-7 w-7 rounded-full bg-green-100 dark:bg-green-900/20 flex items-center justify-center">
-										<CheckCircle className="h-3 w-3 text-green-600 dark:text-green-400" />
+									<div className="h-12 w-12 rounded-xl bg-emerald-50 flex items-center justify-center ring-1 ring-emerald-100">
+										<CheckCircle className="h-6 w-6 text-emerald-600" />
 									</div>
 								</div>
 							</CardContent>
 						</Card>
-						<Card>
-							<CardContent className="p-3">
+						<Card className="border-slate-200 shadow-sm rounded-2xl">
+							<CardContent className="p-6">
 								<div className="flex items-center justify-between">
 									<div>
-										<p className="text-xs font-medium text-muted-foreground">Draft</p>
-										<p className="text-xl font-bold text-red-600">{items.filter(i => !i.is_published).length}</p>
+										<p className="text-sm text-slate-600">Draft</p>
+										<p className="text-3xl font-bold text-amber-600 mt-1 font-grotesk">{filtered.filter(i => !i.is_published).length}</p>
 									</div>
-									<div className="h-7 w-7 rounded-full bg-red-100 dark:bg-red-900/20 flex items-center justify-center">
-										<XCircle className="h-3 w-3 text-red-600 dark:text-red-400" />
+									<div className="h-12 w-12 rounded-xl bg-amber-50 flex items-center justify-center ring-1 ring-amber-100">
+										<XCircle className="h-6 w-6 text-amber-600" />
 									</div>
 								</div>
 							</CardContent>
 						</Card>
-						<Card>
-							<CardContent className="p-3">
+						<Card className="border-slate-200 shadow-sm rounded-2xl">
+							<CardContent className="p-6">
 								<div className="flex items-center justify-between">
 									<div>
-										<p className="text-xs font-medium text-muted-foreground">This Month</p>
-										<p className="text-xl font-bold text-blue-600">
-											{items.filter(i => {
-												const d = new Date(i.created_at)
-												const n = new Date()
-												return d.getMonth() === n.getMonth() && d.getFullYear() === n.getFullYear()
+										<p className="text-sm text-slate-600">Upcoming</p>
+										<p className="text-3xl font-bold text-purple-600 mt-1 font-grotesk">
+											{filtered.filter(i => {
+												const examDate = new Date(i.exam_date)
+												const today = new Date()
+												today.setHours(0, 0, 0, 0)
+												return examDate >= today
 											}).length}
 										</p>
 									</div>
-									<div className="h-7 w-7 rounded-full bg-purple-100 dark:bg-purple-900/20 flex items-center justify-center">
-										<TrendingUp className="h-3 w-3 text-purple-600 dark:text-purple-400" />
+									<div className="h-12 w-12 rounded-xl bg-purple-50 flex items-center justify-center ring-1 ring-purple-100">
+										<TrendingUp className="h-6 w-6 text-purple-600" />
 									</div>
 								</div>
 							</CardContent>
@@ -727,25 +1147,91 @@ export default function ExamTimetablesListPage() {
 					</div>
 
 					{/* Main Content */}
-					<Card className="flex-1 flex flex-col min-h-0">
-						<CardHeader className="flex-shrink-0 p-3">
-							<div className="flex items-center justify-between mb-2">
-								<div className="flex items-center gap-2">
-									<div className="h-7 w-7 rounded-lg bg-primary/10 flex items-center justify-center">
-										<Calendar className="h-3 w-3 text-primary" />
+					<Card className="flex-1 flex flex-col min-h-0 border-slate-200 shadow-sm rounded-2xl">
+						<CardHeader className="flex-shrink-0 px-8 py-6 border-b border-slate-200">
+							<div className="space-y-4">
+								{/* Row 1: Title (Left) & Action Buttons (Right) - Same Line */}
+								<div className="flex items-center justify-between">
+									{/* Title Section - Left */}
+									<div className="flex items-center gap-3">
+										<div className="h-12 w-12 rounded-xl bg-blue-50 flex items-center justify-center ring-1 ring-blue-100">
+											<Calendar className="h-6 w-6 text-blue-600" />
+										</div>
+										<div>
+											<h2 className="text-xl font-bold text-slate-900 font-grotesk">All Exam Timetables</h2>
+											<p className="text-sm text-slate-600">Manage examination schedules and timetables</p>
+										</div>
 									</div>
-									<div>
-										<h2 className="text-sm font-semibold">Exam Timetables</h2>
-										<p className="text-[11px] text-muted-foreground">Manage examination schedules and timetables</p>
+
+									{/* Action Buttons - Right (Icon Only) */}
+									<div className="flex items-center gap-2">
+										<Button variant="outline" size="sm" onClick={fetchExamTimetables} disabled={loading} className="h-9 w-9 rounded-lg hover:bg-slate-100 text-slate-600 hover:text-slate-900 transition-colors border border-slate-300 p-0" title="Refresh">
+											<RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
+										</Button>
+										<Button variant="outline" size="sm" onClick={handleTemplateExport} className="h-9 w-9 rounded-lg hover:bg-slate-100 text-slate-600 hover:text-slate-900 transition-colors border border-slate-300 p-0" title="Download Template">
+											<FileSpreadsheet className="h-4 w-4" />
+										</Button>
+										<Button variant="outline" size="sm" onClick={handleImport} disabled={loading} className="h-9 w-9 rounded-lg hover:bg-slate-100 text-slate-600 hover:text-slate-900 transition-colors border border-slate-300 p-0" title="Import File">
+											<Upload className="h-4 w-4" />
+										</Button>
+										<Button variant="outline" size="sm" onClick={handleDataExport} disabled={loading || filtered.length === 0} className="h-9 w-9 rounded-lg hover:bg-green-100 text-green-600 hover:text-green-700 transition-colors border border-green-300 p-0" title="Export Data">
+											<Download className="h-4 w-4" />
+										</Button>
+										<Button size="sm" onClick={() => router.push('/exam-management/exam-timetable')} disabled={loading} className="h-9 px-4 rounded-xl bg-blue-600 hover:bg-blue-700 text-white transition-all duration-200 shadow-sm disabled:opacity-50 disabled:cursor-not-allowed" title="Add Timetable">
+											<PlusCircle className="h-4 w-4 mr-2" />
+											Add Timetable
+										</Button>
 									</div>
 								</div>
-								<div className="hidden" />
-							</div>
 
-							<div className="flex flex-col lg:flex-row gap-2 items-start lg:items-center justify-between">
-								<div className="flex flex-col sm:flex-row gap-2 w-full lg:w-auto">
+								{/* Row 2: Filter and Search Row - Exam Session (1st), Date (2nd) */}
+								<div className="flex items-center gap-2 flex-wrap">
+									{/* 1. Exam Session Filter (Primary) */}
+									<Select value={examSessionFilter} onValueChange={setExamSessionFilter}>
+										<SelectTrigger className="h-9 rounded-lg border-slate-300 focus:border-blue-500 w-[180px]">
+											<SelectValue placeholder="All Exam Sessions" />
+										</SelectTrigger>
+										<SelectContent>
+											<SelectItem value="all">All Exam Sessions</SelectItem>
+											{examinationSessions.map((session) => (
+												<SelectItem key={session.id} value={session.id}>
+													{session.session_code} - {session.session_name}
+												</SelectItem>
+											))}
+										</SelectContent>
+									</Select>
+
+									{/* 2. Date Range Filter (Secondary) */}
+									<Select value={dateRangePreset} onValueChange={(val) => {
+										setDateRangePreset(val)
+										if (val !== "custom") {
+											setCustomDateRange(undefined)
+										}
+									}}>
+										<SelectTrigger className="h-9 rounded-lg border-slate-300 focus:border-blue-500 w-[150px]">
+											<SelectValue placeholder="Date Range" />
+										</SelectTrigger>
+										<SelectContent>
+											<SelectItem value="upcoming">Upcoming</SelectItem>
+											<SelectItem value="today">Today</SelectItem>
+											<SelectItem value="this_week">This Week</SelectItem>
+											<SelectItem value="this_month">This Month</SelectItem>
+											<SelectItem value="custom">Custom Range</SelectItem>
+											<SelectItem value="all">All Dates</SelectItem>
+										</SelectContent>
+									</Select>
+
+									{/* Custom Date Range Picker */}
+									{dateRangePreset === "custom" && (
+										<DateRangePicker
+											dateRange={customDateRange}
+											onDateRangeChange={setCustomDateRange}
+											placeholder="Select date range"
+										/>
+									)}
+
 									<Select value={statusFilter} onValueChange={setStatusFilter}>
-										<SelectTrigger className="w-[140px] h-8">
+										<SelectTrigger className="h-9 rounded-lg border-slate-300 focus:border-blue-500 w-[140px]">
 											<SelectValue placeholder="All Status" />
 										</SelectTrigger>
 										<SelectContent>
@@ -756,7 +1242,7 @@ export default function ExamTimetablesListPage() {
 									</Select>
 
 									<Select value={sessionFilter} onValueChange={setSessionFilter}>
-										<SelectTrigger className="w-[140px] h-8">
+										<SelectTrigger className="h-9 rounded-lg border-slate-300 focus:border-blue-500 w-[150px]">
 											<SelectValue placeholder="All Sessions" />
 										</SelectTrigger>
 										<SelectContent>
@@ -767,7 +1253,7 @@ export default function ExamTimetablesListPage() {
 									</Select>
 
 									<Select value={modeFilter} onValueChange={setModeFilter}>
-										<SelectTrigger className="w-[140px] h-8">
+										<SelectTrigger className="h-9 rounded-lg border-slate-300 focus:border-blue-500 w-[140px]">
 											<SelectValue placeholder="All Modes" />
 										</SelectTrigger>
 										<SelectContent>
@@ -777,112 +1263,82 @@ export default function ExamTimetablesListPage() {
 										</SelectContent>
 									</Select>
 
-									<div className="relative w-full sm:w-[220px]">
-										<Search className="absolute left-2 top-1/2 h-3 w-3 -translate-y-1/2 text-muted-foreground" />
+									<div className="relative flex-1 max-w-sm">
+										<Search className="absolute left-2 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
 										<Input
 											value={searchTerm}
 											onChange={(e) => setSearchTerm(e.target.value)}
-											placeholder="Search…"
-											className="pl-8 h-8 text-xs"
+											placeholder="Search timetables..."
+											className="pl-8 h-9 rounded-lg border-slate-300 focus:border-blue-500 focus:ring-blue-500/20"
 										/>
 									</div>
 								</div>
-
-								<div className="flex gap-1 flex-wrap">
-									<Button variant="outline" size="sm" className="text-xs px-2 h-8" onClick={fetchExamTimetables} disabled={loading}>
-										<RefreshCw className={`h-3 w-3 mr-1 ${loading ? 'animate-spin' : ''}`} />
-										Refresh
-									</Button>
-									<Button variant="outline" size="sm" className="text-xs px-2 h-8" onClick={handleTemplateExport}>
-										<FileSpreadsheet className="h-3 w-3 mr-1" />
-										Template
-									</Button>
-									<Button variant="outline" size="sm" className="text-xs px-2 h-8" onClick={handleImport} disabled={loading}>
-										<Upload className="h-3 w-3 mr-1" />
-										Upload
-									</Button>
-									<Button size="sm" className="text-xs px-2 h-8" onClick={() => router.push('/exam_timetable')} disabled={loading}>
-										<PlusCircle className="h-3 w-3 mr-1" />
-										Add
-									</Button>
-								</div>
 							</div>
 						</CardHeader>
-						<CardContent className="p-3 pt-0 flex-1 flex flex-col min-h-0">
-
-							<div className="rounded-md border overflow-hidden" style={{ height: "440px" }}>
-								<div className="h-full overflow-auto">
+						<CardContent className="flex-1 overflow-auto px-8 py-6 bg-slate-50/50">
+							<div className="rounded-xl border border-slate-200 overflow-hidden bg-white">
+								<div className="overflow-auto" style={{ maxHeight: "480px" }}>
 									<Table>
-										<TableHeader className="sticky top-0 z-10 bg-slate-50 dark:bg-slate-900/50">
+										<TableHeader className="bg-slate-50 border-b border-slate-200 sticky top-0 z-10">
 											<TableRow>
-												<TableHead className="w-[40px] text-[11px]"></TableHead>
-												<TableHead className="w-[100px] text-[11px]">
-													<Button variant="ghost" size="sm" onClick={() => handleSort("exam_date")} className="h-auto p-0 font-medium hover:bg-transparent">
+												<TableHead className="w-[40px] text-sm font-semibold text-slate-700"></TableHead>
+												<TableHead className="text-sm font-semibold text-slate-700">
+													<Button variant="ghost" size="sm" onClick={() => handleSort("exam_date")} className="px-2 hover:bg-slate-100 rounded-lg transition-colors">
 														Date
 														<span className="ml-1">{getSortIcon("exam_date")}</span>
 													</Button>
 												</TableHead>
-												<TableHead className="w-[60px] text-[11px]">
-													<Button variant="ghost" size="sm" onClick={() => handleSort("session")} className="h-auto p-0 font-medium hover:bg-transparent">
+												<TableHead className="text-sm font-semibold text-slate-700">
+													<Button variant="ghost" size="sm" onClick={() => handleSort("session")} className="px-2 hover:bg-slate-100 rounded-lg transition-colors">
 														Session
 														<span className="ml-1">{getSortIcon("session")}</span>
 													</Button>
 												</TableHead>
-												<TableHead className="w-[90px] text-[11px]">
-													<Button variant="ghost" size="sm" onClick={() => handleSort("institution_code")} className="h-auto p-0 font-medium hover:bg-transparent">
-														Inst.
+												{mustSelectInstitution && (
+												<TableHead className="text-sm font-semibold text-slate-700">
+													<Button variant="ghost" size="sm" onClick={() => handleSort("institution_code")} className="px-2 hover:bg-slate-100 rounded-lg transition-colors">
+														Institution
 														<span className="ml-1">{getSortIcon("institution_code")}</span>
 													</Button>
 												</TableHead>
-												<TableHead className="w-[110px] text-[11px]">
-													<Button variant="ghost" size="sm" onClick={() => handleSort("session_code")} className="h-auto p-0 font-medium hover:bg-transparent">
-														Exam Session
-														<span className="ml-1">{getSortIcon("session_code")}</span>
-													</Button>
-												</TableHead>
-												<TableHead className="text-[11px]">
-													<Button variant="ghost" size="sm" onClick={() => handleSort("course_code")} className="h-auto p-0 font-medium hover:bg-transparent">
+											)}
+												<TableHead className="text-sm font-semibold text-slate-700">
+													<Button variant="ghost" size="sm" onClick={() => handleSort("course_code")} className="px-2 hover:bg-slate-100 rounded-lg transition-colors">
 														Course
 														<span className="ml-1">{getSortIcon("course_code")}</span>
 													</Button>
 												</TableHead>
-												<TableHead className="w-[60px] text-[11px] text-center">
-													<Button variant="ghost" size="sm" onClick={() => handleSort("course_count")} className="h-auto p-0 font-medium hover:bg-transparent">
-														Crs
-														<span className="ml-1">{getSortIcon("course_count")}</span>
-													</Button>
-												</TableHead>
-												<TableHead className="w-[60px] text-[11px] text-center">
-													<Button variant="ghost" size="sm" onClick={() => handleSort("student_count")} className="h-auto p-0 font-medium hover:bg-transparent">
-														Lrnrs
+												<TableHead className="text-sm font-semibold text-slate-700 text-center">
+													<Button variant="ghost" size="sm" onClick={() => handleSort("student_count")} className="px-2 hover:bg-slate-100 rounded-lg transition-colors">
+														Learners
 														<span className="ml-1">{getSortIcon("student_count")}</span>
 													</Button>
 												</TableHead>
-												<TableHead className="w-[60px] text-[11px] text-center">
-													<Button variant="ghost" size="sm" onClick={() => handleSort("seat_alloc_count")} className="h-auto p-0 font-medium hover:bg-transparent">
+												<TableHead className="text-sm font-semibold text-slate-700 text-center">
+													<Button variant="ghost" size="sm" onClick={() => handleSort("seat_alloc_count")} className="px-2 hover:bg-slate-100 rounded-lg transition-colors">
 														Seats
 														<span className="ml-1">{getSortIcon("seat_alloc_count")}</span>
 													</Button>
 												</TableHead>
-												<TableHead className="w-[60px] text-[11px]">
-													<Button variant="ghost" size="sm" onClick={() => handleSort("exam_mode")} className="h-auto p-0 font-medium hover:bg-transparent">
+												<TableHead className="text-sm font-semibold text-slate-700">
+													<Button variant="ghost" size="sm" onClick={() => handleSort("exam_mode")} className="px-2 hover:bg-slate-100 rounded-lg transition-colors">
 														Mode
 														<span className="ml-1">{getSortIcon("exam_mode")}</span>
 													</Button>
 												</TableHead>
-												<TableHead className="w-[70px] text-[11px]">
-													<Button variant="ghost" size="sm" onClick={() => handleSort("is_published")} className="h-auto p-0 font-medium hover:bg-transparent">
+												<TableHead className="text-sm font-semibold text-slate-700">
+													<Button variant="ghost" size="sm" onClick={() => handleSort("is_published")} className="px-2 hover:bg-slate-100 rounded-lg transition-colors">
 														Status
 														<span className="ml-1">{getSortIcon("is_published")}</span>
 													</Button>
 												</TableHead>
-												<TableHead className="w-[150px] text-[11px] text-center">Actions</TableHead>
+												<TableHead className="text-center text-sm font-semibold text-slate-700">Actions</TableHead>
 											</TableRow>
 										</TableHeader>
 										<TableBody>
 											{loading || !isReady ? (
 												<TableRow>
-													<TableCell colSpan={12} className="h-24 text-center text-[11px]">Loading…</TableCell>
+													<TableCell colSpan={mustSelectInstitution ? 10 : 9} className="h-24 text-center text-sm text-slate-500">Loading…</TableCell>
 												</TableRow>
 											) : paginatedItems.length ? (
 												<>
@@ -891,12 +1347,12 @@ export default function ExamTimetablesListPage() {
 														const isExpanded = expandedRows.has(dateKey)
 														return (
 															<React.Fragment key={item.id}>
-																<TableRow>
-																	<TableCell className="text-[11px]">
+																<TableRow className="border-b border-slate-200 hover:bg-slate-50 transition-colors">
+																	<TableCell className="text-sm text-slate-700">
 																		<Button
 																			variant="ghost"
 																			size="sm"
-																			className="h-6 w-6 p-0"
+																			className="h-7 w-7 p-0 hover:bg-slate-100 rounded-lg"
 																			onClick={() => {
 																				const newExpanded = new Set(expandedRows)
 																				if (isExpanded) {
@@ -907,38 +1363,44 @@ export default function ExamTimetablesListPage() {
 																				setExpandedRows(newExpanded)
 																			}}
 																		>
-																			{isExpanded ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
+																			{isExpanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
 																		</Button>
 																	</TableCell>
-																	<TableCell className="text-[11px] font-medium">
+																	<TableCell className="font-medium text-sm text-slate-900 font-grotesk">
 																		{formatDate(item.exam_date)}
 																	</TableCell>
-																	<TableCell className="text-[11px]">
-																		<Badge variant="outline" className="text-[11px]">
-																			{item.session}
+																	<TableCell className="text-sm text-slate-700">
+																		<Badge variant="outline" className={`text-xs ${
+																			item.session === 'FN'
+																				? 'bg-amber-50 text-amber-700 border-amber-200'
+																				: 'bg-indigo-50 text-indigo-700 border-indigo-200'
+																		}`}>
+																			{item.session === 'FN' ? 'Forenoon' : 'Afternoon'}
 																		</Badge>
 																	</TableCell>
-																	<TableCell className="text-[11px]">{item.institution_code}</TableCell>
-																	<TableCell className="text-[11px]">{item.session_code}</TableCell>
-																	<TableCell className="text-[11px]">
+																	{mustSelectInstitution && (
+																		<TableCell className="text-sm text-slate-700">{item.institution_code}</TableCell>
+																	)}
+																	<TableCell className="text-sm text-slate-700">
 																		<div className="flex flex-col">
-																			<span className="font-medium">{item.course_code}</span>
-																			<span className="text-[10px] text-muted-foreground">{item.course_name}</span>
+																			<span className="font-medium text-slate-900">{item.course_code}</span>
+																			<span className="text-xs text-slate-500">{item.course_name}</span>
 																		</div>
 																	</TableCell>
-																	<TableCell className="text-[11px] text-center">
-																		<Badge variant="secondary" className="text-[11px]">{item.course_count || 0}</Badge>
+																	<TableCell className="text-sm text-center">
+																		<Badge variant="secondary" className="text-xs bg-blue-50 text-blue-700">{item.student_count || 0}</Badge>
 																	</TableCell>
-																	<TableCell className="text-[11px] text-center">
-																		<Badge variant="secondary" className="text-[11px]">{item.student_count || 0}</Badge>
-																	</TableCell>
-																	<TableCell className="text-[11px] text-center">
-																		<Badge variant="secondary" className="text-[11px]">{item.seat_alloc_count || 0}</Badge>
+																	<TableCell className="text-sm text-center">
+																		<Badge variant="secondary" className="text-xs bg-purple-50 text-purple-700">{item.seat_alloc_count || 0}</Badge>
 																	</TableCell>
 																	<TableCell>
 																		<Badge
 																			variant={item.exam_mode?.toLowerCase() === 'online' ? 'default' : 'secondary'}
-																			className="text-[11px]"
+																			className={`text-xs ${
+																				item.exam_mode?.toLowerCase() === 'online'
+																					? 'bg-cyan-50 text-cyan-700 border-cyan-200'
+																					: 'bg-slate-100 text-slate-700'
+																			}`}
 																		>
 																			{item.exam_mode || 'Offline'}
 																		</Badge>
@@ -946,10 +1408,10 @@ export default function ExamTimetablesListPage() {
 																	<TableCell>
 																		<Badge
 																			variant={item.is_published ? "default" : "secondary"}
-																			className={`text-[11px] ${
+																			className={`text-xs ${
 																				item.is_published
-																					? 'bg-green-100 text-green-800 hover:bg-green-200 dark:bg-green-900 dark:text-green-200'
-																					: 'bg-red-100 text-red-800 hover:bg-red-200 dark:bg-red-900 dark:text-red-200'
+																					? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+																					: 'bg-amber-50 text-amber-700 border-amber-200'
 																			}`}
 																		>
 																			{item.is_published ? 'Published' : 'Draft'}
@@ -957,36 +1419,37 @@ export default function ExamTimetablesListPage() {
 																	</TableCell>
 																	<TableCell>
 																		<div className="flex items-center justify-center gap-1">
-																			<Button variant="outline" size="sm" className="h-7 w-7 p-0" onClick={() => router.push(`/exam_timetable?id=${item.id}`)}>
-																				<Edit className="h-3 w-3" />
+																			<Button variant="outline" size="sm" className="h-8 w-8 p-0 rounded-lg hover:bg-slate-100 border-slate-300" onClick={() => router.push(`/exam-management/exam-timetable?id=${item.id}`)} title="Edit">
+																				<Edit className="h-4 w-4 text-slate-600" />
 																			</Button>
 																			<Button
 																				variant="outline"
 																				size="sm"
-																				className="h-7 w-7 p-0"
+																				className="h-8 w-8 p-0 rounded-lg hover:bg-slate-100 border-slate-300"
 																				onClick={() => {
 																					setSelectedTimetable(item)
 																					setShowHallAllocation(true)
 																				}}
+																				title="Hall Allocation"
 																			>
-																				<DoorOpen className="h-3 w-3" />
+																				<DoorOpen className="h-4 w-4 text-slate-600" />
 																			</Button>
 																			<AlertDialog>
 																				<AlertDialogTrigger asChild>
-																					<Button variant="outline" size="sm" className="h-7 w-7 p-0 text-red-600 hover:text-red-700 hover:bg-red-50">
-																						<Trash2 className="h-3 w-3" />
+																					<Button variant="outline" size="sm" className="h-8 w-8 p-0 rounded-lg hover:bg-red-50 border-slate-300 text-red-500 hover:text-red-600" title="Delete">
+																						<Trash2 className="h-4 w-4" />
 																					</Button>
 																				</AlertDialogTrigger>
-																				<AlertDialogContent>
+																				<AlertDialogContent className="rounded-2xl">
 																					<AlertDialogHeader>
-																						<AlertDialogTitle>Delete Exam Timetable</AlertDialogTitle>
-																						<AlertDialogDescription>
+																						<AlertDialogTitle className="text-xl font-bold text-slate-900">Delete Exam Timetable</AlertDialogTitle>
+																						<AlertDialogDescription className="text-slate-600">
 																							Are you sure you want to delete this exam timetable? This action cannot be undone.
 																						</AlertDialogDescription>
 																					</AlertDialogHeader>
 																					<AlertDialogFooter>
-																						<AlertDialogCancel>Cancel</AlertDialogCancel>
-																						<AlertDialogAction onClick={() => remove(item.id)} className="bg-red-600 hover:bg-red-700">Delete</AlertDialogAction>
+																						<AlertDialogCancel className="rounded-lg">Cancel</AlertDialogCancel>
+																						<AlertDialogAction onClick={() => remove(item.id)} className="bg-red-600 hover:bg-red-700 rounded-lg">Delete</AlertDialogAction>
 																					</AlertDialogFooter>
 																				</AlertDialogContent>
 																			</AlertDialog>
@@ -999,7 +1462,7 @@ export default function ExamTimetablesListPage() {
 												</>
 											) : (
 												<TableRow>
-													<TableCell colSpan={12} className="h-24 text-center text-[11px]">No data</TableCell>
+													<TableCell colSpan={mustSelectInstitution ? 10 : 9} className="h-24 text-center text-sm text-slate-500">No exam timetables found</TableCell>
 												</TableRow>
 											)}
 										</TableBody>
@@ -1007,17 +1470,30 @@ export default function ExamTimetablesListPage() {
 								</div>
 							</div>
 
-							<div className="flex items-center justify-between space-x-2 py-2 mt-2">
-								<div className="text-xs text-muted-foreground">
-									Showing {filtered.length === 0 ? 0 : ((currentPage - 1) * itemsPerPage) + 1}-{Math.min(currentPage * itemsPerPage, filtered.length)} of {filtered.length}
+							{/* Pagination */}
+							<div className="flex items-center justify-between pt-4 border-t border-slate-200 mt-4">
+								<div className="text-sm text-slate-600">
+									Showing {filtered.length === 0 ? 0 : ((currentPage - 1) * itemsPerPage) + 1}-{Math.min(currentPage * itemsPerPage, filtered.length)} of {filtered.length} timetables
 								</div>
 								<div className="flex items-center gap-2">
-									<Button variant="outline" size="sm" onClick={() => setCurrentPage((p) => Math.max(1, p - 1))} disabled={currentPage === 1} className="h-7 px-2 text-xs">
-										<ChevronLeft className="h-3 w-3 mr-1" /> Previous
+									<Button
+										variant="outline"
+										size="sm"
+										onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+										disabled={currentPage === 1}
+										className="h-9 px-3 rounded-lg border-slate-300 hover:bg-slate-100 disabled:opacity-50"
+									>
+										<ChevronLeft className="h-4 w-4 mr-1" /> Previous
 									</Button>
-									<div className="text-xs text-muted-foreground px-2">Page {currentPage} of {totalPages}</div>
-									<Button variant="outline" size="sm" onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))} disabled={currentPage >= totalPages} className="h-7 px-2 text-xs">
-										Next <ChevronRight className="h-3 w-3 ml-1" />
+									<div className="text-sm text-slate-600 px-3">Page {currentPage} of {totalPages}</div>
+									<Button
+										variant="outline"
+										size="sm"
+										onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+										disabled={currentPage >= totalPages}
+										className="h-9 px-3 rounded-lg border-slate-300 hover:bg-slate-100 disabled:opacity-50"
+									>
+										Next <ChevronRight className="h-4 w-4 ml-1" />
 									</Button>
 								</div>
 							</div>
@@ -1125,7 +1601,15 @@ export default function ExamTimetablesListPage() {
 							</div>
 						</div>
 
-						<AlertDialogFooter>
+						<AlertDialogFooter className="flex-col sm:flex-row gap-2">
+							<Button
+								variant="outline"
+								onClick={handleDownloadFailedRows}
+								className="flex items-center gap-2"
+							>
+								<Download className="h-4 w-4" />
+								Download Failed Rows
+							</Button>
 							<AlertDialogAction onClick={() => setShowErrorDialog(false)}>
 								Close
 							</AlertDialogAction>

@@ -13,6 +13,7 @@ export interface HallTicketSubject {
 	exam_date: string
 	exam_time: string // e.g., "10:00 to 13:00FN" or "14:00 to 17:00AN"
 	semester: string
+	course_order?: number // Optional course order for sorting within semester
 }
 
 // Student hall ticket data
@@ -24,6 +25,7 @@ export interface HallTicketStudent {
 	emis?: string
 	student_photo_url?: string
 	subjects: HallTicketSubject[]
+	semester_group?: string // Year group (e.g., "I Year", "II Year") for year-wise PDF grouping
 }
 
 // Institution header info for hall ticket

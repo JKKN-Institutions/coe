@@ -19,11 +19,13 @@ import Link from "next/link"
 import { generateHallTicketPDF } from "@/lib/utils/generate-hall-ticket-pdf"
 import type { HallTicketData, HallTicketApiResponse, HallTicketPdfSettings } from "@/types/hall-ticket"
 import { useInstitutionFilter } from "@/hooks/use-institution-filter"
+import { useMyJKKNInstitutionFilter } from "@/hooks/use-myjkkn-institution-filter"
 
 interface Institution {
 	id: string
 	institution_code: string
 	name: string
+	myjkkn_institution_ids?: string[] | null
 }
 
 interface ExaminationSession {
@@ -36,7 +38,19 @@ interface Program {
 	id: string
 	program_code: string
 	program_name: string
-	duration_years?: number
+	program_duration_yrs?: number
+}
+
+// =====================================================
+// SEMESTER TYPE WITH semester_group FOR YEAR-WISE GROUPING
+// =====================================================
+
+interface SemesterWithGroup {
+	id: string
+	semester_code: string
+	semester_name: string
+	display_order: number
+	semester_group?: string // e.g., "I Year", "II Year"
 }
 
 // =====================================================
@@ -44,29 +58,68 @@ interface Program {
 // =====================================================
 
 interface MultiSelectSemesterProps {
-	semesters: number[]
-	selectedSemesters: number[]
-	onSelectionChange: (semesters: number[]) => void
+	semesters: SemesterWithGroup[]
+	selectedSemesters: string[] // Now using semester IDs
+	onSelectionChange: (semesters: string[]) => void
 	disabled?: boolean
 }
 
 function MultiSelectSemester({ semesters, selectedSemesters, onSelectionChange, disabled }: MultiSelectSemesterProps) {
 	const [open, setOpen] = useState(false)
 
-	const toggleSemester = (sem: number) => {
-		if (selectedSemesters.includes(sem)) {
-			onSelectionChange(selectedSemesters.filter(s => s !== sem))
+	const toggleSemester = (semId: string) => {
+		if (selectedSemesters.includes(semId)) {
+			onSelectionChange(selectedSemesters.filter(s => s !== semId))
 		} else {
-			onSelectionChange([...selectedSemesters, sem].sort((a, b) => a - b))
+			// Sort by display_order when adding
+			const newSelection = [...selectedSemesters, semId]
+			const sorted = newSelection.sort((a, b) => {
+				const semA = semesters.find(s => s.id === a)
+				const semB = semesters.find(s => s.id === b)
+				return (semA?.display_order || 0) - (semB?.display_order || 0)
+			})
+			onSelectionChange(sorted)
 		}
 	}
 
 	const selectAll = () => {
-		onSelectionChange([...semesters])
+		onSelectionChange(semesters.map(s => s.id))
 	}
 
 	const clearAll = () => {
 		onSelectionChange([])
+	}
+
+	// Group semesters by semester_group for display
+	const groupedSemesters = semesters.reduce((acc, sem) => {
+		const group = sem.semester_group || 'Other'
+		if (!acc[group]) acc[group] = []
+		acc[group].push(sem)
+		return acc
+	}, {} as Record<string, SemesterWithGroup[]>)
+
+	// Sort groups by year order (I Year, II Year, III Year, IV Year)
+	const yearOrder = ['I Year', 'II Year', 'III Year', 'IV Year', 'Other']
+	const sortedGroups = Object.entries(groupedSemesters).sort((a, b) => {
+		const indexA = yearOrder.indexOf(a[0])
+		const indexB = yearOrder.indexOf(b[0])
+		return (indexA === -1 ? 999 : indexA) - (indexB === -1 ? 999 : indexB)
+	})
+
+	const getDisplayText = () => {
+		if (selectedSemesters.length === 0 || selectedSemesters.length === semesters.length) {
+			return "All Semesters"
+		}
+		// Group selected by semester_group
+		const selectedGroups = new Set<string>()
+		selectedSemesters.forEach(id => {
+			const sem = semesters.find(s => s.id === id)
+			if (sem?.semester_group) selectedGroups.add(sem.semester_group)
+		})
+		if (selectedGroups.size === 1) {
+			return Array.from(selectedGroups)[0]
+		}
+		return `${selectedSemesters.length} Semesters`
 	}
 
 	return (
@@ -80,16 +133,12 @@ function MultiSelectSemester({ semesters, selectedSemesters, onSelectionChange, 
 					className="w-full justify-between h-10 bg-amber-50 dark:bg-amber-900/20 border-amber-200 dark:border-amber-800 hover:bg-amber-100 dark:hover:bg-amber-900/30"
 				>
 					<span className="truncate text-amber-800 dark:text-amber-300">
-						{selectedSemesters.length === 0
-							? "All Semesters"
-							: selectedSemesters.length === semesters.length
-								? "All Semesters"
-								: `Sem ${selectedSemesters.join(', ')}`}
+						{getDisplayText()}
 					</span>
 					<ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 text-amber-600" />
 				</Button>
 			</PopoverTrigger>
-			<PopoverContent className="w-[250px] p-2" align="start">
+			<PopoverContent className="w-[320px] p-2" align="start">
 				<div className="flex items-center justify-between mb-2 pb-2 border-b">
 					<span className="text-sm font-medium">Select Semesters</span>
 					<div className="flex gap-1">
@@ -101,20 +150,27 @@ function MultiSelectSemester({ semesters, selectedSemesters, onSelectionChange, 
 						</Button>
 					</div>
 				</div>
-				<div className="grid grid-cols-3 gap-2">
-					{semesters.map(sem => (
-						<div
-							key={sem}
-							onClick={() => toggleSemester(sem)}
-							className={cn(
-								"flex items-center justify-center gap-1 px-3 py-2 rounded-md cursor-pointer border text-sm",
-								selectedSemesters.includes(sem)
-									? "bg-blue-100 border-blue-500 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300"
-									: "hover:bg-muted"
-							)}
-						>
-							{selectedSemesters.includes(sem) && <Check className="h-3 w-3" />}
-							Sem {sem}
+				<div className="space-y-3 max-h-[300px] overflow-y-auto">
+					{sortedGroups.map(([group, groupSems]) => (
+						<div key={group}>
+							<div className="text-xs font-semibold text-muted-foreground mb-1 px-1">{group}</div>
+							<div className="grid grid-cols-2 gap-2">
+								{groupSems.sort((a, b) => a.display_order - b.display_order).map(sem => (
+									<div
+										key={sem.id}
+										onClick={() => toggleSemester(sem.id)}
+										className={cn(
+											"flex items-center gap-1 px-3 py-2 rounded-md cursor-pointer border text-sm",
+											selectedSemesters.includes(sem.id)
+												? "bg-blue-100 border-blue-500 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300"
+												: "hover:bg-muted"
+										)}
+									>
+										{selectedSemesters.includes(sem.id) && <Check className="h-3 w-3 flex-shrink-0" />}
+										<span className="truncate">{sem.semester_name}</span>
+									</div>
+								))}
+							</div>
 						</div>
 					))}
 				</div>
@@ -128,26 +184,26 @@ export default function HallTicketsPage() {
 
 	// Institution filter hook
 	const {
-		filter,
 		isReady,
 		appendToUrl,
-		getInstitutionCodeForCreate,
 		mustSelectInstitution,
-		shouldFilter,
-		institutionId
+		institutionCode: contextInstitutionCode
 	} = useInstitutionFilter()
+
+	// MyJKKN data fetching hook
+	const { fetchPrograms: fetchMyJKKNPrograms } = useMyJKKNInstitutionFilter()
 
 	// Dropdown data
 	const [institutions, setInstitutions] = useState<Institution[]>([])
 	const [sessions, setSessions] = useState<ExaminationSession[]>([])
 	const [programs, setPrograms] = useState<Program[]>([])
-	const [semesters, setSemesters] = useState<number[]>([])
+	const [semesters, setSemesters] = useState<SemesterWithGroup[]>([])
 
 	// Selected values
 	const [selectedInstitutionCode, setSelectedInstitutionCode] = useState<string>("")
 	const [selectedSessionId, setSelectedSessionId] = useState<string>("")
 	const [selectedProgramId, setSelectedProgramId] = useState<string>("")
-	const [selectedSemesters, setSelectedSemesters] = useState<number[]>([])
+	const [selectedSemesters, setSelectedSemesters] = useState<string[]>([])
 
 	// Loading states
 	const [loadingInstitutions, setLoadingInstitutions] = useState(false)
@@ -171,15 +227,12 @@ export default function HallTicketsPage() {
 		}
 	}, [isReady])
 
-	// Auto-fill institution from context when available
+	// Auto-fill institution from context when available (for normal users)
 	useEffect(() => {
-		if (isReady && !mustSelectInstitution && institutions.length > 0) {
-			const autoCode = getInstitutionCodeForCreate()
-			if (autoCode && !selectedInstitutionCode) {
-				setSelectedInstitutionCode(autoCode)
-			}
+		if (isReady && !mustSelectInstitution && contextInstitutionCode && !selectedInstitutionCode) {
+			setSelectedInstitutionCode(contextInstitutionCode)
 		}
-	}, [isReady, mustSelectInstitution, institutions, getInstitutionCodeForCreate, selectedInstitutionCode])
+	}, [isReady, mustSelectInstitution, contextInstitutionCode, selectedInstitutionCode])
 
 	const fetchInstitutions = async () => {
 		try {
@@ -257,42 +310,114 @@ export default function HallTicketsPage() {
 	const fetchPrograms = async () => {
 		try {
 			setLoadingPrograms(true)
-			const res = await fetch(`/api/master/programs?institution_code=${selectedInstitutionCode}`)
-			if (res.ok) {
-				const data = await res.json()
-				setPrograms(data)
+			setPrograms([])
+
+			// Get the institution with its myjkkn_institution_ids
+			const institution = institutions.find(i => i.institution_code === selectedInstitutionCode)
+			const myjkknIds = institution?.myjkkn_institution_ids || []
+
+			console.log('[HallTickets] Fetching programs for institution:', selectedInstitutionCode, 'myjkknIds:', myjkknIds)
+
+			if (myjkknIds.length === 0) {
+				console.warn('[HallTickets] No MyJKKN institution IDs found for institution:', selectedInstitutionCode)
+				setPrograms([])
+				return
 			}
+
+			// Fetch programs from MyJKKN API using the hook
+			const progs = await fetchMyJKKNPrograms(myjkknIds)
+			console.log('[HallTickets] Programs from MyJKKN:', progs.length, progs)
+
+			// Map to our Program interface
+			const mappedPrograms: Program[] = progs.map((p: any) => ({
+				id: p.id,
+				program_code: p.program_id || p.program_code,
+				program_name: p.program_name || p.name,
+				program_duration_yrs: p.duration_years || p.program_duration_yrs || 3
+			}))
+
+			setPrograms(mappedPrograms)
 		} catch (error) {
-			console.error('Error fetching programs:', error)
+			console.error('[HallTickets] Error fetching programs:', error)
+			setPrograms([])
 		} finally {
 			setLoadingPrograms(false)
 		}
 	}
 
-	// Program → Semesters (generate semester numbers based on program duration)
+	// Program → Semesters (fetch from local COE database with semester_group)
 	useEffect(() => {
 		if (selectedProgramId) {
 			setSelectedSemesters([])
 			setPreviewData(null)
 			setStudentCount(0)
-			generateSemesterNumbers()
+			fetchSemestersForProgram()
 		} else {
 			setSemesters([])
 		}
 	}, [selectedProgramId])
 
-	// Generate semester numbers based on selected program's duration
-	const generateSemesterNumbers = () => {
-		const selectedProgram = programs.find(p => p.id === selectedProgramId)
-		// Default to 4 years (8 semesters) if duration not available
-		const durationYears = selectedProgram?.duration_years || 4
-		const totalSemesters = durationYears * 2
-		const semesterNumbers = Array.from({ length: totalSemesters }, (_, i) => i + 1)
-		setSemesters(semesterNumbers)
+	// Fetch semesters from local COE database with semester_group for year-wise grouping
+	const fetchSemestersForProgram = async () => {
+		try {
+			const selectedProgram = programs.find(p => p.id === selectedProgramId)
+			if (!selectedProgram) {
+				setSemesters([])
+				return
+			}
+
+			// Fetch semesters from local COE database using program_code
+			const params = new URLSearchParams()
+			params.set('program_code', selectedProgram.program_code)
+			if (selectedInstitutionCode) {
+				params.set('institution_code', selectedInstitutionCode)
+			}
+
+			const res = await fetch(`/api/master/semesters?${params.toString()}`)
+			if (res.ok) {
+				const data = await res.json()
+				// Check if semesters exist in COE database
+				if (data && data.length > 0) {
+					const semesterData: SemesterWithGroup[] = (data || []).map((s: any) => ({
+						id: s.id,
+						semester_code: s.semester_code,
+						semester_name: s.semester_name || s.display_name || `Semester ${s.display_order}`,
+						display_order: s.display_order || 1,
+						semester_group: s.semester_group || s.semester_type // semester_group indicates year (I Year, II Year, etc.)
+					}))
+					// Sort by display_order
+					semesterData.sort((a, b) => a.display_order - b.display_order)
+					setSemesters(semesterData)
+					console.log('[HallTickets] Fetched semesters with semester_group:', semesterData)
+					return
+				}
+			}
+
+			// Fallback: generate semester numbers based on program duration when no semesters found
+			console.warn('[HallTickets] No semesters in COE database for program, using fallback generation')
+			const durationYears = selectedProgram?.program_duration_yrs || 4
+			const totalSemesters = durationYears * 2
+			const fallbackSemesters: SemesterWithGroup[] = Array.from({ length: totalSemesters }, (_, i) => {
+				const semNum = i + 1
+				const yearNum = Math.ceil(semNum / 2)
+				const yearLabels = ['I Year', 'II Year', 'III Year', 'IV Year', 'V Year']
+				return {
+					id: `fallback-${semNum}`,
+					semester_code: `SEM${semNum}`,
+					semester_name: `Semester ${semNum}`,
+					display_order: semNum,
+					semester_group: yearLabels[yearNum - 1] || `Year ${yearNum}`
+				}
+			})
+			setSemesters(fallbackSemesters)
+		} catch (error) {
+			console.error('[HallTickets] Error fetching semesters:', error)
+			setSemesters([])
+		}
 	}
 
 	// Handle semester selection change
-	const handleSemesterChange = (newSelection: number[]) => {
+	const handleSemesterChange = (newSelection: string[]) => {
 		setSelectedSemesters(newSelection)
 		setPreviewData(null)
 		setStudentCount(0)
@@ -309,9 +434,16 @@ export default function HallTicketsPage() {
 				params.append('program_id', selectedProgramId)
 			}
 
-			// Pass semester numbers instead of IDs
-			if (selectedSemesters.length > 0) {
-				params.append('semester_ids', selectedSemesters.join(','))
+			// Pass semester IDs (or display_order numbers for fallback semesters)
+			if (selectedSemesters.length > 0 && selectedSemesters.length < semesters.length) {
+				// Get display_order for selected semesters to pass as semester numbers
+				const semesterNumbers = selectedSemesters.map(semId => {
+					const sem = semesters.find(s => s.id === semId)
+					return sem?.display_order || 0
+				}).filter(n => n > 0)
+				if (semesterNumbers.length > 0) {
+					params.append('semester_ids', semesterNumbers.join(','))
+				}
 			}
 
 			const res = await fetch(`/api/pre-exam/hall-tickets?${params.toString()}`)

@@ -13,13 +13,26 @@ export async function GET(request: Request) {
 		const examDate = searchParams.get('exam_date')
 		const sessionType = searchParams.get('session_type')
 
-		// 1. Fetch Institutions
+		// Institution filter params (from useInstitutionFilter hook)
+		const filterInstitutionCode = searchParams.get('institution_code')
+		const filterInstitutionsId = searchParams.get('institutions_id')
+
+		// 1. Fetch Institutions - Apply institution filter for non-super_admin users
 		if (type === 'institutions') {
-			const { data, error } = await supabase
+			let query = supabase
 				.from('institutions')
-				.select('id, institution_code, name')
+				.select('id, institution_code, name, myjkkn_institution_ids')
 				.eq('is_active', true)
-				.order('name', { ascending: true })
+
+			// Apply filter if provided (normal users have filter, super_admin may not)
+			if (filterInstitutionCode) {
+				query = query.eq('institution_code', filterInstitutionCode)
+			} else if (filterInstitutionsId) {
+				query = query.eq('id', filterInstitutionsId)
+			}
+			// If no filter: super_admin viewing all - return all institutions
+
+			const { data, error } = await query.order('name', { ascending: true })
 
 			if (error) {
 				console.error('Error fetching institutions:', error)
@@ -30,7 +43,8 @@ export async function GET(request: Request) {
 			const mappedData = (data || []).map(inst => ({
 				id: inst.id,
 				institution_code: inst.institution_code,
-				institution_name: inst.name
+				institution_name: inst.name,
+				myjkkn_institution_ids: inst.myjkkn_institution_ids || []
 			}))
 
 			return NextResponse.json(mappedData)
@@ -62,59 +76,180 @@ export async function GET(request: Request) {
 			return NextResponse.json(mappedData)
 		}
 
-		// 3. Fetch Programs (filtered by institution and session)
-	if (type === 'programs' && institutionId && sessionId) {
-		const { data, error } = await supabase
-			.from('course_offerings')
-			.select(`
-				program_id,
-				programs!inner(
-					id,
-					program_code,
-					program_name,
-					program_order
-				)
-			`)
-			.eq('institutions_id', institutionId)
-			.eq('examination_session_id', sessionId)
-			.eq('is_active', true)
+		// 3. Fetch Programs from MyJKKN API (per MyJKKN COE dev rules)
+		// Use myjkkn_institution_ids directly - no FK relationship needed
+		if (type === 'programs' && institutionId && sessionId) {
+			// Step 1: Get myjkkn_institution_ids from the institution
+			const { data: instData, error: instError } = await supabase
+				.from('institutions')
+				.select('id, myjkkn_institution_ids')
+				.eq('id', institutionId)
+				.single()
 
-		if (error) {
-			console.error('Error fetching programs:', error)
-			return NextResponse.json({ error: 'Failed to fetch programs' }, { status: 500 })
+			if (instError || !instData) {
+				console.error('Error fetching institution:', instError)
+				return NextResponse.json({ error: 'Institution not found' }, { status: 404 })
+			}
+
+			const myjkknIds = instData.myjkkn_institution_ids || []
+
+			// Step 2: Get unique program_codes from course_offerings for this session
+			const { data: offeringsData, error: offeringsError } = await supabase
+				.from('course_offerings')
+				.select('program_code')
+				.eq('institutions_id', institutionId)
+				.eq('examination_session_id', sessionId)
+				.eq('is_active', true)
+
+			if (offeringsError) {
+				console.error('Error fetching course offerings:', offeringsError)
+				return NextResponse.json({ error: 'Failed to fetch course offerings' }, { status: 500 })
+			}
+
+			// Get unique program codes from course_offerings
+			const programCodesInOfferings = new Set(
+				offeringsData?.map((o: any) => o.program_code).filter(Boolean) || []
+			)
+
+			if (programCodesInOfferings.size === 0) {
+				console.log('No program codes found in course_offerings')
+				return NextResponse.json([])
+			}
+
+			// Step 3: Fetch programs from MyJKKN API
+			// If no myjkkn_institution_ids, fall back to fetching all active programs
+			const allPrograms: any[] = []
+			const seenCodes = new Set<string>()
+
+			try {
+				if (myjkknIds.length > 0) {
+					// Fetch from MyJKKN for each institution ID
+					for (const myjkknInstId of myjkknIds) {
+						const params = new URLSearchParams()
+						params.set('limit', '1000')
+						params.set('is_active', 'true')
+						params.set('institution_id', myjkknInstId)
+
+						const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'
+						const res = await fetch(`${baseUrl}/api/myjkkn/programs?${params.toString()}`)
+
+						if (res.ok) {
+							const response = await res.json()
+							const data = response.data || response || []
+
+							// Client-side filter by institution_id (MyJKKN API may not filter server-side)
+							const programs = Array.isArray(data)
+								? data.filter((p: any) => {
+									const programCode = p?.program_id || p?.program_code
+									return programCode &&
+										p.is_active !== false &&
+										p.institution_id === myjkknInstId &&
+										programCodesInOfferings.has(programCode) // Only include programs with course offerings
+								})
+								: []
+
+							// Deduplicate by program_code (per MyJKKN COE dev rules)
+							for (const prog of programs) {
+								const programCode = prog.program_id || prog.program_code
+								if (programCode && !seenCodes.has(programCode)) {
+									seenCodes.add(programCode)
+									allPrograms.push({
+										id: prog.id,
+										program_code: programCode,
+										program_name: prog.program_name || prog.name || programCode,
+										program_order: prog.program_order ?? prog.sort_order ?? 999
+									})
+								}
+							}
+						}
+					}
+				} else {
+					// No myjkkn_institution_ids - fetch all programs from MyJKKN
+					const params = new URLSearchParams()
+					params.set('limit', '1000')
+					params.set('is_active', 'true')
+
+					const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'
+					const res = await fetch(`${baseUrl}/api/myjkkn/programs?${params.toString()}`)
+
+					if (res.ok) {
+						const response = await res.json()
+						const data = response.data || response || []
+
+						const programs = Array.isArray(data)
+							? data.filter((p: any) => {
+								const programCode = p?.program_id || p?.program_code
+								return programCode &&
+									p.is_active !== false &&
+									programCodesInOfferings.has(programCode)
+							})
+							: []
+
+						for (const prog of programs) {
+							const programCode = prog.program_id || prog.program_code
+							if (programCode && !seenCodes.has(programCode)) {
+								seenCodes.add(programCode)
+								allPrograms.push({
+									id: prog.id,
+									program_code: programCode,
+									program_name: prog.program_name || prog.name || programCode,
+									program_order: prog.program_order ?? prog.sort_order ?? 999
+								})
+							}
+						}
+					}
+				}
+			} catch (apiError) {
+				console.error('Error fetching programs from MyJKKN API:', apiError)
+				// Fall back to returning program codes from course_offerings without names
+				return NextResponse.json(
+					Array.from(programCodesInOfferings).map(code => ({
+						id: code,
+						program_code: code,
+						program_name: code,
+						program_order: 999
+					}))
+				)
+			}
+
+			// Sort by program_order first, then by program_code
+			const sortedPrograms = allPrograms.sort((a: any, b: any) => {
+				if (a.program_order !== b.program_order) {
+					return a.program_order - b.program_order
+				}
+				return a.program_code.localeCompare(b.program_code)
+			})
+
+			console.log('Programs fetched from MyJKKN:', sortedPrograms.length)
+			return NextResponse.json(sortedPrograms)
 		}
 
-		// Extract unique programs
-		const uniquePrograms = new Map()
-		data?.forEach((item: any) => {
-			const program = item.programs
-			const programCode = program?.program_code
-			if (program && programCode && !uniquePrograms.has(programCode)) {
-				uniquePrograms.set(programCode, {
-					id: program.id,
-					program_code: programCode,
-					program_name: program.program_name || programCode,
-					program_order: program.program_order || 999
-				})
-			}
-		})
-
-		const programs = Array.from(uniquePrograms.values()).sort((a: any, b: any) => {
-			// Sort by program_order first, then by program_code
-			if (a.program_order !== b.program_order) {
-				return a.program_order - b.program_order
-			}
-			return a.program_code.localeCompare(b.program_code)
-		})
-
-		return NextResponse.json(programs)
-	}
-
 	// 4. Fetch Exam Dates (filtered by examination_session, program_code, and TODAY's date only)
+		// exam_timetables has course_offering_id → course_offerings has program_code
 		if (type === 'exam_dates' && institutionId && sessionId && programCode) {
 			const today = new Date().toISOString().split('T')[0]
 			console.log('Fetching exam dates for:', { institutionId, sessionId, programCode, today })
 
+			// Step 1: Get course_offering_ids that match the program_code
+			const { data: offeringsData, error: offeringsError } = await supabase
+				.from('course_offerings')
+				.select('id')
+				.eq('institutions_id', institutionId)
+				.eq('examination_session_id', sessionId)
+				.eq('program_code', programCode)
+
+			if (offeringsError) {
+				console.error('Error fetching course offerings:', offeringsError)
+				return NextResponse.json({ error: 'Failed to fetch course offerings' }, { status: 500 })
+			}
+
+			const offeringIds = offeringsData?.map((o: any) => o.id) || []
+			if (offeringIds.length === 0) {
+				console.log('No course offerings found for program:', programCode)
+				return NextResponse.json([])
+			}
+
+			// Step 2: Get exam_timetables for those course_offerings
 			const { data, error } = await supabase
 				.from('exam_timetables')
 				.select(`
@@ -122,17 +257,11 @@ export async function GET(request: Request) {
 					exam_date,
 					exam_time,
 					session,
-					duration_minutes,
-					course_offering_id,
-					course_offerings!inner(
-						program_id,
-						programs!inner(
-							program_code
-						)
-					)
+					duration_minutes
 				`)
 				.eq('institutions_id', institutionId)
 				.eq('examination_session_id', sessionId)
+				.in('course_offering_id', offeringIds)
 				.eq('exam_date', today)
 				.eq('is_published', true)
 				.order('exam_time', { ascending: true })
@@ -142,18 +271,11 @@ export async function GET(request: Request) {
 				return NextResponse.json({ error: 'Failed to fetch exam dates', details: error }, { status: 500 })
 			}
 
-			console.log('Raw exam dates data:', data?.length, 'records')
+			console.log('Exam dates data:', data?.length, 'records for program', programCode)
 
-			// Filter by program_code
-			const filteredData = (data || []).filter((item: any) => {
-				const itemProgramCode = item.course_offerings?.programs?.program_code
-				return itemProgramCode === programCode
-			})
-			console.log('Filtered exam dates:', filteredData.length, 'records for program', programCode)
-
-			// Get unique dates (remove duplicates)
+			// Get unique dates (remove duplicates by date-session)
 			const uniqueDates = new Map()
-			filteredData.forEach((item: any) => {
+			;(data || []).forEach((item: any) => {
 				const key = `${item.exam_date}-${item.session}`
 				if (!uniqueDates.has(key)) {
 					uniqueDates.set(key, item)
@@ -165,24 +287,41 @@ export async function GET(request: Request) {
 			return NextResponse.json(result)
 		}
 
-		// 5. Fetch Session Types (FN/AN) from exam_timetables for selected exam date and course
+		// 5. Fetch Session Types (FN/AN) from exam_timetables for selected exam date and program
+		// exam_timetables has course_offering_id → course_offerings has program_code
 		if (type === 'session_types' && institutionId && sessionId && programCode && examDate) {
+			console.log('Fetching session types for:', { institutionId, sessionId, programCode, examDate })
+
+			// Step 1: Get course_offering_ids that match the program_code
+			const { data: offeringsData, error: offeringsError } = await supabase
+				.from('course_offerings')
+				.select('id')
+				.eq('institutions_id', institutionId)
+				.eq('examination_session_id', sessionId)
+				.eq('program_code', programCode)
+
+			if (offeringsError) {
+				console.error('Error fetching course offerings:', offeringsError)
+				return NextResponse.json({ error: 'Failed to fetch course offerings' }, { status: 500 })
+			}
+
+			const offeringIds = offeringsData?.map((o: any) => o.id) || []
+			if (offeringIds.length === 0) {
+				console.log('No course offerings found for program:', programCode)
+				return NextResponse.json([])
+			}
+
+			// Step 2: Get exam_timetables for those course_offerings
 			const { data, error } = await supabase
 				.from('exam_timetables')
 				.select(`
 					id,
 					session,
-					exam_time,
-					course_offering_id,
-					course_offerings!inner(
-						program_id,
-						programs!inner(
-							program_code
-						)
-					)
+					exam_time
 				`)
 				.eq('institutions_id', institutionId)
 				.eq('examination_session_id', sessionId)
+				.in('course_offering_id', offeringIds)
 				.eq('exam_date', examDate)
 				.eq('is_published', true)
 
@@ -191,15 +330,11 @@ export async function GET(request: Request) {
 				return NextResponse.json({ error: 'Failed to fetch session types' }, { status: 500 })
 			}
 
-			// Filter by course_code
-			const filteredData = (data || []).filter((item: any) => {
-				const itemProgramCode = item.course_offerings?.programs?.program_code
-				return itemProgramCode === programCode
-			})
+			console.log('Session types data:', data?.length, 'records')
 
 			// Get unique sessions (FN/AN)
 			const uniqueSessions = new Map()
-			filteredData.forEach((item: any) => {
+			;(data || []).forEach((item: any) => {
 				const key = item.session
 				if (!uniqueSessions.has(key)) {
 					uniqueSessions.set(key, item)
@@ -209,60 +344,50 @@ export async function GET(request: Request) {
 			return NextResponse.json(Array.from(uniqueSessions.values()))
 		}
 
-		// 6. Fetch Courses - Following exact SQL pattern with exam_registrations as base
-		// Pattern matches: exam_registrations → course_offerings → courses
-		//                  LEFT JOIN exam_timetables ON et.course_id = c.id
+		// 6. Fetch Courses - Get courses from course_offerings filtered by program, then match with exam_timetables
+		// Flow: course_offerings (program_code filter) → get course_id → match exam_timetables.course_id
 		if (type === 'courses' && institutionId && sessionId && programCode && examDate && sessionType) {
 			console.log('Fetching courses with params:', { institutionId, sessionId, programCode, examDate, sessionType })
 
-			// Query exam_registrations as base table (matching SQL)
-			const { data, error } = await supabase
-				.from('exam_registrations')
-				.select(`
-					id,
-					institutions!inner(id),
-					course_offerings!inner(
-						id,
-						examination_sessions!inner(id),
-						programs!inner(program_code),
-						courses!inner(
-							id,
-							course_code,
-							course_name
-						)
-					)
-				`)
-				.eq('institutions.id', institutionId)
-				.eq('course_offerings.examination_sessions.id', sessionId)
-				.eq('course_offerings.programs.program_code', programCode)
+			// Step 1: Get course_id list from course_offerings filtered by program_code
+			// course_offerings.course_id references courses.id
+			const { data: offeringsData, error: offeringsError } = await supabase
+				.from('course_offerings')
+				.select('id, course_id, course_code')
+				.eq('institutions_id', institutionId)
+				.eq('examination_session_id', sessionId)
+				.eq('program_code', programCode)
+				.eq('is_active', true)
 
-			if (error) {
-				console.error('Error fetching courses from exam_registrations:', error)
-				return NextResponse.json({ error: 'Failed to fetch courses', details: error }, { status: 500 })
+			if (offeringsError) {
+				console.error('Error fetching course offerings:', offeringsError)
+				return NextResponse.json({ error: 'Failed to fetch course offerings', details: offeringsError }, { status: 500 })
 			}
 
-			console.log('Exam registrations query - records found:', data?.length)
+			console.log('Course offerings found:', offeringsData?.length)
 
-			// Get unique course IDs
-			const courseIds = new Set<string>()
-			data?.forEach((item: any) => {
-				const courseId = item.course_offerings?.courses?.id
-				if (courseId) {
-					courseIds.add(courseId)
+			// Get unique course_ids from course_offerings
+			const courseIds = [...new Set(offeringsData?.map((o: any) => o.course_id).filter(Boolean) || [])]
+			const courseCodeMap = new Map<string, string>()
+			offeringsData?.forEach((o: any) => {
+				if (o.course_id && o.course_code) {
+					courseCodeMap.set(o.course_id, o.course_code)
 				}
 			})
 
-			if (courseIds.size === 0) {
+			if (courseIds.length === 0) {
+				console.log('No course_ids found in course_offerings')
 				return NextResponse.json([])
 			}
 
-			console.log('Found course IDs:', Array.from(courseIds))
+			console.log('Course IDs from offerings:', courseIds)
 
-			// Now filter by exam_timetables (et.course_id = c.id)
+			// Step 2: Filter by exam_timetables using course_id + exam_date + session
+			// exam_timetables.course_id references courses.id
 			const { data: timetableData, error: timetableError } = await supabase
 				.from('exam_timetables')
 				.select('course_id')
-				.in('course_id', Array.from(courseIds))
+				.in('course_id', courseIds)
 				.eq('institutions_id', institutionId)
 				.eq('examination_session_id', sessionId)
 				.eq('exam_date', examDate)
@@ -276,20 +401,32 @@ export async function GET(request: Request) {
 
 			console.log('Timetable matches found:', timetableData?.length)
 
-			// Get valid course IDs that have timetables
-			const validCourseIds = new Set(timetableData?.map((t: any) => t.course_id) || [])
+			// Get valid course IDs that have timetables for the selected date/session
+			const validCourseIds = [...new Set(timetableData?.map((t: any) => t.course_id) || [])]
 
-			// Extract unique courses
+			if (validCourseIds.length === 0) {
+				console.log('No courses found in exam_timetables for the selected date/session')
+				return NextResponse.json([])
+			}
+
+			// Step 3: Get course details from courses table
+			const { data: coursesData, error: coursesError } = await supabase
+				.from('courses')
+				.select('id, course_code, course_name')
+				.in('id', validCourseIds)
+
+			if (coursesError) {
+				console.error('Error fetching course details:', coursesError)
+				return NextResponse.json({ error: 'Failed to fetch course details', details: coursesError }, { status: 500 })
+			}
+
+			// Build final course list
 			const uniqueCourses = new Map()
-			data?.forEach((item: any) => {
-				const course = item.course_offerings?.courses
-				const courseId = course?.id
-				const courseCode = course?.course_code
-
-				if (course && courseId && validCourseIds.has(courseId) && !uniqueCourses.has(courseCode)) {
-					uniqueCourses.set(courseCode, {
-						course_code: courseCode,
-						course_title: course.course_name || courseCode
+			coursesData?.forEach((course: any) => {
+				if (!uniqueCourses.has(course.course_code)) {
+					uniqueCourses.set(course.course_code, {
+						course_code: course.course_code,
+						course_title: course.course_name || course.course_code
 					})
 				}
 			})
@@ -298,7 +435,7 @@ export async function GET(request: Request) {
 				a.course_code.localeCompare(b.course_code)
 			)
 
-			console.log('Unique courses after timetable filter:', courses.length)
+			console.log('Final courses list:', courses.length)
 			return NextResponse.json(courses)
 		}
 

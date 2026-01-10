@@ -1,6 +1,6 @@
 "use client"
 
-import { useMemo, useState, useEffect } from "react"
+import { useMemo, useState, useEffect, useRef } from "react"
 import XLSX from "@/lib/utils/excel-compat"
 import jsPDF from 'jspdf'
 import autoTable from 'jspdf-autotable'
@@ -24,6 +24,7 @@ import { Textarea } from "@/components/ui/textarea"
 import { useToast } from "@/hooks/common/use-toast"
 import Link from "next/link"
 import { PlusCircle, Edit, Trash2, Search, ChevronLeft, ChevronRight, ArrowUpDown, ArrowUp, ArrowDown, Calendar, TrendingUp, FileSpreadsheet, RefreshCw, CheckCircle, XCircle, AlertTriangle, CalendarCheck, Sparkles, FileDown, FileText } from "lucide-react"
+import { useInstitutionFilter } from "@/hooks/use-institution-filter"
 
 // Import types from module
 import type {
@@ -56,6 +57,17 @@ import {
 
 export default function ExamTimetablePage() {
   const { toast } = useToast()
+
+  // Institution filter hook
+  const {
+    isReady,
+    mustSelectInstitution,
+    shouldFilter,
+    institutionId,
+    institutionCode: contextInstitutionCode,
+    getInstitutionCodeForCreate
+  } = useInstitutionFilter()
+
   const [items, setItems] = useState<ExamTimetable[]>([])
   const [loading, setLoading] = useState(true)
   const [searchTerm, setSearchTerm] = useState("")
@@ -84,11 +96,16 @@ export default function ExamTimetablePage() {
   const [generatedCourses, setGeneratedCourses] = useState<GeneratedCourseData[]>([])
   const [generatedLoading, setGeneratedLoading] = useState(false)
 
+  // Ref to track component mount state
+  const isMountedRef = useRef(false)
+
   // Fetch institutions
   const fetchInstitutions = async () => {
     try {
       const data = await fetchInstitutionsService()
-      setInstitutions(data)
+      if (isMountedRef.current) {
+        setInstitutions(data)
+      }
     } catch (error) {
       console.error('Failed to fetch institutions:', error)
     }
@@ -98,7 +115,9 @@ export default function ExamTimetablePage() {
   const fetchExaminationSessions = async () => {
     try {
       const data = await fetchExaminationSessionsService()
-      setExaminationSessions(data)
+      if (isMountedRef.current) {
+        setExaminationSessions(data)
+      }
     } catch (error) {
       console.error('Failed to fetch examination sessions:', error)
     }
@@ -108,7 +127,9 @@ export default function ExamTimetablePage() {
   const fetchPrograms = async () => {
     try {
       const data = await fetchProgramsService()
-      setPrograms(data)
+      if (isMountedRef.current) {
+        setPrograms(data)
+      }
     } catch (error) {
       console.error('Failed to fetch programs:', error)
     }
@@ -118,7 +139,9 @@ export default function ExamTimetablePage() {
   const fetchSemesters = async () => {
     try {
       const data = await fetchSemestersService()
-      setSemesters(data)
+      if (isMountedRef.current) {
+        setSemesters(data)
+      }
     } catch (error) {
       console.error('Failed to fetch semesters:', error)
     }
@@ -127,31 +150,45 @@ export default function ExamTimetablePage() {
   // Fetch exam timetables from API
   const fetchExamTimetables = async () => {
     try {
-      setLoading(true)
+      if (isMountedRef.current) {
+        setLoading(true)
+      }
       const data = await fetchExamTimetablesService()
-      setItems(data)
+      if (isMountedRef.current) {
+        setItems(data)
+      }
     } catch (error) {
       console.error('Error fetching exam timetables:', error)
-      setItems([])
+      if (isMountedRef.current) {
+        setItems([])
+      }
     } finally {
-      setLoading(false)
+      if (isMountedRef.current) {
+        setLoading(false)
+      }
     }
   }
 
   // Load data on component mount
   useEffect(() => {
+    isMountedRef.current = true
     fetchExamTimetables()
     fetchInstitutions()
     fetchExaminationSessions()
     fetchPrograms()
     fetchSemesters()
 
-    // Get institution code from user session
-    const user = supabaseAuthService.getUser()
-    if (user?.user_metadata?.institution_code) {
-      setSelectedInstitutionCode(user.user_metadata.institution_code)
+    return () => {
+      isMountedRef.current = false
     }
   }, [])
+
+  // Auto-select institution from global context when not "All Institutions"
+  useEffect(() => {
+    if (isReady && !mustSelectInstitution && contextInstitutionCode) {
+      setSelectedInstitutionCode(contextInstitutionCode)
+    }
+  }, [isReady, mustSelectInstitution, contextInstitutionCode])
 
   // Cascading filters following the order: Institution Code → Session Name → Program Type → Program → Semester
 
@@ -264,7 +301,9 @@ export default function ExamTimetablePage() {
     }
 
     try {
-      setGeneratedLoading(true)
+      if (isMountedRef.current) {
+        setGeneratedLoading(true)
+      }
 
       // Build query parameters dynamically based on selected filters
       const params = new URLSearchParams()
@@ -277,7 +316,9 @@ export default function ExamTimetablePage() {
           description: "Invalid institution selected.",
           variant: "destructive",
         })
-        setGeneratedLoading(false)
+        if (isMountedRef.current) {
+          setGeneratedLoading(false)
+        }
         return
       }
       params.append('institutions_id', selectedInstitution.id)
@@ -414,7 +455,9 @@ export default function ExamTimetablePage() {
         return (a.semester || 0) - (b.semester || 0)
       })
 
-      setGeneratedCourses(sortedData)
+      if (isMountedRef.current) {
+        setGeneratedCourses(sortedData)
+      }
 
       // Build filter description for toast
       const selectedSemesterName = selectedSemesterId
@@ -440,7 +483,9 @@ export default function ExamTimetablePage() {
         className: "bg-red-50 border-red-200 text-red-800 dark:bg-red-900/20 dark:border-red-800 dark:text-red-200",
       })
     } finally {
-      setGeneratedLoading(false)
+      if (isMountedRef.current) {
+        setGeneratedLoading(false)
+      }
     }
   }
 
@@ -488,7 +533,9 @@ export default function ExamTimetablePage() {
     }
 
     try {
-      setLoading(true)
+      if (isMountedRef.current) {
+        setLoading(true)
+      }
       let successCount = 0
       let errorCount = 0
       const errors: string[] = []
@@ -501,7 +548,9 @@ export default function ExamTimetablePage() {
           description: "Invalid institution selected.",
           variant: "destructive",
         })
-        setLoading(false)
+        if (isMountedRef.current) {
+          setLoading(false)
+        }
         return
       }
 
@@ -548,7 +597,9 @@ export default function ExamTimetablePage() {
           className: "bg-green-50 border-green-200 text-green-800 dark:bg-green-900/20 dark:border-green-800 dark:text-green-200",
         })
         fetchExamTimetables()
-        setGeneratedCourses([])
+        if (isMountedRef.current) {
+          setGeneratedCourses([])
+        }
       } else if (successCount > 0 && errorCount > 0) {
         toast({
           title: "⚠️ Partial Save Success",
@@ -574,7 +625,9 @@ export default function ExamTimetablePage() {
         variant: "destructive",
       })
     } finally {
-      setLoading(false)
+      if (isMountedRef.current) {
+        setLoading(false)
+      }
     }
   }
 
@@ -738,7 +791,7 @@ export default function ExamTimetablePage() {
           rows = dataRows
         } else if (file.name.endsWith('.xlsx') || file.name.endsWith('.xls')) {
           const data = new Uint8Array(await file.arrayBuffer())
-          const wb = XLSX.read(data, { type: 'array' })
+          const wb = await XLSX.read(data)
           const ws = wb.Sheets[wb.SheetNames[0]]
           rows = XLSX.utils.sheet_to_json(ws) as Record<string, unknown>[]
         }
@@ -774,7 +827,9 @@ export default function ExamTimetablePage() {
           return course
         })
 
-        setGeneratedCourses(updatedCourses)
+        if (isMountedRef.current) {
+          setGeneratedCourses(updatedCourses)
+        }
 
         toast({
           title: "✅ Import Complete",
@@ -905,24 +960,26 @@ export default function ExamTimetablePage() {
                 </div>
 
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-6 gap-3">
-                  {/* Institution Code - Required */}
-                  <div className="space-y-1">
-                    <Label htmlFor="institution_code" className="text-xs font-semibold">
-                      Institution Code <span className="text-red-500">*</span>
-                    </Label>
-                    <Select value={selectedInstitutionCode} onValueChange={handleInstitutionChange}>
-                      <SelectTrigger className="h-9 text-xs">
-                        <SelectValue placeholder="Select Institution" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {institutions.map(institution => (
-                          <SelectItem key={institution.id} value={institution.institution_code} className="text-xs">
-                            {institution.institution_code}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
+                  {/* Institution Code - Required (only shown when "All Institutions" selected globally) */}
+                  {mustSelectInstitution && (
+                    <div className="space-y-1">
+                      <Label htmlFor="institution_code" className="text-xs font-semibold">
+                        Institution Code <span className="text-red-500">*</span>
+                      </Label>
+                      <Select value={selectedInstitutionCode} onValueChange={handleInstitutionChange}>
+                        <SelectTrigger className="h-9 text-xs">
+                          <SelectValue placeholder="Select Institution" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {institutions.map(institution => (
+                            <SelectItem key={institution.id} value={institution.institution_code} className="text-xs">
+                              {institution.institution_code}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  )}
 
                   {/* Session Name - Optional (filtered by institution) */}
                   <div className="space-y-1">

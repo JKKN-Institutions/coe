@@ -117,6 +117,8 @@ interface Institution {
 	id: string
 	name: string
 	institution_code: string
+	institution_name: string
+	myjkkn_institution_ids: string[] | null  // Required for MyJKKN integration
 }
 
 interface Session {
@@ -192,6 +194,8 @@ export default function BulkInternalMarksPage() {
 	})
 	const [templateExportLoading, setTemplateExportLoading] = useState(false)
 	const [importInProgress, setImportInProgress] = useState(false)
+	// Institution selection for import when mustSelectInstitution is true
+	const [importInstitutionId, setImportInstitutionId] = useState("")
 
 	// Fetch institutions on mount when ready
 	useEffect(() => {
@@ -239,7 +243,14 @@ export default function BulkInternalMarksPage() {
 			const res = await fetch(url)
 			if (res.ok) {
 				const data = await res.json()
-				setInstitutions(data)
+				// Map institutions with all required fields including myjkkn_institution_ids
+				setInstitutions(data.map((i: any) => ({
+					id: i.id,
+					name: i.name || i.institution_name,
+					institution_code: i.institution_code,
+					institution_name: i.institution_name || i.name,
+					myjkkn_institution_ids: i.myjkkn_institution_ids || []
+				})))
 			}
 		} catch (error) {
 			console.error('Failed to fetch institutions:', error)
@@ -601,7 +612,28 @@ export default function BulkInternalMarksPage() {
 
 	// Upload Marks
 	const handleUploadMarks = async () => {
-		if (!selectedInstitution) {
+		// Determine institution ID based on mustSelectInstitution
+		// When super_admin views "All Institutions", they must select in the import dialog
+		// Otherwise, use the selectedInstitution from filters or auto-filled value
+		let institutionId: string
+
+		if (mustSelectInstitution) {
+			// super_admin with "All Institutions" - must use the one selected in import dialog
+			if (!importInstitutionId) {
+				toast({
+					title: "⚠️ Select Institution",
+					description: "Please select an institution for the import.",
+					variant: "destructive",
+				})
+				return
+			}
+			institutionId = importInstitutionId
+		} else {
+			// Normal user or super_admin with specific institution selected
+			institutionId = selectedInstitution || getInstitutionIdForCreate() || ''
+		}
+
+		if (!institutionId) {
 			toast({
 				title: "⚠️ Select Institution",
 				description: "Please select an institution before uploading marks.",
@@ -621,6 +653,7 @@ export default function BulkInternalMarksPage() {
 		}
 
 		setPreviewDialogOpen(false)
+		setImportInstitutionId("")  // Reset import institution selection
 		setLoading(true)
 
 		try {
@@ -651,7 +684,7 @@ export default function BulkInternalMarksPage() {
 				headers: { 'Content-Type': 'application/json' },
 				body: JSON.stringify({
 					action: 'bulk-upload',
-					institutions_id: selectedInstitution,
+					institutions_id: institutionId,
 					examination_session_id: selectedSession || null,
 					program_id: selectedProgram || null,
 					course_id: selectedCourse || null,
@@ -1105,6 +1138,12 @@ export default function BulkInternalMarksPage() {
 																onCheckedChange={handleSelectAll}
 															/>
 														</TableHead>
+														{/* Show Institution column only when "All Institutions" is selected */}
+														{mustSelectInstitution && (
+															<TableHead className="py-2">
+																<div className="text-xs font-medium">Institution</div>
+															</TableHead>
+														)}
 														<TableHead className="py-2 cursor-pointer" onClick={() => handleSort('register_no')}>
 															<div className="flex items-center gap-1 text-xs font-medium">
 																Register No {getSortIcon('register_no')}
@@ -1137,14 +1176,14 @@ export default function BulkInternalMarksPage() {
 												<TableBody>
 													{loading ? (
 														<TableRow>
-															<TableCell colSpan={8} className="text-center py-8 text-muted-foreground">
+															<TableCell colSpan={mustSelectInstitution ? 9 : 8} className="text-center py-8 text-muted-foreground">
 																<RefreshCw className="h-4 w-4 animate-spin inline mr-2" />
 																Loading...
 															</TableCell>
 														</TableRow>
 													) : pageItems.length === 0 ? (
 														<TableRow>
-															<TableCell colSpan={8} className="text-center py-8 text-muted-foreground">
+															<TableCell colSpan={mustSelectInstitution ? 9 : 8} className="text-center py-8 text-muted-foreground">
 																No records found
 															</TableCell>
 														</TableRow>
@@ -1159,6 +1198,12 @@ export default function BulkInternalMarksPage() {
 																			onCheckedChange={(checked) => handleSelectItem(item.id, checked as boolean)}
 																		/>
 																	</TableCell>
+																	{/* Show Institution cell when "All Institutions" is selected */}
+																	{mustSelectInstitution && (
+																		<TableCell className="py-2 text-xs">
+																			{institutions.find(i => i.id === item.institutions_id)?.institution_code || '-'}
+																		</TableCell>
+																	)}
 																	<TableCell className="py-2 text-xs font-medium">{item.register_no}</TableCell>
 																	<TableCell className="py-2 text-xs">{item.student_name}</TableCell>
 																	<TableCell className="py-2 text-xs font-mono">{item.course_code}</TableCell>
@@ -1252,7 +1297,10 @@ export default function BulkInternalMarksPage() {
 			</AlertDialog>
 
 			{/* Import Preview Dialog - follows skill pattern */}
-			<Dialog open={previewDialogOpen} onOpenChange={setPreviewDialogOpen}>
+			<Dialog open={previewDialogOpen} onOpenChange={(open) => {
+				setPreviewDialogOpen(open)
+				if (!open) setImportInstitutionId("")  // Reset on close
+			}}>
 				<DialogContent className="max-w-4xl max-h-[80vh] overflow-hidden flex flex-col">
 					<DialogHeader>
 						<DialogTitle className="flex items-center gap-2">
@@ -1265,6 +1313,30 @@ export default function BulkInternalMarksPage() {
 							<span className="text-red-600 font-medium">{importPreviewData.filter(i => !i.isValid).length} with errors</span>
 						</DialogDescription>
 					</DialogHeader>
+
+					{/* Institution selection for super_admin when "All Institutions" is selected */}
+					{mustSelectInstitution && (
+						<div className="space-y-2 mb-4">
+							<label className="text-sm font-medium">
+								Institution <span className="text-red-500">*</span>
+							</label>
+							<Select value={importInstitutionId} onValueChange={setImportInstitutionId}>
+								<SelectTrigger className={!importInstitutionId ? 'border-amber-300' : ''}>
+									<SelectValue placeholder="Select institution for import" />
+								</SelectTrigger>
+								<SelectContent>
+									{institutions.map((inst) => (
+										<SelectItem key={inst.id} value={inst.id}>
+											{inst.institution_code} - {inst.institution_name || inst.name}
+										</SelectItem>
+									))}
+								</SelectContent>
+							</Select>
+							<p className="text-xs text-muted-foreground">
+								All imported records will be assigned to this institution
+							</p>
+						</div>
+					)}
 
 					<div className="flex-1 overflow-y-auto border rounded-lg">
 						<Table>
@@ -1351,7 +1423,11 @@ export default function BulkInternalMarksPage() {
 						</Button>
 						<Button
 							onClick={handleUploadMarks}
-							disabled={importPreviewData.filter(r => r.isValid).length === 0 || loading}
+							disabled={
+								importPreviewData.filter(r => r.isValid).length === 0 ||
+								loading ||
+								(mustSelectInstitution && !importInstitutionId)  // Require institution when "All Institutions"
+							}
 						>
 							{loading ? (
 								<>

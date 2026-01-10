@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useCallback } from "react"
 import { AppSidebar } from "@/components/layout/app-sidebar"
 import { AppHeader } from "@/components/layout/app-header"
 import { AppFooter } from "@/components/layout/app-footer"
@@ -24,6 +24,11 @@ import { getISTDate } from "@/lib/utils/date-utils"
 
 import Link from "next/link"
 
+// Institution filter hook
+import { useInstitutionFilter } from '@/hooks/use-institution-filter'
+// MyJKKN API integration hook for fetching programs
+import { useMyJKKNInstitutionFilter } from '@/hooks/use-myjkkn-institution-filter'
+
 // Type imports
 import type {
 	Institution,
@@ -37,9 +42,7 @@ import type {
 
 // Service layer imports
 import {
-	fetchInstitutions as fetchInstitutionsService,
 	fetchSessions as fetchSessionsService,
-	fetchPrograms as fetchProgramsService,
 	fetchSessionTypes as fetchSessionTypesService,
 	fetchCourses as fetchCoursesService,
 	checkAttendance,
@@ -49,6 +52,19 @@ import {
 
 export default function ExamAttendancePage() {
 	const { toast } = useToast()
+
+	// Institution filter hook - handles role-based institution access
+	const {
+		isReady,
+		appendToUrl,
+		getInstitutionIdForCreate,
+		mustSelectInstitution,
+		shouldFilter,
+		institutionId: contextInstitutionId,
+	} = useInstitutionFilter()
+
+	// MyJKKN API hook for fetching programs
+	const { fetchPrograms: fetchProgramsFromMyJKKN } = useMyJKKNInstitutionFilter()
 
 	// Dropdown data
 	const [institutions, setInstitutions] = useState<Institution[]>([])
@@ -89,23 +105,46 @@ export default function ExamAttendancePage() {
 	const [programSearch, setProgramSearch] = useState("")
 	const [courseSearch, setCourseSearch] = useState("")
 
-	// Load institutions on mount
-	useEffect(() => {
-		fetchInstitutions()
-	}, [])
-
-	const fetchInstitutions = async () => {
+	// Fetch institutions when context is ready
+	const fetchInstitutions = useCallback(async () => {
 		try {
-			const data = await fetchInstitutionsService()
-			setInstitutions(data)
+			// Use appendToUrl to apply institution filter for non-super_admin users
+			const url = appendToUrl('/api/exam-management/exam-attendance/dropdowns?type=institutions')
+			const res = await fetch(url)
+			if (res.ok) {
+				const data = await res.json()
+				setInstitutions(data)
+			}
 		} catch (error) {
 			console.error('Error fetching institutions:', error)
 		}
-	}
+	}, [appendToUrl])
+
+	// Load institutions when context is ready
+	useEffect(() => {
+		if (isReady) {
+			fetchInstitutions()
+		}
+	}, [isReady, fetchInstitutions])
+
+	// Auto-select institution for normal users (non super_admin)
+	// When shouldFilter is true and contextInstitutionId exists, auto-fill the institution
+	// Wait for institutions to be loaded first to ensure cascade works properly
+	useEffect(() => {
+		if (isReady && !mustSelectInstitution && contextInstitutionId && !selectedInstitutionId && institutions.length > 0) {
+			// Verify the context institution exists in the loaded list
+			const exists = institutions.some(inst => inst.id === contextInstitutionId)
+			if (exists) {
+				console.log('Auto-selecting institution for normal user:', contextInstitutionId)
+				setSelectedInstitutionId(contextInstitutionId)
+			}
+		}
+	}, [isReady, mustSelectInstitution, contextInstitutionId, selectedInstitutionId, institutions])
 
 	// Cascade 1: Institution → Sessions
 	useEffect(() => {
 		if (selectedInstitutionId) {
+			console.log('Cascade 1: Institution changed, fetching sessions for:', selectedInstitutionId)
 			// Reset dependent fields first
 			setSelectedSessionId("")
 			setSelectedProgramCode("")
@@ -185,13 +224,42 @@ export default function ExamAttendancePage() {
 		}
 	}, [selectedSessionId])
 
-	const fetchPrograms = async (institutionId: string, sessionId: string) => {
+	const fetchPrograms = async (institutionId: string, _sessionId: string) => {
 		try {
 			setLoading(true)
-			const data = await fetchProgramsService(institutionId, sessionId)
-			setPrograms(data)
+			// Get myjkkn_institution_ids from the selected institution
+			const institution = institutions.find(inst => inst.id === institutionId)
+			const myjkknIds = institution?.myjkkn_institution_ids || []
+
+			if (myjkknIds.length === 0) {
+				console.warn('No myjkkn_institution_ids found for institution:', institutionId)
+				setPrograms([])
+				return
+			}
+
+			// Fetch programs from MyJKKN API
+			const programData = await fetchProgramsFromMyJKKN(myjkknIds)
+
+			// Sort by program_order ASC, then by program_code
+			const sortedPrograms = programData.sort((a, b) => {
+				const orderA = a.program_order ?? 999
+				const orderB = b.program_order ?? 999
+				if (orderA !== orderB) return orderA - orderB
+				return a.program_code.localeCompare(b.program_code)
+			})
+
+			// Map to match the Program type expected by the component
+			const mappedPrograms: Program[] = sortedPrograms.map(p => ({
+				id: p.id,
+				program_code: p.program_code,
+				program_name: p.program_name,
+				program_order: p.program_order
+			}))
+
+			setPrograms(mappedPrograms)
 		} catch (error) {
-			console.error('Error fetching programs:', error)
+			console.error('Error fetching programs from MyJKKN:', error)
+			setPrograms([])
 		} finally {
 			setLoading(false)
 		}
@@ -620,102 +688,105 @@ export default function ExamAttendancePage() {
 					<Card className="shadow-sm">
 						<CardContent className="p-3">
 							<div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-2">
-								{/* 1. Institution */}
-								<div className="space-y-1">
-									<Label htmlFor="institution" className="text-[10px] font-medium">
-										Institution <span className="text-red-500">*</span>
-									</Label>
-									<Popover open={institutionOpen} onOpenChange={(open) => {
-										setInstitutionOpen(open)
-										if (!open) setInstitutionSearch("")
-									}}>
-										<PopoverTrigger asChild>
-											<Button
-												variant="outline"
-												role="combobox"
-												aria-expanded={institutionOpen}
-												className="h-auto min-h-[28px] text-[11px] justify-start w-full font-normal px-2 py-1.5"
-												disabled={loading}
-											>
-												<span className="flex-1 text-left whitespace-normal break-words leading-tight">
-													{selectedInstitutionId
-														? institutions.find((inst) => inst.id === selectedInstitutionId)
-															? `${institutions.find((inst) => inst.id === selectedInstitutionId)?.institution_code} - ${institutions.find((inst) => inst.id === selectedInstitutionId)?.institution_name}`
-															: "Select institution"
-														: "Select institution"}
-												</span>
-												<ChevronsUpDown className="ml-1 h-3 w-3 shrink-0 opacity-50" />
-											</Button>
-										</PopoverTrigger>
-										<PopoverContent className="w-[500px] max-w-[90vw] p-0" align="start">
-											<Command shouldFilter={false}>
-												<CommandInput
-													placeholder="Search institution..."
-													className="h-9 text-xs"
-													value={institutionSearch}
-													onValueChange={setInstitutionSearch}
-												/>
-												<CommandList className="max-h-[300px]">
-													<CommandEmpty className="py-6 text-center text-xs text-muted-foreground">No institution found.</CommandEmpty>
-													<CommandGroup>
-														{institutions
-															.filter((inst) => {
-																if (!institutionSearch) return true
-																const search = institutionSearch.toLowerCase()
-																return (
-																	inst.institution_code.toLowerCase().includes(search) ||
-																	inst.institution_name.toLowerCase().includes(search)
-																)
-															})
-															.map((inst) => (
-															<CommandItem
-																key={inst.id}
-																value={inst.id}
-																onSelect={() => {
-																	setSelectedInstitutionId(inst.id)
-																	setInstitutionOpen(false)
-																}}
-																className={cn(
-																	"flex items-start gap-3 py-3 px-3 cursor-pointer rounded-md mb-2 mx-1 transition-all duration-200",
-																	selectedInstitutionId === inst.id
-																		? "bg-gradient-to-r from-amber-50 to-yellow-50 dark:from-amber-900/20 dark:to-yellow-900/20 border-2 border-amber-400 dark:border-amber-600 shadow-md"
-																		: "hover:bg-gradient-to-r hover:from-amber-50/30 hover:to-yellow-50/30 dark:hover:from-amber-900/10 dark:hover:to-yellow-900/10 border-2 border-transparent hover:border-amber-200 dark:hover:border-amber-700"
-																)}
-															>
-																<Check
+								{/* 1. Institution - Only show when mustSelectInstitution is true (super_admin with "All Institutions") */}
+								{/* For normal users, institution is auto-filled and completely hidden */}
+								{mustSelectInstitution && (
+									<div className="space-y-1">
+										<Label htmlFor="institution" className="text-[10px] font-medium">
+											Institution <span className="text-red-500">*</span>
+										</Label>
+										<Popover open={institutionOpen} onOpenChange={(open) => {
+											setInstitutionOpen(open)
+											if (!open) setInstitutionSearch("")
+										}}>
+											<PopoverTrigger asChild>
+												<Button
+													variant="outline"
+													role="combobox"
+													aria-expanded={institutionOpen}
+													className="h-auto min-h-[28px] text-[11px] justify-start w-full font-normal px-2 py-1.5"
+													disabled={loading}
+												>
+													<span className="flex-1 text-left whitespace-normal break-words leading-tight">
+														{selectedInstitutionId
+															? institutions.find((inst) => inst.id === selectedInstitutionId)
+																? `${institutions.find((inst) => inst.id === selectedInstitutionId)?.institution_code} - ${institutions.find((inst) => inst.id === selectedInstitutionId)?.institution_name}`
+																: "Select institution"
+															: "Select institution"}
+													</span>
+													<ChevronsUpDown className="ml-1 h-3 w-3 shrink-0 opacity-50" />
+												</Button>
+											</PopoverTrigger>
+											<PopoverContent className="w-[500px] max-w-[90vw] p-0" align="start">
+												<Command shouldFilter={false}>
+													<CommandInput
+														placeholder="Search institution..."
+														className="h-9 text-xs"
+														value={institutionSearch}
+														onValueChange={setInstitutionSearch}
+													/>
+													<CommandList className="max-h-[300px]">
+														<CommandEmpty className="py-6 text-center text-xs text-muted-foreground">No institution found.</CommandEmpty>
+														<CommandGroup>
+															{institutions
+																.filter((inst) => {
+																	if (!institutionSearch) return true
+																	const search = institutionSearch.toLowerCase()
+																	return (
+																		inst.institution_code.toLowerCase().includes(search) ||
+																		inst.institution_name.toLowerCase().includes(search)
+																	)
+																})
+																.map((inst) => (
+																<CommandItem
+																	key={inst.id}
+																	value={inst.id}
+																	onSelect={() => {
+																		setSelectedInstitutionId(inst.id)
+																		setInstitutionOpen(false)
+																	}}
 																	className={cn(
-																		"mt-1 h-4 w-4 shrink-0",
+																		"flex items-start gap-3 py-3 px-3 cursor-pointer rounded-md mb-2 mx-1 transition-all duration-200",
 																		selectedInstitutionId === inst.id
-																			? "opacity-100 text-amber-600 dark:text-amber-400"
-																			: "opacity-0"
+																			? "bg-gradient-to-r from-amber-50 to-yellow-50 dark:from-amber-900/20 dark:to-yellow-900/20 border-2 border-amber-400 dark:border-amber-600 shadow-md"
+																			: "hover:bg-gradient-to-r hover:from-amber-50/30 hover:to-yellow-50/30 dark:hover:from-amber-900/10 dark:hover:to-yellow-900/10 border-2 border-transparent hover:border-amber-200 dark:hover:border-amber-700"
 																	)}
-																/>
-																<div className="flex-1 min-w-0 space-y-1">
-																	<div className={cn(
-																		"text-sm font-semibold",
-																		selectedInstitutionId === inst.id
-																			? "text-amber-900 dark:text-amber-100"
-																			: "text-foreground"
-																	)}>
-																		{inst.institution_code}
+																>
+																	<Check
+																		className={cn(
+																			"mt-1 h-4 w-4 shrink-0",
+																			selectedInstitutionId === inst.id
+																				? "opacity-100 text-amber-600 dark:text-amber-400"
+																				: "opacity-0"
+																		)}
+																	/>
+																	<div className="flex-1 min-w-0 space-y-1">
+																		<div className={cn(
+																			"text-sm font-semibold",
+																			selectedInstitutionId === inst.id
+																				? "text-amber-900 dark:text-amber-100"
+																				: "text-foreground"
+																		)}>
+																			{inst.institution_code}
+																		</div>
+																		<div className={cn(
+																			"text-xs break-words whitespace-normal leading-relaxed",
+																			selectedInstitutionId === inst.id
+																				? "text-amber-700 dark:text-amber-300"
+																				: "text-muted-foreground"
+																		)}>
+																			{inst.institution_name}
+																		</div>
 																	</div>
-																	<div className={cn(
-																		"text-xs break-words whitespace-normal leading-relaxed",
-																		selectedInstitutionId === inst.id
-																			? "text-amber-700 dark:text-amber-300"
-																			: "text-muted-foreground"
-																	)}>
-																		{inst.institution_name}
-																	</div>
-																</div>
-															</CommandItem>
-														))}
-													</CommandGroup>
-												</CommandList>
-											</Command>
-										</PopoverContent>
-									</Popover>
-								</div>
+																</CommandItem>
+															))}
+														</CommandGroup>
+													</CommandList>
+												</Command>
+											</PopoverContent>
+										</Popover>
+									</div>
+								)}
 
 								{/* 2. Examination Session */}
 								<div className="space-y-1">
@@ -1060,11 +1131,14 @@ export default function ExamAttendancePage() {
 					{showStudentList && (
 						<Card className="bg-gradient-to-r from-indigo-50 to-purple-50 dark:from-indigo-950/20 dark:to-purple-950/20 border-indigo-200 dark:border-indigo-800 shadow-sm">
 							<CardContent className="p-2">
-								<div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-2">
-									<div>
-										<p className="text-[9px] font-medium text-muted-foreground">Institution</p>
-										<p className="text-[11px] font-semibold">{selectedInstitution?.institution_code}</p>
-									</div>
+								<div className={`grid grid-cols-2 sm:grid-cols-3 ${mustSelectInstitution ? 'md:grid-cols-6' : 'md:grid-cols-5'} gap-2`}>
+									{/* Institution - Only show when mustSelectInstitution is true (super_admin viewing All Institutions) */}
+									{mustSelectInstitution && (
+										<div>
+											<p className="text-[9px] font-medium text-muted-foreground">Institution</p>
+											<p className="text-[11px] font-semibold">{selectedInstitution?.institution_code}</p>
+										</div>
+									)}
 									<div>
 										<p className="text-[9px] font-medium text-muted-foreground">Session</p>
 										<p className="text-[11px] font-semibold">{selectedSession?.session_name}</p>

@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback, useMemo } from 'react'
 import { AppSidebar } from '@/components/layout/app-sidebar'
 import { AppHeader } from '@/components/layout/app-header'
 import { AppFooter } from '@/components/layout/app-footer'
@@ -18,7 +18,8 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, Di
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Textarea } from '@/components/ui/textarea'
 import { useToast } from '@/hooks/common/use-toast'
-import { Edit3, Check, ChevronsUpDown, History, Save, AlertTriangle, Download, FileText } from 'lucide-react'
+import { useInstitutionFilter } from '@/hooks/use-institution-filter'
+import { Edit3, Check, ChevronsUpDown, History, Save, AlertTriangle, Download, FileText, Calendar } from 'lucide-react'
 import { numberToWords } from '@/services/post-exam/external-mark-entry-service'
 import { cn } from '@/lib/utils'
 import Link from 'next/link'
@@ -27,12 +28,7 @@ interface Institution {
 	id: string
 	name: string
 	institution_code: string
-}
-
-interface Session {
-	id: string
-	session_name: string
-	session_code: string
+	institution_name?: string
 }
 
 interface Course {
@@ -41,20 +37,12 @@ interface Course {
 	course_name: string
 }
 
-interface Packet {
-	id: string
-	packet_no: string
-	total_sheets: number
-	institutions_id: string
-	examination_session_id: string
-	course_id: string
-}
-
 interface Student {
 	id: string
 	student_dummy_id: string
 	dummy_number: string
 	exam_registration_id: string
+	register_number?: string
 	program_id: string | null
 	total_marks_obtained: number | null
 	total_marks_in_words: string
@@ -67,8 +55,6 @@ interface CourseDetails {
 	subject_name: string
 	maximum_marks: number
 	minimum_pass_marks: number
-	packet_no: string
-	total_sheets: number
 }
 
 interface CorrectionHistory {
@@ -85,27 +71,48 @@ interface CorrectionHistory {
 	}
 }
 
+/**
+ * Get today's date in YYYY-MM-DD format
+ */
+function getTodayDate(): string {
+	const today = new Date()
+	return today.toISOString().split('T')[0]
+}
+
+/**
+ * Format date for display (DD/MM/YYYY)
+ */
+function formatDateDisplay(dateStr: string): string {
+	const [year, month, day] = dateStr.split('-')
+	return `${day}/${month}/${year}`
+}
+
 export default function ExternalMarkCorrectionPage() {
 	const { toast } = useToast()
 
+	// Institution filter hook
+	const {
+		isReady,
+		appendToUrl,
+		mustSelectInstitution,
+		institutionId
+	} = useInstitutionFilter()
+
+	// Today's date - auto-filled and used for filtering (correction only for today's entries)
+	const todayDate = useMemo(() => getTodayDate(), [])
+
 	// Dropdown data
 	const [institutions, setInstitutions] = useState<Institution[]>([])
-	const [sessions, setSessions] = useState<Session[]>([])
 	const [courses, setCourses] = useState<Course[]>([])
-	const [packets, setPackets] = useState<Packet[]>([])
 
-	// Selected values
+	// Selected values - Initialize with institution from context when available
 	const [selectedInstitutionId, setSelectedInstitutionId] = useState<string>('')
-	const [selectedSessionId, setSelectedSessionId] = useState<string>('')
 	const [selectedCourseId, setSelectedCourseId] = useState<string>('')
-	const [selectedPacketId, setSelectedPacketId] = useState<string>('')
-	const [selectedPacket, setSelectedPacket] = useState<Packet | null>(null)
+	const [registerNumber, setRegisterNumber] = useState<string>('')
 
 	// Combobox open states
 	const [institutionOpen, setInstitutionOpen] = useState(false)
-	const [sessionOpen, setSessionOpen] = useState(false)
 	const [courseOpen, setCourseOpen] = useState(false)
-	const [packetOpen, setPacketOpen] = useState(false)
 
 	// Students and course details
 	const [students, setStudents] = useState<Student[]>([])
@@ -113,9 +120,7 @@ export default function ExternalMarkCorrectionPage() {
 
 	// Loading states
 	const [loadingInstitutions, setLoadingInstitutions] = useState(false)
-	const [loadingSessions, setLoadingSessions] = useState(false)
 	const [loadingCourses, setLoadingCourses] = useState(false)
-	const [loadingPackets, setLoadingPackets] = useState(false)
 	const [loadingStudents, setLoadingStudents] = useState(false)
 	const [saving, setSaving] = useState(false)
 
@@ -132,60 +137,60 @@ export default function ExternalMarkCorrectionPage() {
 	const [correctionHistory, setCorrectionHistory] = useState<CorrectionHistory[]>([])
 	const [loadingHistory, setLoadingHistory] = useState(false)
 
-	// Load institutions on mount
+	// Load institutions when context is ready
 	useEffect(() => {
-		loadInstitutions()
-	}, [])
+		if (isReady) {
+			loadInstitutions()
+		}
+	}, [isReady])
 
-	// Load sessions when institution changes
+	// Auto-select institution for normal users (non-super_admin)
+	useEffect(() => {
+		if (isReady && !mustSelectInstitution && institutionId && !selectedInstitutionId) {
+			setSelectedInstitutionId(institutionId)
+		}
+	}, [isReady, mustSelectInstitution, institutionId, selectedInstitutionId])
+
+	// Load courses when institution is selected (using today's date)
 	useEffect(() => {
 		if (selectedInstitutionId) {
-			loadSessions(selectedInstitutionId)
-			resetDependentFields(['session', 'course', 'packet'])
+			loadCourses(selectedInstitutionId, todayDate)
+			resetDependentFields(['course', 'register'])
 		}
-	}, [selectedInstitutionId])
+	}, [selectedInstitutionId, todayDate])
 
-	// Load courses when session changes
-	useEffect(() => {
-		if (selectedSessionId) {
-			loadCourses(selectedInstitutionId, selectedSessionId)
-			resetDependentFields(['course', 'packet'])
-		}
-	}, [selectedSessionId])
-
-	// Load packets when course changes
+	// Clear results when course changes
 	useEffect(() => {
 		if (selectedCourseId) {
-			loadPackets(selectedInstitutionId, selectedSessionId, selectedCourseId)
-			resetDependentFields(['packet'])
+			resetDependentFields(['register'])
 		}
 	}, [selectedCourseId])
 
 	const resetDependentFields = (fields: string[]) => {
-		if (fields.includes('session')) {
-			setSelectedSessionId('')
-			setSessions([])
-		}
 		if (fields.includes('course')) {
 			setSelectedCourseId('')
 			setCourses([])
 		}
-		if (fields.includes('packet')) {
-			setSelectedPacketId('')
-			setSelectedPacket(null)
-			setPackets([])
+		if (fields.includes('register')) {
+			setRegisterNumber('')
 		}
 		setStudents([])
 		setCourseDetails(null)
 	}
 
-	const loadInstitutions = async () => {
+	const loadInstitutions = useCallback(async () => {
 		try {
 			setLoadingInstitutions(true)
-			const response = await fetch('/api/post-exam/external-marks-correction?action=institutions')
+			const url = appendToUrl('/api/post-exam/external-marks-correction?action=institutions')
+			const response = await fetch(url)
 			if (!response.ok) throw new Error('Failed to load institutions')
 			const data = await response.json()
-			setInstitutions(data)
+			setInstitutions(data.map((inst: any) => ({
+				id: inst.id,
+				name: inst.name || inst.institution_name,
+				institution_code: inst.institution_code,
+				institution_name: inst.institution_name || inst.name
+			})))
 		} catch (error) {
 			toast({
 				title: "❌ Error",
@@ -195,39 +200,28 @@ export default function ExternalMarkCorrectionPage() {
 		} finally {
 			setLoadingInstitutions(false)
 		}
-	}
+	}, [appendToUrl, toast])
 
-	const loadSessions = async (institutionId: string) => {
-		try {
-			setLoadingSessions(true)
-			const response = await fetch(
-				`/api/post-exam/external-marks-correction?action=sessions&institutionId=${institutionId}`
-			)
-			if (!response.ok) throw new Error('Failed to load sessions')
-			const data = await response.json()
-			setSessions(data)
-		} catch (error) {
-			toast({
-				title: "❌ Error",
-				description: "Failed to load examination sessions",
-				variant: "destructive",
-			})
-		} finally {
-			setLoadingSessions(false)
-		}
-	}
-
-	const loadCourses = async (institutionId: string, sessionId: string) => {
+	// Load courses with marks entries for today's date
+	const loadCourses = async (institutionId: string, date: string) => {
 		try {
 			setLoadingCourses(true)
 			const response = await fetch(
-				`/api/post-exam/external-marks-correction?action=courses&` +
+				`/api/post-exam/external-marks-correction?action=coursesByDate&` +
 				`institutionId=${institutionId}&` +
-				`sessionId=${sessionId}`
+				`date=${date}`
 			)
 			if (!response.ok) throw new Error('Failed to load courses')
 			const data = await response.json()
 			setCourses(data)
+
+			if (data.length === 0) {
+				toast({
+					title: "⚠️ No Courses",
+					description: `No marks entries found for today (${formatDateDisplay(date)})`,
+					variant: "destructive",
+				})
+			}
 		} catch (error) {
 			toast({
 				title: "❌ Error",
@@ -239,70 +233,59 @@ export default function ExternalMarkCorrectionPage() {
 		}
 	}
 
-	const loadPackets = async (institutionId: string, sessionId: string, courseId: string) => {
-		try {
-			setLoadingPackets(true)
-			const response = await fetch(
-				`/api/post-exam/external-marks-correction?action=packets&` +
-				`institutionId=${institutionId}&` +
-				`sessionId=${sessionId}&` +
-				`courseId=${courseId}`
-			)
-			if (!response.ok) throw new Error('Failed to load packets')
-			const data = await response.json()
-			setPackets(data)
-		} catch (error) {
-			toast({
-				title: "❌ Error",
-				description: "Failed to load packet numbers",
-				variant: "destructive",
-			})
-		} finally {
-			setLoadingPackets(false)
-		}
-	}
-
-	const loadStudents = async () => {
-		if (!selectedPacketId) {
+	const searchByRegisterNumber = async () => {
+		if (!selectedCourseId || !registerNumber.trim()) {
 			toast({
 				title: "⚠️ Selection Required",
-				description: "Please select all fields including packet number",
+				description: "Please select course and enter register number",
 				variant: "destructive",
 			})
 			return
 		}
 
-		const packet = packets.find(p => p.id === selectedPacketId)
-		if (!packet) return
-
 		try {
 			setLoadingStudents(true)
-			setSelectedPacket(packet)
+			setStudents([])
+			setCourseDetails(null)
 
+			const effectiveInstitutionId = selectedInstitutionId || institutionId
 			const response = await fetch(
-				`/api/post-exam/external-marks-correction?action=students&packetId=${packet.id}`
+				`/api/post-exam/external-marks-correction?action=searchByRegisterAndDate&` +
+				`institutionId=${effectiveInstitutionId}&` +
+				`date=${todayDate}&` +
+				`courseId=${selectedCourseId}&` +
+				`registerNumber=${encodeURIComponent(registerNumber.trim())}`
 			)
 
 			if (!response.ok) {
 				const error = await response.json()
-				throw new Error(error.error || 'Failed to load students')
+				throw new Error(error.error || 'Failed to search learner')
 			}
 
 			const data = await response.json()
+
+			if (!data.students || data.students.length === 0) {
+				toast({
+					title: "⚠️ No Results",
+					description: `No marks entry found for register number "${registerNumber}" in today's entries`,
+					variant: "destructive",
+				})
+				return
+			}
 
 			// Map students with marks entry IDs
 			const studentsWithMarks = data.students.map((student: any) => ({
 				...student,
 				id: student.marks_entry_id || student.student_dummy_id,
-				marks_out_of: data.course_details.maximum_marks
+				marks_out_of: data.course_details?.maximum_marks || 100
 			}))
 
 			setStudents(studentsWithMarks)
 			setCourseDetails(data.course_details)
 
 			toast({
-				title: "✅ Packet Loaded",
-				description: `Loaded ${data.students.length} entries for packet ${data.course_details.packet_no}`,
+				title: "✅ Learner Found",
+				description: `Found ${data.students.length} entry for register number "${registerNumber}"`,
 				className: "bg-green-50 border-green-200 text-green-800",
 			})
 		} catch (error) {
@@ -426,8 +409,8 @@ export default function ExternalMarkCorrectionPage() {
 
 			setEditDialogOpen(false)
 
-			// Refresh students data
-			loadStudents()
+			// Refresh students data by re-searching
+			searchByRegisterNumber()
 
 		} catch (error) {
 			toast({
@@ -447,16 +430,16 @@ export default function ExternalMarkCorrectionPage() {
 			// Dynamic import for client-side only
 			const { generateExternalMarksPDF } = await import('@/lib/utils/generate-external-marks-pdf')
 
-			// Prepare PDF data
+			// Prepare PDF data - using register number instead of packet
 			const pdfData = {
 				subject_code: courseDetails.subject_code,
 				subject_name: courseDetails.subject_name,
-				packet_no: courseDetails.packet_no,
-				total_sheets: courseDetails.total_sheets,
+				register_number: registerNumber,
 				maximum_marks: courseDetails.maximum_marks,
 				minimum_pass_marks: courseDetails.minimum_pass_marks,
-				exam_date: new Date().toLocaleDateString('en-GB'),
+				exam_date: formatDateDisplay(todayDate),
 				students: students.map(s => ({
+					register_number: s.register_number || registerNumber,
 					dummy_number: s.dummy_number,
 					total_marks_obtained: s.total_marks_obtained,
 					total_marks_in_words: s.total_marks_in_words,
@@ -465,7 +448,7 @@ export default function ExternalMarkCorrectionPage() {
 			}
 
 			// Generate PDF
-			const fileName = generateExternalMarksPDF(pdfData)
+			const fileName = generateExternalMarksPDF(pdfData as any)
 
 			toast({
 				title: "✅ PDF Downloaded",
@@ -481,13 +464,14 @@ export default function ExternalMarkCorrectionPage() {
 		}
 	}
 
-	const getTotalMarks = () => students.reduce((sum, s) => sum + (s.total_marks_obtained || 0), 0)
-
 	return (
 		<SidebarProvider>
 			<AppSidebar />
 			<SidebarInset>
-				<AppHeader>
+				<AppHeader />
+
+				<div className="flex-1 p-4 space-y-4 overflow-auto">
+					{/* Breadcrumb */}
 					<Breadcrumb>
 						<BreadcrumbList>
 							<BreadcrumbItem>
@@ -507,116 +491,84 @@ export default function ExternalMarkCorrectionPage() {
 							</BreadcrumbItem>
 						</BreadcrumbList>
 					</Breadcrumb>
-				</AppHeader>
 
-				<div className="flex-1 p-4 space-y-4 overflow-auto">
 					{/* Page Header */}
-					<div className="flex items-center gap-3">
-						<div className="h-10 w-10 rounded-lg bg-amber-100 dark:bg-amber-900/30 flex items-center justify-center">
-							<Edit3 className="h-5 w-5 text-amber-600 dark:text-amber-400" />
+					<div className="flex items-center justify-between">
+						<div className="flex items-center gap-3">
+							<div className="h-10 w-10 rounded-lg bg-amber-100 dark:bg-amber-900/30 flex items-center justify-center">
+								<Edit3 className="h-5 w-5 text-amber-600 dark:text-amber-400" />
+							</div>
+							<div>
+								<h1 className="text-xl font-bold text-slate-900 dark:text-slate-100 font-grotesk">
+									External Mark Correction
+								</h1>
+								<p className="text-slate-500 dark:text-slate-400 text-sm">
+									Correct today's external marks by learner register number
+								</p>
+							</div>
 						</div>
-						<div>
-							<h1 className="text-xl font-bold text-slate-900 dark:text-slate-100 font-grotesk">
-								External Mark Correction
-							</h1>
-							<p className="text-slate-500 dark:text-slate-400 text-sm">
-								Correct external marks by packet with audit trail
-							</p>
-						</div>
+						{/* Today's Date Badge - Auto-filled and shown for reference */}
+						<Badge variant="outline" className="h-9 px-4 text-sm font-medium bg-amber-50 border-amber-200 text-amber-700">
+							<Calendar className="h-4 w-4 mr-2" />
+							{formatDateDisplay(todayDate)}
+						</Badge>
 					</div>
 
-					{/* Cascading Dropdowns */}
+					{/* Cascading Dropdowns - Flow: Institution -> Course -> Register Number */}
 					<Card className="shadow-sm">
 						<CardContent className="p-2">
-							<div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3">
-								{/* Institution Combobox */}
-								<div className="space-y-1.5">
-									<Label htmlFor="institution" className="text-xs font-medium">Institution <span className="text-red-500">*</span></Label>
-									<Popover open={institutionOpen} onOpenChange={setInstitutionOpen}>
-										<PopoverTrigger asChild>
-											<Button
-												variant="outline"
-												role="combobox"
-												aria-expanded={institutionOpen}
-												className="w-full justify-between h-9 text-left text-xs truncate"
-												disabled={loadingInstitutions}
-											>
-												<span className="flex-1 pr-2 truncate">
-													{selectedInstitutionId
-														? institutions.find((inst) => inst.id === selectedInstitutionId)?.name
-														: loadingInstitutions ? "Loading..." : "Select institution..."}
-												</span>
-												<ChevronsUpDown className="h-3.5 w-3.5 shrink-0 opacity-50" />
-											</Button>
-										</PopoverTrigger>
-										<PopoverContent className="w-[400px] p-0" align="start">
-											<Command>
-												<CommandInput placeholder="Search institution..." className="h-8 text-xs" />
-												<CommandEmpty className="text-xs py-4">No institution found.</CommandEmpty>
-												<CommandGroup className="max-h-56 overflow-auto">
-													{institutions.map((inst) => (
-														<CommandItem
-															key={inst.id}
-															value={`${inst.institution_code} ${inst.name}`}
-															onSelect={() => {
-																setSelectedInstitutionId(inst.id)
-																setInstitutionOpen(false)
-															}}
-															className="py-2 text-xs"
-														>
-															<Check className={cn("mr-2 h-3.5 w-3.5 shrink-0", selectedInstitutionId === inst.id ? "opacity-100" : "opacity-0")} />
-															<span className="flex-1 line-clamp-2">{inst.institution_code} - {inst.name}</span>
-														</CommandItem>
-													))}
-												</CommandGroup>
-											</Command>
-										</PopoverContent>
-									</Popover>
-								</div>
-
-								{/* Session Combobox */}
-								<div className="space-y-1.5">
-									<Label className="text-xs font-medium">Exam Session <span className="text-red-500">*</span></Label>
-									<Popover open={sessionOpen} onOpenChange={setSessionOpen}>
-										<PopoverTrigger asChild>
-											<Button
-												variant="outline"
-												role="combobox"
-												className="w-full justify-between h-9 text-left text-xs truncate"
-												disabled={!selectedInstitutionId || loadingSessions}
-											>
-												<span className="flex-1 pr-2 truncate">
-													{selectedSessionId
-														? sessions.find((s) => s.id === selectedSessionId)?.session_name
-														: loadingSessions ? "Loading..." : "Select session..."}
-												</span>
-												<ChevronsUpDown className="h-3.5 w-3.5 shrink-0 opacity-50" />
-											</Button>
-										</PopoverTrigger>
-										<PopoverContent className="w-[300px] p-0" align="start">
-											<Command>
-												<CommandInput placeholder="Search session..." className="h-8 text-xs" />
-												<CommandEmpty className="text-xs py-4">No session found.</CommandEmpty>
-												<CommandGroup className="max-h-56 overflow-auto">
-													{sessions.map((session) => (
-														<CommandItem
-															key={session.id}
-															value={`${session.session_code} ${session.session_name}`}
-															onSelect={() => {
-																setSelectedSessionId(session.id)
-																setSessionOpen(false)
-															}}
-															className="py-2 text-xs"
-														>
-															<Check className={cn("mr-2 h-3.5 w-3.5 shrink-0", selectedSessionId === session.id ? "opacity-100" : "opacity-0")} />
-															<span className="flex-1 line-clamp-2">{session.session_code} - {session.session_name}</span>
-														</CommandItem>
-													))}
-												</CommandGroup>
-											</Command>
-										</PopoverContent>
-									</Popover>
-								</div>
+							<div className={cn(
+								"grid grid-cols-1 gap-3",
+								mustSelectInstitution
+									? "md:grid-cols-3"
+									: "md:grid-cols-2"
+							)}>
+								{/* Institution Combobox - Only show when mustSelectInstitution is true */}
+								{mustSelectInstitution && (
+									<div className="space-y-1.5">
+										<Label htmlFor="institution" className="text-xs font-medium">Institution <span className="text-red-500">*</span></Label>
+										<Popover open={institutionOpen} onOpenChange={setInstitutionOpen}>
+											<PopoverTrigger asChild>
+												<Button
+													variant="outline"
+													role="combobox"
+													aria-expanded={institutionOpen}
+													className="w-full justify-between h-9 text-left text-xs truncate"
+													disabled={loadingInstitutions}
+												>
+													<span className="flex-1 pr-2 truncate">
+														{selectedInstitutionId
+															? institutions.find((inst) => inst.id === selectedInstitutionId)?.name
+															: loadingInstitutions ? "Loading..." : "Select institution..."}
+													</span>
+													<ChevronsUpDown className="h-3.5 w-3.5 shrink-0 opacity-50" />
+												</Button>
+											</PopoverTrigger>
+											<PopoverContent className="w-[400px] p-0" align="start">
+												<Command>
+													<CommandInput placeholder="Search institution..." className="h-8 text-xs" />
+													<CommandEmpty className="text-xs py-4">No institution found.</CommandEmpty>
+													<CommandGroup className="max-h-56 overflow-auto">
+														{institutions.map((inst) => (
+															<CommandItem
+																key={inst.id}
+																value={`${inst.institution_code} ${inst.name}`}
+																onSelect={() => {
+																	setSelectedInstitutionId(inst.id)
+																	setInstitutionOpen(false)
+																}}
+																className="py-2 text-xs"
+															>
+																<Check className={cn("mr-2 h-3.5 w-3.5 shrink-0", selectedInstitutionId === inst.id ? "opacity-100" : "opacity-0")} />
+																<span className="flex-1 line-clamp-2">{inst.institution_code} - {inst.name}</span>
+															</CommandItem>
+														))}
+													</CommandGroup>
+												</Command>
+											</PopoverContent>
+										</Popover>
+									</div>
+								)}
 
 								{/* Course Combobox */}
 								<div className="space-y-1.5">
@@ -627,7 +579,7 @@ export default function ExternalMarkCorrectionPage() {
 												variant="outline"
 												role="combobox"
 												className="w-full justify-between h-9 text-left text-xs truncate"
-												disabled={!selectedSessionId || loadingCourses}
+												disabled={!selectedInstitutionId || loadingCourses}
 											>
 												<span className="flex-1 pr-2 truncate">
 													{selectedCourseId
@@ -640,7 +592,7 @@ export default function ExternalMarkCorrectionPage() {
 										<PopoverContent className="w-[400px] p-0" align="start">
 											<Command>
 												<CommandInput placeholder="Search course..." className="h-8 text-xs" />
-												<CommandEmpty className="text-xs py-4">No course found.</CommandEmpty>
+												<CommandEmpty className="text-xs py-4">No course found for today.</CommandEmpty>
 												<CommandGroup className="max-h-56 overflow-auto">
 													{courses.map((course) => (
 														<CommandItem
@@ -662,61 +614,32 @@ export default function ExternalMarkCorrectionPage() {
 									</Popover>
 								</div>
 
-								{/* Packet Combobox */}
+								{/* Learner Register Number Input */}
 								<div className="space-y-1.5">
-									<Label className="text-xs font-medium">Packet No <span className="text-red-500">*</span></Label>
-									<Popover open={packetOpen} onOpenChange={setPacketOpen}>
-										<PopoverTrigger asChild>
-											<Button
-												variant="outline"
-												role="combobox"
-												className="w-full justify-between h-9 text-left text-xs truncate"
-												disabled={!selectedCourseId || loadingPackets}
-											>
-												<span className="flex-1 pr-2 truncate">
-													{selectedPacketId
-														? packets.find((p) => p.id === selectedPacketId)?.packet_no
-														: loadingPackets ? "Loading..." : "Select packet..."}
-												</span>
-												<ChevronsUpDown className="h-3.5 w-3.5 shrink-0 opacity-50" />
-											</Button>
-										</PopoverTrigger>
-										<PopoverContent className="w-[200px] p-0" align="start">
-											<Command>
-												<CommandInput placeholder="Search packet..." className="h-8 text-xs" />
-												<CommandEmpty className="text-xs py-4">No packet found.</CommandEmpty>
-												<CommandGroup className="max-h-56 overflow-auto">
-													{packets.map((packet) => (
-														<CommandItem
-															key={packet.id}
-															value={packet.packet_no}
-															onSelect={() => {
-																setSelectedPacketId(packet.id)
-																setPacketOpen(false)
-															}}
-															className="py-2 text-xs"
-														>
-															<Check className={cn("mr-2 h-3.5 w-3.5 shrink-0", selectedPacketId === packet.id ? "opacity-100" : "opacity-0")} />
-															<span className="flex-1">{packet.packet_no} ({packet.total_sheets} sheets)</span>
-														</CommandItem>
-													))}
-												</CommandGroup>
-											</Command>
-										</PopoverContent>
-									</Popover>
+									<Label className="text-xs font-medium">Learner Register Number <span className="text-red-500">*</span></Label>
+									<div className="flex gap-2">
+										<Input
+											placeholder="Enter register number..."
+											value={registerNumber}
+											onChange={(e) => setRegisterNumber(e.target.value)}
+											onKeyDown={(e) => {
+												if (e.key === 'Enter' && registerNumber.trim() && selectedCourseId) {
+													searchByRegisterNumber()
+												}
+											}}
+											disabled={!selectedCourseId}
+											className="h-9 text-xs"
+										/>
+										<Button
+											onClick={searchByRegisterNumber}
+											disabled={!selectedCourseId || !registerNumber.trim() || loadingStudents}
+											className="bg-amber-600 hover:bg-amber-700 text-white h-9 text-xs shrink-0"
+										>
+											<FileText className="h-3.5 w-3.5 mr-1.5" />
+											{loadingStudents ? 'Searching...' : 'Search'}
+										</Button>
+									</div>
 								</div>
-							</div>
-
-							{/* Load Button */}
-							<div className="mt-3 flex justify-end">
-								<Button
-									onClick={loadStudents}
-									disabled={!selectedPacketId || loadingStudents}
-									className="bg-amber-600 hover:bg-amber-700 text-white h-9 text-xs"
-								>
-									<FileText className="h-3.5 w-3.5 mr-1.5" />
-									{loadingStudents ? 'Loading...' : 'Load Packet'}
-								</Button>
 							</div>
 						</CardContent>
 					</Card>
@@ -724,21 +647,21 @@ export default function ExternalMarkCorrectionPage() {
 					{/* Course Details & Table */}
 					{courseDetails && students.length > 0 && (
 						<>
-							{/* Packet Info Card */}
+							{/* Course Info Card */}
 							<Card className="shadow-sm">
 								<CardContent className="p-3">
 									<div className="flex items-center justify-between">
 										<div className="flex items-center gap-6 text-sm">
 											<div>
-												<span className="text-muted-foreground">Subject:</span>{' '}
+												<span className="text-muted-foreground">Course:</span>{' '}
 												<span className="font-semibold">{courseDetails.subject_code} - {courseDetails.subject_name}</span>
 											</div>
 											<div>
-												<span className="text-muted-foreground">Packet:</span>{' '}
-												<span className="font-semibold">{courseDetails.packet_no}</span>
+												<span className="text-muted-foreground">Register No:</span>{' '}
+												<span className="font-semibold">{registerNumber}</span>
 											</div>
 											<Badge variant="outline" className="text-sm font-semibold">
-												Max: {courseDetails.maximum_marks} | Pass: {courseDetails.minimum_pass_marks} | Total: {getTotalMarks()}
+												Max: {courseDetails.maximum_marks} | Pass: {courseDetails.minimum_pass_marks}
 											</Badge>
 										</div>
 										<Button
@@ -754,12 +677,12 @@ export default function ExternalMarkCorrectionPage() {
 								</CardContent>
 							</Card>
 
-							{/* Students Table */}
+							{/* Learner Marks Table */}
 							<Card className="shadow-md">
 								<CardHeader className="pb-3">
 									<CardTitle className="flex items-center gap-2 font-grotesk text-base">
 										<div className="h-2 w-2 rounded-full bg-amber-500"></div>
-										Marks Entries ({students.length} students)
+										Marks Entry for {registerNumber}
 									</CardTitle>
 									<CardDescription className="text-xs">
 										Click Edit to correct marks or History to view correction log
@@ -771,6 +694,7 @@ export default function ExternalMarkCorrectionPage() {
 											<TableHeader>
 												<TableRow className="bg-gradient-to-r from-amber-600 to-orange-600 hover:from-amber-600 hover:to-orange-600">
 													<TableHead className="w-12 text-white font-semibold text-sm">#</TableHead>
+													<TableHead className="text-white font-semibold text-sm">Register No</TableHead>
 													<TableHead className="text-white font-semibold text-sm">Dummy No</TableHead>
 													<TableHead className="text-white font-semibold text-sm">Marks</TableHead>
 													<TableHead className="text-white font-semibold text-sm">Marks in Words</TableHead>
@@ -782,7 +706,8 @@ export default function ExternalMarkCorrectionPage() {
 												{students.map((student, index) => (
 													<TableRow key={student.id} className="hover:bg-amber-50/50 dark:hover:bg-amber-900/10">
 														<TableCell className="text-sm py-3 text-muted-foreground">{index + 1}</TableCell>
-														<TableCell className="font-semibold text-sm py-3">{student.dummy_number}</TableCell>
+														<TableCell className="font-semibold text-sm py-3">{student.register_number || registerNumber}</TableCell>
+														<TableCell className="text-sm py-3 text-muted-foreground">{student.dummy_number}</TableCell>
 														<TableCell className="text-sm py-3 font-semibold">{student.total_marks_obtained ?? '-'}</TableCell>
 														<TableCell className="text-sm py-3 text-muted-foreground">{student.total_marks_in_words || '-'}</TableCell>
 														<TableCell className="py-3">
@@ -848,6 +773,7 @@ export default function ExternalMarkCorrectionPage() {
 						<DialogDescription>
 							{selectedStudent && (
 								<span>
+									Register No: <strong>{selectedStudent.register_number || registerNumber}</strong> |
 									Dummy No: <strong>{selectedStudent.dummy_number}</strong> |
 									Course: <strong>{courseDetails?.subject_code}</strong>
 								</span>
@@ -978,6 +904,7 @@ export default function ExternalMarkCorrectionPage() {
 						<DialogDescription>
 							{selectedStudent && (
 								<span>
+									Register No: <strong>{selectedStudent.register_number || registerNumber}</strong> |
 									Dummy No: <strong>{selectedStudent.dummy_number}</strong> |
 									Current Marks: <strong>{selectedStudent.total_marks_obtained}</strong>
 								</span>

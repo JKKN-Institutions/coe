@@ -47,24 +47,46 @@ export async function GET(request: NextRequest) {
 			} as HallTicketApiResponse, { status: 400 })
 		}
 
-		// Get institution details
-		const { data: institution, error: instError } = await supabase
+		// Get institution details - try case-insensitive match first
+		let institution = null
+		let instError = null
+
+		console.log('[HallTickets] Looking up institution with code:', institution_code)
+
+		// First try exact match - use * to get all available fields
+		const { data: exactMatch, error: exactError } = await supabase
 			.from('institutions')
-			.select(`
-				id,
-				institution_code,
-				name,
-				logo_url,
-				accredited_by,
-				address_line1,
-				address_line2,
-				city,
-				state
-			`)
+			.select('*')
 			.eq('institution_code', institution_code)
 			.single()
 
-		if (instError || !institution) {
+		console.log('[HallTickets] Exact match result:', { found: !!exactMatch, error: exactError?.message, code: exactError?.code })
+
+		if (exactMatch) {
+			institution = exactMatch
+		} else {
+			// Try case-insensitive match using ilike
+			const { data: ilikeMatch, error: ilikeError } = await supabase
+				.from('institutions')
+				.select('*')
+				.ilike('institution_code', institution_code)
+				.limit(1)
+				.single()
+
+			if (ilikeMatch) {
+				institution = ilikeMatch
+				console.log(`[HallTickets] Found institution with case-insensitive match: "${ilikeMatch.institution_code}" for input "${institution_code}"`)
+			} else {
+				instError = ilikeError || exactError
+			}
+		}
+
+		if (!institution) {
+			console.error('Institution lookup error:', {
+				institution_code,
+				error: instError?.message,
+				code: instError?.code
+			})
 			return NextResponse.json({
 				success: false,
 				error: `Institution with code "${institution_code}" not found`
@@ -101,7 +123,8 @@ export async function GET(request: NextRequest) {
 			.single()
 
 		// Build query for exam registrations with all related data
-		// Note: We fetch student and semester info, but program info comes from course_offerings
+		// Note: We fetch student and semester info (with semester_group for year-wise grouping)
+		// Also include course_order for sorting subjects within each semester
 		let registrationsQuery = supabase
 			.from('exam_registrations')
 			.select(`
@@ -120,13 +143,14 @@ export async function GET(request: NextRequest) {
 					student_photo_url,
 					program_id,
 					semester_id,
-					semesters(id, semester_code, semester_name, display_order)
+					semesters(id, semester_code, semester_name, display_order, semester_group, semester_type)
 				),
 				course_offerings(
 					id,
 					course_id,
 					program_id,
 					semester,
+					course_order,
 					course_mapping:course_id(id, course_code, course_title),
 					programs(id, program_code, program_name),
 					exam_timetables(
@@ -206,14 +230,15 @@ export async function GET(request: NextRequest) {
 			// Find the timetable entry (there should be one per course)
 			const timetable = timetables.length > 0 ? timetables[0] : null
 
-			// Create subject entry
+			// Create subject entry with course_order for sorting
 			const subject: HallTicketSubject = {
 				serial_number: 0, // Will be assigned later
 				subject_code: courseMapping?.course_code || 'N/A',
 				subject_name: courseMapping?.course_title || 'To Be Announced',
 				exam_date: timetable?.exam_date || 'To Be Announced',
 				exam_time: timetable ? formatExamTime(timetable.session, timetable.exam_time) : 'To Be Announced',
-				semester: student.semesters?.semester_name || (student.semesters?.display_order ? `Semester ${student.semesters.display_order}` : `Semester ${courseOffering.semester}`)
+				semester: student.semesters?.semester_name || (student.semesters?.display_order ? `Semester ${student.semesters.display_order}` : `Semester ${courseOffering.semester}`),
+				course_order: courseOffering.course_order || 999 // Include course_order for sorting
 			}
 
 			studentMap.get(studentKey)!.subjects.push(subject)
@@ -225,19 +250,39 @@ export async function GET(request: NextRequest) {
 		for (const [, value] of studentMap) {
 			const { student, subjects, programName } = value
 
-			// Sort subjects by exam date
+			// Sort subjects by semester (descending - higher semester first: 3, 2, 1)
+			// then by course_order (ascending) within same semester
 			subjects.sort((a, b) => {
-				if (a.exam_date === 'To Be Announced') return 1
-				if (b.exam_date === 'To Be Announced') return -1
-				return new Date(a.exam_date).getTime() - new Date(b.exam_date).getTime()
+				// Extract semester number from semester string (e.g., "Semester 3" -> 3)
+				const getSemesterNum = (sem: string): number => {
+					const match = sem.match(/(\d+)/)
+					return match ? parseInt(match[1], 10) : 0
+				}
+				const semA = getSemesterNum(a.semester)
+				const semB = getSemesterNum(b.semester)
+
+				// Sort by semester descending (higher semester first)
+				if (semB !== semA) {
+					return semB - semA
+				}
+
+				// Within same semester, sort by course_order ascending
+				const orderA = a.course_order ?? 999
+				const orderB = b.course_order ?? 999
+				if (orderA !== orderB) {
+					return orderA - orderB
+				}
+
+				// Final fallback: sort by subject_code
+				return a.subject_code.localeCompare(b.subject_code)
 			})
 
-			// Assign serial numbers
+			// Assign serial numbers after sorting
 			subjects.forEach((s, i) => {
 				s.serial_number = i + 1
 			})
 
-			// Format student data
+			// Format student data with semester_group for year-wise PDF grouping
 			const hallTicketStudent: HallTicketStudent = {
 				register_number: student.roll_number || 'N/A',
 				student_name: `${student.first_name || ''} ${student.last_name || ''}`.trim(),
@@ -245,13 +290,14 @@ export async function GET(request: NextRequest) {
 				program: programName,
 				emis: '', // Add EMIS if available in your schema
 				student_photo_url: student.student_photo_url || undefined,
-				subjects: subjects
+				subjects: subjects,
+				semester_group: student.semesters?.semester_group || student.semesters?.semester_type // For year-wise grouping
 			}
 
 			students.push(hallTicketStudent)
 		}
 
-		// Sort students by register number
+		// Sort students by register number (ascending)
 		students.sort((a, b) => a.register_number.localeCompare(b.register_number))
 
 		// Check if no students found

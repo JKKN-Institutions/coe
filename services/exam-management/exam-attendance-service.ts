@@ -159,12 +159,18 @@ export async function loadStudents(
 	sessionType: string,
 	programCode: string
 ): Promise<StudentRegistration[]> {
-	const res = await fetch(
-		`/api/exam-management/exam-attendance?mode=list&institution_id=${institutionId}&examination_session_id=${sessionId}&course_code=${courseCode}&exam_date=${examDate}&session=${sessionType}&program_code=${programCode}`
-	)
+	const url = `/api/exam-management/exam-attendance?mode=list&institution_id=${institutionId}&examination_session_id=${sessionId}&course_code=${courseCode}&exam_date=${examDate}&session=${sessionType}&program_code=${programCode}`
+	console.log('Loading students from:', url)
+
+	const res = await fetch(url)
 
 	if (!res.ok) {
-		throw new Error('Failed to load student list')
+		const errorData = await res.json().catch(() => ({ error: 'Failed to parse error response' }))
+		console.error('Load students API error:', res.status, JSON.stringify(errorData, null, 2))
+		const errorMsg = errorData.step
+			? `${errorData.error} (Step: ${errorData.step})`
+			: errorData.error || 'Failed to load student list'
+		throw new Error(errorMsg)
 	}
 
 	return await res.json()

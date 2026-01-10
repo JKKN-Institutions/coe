@@ -21,7 +21,13 @@ import { Loader2, Search, Edit, AlertTriangle, CheckCircle, Check, ChevronsUpDow
 import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { useAuth } from "@/lib/auth/auth-context-parent"
+import { useInstitutionFilter } from "@/hooks/use-institution-filter"
 import { cn } from "@/lib/utils"
+
+interface Institution {
+	id: string
+	institution_name: string
+}
 
 interface Course {
 	id: string
@@ -48,6 +54,19 @@ export default function AttendanceCorrectionPage() {
 	const { toast } = useToast()
 	const { user } = useAuth()
 	const router = useRouter()
+
+	// Institution filter hook
+	const {
+		isReady,
+		appendToUrl,
+		mustSelectInstitution,
+		institutionId
+	} = useInstitutionFilter()
+
+	// Institution dropdown (for super_admin with "All Institutions" view)
+	const [institutions, setInstitutions] = useState<Institution[]>([])
+	const [selectedInstitutionId, setSelectedInstitutionId] = useState<string>("")
+	const [loadingInstitutions, setLoadingInstitutions] = useState(false)
 
 	// Parent: Course selection
 	const [courses, setCourses] = useState<Course[]>([])
@@ -105,21 +124,57 @@ export default function AttendanceCorrectionPage() {
 		return () => clearInterval(timer)
 	}, [])
 
-	// Load courses when user is available
+	// Load institutions when mustSelectInstitution is true
 	useEffect(() => {
-		if (user?.email) {
-			fetchCourses()
+		if (isReady && mustSelectInstitution) {
+			loadInstitutions()
 		}
-	}, [user?.email])
+	}, [isReady, mustSelectInstitution])
 
-	const fetchCourses = async () => {
-		if (!user?.email) {
+	// Set selected institution from filter when not mustSelectInstitution
+	useEffect(() => {
+		if (isReady && !mustSelectInstitution && institutionId) {
+			setSelectedInstitutionId(institutionId)
+		}
+	}, [isReady, mustSelectInstitution, institutionId])
+
+	// Load courses when institution is selected
+	useEffect(() => {
+		if (selectedInstitutionId) {
+			fetchCourses(selectedInstitutionId)
+			// Reset dependent fields
+			setSelectedCourseCode("")
+			setRegisterNo("")
+			setAttendanceRecord(null)
+			setShowRecord(false)
+			setStudentInfo(null)
+		}
+	}, [selectedInstitutionId])
+
+	const loadInstitutions = async () => {
+		try {
+			setLoadingInstitutions(true)
+			const res = await fetch('/api/master/institutions')
+			if (res.ok) {
+				const data = await res.json()
+				setInstitutions(data)
+			}
+		} catch (error) {
+			console.error('Error loading institutions:', error)
+		} finally {
+			setLoadingInstitutions(false)
+		}
+	}
+
+	const fetchCourses = async (instId: string) => {
+		if (!instId) {
 			return
 		}
 
 		try {
 			setLoadingCourses(true)
-			const res = await fetch(`/api/exam-management/attendance-correction/courses?user_email=${encodeURIComponent(user.email)}`)
+			setCourses([])
+			const res = await fetch(`/api/exam-management/attendance-correction/courses?institutionId=${encodeURIComponent(instId)}`)
 			if (res.ok) {
 				const data = await res.json()
 				setCourses(data)
@@ -373,7 +428,32 @@ export default function AttendanceCorrectionPage() {
 								</div>
 							</CardHeader>
 							<CardContent className="pt-4 p-3">
-								<div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+								<div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+									{/* Institution Selection - Only shown for super_admin with "All Institutions" */}
+									{mustSelectInstitution && (
+										<div className="space-y-2">
+											<Label htmlFor="institution" className="text-xs font-semibold">
+												Institution <span className="text-red-500">*</span>
+											</Label>
+											<Select
+												value={selectedInstitutionId}
+												onValueChange={setSelectedInstitutionId}
+												disabled={loadingInstitutions}
+											>
+												<SelectTrigger className="h-8 text-xs">
+													<SelectValue placeholder={loadingInstitutions ? "Loading..." : "Select institution..."} />
+												</SelectTrigger>
+												<SelectContent>
+													{institutions.map((inst) => (
+														<SelectItem key={inst.id} value={inst.id} className="text-xs">
+															{inst.institution_name}
+														</SelectItem>
+													))}
+												</SelectContent>
+											</Select>
+										</div>
+									)}
+
 									{/* Course Selection (Parent) */}
 									<div className="space-y-2">
 										<Label htmlFor="course_code" className="text-xs font-semibold">
@@ -389,9 +469,11 @@ export default function AttendanceCorrectionPage() {
 													role="combobox"
 													aria-expanded={courseComboboxOpen}
 													className="h-8 w-full justify-between text-xs font-normal"
-													disabled={loadingCourses}
+													disabled={loadingCourses || !selectedInstitutionId}
 												>
-													{loadingCourses ? (
+													{!selectedInstitutionId ? (
+														<span className="text-muted-foreground">Select institution first...</span>
+													) : loadingCourses ? (
 														<span className="text-muted-foreground">Loading courses...</span>
 													) : selectedCourseCode ? (
 														<span>

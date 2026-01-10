@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { AppSidebar } from '@/components/layout/app-sidebar'
 import { AppHeader } from '@/components/layout/app-header'
 import { AppFooter } from '@/components/layout/app-footer'
@@ -19,6 +19,7 @@ import { FileText, Save, Check, ChevronsUpDown, AlertTriangle } from 'lucide-rea
 import { numberToWords } from '@/services/post-exam/external-mark-entry-service'
 import { cn } from '@/lib/utils'
 import Link from 'next/link'
+import { useInstitutionFilter } from '@/hooks/use-institution-filter'
 
 interface Institution {
 	id: string
@@ -71,6 +72,16 @@ interface CourseDetails {
 export default function ExternalMarkEntryPage() {
 	const { toast } = useToast()
 
+	// Institution filter hook - provides role-based filtering
+	const {
+		isReady,
+		appendToUrl,
+		getInstitutionIdForCreate,
+		mustSelectInstitution,
+		shouldFilter,
+		institutionId: contextInstitutionId
+	} = useInstitutionFilter()
+
 	// Dropdown data
 	const [institutions, setInstitutions] = useState<Institution[]>([])
 	const [sessions, setSessions] = useState<Session[]>([])
@@ -105,34 +116,46 @@ export default function ExternalMarkEntryPage() {
 	// View mode state (after saving marks)
 	const [isViewMode, setIsViewMode] = useState(false)
 
-	// Load institutions on mount
-	useEffect(() => {
-		loadInstitutions()
-	}, [])
+	// Get the effective institution ID (from selection or context)
+	const effectiveInstitutionId = selectedInstitutionId || contextInstitutionId
 
-	// Load sessions when institution changes
+	// Auto-fill institution when not in "All Institutions" mode
 	useEffect(() => {
-		if (selectedInstitutionId) {
-			loadSessions(selectedInstitutionId)
+		if (isReady && !mustSelectInstitution && contextInstitutionId && !selectedInstitutionId) {
+			setSelectedInstitutionId(contextInstitutionId)
+		}
+	}, [isReady, mustSelectInstitution, contextInstitutionId, selectedInstitutionId])
+
+	// Load institutions on mount (only when ready and mustSelectInstitution)
+	useEffect(() => {
+		if (isReady && mustSelectInstitution) {
+			loadInstitutions()
+		}
+	}, [isReady, mustSelectInstitution])
+
+	// Load sessions when effective institution changes
+	useEffect(() => {
+		if (isReady && effectiveInstitutionId) {
+			loadSessions(effectiveInstitutionId)
 			resetDependentFields(['session', 'course', 'packet'])
 		}
-	}, [selectedInstitutionId])
+	}, [isReady, effectiveInstitutionId])
 
 	// Load courses when session changes
 	useEffect(() => {
-		if (selectedSessionId) {
-			loadCourses(selectedInstitutionId, selectedSessionId)
+		if (isReady && selectedSessionId && effectiveInstitutionId) {
+			loadCourses(effectiveInstitutionId, selectedSessionId)
 			resetDependentFields(['course', 'packet'])
 		}
-	}, [selectedSessionId])
+	}, [isReady, selectedSessionId])
 
 	// Load packets when course changes
 	useEffect(() => {
-		if (selectedCourseId) {
-			loadPackets(selectedInstitutionId, selectedSessionId, selectedCourseId)
+		if (isReady && selectedCourseId && effectiveInstitutionId) {
+			loadPackets(effectiveInstitutionId, selectedSessionId, selectedCourseId)
 			resetDependentFields(['packet'])
 		}
-	}, [selectedCourseId])
+	}, [isReady, selectedCourseId])
 
 	const resetDependentFields = (fields: string[]) => {
 		if (fields.includes('session')) {
@@ -153,10 +176,11 @@ export default function ExternalMarkEntryPage() {
 		setIsViewMode(false)
 	}
 
-	const loadInstitutions = async () => {
+	const loadInstitutions = useCallback(async () => {
 		try {
 			setLoadingInstitutions(true)
-			const response = await fetch('/api/post-exam/external-marks?action=institutions')
+			const url = appendToUrl('/api/post-exam/external-marks?action=institutions')
+			const response = await fetch(url)
 			if (!response.ok) throw new Error('Failed to load institutions')
 			const data = await response.json()
 			setInstitutions(data)
@@ -169,14 +193,15 @@ export default function ExternalMarkEntryPage() {
 		} finally {
 			setLoadingInstitutions(false)
 		}
-	}
+	}, [appendToUrl, toast])
 
-	const loadSessions = async (institutionId: string) => {
+	const loadSessions = useCallback(async (institutionId: string) => {
 		try {
 			setLoadingSessions(true)
-			const response = await fetch(
+			const url = appendToUrl(
 				`/api/post-exam/external-marks?action=sessions&institutionId=${institutionId}`
 			)
+			const response = await fetch(url)
 			if (!response.ok) throw new Error('Failed to load sessions')
 			const data = await response.json()
 			setSessions(data)
@@ -189,16 +214,17 @@ export default function ExternalMarkEntryPage() {
 		} finally {
 			setLoadingSessions(false)
 		}
-	}
+	}, [appendToUrl, toast])
 
-	const loadCourses = async (institutionId: string, sessionId: string) => {
+	const loadCourses = useCallback(async (institutionId: string, sessionId: string) => {
 		try {
 			setLoadingCourses(true)
-			const response = await fetch(
+			const url = appendToUrl(
 				`/api/post-exam/external-marks?action=courses&` +
 				`institutionId=${institutionId}&` +
 				`sessionId=${sessionId}`
 			)
+			const response = await fetch(url)
 			if (!response.ok) throw new Error('Failed to load courses')
 			const data = await response.json()
 			setCourses(data)
@@ -211,17 +237,18 @@ export default function ExternalMarkEntryPage() {
 		} finally {
 			setLoadingCourses(false)
 		}
-	}
+	}, [appendToUrl, toast])
 
-	const loadPackets = async (institutionId: string, sessionId: string, courseId: string) => {
+	const loadPackets = useCallback(async (institutionId: string, sessionId: string, courseId: string) => {
 		try {
 			setLoadingPackets(true)
-			const response = await fetch(
+			const url = appendToUrl(
 				`/api/post-exam/external-marks?action=packets&` +
 				`institutionId=${institutionId}&` +
 				`sessionId=${sessionId}&` +
 				`courseId=${courseId}`
 			)
+			const response = await fetch(url)
 			if (!response.ok) throw new Error('Failed to load packets')
 			const data = await response.json()
 			setPackets(data)
@@ -234,7 +261,7 @@ export default function ExternalMarkEntryPage() {
 		} finally {
 			setLoadingPackets(false)
 		}
-	}
+	}, [appendToUrl, toast])
 
 	const loadStudents = async () => {
 		if (!selectedPacketId) {
@@ -501,64 +528,84 @@ export default function ExternalMarkEntryPage() {
 							<h1 className="text-xl font-bold text-slate-900 dark:text-slate-100 font-grotesk">
 								External Mark Entry
 							</h1>
-							
+
 						</div>
 					</div>
 
-					{/* Cascading Dropdowns */}
+					{/* Loading state when institution context is not ready */}
+					{!isReady && (
+						<Card className="shadow-sm">
+							<CardContent className="p-4">
+								<div className="flex items-center justify-center gap-2 text-muted-foreground">
+									<div className="h-4 w-4 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+									<span className="text-sm">Loading institution context...</span>
+								</div>
+							</CardContent>
+						</Card>
+					)}
+
+					{/* Cascading Dropdowns - only show when ready */}
+					{isReady && (
 					<Card className="shadow-sm">
 						<CardContent className="p-2">
-					
-							<div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3">
-								{/* Institution Combobox */}
-								<div className="space-y-1.5">
-									<Label htmlFor="institution" className="text-xs font-medium">Institution <span className="text-red-500">*</span></Label>
-									<Popover open={institutionOpen} onOpenChange={setInstitutionOpen}>
-										<PopoverTrigger asChild>
-											<Button
-												variant="outline"
-												role="combobox"
-												aria-expanded={institutionOpen}
-												className="w-full justify-between h-9 text-left text-xs truncate"
-												disabled={loadingInstitutions}
-											>
-												<span className="flex-1 pr-2 truncate">
-													{selectedInstitutionId
-														? institutions.find((inst) => inst.id === selectedInstitutionId)?.name
-														: loadingInstitutions ? "Loading..." : "Select institution..."}
-												</span>
-												<ChevronsUpDown className="h-3.5 w-3.5 shrink-0 opacity-50" />
-											</Button>
-										</PopoverTrigger>
-										<PopoverContent className="w-[400px] p-0" align="start">
-											<Command>
-												<CommandInput placeholder="Search institution..." className="h-8 text-xs" />
-												<CommandEmpty className="text-xs py-4">No institution found.</CommandEmpty>
-												<CommandGroup className="max-h-56 overflow-auto">
-													{institutions.map((inst) => (
-														<CommandItem
-															key={inst.id}
-															value={`${inst.institution_code} ${inst.name}`}
-															onSelect={() => {
-																setSelectedInstitutionId(inst.id)
-																setInstitutionOpen(false)
-															}}
-															className="py-2 text-xs"
-														>
-															<Check
-																className={cn(
-																	"mr-2 h-3.5 w-3.5 shrink-0",
-																	selectedInstitutionId === inst.id ? "opacity-100" : "opacity-0"
-																)}
-															/>
-															<span className="flex-1 line-clamp-2">{inst.institution_code} - {inst.name}</span>
-														</CommandItem>
-													))}
-												</CommandGroup>
-											</Command>
-										</PopoverContent>
-									</Popover>
-								</div>
+
+							<div className={cn(
+								"grid grid-cols-1 gap-3",
+								mustSelectInstitution
+									? "md:grid-cols-2 lg:grid-cols-4"
+									: "md:grid-cols-3"
+							)}>
+								{/* Institution Combobox - Only show when mustSelectInstitution is true */}
+								{mustSelectInstitution && (
+									<div className="space-y-1.5">
+										<Label htmlFor="institution" className="text-xs font-medium">Institution <span className="text-red-500">*</span></Label>
+										<Popover open={institutionOpen} onOpenChange={setInstitutionOpen}>
+											<PopoverTrigger asChild>
+												<Button
+													variant="outline"
+													role="combobox"
+													aria-expanded={institutionOpen}
+													className="w-full justify-between h-9 text-left text-xs truncate"
+													disabled={loadingInstitutions}
+												>
+													<span className="flex-1 pr-2 truncate">
+														{selectedInstitutionId
+															? institutions.find((inst) => inst.id === selectedInstitutionId)?.name
+															: loadingInstitutions ? "Loading..." : "Select institution..."}
+													</span>
+													<ChevronsUpDown className="h-3.5 w-3.5 shrink-0 opacity-50" />
+												</Button>
+											</PopoverTrigger>
+											<PopoverContent className="w-[400px] p-0" align="start">
+												<Command>
+													<CommandInput placeholder="Search institution..." className="h-8 text-xs" />
+													<CommandEmpty className="text-xs py-4">No institution found.</CommandEmpty>
+													<CommandGroup className="max-h-56 overflow-auto">
+														{institutions.map((inst) => (
+															<CommandItem
+																key={inst.id}
+																value={`${inst.institution_code} ${inst.name}`}
+																onSelect={() => {
+																	setSelectedInstitutionId(inst.id)
+																	setInstitutionOpen(false)
+																}}
+																className="py-2 text-xs"
+															>
+																<Check
+																	className={cn(
+																		"mr-2 h-3.5 w-3.5 shrink-0",
+																		selectedInstitutionId === inst.id ? "opacity-100" : "opacity-0"
+																	)}
+																/>
+																<span className="flex-1 line-clamp-2">{inst.institution_code} - {inst.name}</span>
+															</CommandItem>
+														))}
+													</CommandGroup>
+												</Command>
+											</PopoverContent>
+										</Popover>
+									</div>
+								)}
 
 								{/* Session Combobox */}
 								<div className="space-y-1.5">
@@ -570,7 +617,7 @@ export default function ExternalMarkEntryPage() {
 												role="combobox"
 												aria-expanded={sessionOpen}
 												className="w-full justify-between h-9 text-left text-xs truncate"
-												disabled={!selectedInstitutionId || loadingSessions}
+												disabled={!effectiveInstitutionId || loadingSessions}
 											>
 												<span className="flex-1 pr-2 truncate">
 													{selectedSessionId
@@ -722,6 +769,7 @@ export default function ExternalMarkEntryPage() {
 							</div>
 						</CardContent>
 					</Card>
+					)}
 
 					{/* Mark Entry Section */}
 					{students.length > 0 && courseDetails && (

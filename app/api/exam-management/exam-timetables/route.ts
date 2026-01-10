@@ -11,21 +11,15 @@ export async function GET(request: Request) {
     const semester_id = searchParams.get('semester_id')
     const is_published = searchParams.get('is_published')
 
-    // Fetch exam timetables with joins
+    // Fetch exam timetables with direct joins
+    // exam_timetables has course_id directly referencing courses table
     let query = supabase
       .from('exam_timetables')
       .select(`
         *,
         institutions(id, institution_code, name),
         examination_sessions(id, session_code, session_name),
-        course_offerings(
-          id,
-          course_id,
-          program_id,
-          semester,
-          course_mapping:course_id(id, course_code, course_title),
-          programs(id, program_code, program_name)
-        )
+        courses(id, course_code, course_name)
       `)
       .order('exam_date', { ascending: true })
       .order('created_at', { ascending: false })
@@ -36,11 +30,11 @@ export async function GET(request: Request) {
     }
 
     if (program_id) {
-      query = query.eq('course_offerings.program_id', program_id)
+      query = query.eq('program_id', program_id)
     }
 
     if (semester_id) {
-      query = query.eq('course_offerings.semester', parseInt(semester_id))
+      query = query.eq('semester', parseInt(semester_id))
     }
 
     if (is_published !== null && is_published !== undefined) {
@@ -51,32 +45,51 @@ export async function GET(request: Request) {
 
     if (error) {
       console.error('Exam timetables fetch error:', error)
-      return NextResponse.json({ error: 'Failed to fetch exam timetables' }, { status: 500 })
+      return NextResponse.json({ error: 'Failed to fetch exam timetables', details: error.message }, { status: 500 })
     }
 
-    // For each timetable, fetch student count and course count
-    const enrichedData = await Promise.all((timetables || []).map(async (timetable) => {
+    // For each timetable, fetch student count (fee_paid only) and seat allocation
+    const enrichedData = await Promise.all((timetables || []).map(async (timetable: any) => {
       try {
-        // Get student count for this exam (by date and session)
-        const { count: studentCount, error: studentError } = await supabase
-          .from('exam_registrations')
-          .select('id', { count: 'exact', head: true })
-          .eq('exam_timetable_id', timetable.id)
+        // Get course_code from the joined courses table
+        const courseCode = timetable.courses?.course_code
 
-        if (studentError) {
-          console.warn('Error fetching student count:', studentError)
-        }
+        // Get student count for this exam - only learners with fee_paid = TRUE
+        // Join through course_offerings using course_code and examination_session_id
+        let studentCount = 0
+        let studentError = null
 
-        // Get course count for this date and session
-        const { count: courseCount, error: courseError } = await supabase
-          .from('exam_timetables')
-          .select('id', { count: 'exact', head: true })
-          .eq('institutions_id', timetable.institutions_id)
-          .eq('exam_date', timetable.exam_date)
-          .eq('session', timetable.session)
+        // First, get the course_offering_ids that match the timetable's course_code
+        if (courseCode) {
+          const { data: courseOfferings, error: coError } = await supabase
+            .from('course_offerings')
+            .select('id')
+            .eq('course_code', courseCode)
 
-        if (courseError) {
-          console.warn('Error fetching course count:', courseError)
+          if (coError) {
+            console.warn('Error fetching course offerings:', coError)
+            studentError = coError
+          } else if (courseOfferings && courseOfferings.length > 0) {
+            // Now count registrations for these course offerings + same session + fee_paid
+            const courseOfferingIds = courseOfferings.map((co: any) => co.id)
+            const { count, error: regError } = await supabase
+              .from('exam_registrations')
+              .select('id', { count: 'exact', head: true })
+              .in('course_offering_id', courseOfferingIds)
+              .eq('examination_session_id', timetable.examination_session_id)
+              .eq('fee_paid', true)
+
+            if (regError) {
+              console.warn('Error fetching registration count:', regError)
+              studentError = regError
+            } else {
+              studentCount = count || 0
+            }
+          }
+
+          if (studentError) {
+            console.warn('Error fetching student count:', studentError)
+          }
         }
 
         // Get seat allocation count from room_allocations
@@ -95,32 +108,26 @@ export async function GET(request: Request) {
         return {
           ...timetable,
           student_count: studentCount || 0,
-          course_count: courseCount || 0,
           seat_alloc_count: totalSeatsAllocated,
           institution_code: timetable.institutions?.institution_code || 'N/A',
           institution_name: timetable.institutions?.name || 'N/A',
           session_code: timetable.examination_sessions?.session_code || 'N/A',
           session_name: timetable.examination_sessions?.session_name || 'N/A',
-          course_code: timetable.course_offerings?.course_mapping?.course_code || 'N/A',
-          course_name: timetable.course_offerings?.course_mapping?.course_title || 'N/A',
-          program_code: timetable.course_offerings?.programs?.program_code || 'N/A',
-          program_name: timetable.course_offerings?.programs?.program_name || 'N/A',
+          course_code: timetable.courses?.course_code || 'N/A',
+          course_name: timetable.courses?.course_name || 'N/A',
         }
       } catch (err) {
         console.error('Error enriching timetable data:', err)
         return {
           ...timetable,
           student_count: 0,
-          course_count: 0,
           seat_alloc_count: 0,
-          institution_code: (timetable as any).institutions?.institution_code || 'N/A',
-          institution_name: (timetable as any).institutions?.name || 'N/A',
-          session_code: (timetable as any).examination_sessions?.session_code || 'N/A',
-          session_name: (timetable as any).examination_sessions?.session_name || 'N/A',
-          course_code: (timetable as any).course_offerings?.course_mapping?.course_code || 'N/A',
-          course_name: (timetable as any).course_offerings?.course_mapping?.course_title || 'N/A',
-          program_code: (timetable as any).course_offerings?.programs?.program_code || 'N/A',
-          program_name: (timetable as any).course_offerings?.programs?.program_name || 'N/A',
+          institution_code: timetable.institutions?.institution_code || 'N/A',
+          institution_name: timetable.institutions?.name || 'N/A',
+          session_code: timetable.examination_sessions?.session_code || 'N/A',
+          session_name: timetable.examination_sessions?.session_name || 'N/A',
+          course_code: timetable.courses?.course_code || 'N/A',
+          course_name: timetable.courses?.course_name || 'N/A',
         }
       }
     }))
@@ -145,8 +152,9 @@ export async function POST(request: Request) {
     if (!body.examination_session_id) {
       return NextResponse.json({ error: 'Examination Session ID is required' }, { status: 400 })
     }
-    if (!body.course_offering_id) {
-      return NextResponse.json({ error: 'Course Offering ID is required' }, { status: 400 })
+    // Accept course_id (UUID) or course_code (string) for lookup
+    if (!body.course_id && !body.course_code) {
+      return NextResponse.json({ error: 'Course ID or Course Code is required' }, { status: 400 })
     }
     if (!body.exam_date) {
       return NextResponse.json({ error: 'Exam Date is required' }, { status: 400 })
@@ -155,12 +163,107 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Session (FN/AN) is required' }, { status: 400 })
     }
 
+    let courseId = body.course_id
+    let courseCode = body.course_code
+    let courseOfferingId = body.course_offering_id
+    let durationMinutes = body.duration_minutes || null
+
+    // Get institution_code and session_code for lookups
+    const { data: inst } = await supabase
+      .from('institutions')
+      .select('institution_code')
+      .eq('id', body.institutions_id)
+      .single()
+
+    const { data: sess } = await supabase
+      .from('examination_sessions')
+      .select('session_code')
+      .eq('id', body.examination_session_id)
+      .single()
+
+    if (!inst?.institution_code) {
+      return NextResponse.json({ error: 'Institution not found' }, { status: 400 })
+    }
+    if (!sess?.session_code) {
+      return NextResponse.json({ error: 'Examination session not found' }, { status: 400 })
+    }
+
+    const institutionCode = inst.institution_code
+    const sessionCode = sess.session_code
+
+    // Step 1: Get course_id from courses table
+    // SQL: SELECT id FROM courses WHERE institutions_id = ? AND course_code = ? LIMIT 1
+    if (!courseId && courseCode) {
+      const { data: course, error: courseError } = await supabase
+        .from('courses')
+        .select('id, course_code, exam_duration')
+        .eq('institutions_id', body.institutions_id)
+        .eq('course_code', courseCode)
+        .limit(1)
+        .maybeSingle()
+
+      if (courseError || !course) {
+        return NextResponse.json({ error: `Course with code "${courseCode}" not found for institution "${institutionCode}"` }, { status: 400 })
+      }
+      courseId = course.id
+      courseCode = course.course_code
+
+      // Auto-populate duration_minutes from course's exam_duration (hours) if not provided
+      if (!durationMinutes && course.exam_duration) {
+        durationMinutes = Math.round(course.exam_duration * 60)
+      }
+    } else if (courseId && !courseCode) {
+      // Get course_code from course_id
+      const { data: course, error: courseError } = await supabase
+        .from('courses')
+        .select('course_code, exam_duration')
+        .eq('id', courseId)
+        .single()
+
+      if (!courseError && course) {
+        courseCode = course.course_code
+        if (!durationMinutes && course.exam_duration) {
+          durationMinutes = Math.round(course.exam_duration * 60)
+        }
+      }
+    }
+
+    // Step 2: Get course_offering_id from course_offerings table
+    // SQL: SELECT id FROM course_offerings WHERE institutions_id = ? AND examination_session_id = ? AND course_code = ? LIMIT 1
+    if (!courseOfferingId && courseCode) {
+      const { data: courseOffering, error: coError } = await supabase
+        .from('course_offerings')
+        .select('id')
+        .eq('institutions_id', body.institutions_id)
+        .eq('examination_session_id', body.examination_session_id)
+        .eq('course_code', courseCode)
+        .limit(1)
+        .maybeSingle()
+
+      if (coError) {
+        console.warn(`Error fetching course offering:`, coError)
+      } else if (!courseOffering) {
+        console.warn(`Course offering not found for institution: ${institutionCode}, session: ${sessionCode}, course: ${courseCode}`)
+      } else {
+        courseOfferingId = courseOffering.id
+      }
+    }
+
+    // If course_offering_id is still null, return error
+    if (!courseOfferingId) {
+      return NextResponse.json({
+        error: `Course offering not found for institution "${institutionCode}", session "${sessionCode}", course "${courseCode}". Please ensure the course offering exists.`
+      }, { status: 400 })
+    }
+
     const insertPayload: any = {
       institutions_id: body.institutions_id,
       examination_session_id: body.examination_session_id,
-      course_offering_id: body.course_offering_id,
+      course_id: courseId,
+      course_offering_id: courseOfferingId,
       exam_date: body.exam_date,
       session: body.session,
+      duration_minutes: durationMinutes,
       exam_mode: body.exam_mode || 'Offline',
       is_published: body.is_published ?? false,
       instructions: body.instructions || null,
@@ -186,7 +289,14 @@ export async function POST(request: Request) {
       // Handle foreign key constraint violation
       if (error.code === '23503') {
         return NextResponse.json({
-          error: 'Invalid reference. Please ensure course offering, session, and institution exist.'
+          error: 'Invalid reference. Please ensure course, session, and institution exist.'
+        }, { status: 400 })
+      }
+
+      // Handle not-null constraint violation for course_offering_id
+      if (error.code === '23502' && error.message.includes('course_offering_id')) {
+        return NextResponse.json({
+          error: `Course offering not found for this institution, exam session, and course code combination. Please ensure the course offering exists.`
         }, { status: 400 })
       }
 
@@ -210,11 +320,120 @@ export async function PUT(request: Request) {
       return NextResponse.json({ error: 'Exam timetable ID is required' }, { status: 400 })
     }
 
+    let courseId = body.course_id
+    let courseCode = body.course_code
+    let courseOfferingId = body.course_offering_id
+    let durationMinutes = body.duration_minutes || null
+
+    // Get existing timetable to get institutions_id and examination_session_id if not provided
+    const { data: existingTimetable, error: fetchError } = await supabase
+      .from('exam_timetables')
+      .select('institutions_id, examination_session_id')
+      .eq('id', body.id)
+      .single()
+
+    if (fetchError || !existingTimetable) {
+      return NextResponse.json({ error: 'Exam timetable not found' }, { status: 404 })
+    }
+
+    const institutionsId = body.institutions_id || existingTimetable.institutions_id
+    const examinationSessionId = body.examination_session_id || existingTimetable.examination_session_id
+
+    // Get institution_code and session_code for lookups
+    const { data: inst } = await supabase
+      .from('institutions')
+      .select('institution_code')
+      .eq('id', institutionsId)
+      .single()
+
+    const { data: sess } = await supabase
+      .from('examination_sessions')
+      .select('session_code')
+      .eq('id', examinationSessionId)
+      .single()
+
+    if (!inst?.institution_code) {
+      return NextResponse.json({ error: 'Institution not found' }, { status: 400 })
+    }
+    if (!sess?.session_code) {
+      return NextResponse.json({ error: 'Examination session not found' }, { status: 400 })
+    }
+
+    const institutionCode = inst.institution_code
+    const sessionCode = sess.session_code
+
+    // Step 1: Get course_id from courses table
+    // SQL: SELECT id FROM courses WHERE institutions_id = ? AND course_code = ? LIMIT 1
+    if (!courseId && courseCode) {
+      const { data: course, error: courseError } = await supabase
+        .from('courses')
+        .select('id, course_code, exam_duration')
+        .eq('institutions_id', institutionsId)
+        .eq('course_code', courseCode)
+        .limit(1)
+        .maybeSingle()
+
+      if (courseError || !course) {
+        return NextResponse.json({ error: `Course with code "${courseCode}" not found for institution "${institutionCode}"` }, { status: 400 })
+      }
+      courseId = course.id
+      courseCode = course.course_code
+
+      // Auto-populate duration_minutes from course's exam_duration (hours) if not provided
+      if (!durationMinutes && course.exam_duration) {
+        durationMinutes = Math.round(course.exam_duration * 60)
+      }
+    } else if (courseId && !courseCode) {
+      // Get course_code from course_id
+      const { data: course, error: courseError } = await supabase
+        .from('courses')
+        .select('course_code, exam_duration')
+        .eq('id', courseId)
+        .single()
+
+      if (!courseError && course) {
+        courseCode = course.course_code
+        if (!durationMinutes && course.exam_duration) {
+          durationMinutes = Math.round(course.exam_duration * 60)
+        }
+      }
+    }
+
+    // Step 2: Get course_offering_id from course_offerings table
+    // SQL: SELECT id FROM course_offerings WHERE institutions_id = ? AND examination_session_id = ? AND course_code = ? LIMIT 1
+    if (!courseOfferingId && courseCode) {
+      const { data: courseOffering, error: coError } = await supabase
+        .from('course_offerings')
+        .select('id')
+        .eq('institutions_id', institutionsId)
+        .eq('examination_session_id', examinationSessionId)
+        .eq('course_code', courseCode)
+        .limit(1)
+        .maybeSingle()
+
+      if (coError) {
+        console.warn(`Error fetching course offering:`, coError)
+      } else if (!courseOffering) {
+        console.warn(`Course offering not found for institution: ${institutionCode}, session: ${sessionCode}, course: ${courseCode}`)
+      } else {
+        courseOfferingId = courseOffering.id
+      }
+    }
+
+    // If course_offering_id is still null, return error
+    if (!courseOfferingId) {
+      return NextResponse.json({
+        error: `Course offering not found for institution "${institutionCode}", session "${sessionCode}", course "${courseCode}". Please ensure the course offering exists.`
+      }, { status: 400 })
+    }
+
     const updatePayload: any = {
-      examination_session_id: body.examination_session_id,
-      course_offering_id: body.course_offering_id,
+      examination_session_id: examinationSessionId,
+      course_id: courseId,
+      course_offering_id: courseOfferingId,
       exam_date: body.exam_date,
       session: body.session,
+      duration_minutes: durationMinutes,
       exam_mode: body.exam_mode || 'Offline',
       is_published: body.is_published ?? false,
       instructions: body.instructions || null,
@@ -241,7 +460,14 @@ export async function PUT(request: Request) {
       // Handle foreign key constraint violation
       if (error.code === '23503') {
         return NextResponse.json({
-          error: 'Invalid reference. Please ensure course offering and session exist.'
+          error: 'Invalid reference. Please ensure course and session exist.'
+        }, { status: 400 })
+      }
+
+      // Handle not-null constraint violation for course_offering_id
+      if (error.code === '23502' && error.message.includes('course_offering_id')) {
+        return NextResponse.json({
+          error: `Course offering not found for this institution, exam session, and course code combination. Please ensure the course offering exists.`
         }, { status: 400 })
       }
 

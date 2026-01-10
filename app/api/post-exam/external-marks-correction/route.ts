@@ -6,14 +6,28 @@ export async function GET(request: NextRequest) {
 	const { searchParams } = new URL(request.url)
 	const action = searchParams.get('action')
 
+	// Institution filter params (from useInstitutionFilter hook)
+	const filterInstitutionCode = searchParams.get('institution_code')
+	const filterInstitutionsId = searchParams.get('institutions_id')
+
 	try {
 		// Get institutions for dropdown
+		// If institution filter is provided, only return that institution
+		// Otherwise return all (for super_admin viewing "All Institutions")
 		if (action === 'institutions') {
-			const { data, error } = await supabase
+			let query = supabase
 				.from('institutions')
-				.select('id, name, institution_code')
+				.select('id, name, institution_code, institution_name')
 				.eq('is_active', true)
-				.order('name')
+
+			// Apply institution filter if provided (normal users)
+			if (filterInstitutionCode) {
+				query = query.eq('institution_code', filterInstitutionCode)
+			} else if (filterInstitutionsId) {
+				query = query.eq('id', filterInstitutionsId)
+			}
+
+			const { data, error } = await query.order('name')
 
 			if (error) throw error
 			return NextResponse.json(data)
@@ -22,14 +36,17 @@ export async function GET(request: NextRequest) {
 		// Get sessions for selected institution
 		if (action === 'sessions') {
 			const institutionId = searchParams.get('institutionId')
-			if (!institutionId) {
+
+			// Use filter institution ID if no specific institutionId provided
+			const effectiveInstitutionId = institutionId || filterInstitutionsId
+			if (!effectiveInstitutionId) {
 				return NextResponse.json({ error: 'Institution ID required' }, { status: 400 })
 			}
 
 			const { data, error } = await supabase
 				.from('examination_sessions')
 				.select('id, session_name, session_code')
-				.eq('institutions_id', institutionId)
+				.eq('institutions_id', effectiveInstitutionId)
 				.order('session_name', { ascending: false })
 
 			if (error) throw error
@@ -41,35 +58,84 @@ export async function GET(request: NextRequest) {
 			const institutionId = searchParams.get('institutionId')
 			const sessionId = searchParams.get('sessionId')
 
-			if (!institutionId || !sessionId) {
+			// Use filter institution ID if no specific institutionId provided
+			const effectiveInstitutionId = institutionId || filterInstitutionsId
+			if (!effectiveInstitutionId || !sessionId) {
 				return NextResponse.json({ error: 'Institution and Session IDs required' }, { status: 400 })
 			}
 
-			// Get courses that have marks entry
-			const { data, error } = await supabase
+			// OPTIMIZED: Use RPC or raw SQL to get DISTINCT course_ids first,
+			// then fetch course details only for those unique IDs
+			// Step 1: Get distinct course_ids efficiently
+			const { data: distinctCourseIds, error: distinctError } = await supabase
 				.from('marks_entry')
-				.select(`
-					course_id,
-					courses:course_id (
-						id,
-						course_code,
-						course_name
-					)
-				`)
-				.eq('institutions_id', institutionId)
+				.select('course_id')
+				.eq('institutions_id', effectiveInstitutionId)
 				.eq('examination_session_id', sessionId)
+				.not('course_id', 'is', null)
 
-			if (error) throw error
+			if (distinctError) throw distinctError
 
-			// Get unique courses
-			const uniqueCourses = new Map()
-			data?.forEach((item: any) => {
-				if (item.courses && !uniqueCourses.has(item.course_id)) {
-					uniqueCourses.set(item.course_id, item.courses)
-				}
-			})
+			// Extract unique course IDs using Set (much faster than Map with full objects)
+			const uniqueCourseIds = [...new Set(distinctCourseIds?.map(item => item.course_id) || [])]
 
-			return NextResponse.json(Array.from(uniqueCourses.values()))
+			if (uniqueCourseIds.length === 0) {
+				return NextResponse.json([])
+			}
+
+			// Step 2: Fetch course details only for unique course IDs
+			const { data: courses, error: coursesError } = await supabase
+				.from('courses')
+				.select('id, course_code, course_name')
+				.in('id', uniqueCourseIds)
+				.order('course_code')
+
+			if (coursesError) throw coursesError
+
+			return NextResponse.json(courses || [])
+		}
+
+		// Get courses with marks entries for today's date (for correction page)
+		// Flow: Institution -> Date (today, auto) -> Course -> Register Number
+		if (action === 'coursesByDate') {
+			const institutionId = searchParams.get('institutionId')
+			const date = searchParams.get('date') // Format: YYYY-MM-DD
+
+			// Use filter institution ID if no specific institutionId provided
+			const effectiveInstitutionId = institutionId || filterInstitutionsId
+			if (!effectiveInstitutionId || !date) {
+				return NextResponse.json({ error: 'Institution ID and Date required' }, { status: 400 })
+			}
+
+			// Get marks entries for the specific date
+			// evaluation_date is the date when marks were entered
+			const { data: distinctCourseIds, error: distinctError } = await supabase
+				.from('marks_entry')
+				.select('course_id')
+				.eq('institutions_id', effectiveInstitutionId)
+				.gte('evaluation_date', `${date}T00:00:00`)
+				.lt('evaluation_date', `${date}T23:59:59.999`)
+				.not('course_id', 'is', null)
+
+			if (distinctError) throw distinctError
+
+			// Extract unique course IDs
+			const uniqueCourseIds = [...new Set(distinctCourseIds?.map(item => item.course_id) || [])]
+
+			if (uniqueCourseIds.length === 0) {
+				return NextResponse.json([])
+			}
+
+			// Fetch course details
+			const { data: courses, error: coursesError } = await supabase
+				.from('courses')
+				.select('id, course_code, course_name')
+				.in('id', uniqueCourseIds)
+				.order('course_code')
+
+			if (coursesError) throw coursesError
+
+			return NextResponse.json(courses || [])
 		}
 
 		// Get packets that have marks entries (for correction)
@@ -78,7 +144,9 @@ export async function GET(request: NextRequest) {
 			const sessionId = searchParams.get('sessionId')
 			const courseId = searchParams.get('courseId')
 
-			if (!institutionId || !sessionId || !courseId) {
+			// Use filter institution ID if no specific institutionId provided
+			const effectiveInstitutionId = institutionId || filterInstitutionsId
+			if (!effectiveInstitutionId || !sessionId || !courseId) {
 				return NextResponse.json({ error: 'Institution, Session, and Course IDs required' }, { status: 400 })
 			}
 
@@ -86,7 +154,7 @@ export async function GET(request: NextRequest) {
 			const { data: allPackets, error: packetError } = await supabase
 				.from('answer_sheet_packets')
 				.select('id, packet_no, total_sheets, institutions_id, examination_session_id, course_id')
-				.eq('institutions_id', institutionId)
+				.eq('institutions_id', effectiveInstitutionId)
 				.eq('examination_session_id', sessionId)
 				.eq('course_id', courseId)
 				.order('packet_no')
@@ -109,7 +177,7 @@ export async function GET(request: NextRequest) {
 						packet_id
 					)
 				`)
-				.eq('institutions_id', institutionId)
+				.eq('institutions_id', effectiveInstitutionId)
 				.eq('examination_session_id', sessionId)
 				.eq('course_id', courseId)
 
@@ -287,6 +355,123 @@ export async function GET(request: NextRequest) {
 
 			if (error) throw error
 			return NextResponse.json(data)
+		}
+
+		// Search by learner register number (session-based - legacy)
+		if (action === 'searchByRegister') {
+			const institutionId = searchParams.get('institutionId')
+			const sessionId = searchParams.get('sessionId')
+			const courseId = searchParams.get('courseId')
+			const registerNumber = searchParams.get('registerNumber')
+
+			// Use filter institution ID if no specific institutionId provided
+			const effectiveInstitutionId = institutionId || filterInstitutionsId
+			if (!effectiveInstitutionId || !sessionId || !courseId || !registerNumber) {
+				return NextResponse.json({ error: 'Institution, Session, Course IDs and Register Number required' }, { status: 400 })
+			}
+		}
+
+		// Search by learner register number and date (for today's corrections only)
+		if (action === 'searchByRegisterAndDate') {
+			const institutionId = searchParams.get('institutionId')
+			const date = searchParams.get('date') // Format: YYYY-MM-DD
+			const courseId = searchParams.get('courseId')
+			const registerNumber = searchParams.get('registerNumber')
+
+			// Use filter institution ID if no specific institutionId provided
+			const effectiveInstitutionId = institutionId || filterInstitutionsId
+			if (!effectiveInstitutionId || !date || !courseId || !registerNumber) {
+				return NextResponse.json({ error: 'Institution ID, Date, Course ID and Register Number required' }, { status: 400 })
+			}
+
+			// Find marks entries for this course and date, then match by register number
+			const { data: marksEntries, error: marksError } = await supabase
+				.from('marks_entry')
+				.select(`
+					id,
+					dummy_number,
+					total_marks_obtained,
+					total_marks_in_words,
+					evaluator_remarks,
+					marks_out_of,
+					student_dummy_number_id,
+					exam_registration_id,
+					student_dummy_numbers:student_dummy_number_id (
+						id,
+						dummy_number,
+						exam_registration_id,
+						exam_registrations:exam_registration_id (
+							id,
+							register_number,
+							course_offering_id,
+							course_offerings:course_offering_id (
+								program_id
+							)
+						)
+					)
+				`)
+				.eq('institutions_id', effectiveInstitutionId)
+				.eq('course_id', courseId)
+				.gte('evaluation_date', `${date}T00:00:00`)
+				.lt('evaluation_date', `${date}T23:59:59.999`)
+
+			if (marksError) {
+				console.error('Error searching marks entries:', marksError)
+				throw marksError
+			}
+
+			// Filter by register number
+			const matchingEntries = marksEntries?.filter((entry: any) => {
+				const examReg = entry.student_dummy_numbers?.exam_registrations as any
+				return examReg?.register_number?.toLowerCase() === registerNumber.trim().toLowerCase()
+			}) || []
+
+			if (matchingEntries.length === 0) {
+				return NextResponse.json({
+					students: [],
+					course_details: null
+				})
+			}
+
+			// Get course details
+			const { data: courseData, error: courseError } = await supabase
+				.from('courses')
+				.select('course_code, course_name, external_max_mark, external_pass_mark')
+				.eq('id', courseId)
+				.single()
+
+			if (courseError) {
+				console.error('Error fetching course:', courseError)
+			}
+
+			// Build students array
+			const students = matchingEntries.map((entry: any) => {
+				const dummyNumber = entry.student_dummy_numbers as any
+				const examReg = dummyNumber?.exam_registrations as any
+				const courseOffering = examReg?.course_offerings as any
+				return {
+					student_dummy_id: entry.student_dummy_number_id,
+					dummy_number: entry.dummy_number || dummyNumber?.dummy_number,
+					exam_registration_id: examReg?.id,
+					register_number: examReg?.register_number,
+					program_id: courseOffering?.program_id || null,
+					marks_entry_id: entry.id,
+					total_marks_obtained: entry.total_marks_obtained ?? null,
+					total_marks_in_words: entry.total_marks_in_words || '',
+					remarks: entry.evaluator_remarks || '',
+					marks_out_of: entry.marks_out_of || courseData?.external_max_mark || 100
+				}
+			})
+
+			return NextResponse.json({
+				students,
+				course_details: courseData ? {
+					subject_code: courseData.course_code || '',
+					subject_name: courseData.course_name || '',
+					maximum_marks: courseData.external_max_mark || 100,
+					minimum_pass_marks: courseData.external_pass_mark || 40
+				} : null
+			})
 		}
 
 		// Get correction history for a marks entry

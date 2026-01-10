@@ -58,21 +58,7 @@ export async function GET(request: Request) {
 			const timetableId = timetableData.id
 			console.log('Found exam timetable:', timetableId)
 
-			// Step 2b: Get program_id from program_code
-			const { data: programData, error: programError } = await supabase
-				.from('programs')
-				.select('id')
-				.eq('program_code', program_code)
-				.single()
-
-			if (programError || !programData) {
-				console.error('Program not found:', programError)
-				return NextResponse.json({ exists: false, data: [] })
-			}
-
-			const programId = programData.id
-
-			// Step 3: Check if attendance records exist for this program
+			// Step 3: Check if attendance records exist for this program (using program_code)
 			const { data: attendanceRecords, error: attendanceError } = await supabase
 				.from('exam_attendance')
 				.select(`
@@ -85,7 +71,7 @@ export async function GET(request: Request) {
 					)
 				`)
 				.eq('exam_timetable_id', timetableId)
-				.eq('program_id', programId)
+				.eq('program_code', program_code)
 				.order('exam_registrations(stu_register_no)', { ascending: true })
 
 			if (attendanceError) {
@@ -113,7 +99,7 @@ export async function GET(request: Request) {
 		if (mode === 'list' && institution_id && examination_session_id && course_code && exam_date && session && program_code) {
 			console.log('Fetching student list with params:', { institution_id, examination_session_id, course_code, exam_date, session, program_code })
 
-			// Step 1: Get course_id from course_code
+			// Step 1: Get course_id from course_code (for exam_timetable lookup)
 			const { data: courseData, error: courseError } = await supabase
 				.from('courses')
 				.select('id')
@@ -128,22 +114,7 @@ export async function GET(request: Request) {
 			const courseId = courseData.id
 			console.log('Course ID found:', courseId)
 
-			// Step 2: Get program_id from program_code
-			const { data: programData, error: programError } = await supabase
-				.from('programs')
-				.select('id')
-				.eq('program_code', program_code)
-				.single()
-
-			if (programError || !programData) {
-				console.error('Program not found:', programError)
-				return NextResponse.json({ error: 'Program not found. Please verify the program code.', details: programError }, { status: 404 })
-			}
-
-			const programId = programData.id
-			console.log('Program ID found:', programId)
-
-			// Step 3: Get exam_timetable_id (without program filter - program validated via exam_registrations)
+			// Step 2: Get exam_timetable_id (without program filter - program validated via exam_registrations)
 			const { data: timetableData, error: timetableError } = await supabase
 				.from('exam_timetables')
 				.select('id')
@@ -168,7 +139,7 @@ export async function GET(request: Request) {
 			const timetableId = timetableData.id
 			console.log('Exam timetable verified:', timetableId)
 
-			// Step 3: Check if attendance already exists (join with exam_registrations)
+			// Step 3: Check if attendance already exists (join with exam_registrations, using program_code)
 			const { data: existingAttendance, error: checkAttendanceError } = await supabase
 				.from('exam_attendance')
 				.select(`
@@ -181,7 +152,7 @@ export async function GET(request: Request) {
 					)
 				`)
 				.eq('exam_timetable_id', timetableId)
-				.eq('program_id', programId)
+				.eq('program_code', program_code)
 				.order('exam_registrations(stu_register_no)', { ascending: true })
 
 			if (checkAttendanceError) {
@@ -209,52 +180,69 @@ export async function GET(request: Request) {
 				return NextResponse.json(mappedRecords)
 			}
 
-			// Step 4: Get exam registrations for this course with program filter
-			const { data: examRegistrations, error: regError } = await supabase
+			// Step 4: Get registered students from exam_registrations
+			// Filter by: institution_id, examination_session_id, program_code, course_code, fee_paid = true
+			console.log('Fetching registered students from exam_registrations with filters:', {
+				institution_id,
+				examination_session_id,
+				program_code,
+				course_code,
+				fee_paid: true
+			})
+
+			const { data: registeredStudents, error: regError } = await supabase
 				.from('exam_registrations')
-				.select(`
-					id,
-					student_id,
-					stu_register_no,
-					student_name,
-					attempt_number,
-					is_regular,
-					course_offerings!inner(
-						id,
-						course_id,
-						examination_session_id,
-						programs!inner(
-							program_code
-						)
-					)
-				`)
+				.select('id, student_id, stu_register_no, student_name, is_regular, attempt_number')
 				.eq('institutions_id', institution_id)
-				.eq('course_offerings.examination_session_id', examination_session_id)
-				.eq('course_offerings.course_id', courseId)
-				.eq('course_offerings.programs.program_code', program_code)
+				.eq('examination_session_id', examination_session_id)
+				.eq('program_code', program_code)
+				.eq('course_code', course_code)
+				.eq('fee_paid', true)
 				.order('stu_register_no', { ascending: true })
 
 			if (regError) {
 				console.error('Error fetching exam registrations:', regError)
-				return NextResponse.json({ error: 'Failed to fetch students', details: regError }, { status: 500 })
+				return NextResponse.json({
+					error: 'Failed to fetch registered students',
+					details: regError,
+					step: 'exam_registrations_fetch'
+				}, { status: 500 })
 			}
 
-			console.log('Exam registrations found:', examRegistrations?.length)
+			console.log('Registered students found:', registeredStudents?.length || 0)
 
-			if (!examRegistrations || examRegistrations.length === 0) {
-				return NextResponse.json({ error: 'No students registered for this course', details: 'Check student course registrations' }, { status: 404 })
+			if (!registeredStudents || registeredStudents.length === 0) {
+				return NextResponse.json({
+					error: 'No registered students found for this exam',
+					details: 'Check exam_registrations for students with fee_paid = true',
+					step: 'exam_registrations_fetch',
+					filters: { institution_id, examination_session_id, program_code, course_code, fee_paid: true }
+				}, { status: 404 })
 			}
 
-			// Return cleaned data (remove nested objects)
-			const cleanedData = examRegistrations.map((reg: any) => ({
+			// Step 5: Use exam_registration data directly (student_name is already stored)
+			// No need to call MyJKKN API - exam_registrations already has student_name
+			console.log('Using exam_registration data directly (optimized - no MyJKKN API call)')
+
+			const cleanedData = registeredStudents.map((reg: any) => ({
 				id: reg.id,
 				student_id: reg.student_id,
-				stu_register_no: reg.stu_register_no,
-				student_name: reg.student_name,
-				attempt_number: reg.attempt_number,
-				is_regular: reg.is_regular
+				stu_register_no: reg.stu_register_no || '',
+				student_name: reg.student_name || '',
+				attempt_number: reg.attempt_number || 1,
+				is_regular: reg.is_regular ?? true,
+				exam_registration_id: reg.id
 			}))
 
+			// Sort by stu_register_no ASC, then is_regular DESC
+			cleanedData.sort((a: any, b: any) => {
+				const regNoCompare = (a.stu_register_no || '').localeCompare(b.stu_register_no || '')
+				if (regNoCompare !== 0) return regNoCompare
+				// is_regular DESC: true comes before false
+				return (b.is_regular ? 1 : 0) - (a.is_regular ? 1 : 0)
+			})
+
+			console.log('Final student list:', cleanedData.length)
 			return NextResponse.json(cleanedData)
 		}
 
@@ -310,23 +298,7 @@ export async function POST(request: Request) {
 
 		const courseId = courseData.id
 
-		// Step 2: Get program_id from program_code
-		const { data: programData, error: programError } = await supabase
-			.from('programs')
-			.select('id')
-			.eq('program_code', body.program_code)
-			.single()
-
-		if (programError || !programData) {
-			return NextResponse.json({
-				error: 'Program not found. Please verify the program code.'
-			}, { status: 400 })
-		}
-
-		const programId = programData.id
-		console.log('Program ID resolved:', programId)
-
-		// Step 3: Get exam_timetable_id
+		// Step 2: Get exam_timetable_id (using program_code directly, no program_id lookup needed)
 		console.log('Looking up exam timetable with criteria:', {
 			institutions_id: body.institutions_id,
 			examination_session_id: body.exam_session_code,
@@ -365,12 +337,12 @@ export async function POST(request: Request) {
 		const timetableId = timetableData.id
 		console.log('Exam timetable ID resolved:', timetableId)
 
-		// Step 4: Check if attendance already exists for this program
+		// Step 3: Check if attendance already exists for this program (using program_code)
 		const { data: existingAttendance, error: checkError } = await supabase
 			.from('exam_attendance')
 			.select('id')
 			.eq('exam_timetable_id', timetableId)
-			.eq('program_id', programId)
+			.eq('program_code', body.program_code)
 			.limit(1)
 
 		if (checkError) {
@@ -384,23 +356,27 @@ export async function POST(request: Request) {
 			}, { status: 400 })
 		}
 
-		// Step 5: Prepare attendance records for insertion
+		// Step 4: Prepare attendance records for insertion (using program_code instead of program_id)
 		const attendancePayloads = body.attendance_records.map((record: any) => ({
 			institutions_id: body.institutions_id,
 			examination_session_id: body.exam_session_code,
-			program_id: programId,
+			program_code: body.program_code,  // Store program_code directly (MyJKKN compatible)
 			course_id: courseId,
 			exam_timetable_id: timetableId,
 			exam_registration_id: record.exam_registration_id,
 			student_id: record.student_id,
+			// Denormalized fields from exam_registration
+			attempt_number: record.attempt_number || 1,
+			is_regular: record.is_regular ?? true,
 			// Use attendance_status as the source of truth
-			// is_absent field removed as it's redundant and causing schema cache issues
 			attendance_status: record.is_absent ? 'Absent' : 'Present',
+			entry_time: record.entry_time || null,  // Time when student entered exam hall
 			remarks: record.remarks || null,
 			verified_by: body.submitted_by || null,
+			created_by: body.submitted_by || null,
 		}))
 
-		// Step 6: Insert all attendance records
+		// Step 5: Insert all attendance records
 		console.log('Inserting attendance records. Count:', attendancePayloads.length)
 		console.log('Sample payload:', attendancePayloads[0])
 

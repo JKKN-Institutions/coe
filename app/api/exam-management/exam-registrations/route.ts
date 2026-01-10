@@ -222,6 +222,7 @@ export async function POST(request: Request) {
 			institution_code: body.institution_code ?? null,
 			session_code: body.session_code ?? null,
 			course_code: body.course_code ?? null,
+			program_code: body.program_code ?? null,
 		}
 
 		const { data, error } = await supabase
@@ -352,6 +353,7 @@ export async function PUT(request: Request) {
 			institution_code: body.institution_code ?? null,
 			session_code: body.session_code ?? null,
 			course_code: body.course_code ?? null,
+			program_code: body.program_code ?? null,
 		}
 
 		const { data, error } = await supabase

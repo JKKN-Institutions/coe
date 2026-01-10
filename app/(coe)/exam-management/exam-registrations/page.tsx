@@ -386,18 +386,77 @@ export default function ExamRegistrationsPage() {
 		}
 	}
 
-	// Download failed rows as Excel file (same format as import template + Error Reason column)
+	// Download failed rows as Excel file (same format as import template + Error columns)
 	const handleDownloadFailedRows = () => {
 		if (failedRowsData.length === 0) return
 
 		// Create a map of errors by student_register_no + course_code for matching
-		const errorMap = new Map<string, string>()
+		const errorMap = new Map<string, string[]>()
 		importErrors.forEach(err => {
 			const key = `${err.student_register_no}|${err.course_code}`
-			errorMap.set(key, err.errors.join('; '))
+			errorMap.set(key, err.errors)
 		})
 
-		// Define column order to match template format exactly
+		// Helper function to categorize error and provide reference
+		const getErrorReference = (errors: string[]): { category: string; reference: string } => {
+			const errorText = errors.join(' ').toLowerCase()
+
+			if (errorText.includes('not found in learners profiles') || errorText.includes('student with register number')) {
+				return {
+					category: 'LEARNER_NOT_FOUND',
+					reference: 'Check: 1) Learner exists in MyJKKN, 2) Register number is correct, 3) Learner is active, 4) Institution has correct myjkkn_institution_ids mapping'
+				}
+			}
+			if (errorText.includes('institution') && errorText.includes('not found')) {
+				return {
+					category: 'INSTITUTION_NOT_FOUND',
+					reference: 'Check: Institution Code exists in COE system. Use template Reference Codes sheet for valid codes.'
+				}
+			}
+			if (errorText.includes('session') && (errorText.includes('not found') || errorText.includes('does not belong'))) {
+				return {
+					category: 'SESSION_INVALID',
+					reference: 'Check: 1) Session Code exists, 2) Session belongs to the specified Institution. Use template Reference Codes sheet.'
+				}
+			}
+			if (errorText.includes('course') && (errorText.includes('not found') || errorText.includes('does not belong'))) {
+				return {
+					category: 'COURSE_INVALID',
+					reference: 'Check: 1) Course Code exists, 2) Course belongs to Institution, 3) Course program is included in Session.'
+				}
+			}
+			if (errorText.includes('program') && errorText.includes('not included in session')) {
+				return {
+					category: 'PROGRAM_SESSION_MISMATCH',
+					reference: 'Check: The course\'s program must be added to the examination session\'s programs_included list.'
+				}
+			}
+			if (errorText.includes('duplicate') || errorText.includes('already exists')) {
+				return {
+					category: 'DUPLICATE_ENTRY',
+					reference: 'This registration already exists for this student, session, and course combination.'
+				}
+			}
+			if (errorText.includes('required')) {
+				return {
+					category: 'MISSING_REQUIRED_FIELD',
+					reference: 'Fill in all required fields marked with * in the template.'
+				}
+			}
+			if (errorText.includes('attempt number') || errorText.includes('fee amount') || errorText.includes('must be')) {
+				return {
+					category: 'VALIDATION_ERROR',
+					reference: 'Check data format: Attempt Number (1-10), Fee Amount (positive number), Status (Pending/Approved/Rejected/Cancelled).'
+				}
+			}
+
+			return {
+				category: 'UNKNOWN_ERROR',
+				reference: 'Review the error reason and correct the data accordingly.'
+			}
+		}
+
+		// Define column order to match template format exactly + error columns
 		const templateColumns = [
 			'Institution Code',
 			'Student Register No',
@@ -415,26 +474,34 @@ export default function ExamRegistrationsPage() {
 			'Remarks',
 			'Approved By',
 			'Approved Date',
-			'Error Reason'
+			'Error Category',
+			'Error Reason',
+			'Error Reference'
 		]
 
-		// Add "Error Reason" column to each failed row with explicit column ordering
+		// Add error columns to each failed row with explicit column ordering
 		const rowsWithErrors = failedRowsData.map((row, index) => {
 			const studentRegNo = String(row['Student Register No'] || '').trim()
 			const courseCode = String(row['Course Code'] || '').trim()
 			const key = `${studentRegNo || 'N/A'}|${courseCode || 'N/A'}`
 
 			// Try to find matching error, fallback to index-based match
-			let errorReason = errorMap.get(key)
-			if (!errorReason && importErrors[index]) {
-				errorReason = importErrors[index].errors.join('; ')
+			let errors = errorMap.get(key)
+			if (!errors && importErrors[index]) {
+				errors = importErrors[index].errors
 			}
+			const errorReason = errors?.join('; ') || 'Unknown error'
+			const { category, reference } = getErrorReference(errors || [])
 
 			// Create row with explicit column order to ensure all columns appear
 			const orderedRow: Record<string, unknown> = {}
 			templateColumns.forEach(col => {
-				if (col === 'Error Reason') {
-					orderedRow[col] = errorReason || 'Unknown error'
+				if (col === 'Error Category') {
+					orderedRow[col] = category
+				} else if (col === 'Error Reason') {
+					orderedRow[col] = errorReason
+				} else if (col === 'Error Reference') {
+					orderedRow[col] = reference
 				} else {
 					orderedRow[col] = row[col] ?? ''
 				}
@@ -464,7 +531,9 @@ export default function ExamRegistrationsPage() {
 			{ wch: 30 }, // Remarks
 			{ wch: 20 }, // Approved By
 			{ wch: 15 }, // Approved Date
-			{ wch: 50 }  // Error Reason (wider to show full error messages)
+			{ wch: 25 }, // Error Category
+			{ wch: 60 }, // Error Reason (wider to show full error messages)
+			{ wch: 80 }  // Error Reference (widest for helpful suggestions)
 		]
 		ws['!cols'] = colWidths
 
@@ -481,7 +550,7 @@ export default function ExamRegistrationsPage() {
 
 		toast({
 			title: "📥 Downloaded",
-			description: `${failedRowsData.length} failed row${failedRowsData.length > 1 ? 's' : ''} with error reasons exported to ${filename}`,
+			description: `${failedRowsData.length} failed row${failedRowsData.length > 1 ? 's' : ''} with error details exported to ${filename}`,
 			className: "bg-blue-50 border-blue-200 text-blue-800 dark:bg-blue-900/20 dark:border-blue-800 dark:text-blue-200",
 		})
 	}
@@ -551,7 +620,8 @@ export default function ExamRegistrationsPage() {
 
 			// CRITICAL: Fetch fresh institutions data before validation
 			// This ensures we have the latest data and avoids stale/empty cache issues
-			let freshInstitutions: typeof institutions = []
+			// Include myjkkn_institution_ids for learner lookup across Aided/Self-financing
+			let freshInstitutions: any[] = []
 			try {
 				console.log('[handleImport] Fetching fresh institutions data...')
 				const instRes = await fetch('/api/master/institutions?pageSize=10000')
@@ -563,9 +633,10 @@ export default function ExamRegistrationsPage() {
 						.map((i: any) => ({
 							id: i.id,
 							institution_code: i.institution_code,
-							name: i.name || i.institution_name
+							name: i.name || i.institution_name,
+							myjkkn_institution_ids: i.myjkkn_institution_ids || [] // Include for learner lookup
 						}))
-					console.log('[handleImport] Loaded', freshInstitutions.length, 'institutions:', freshInstitutions.map(i => i.institution_code))
+					console.log('[handleImport] Loaded', freshInstitutions.length, 'institutions:', freshInstitutions.map((i: any) => i.institution_code))
 				}
 			} catch (instError) {
 				console.error('[handleImport] Failed to fetch institutions:', instError)
@@ -692,27 +763,67 @@ export default function ExamRegistrationsPage() {
 
 				console.log('[handleImport] Headers normalized, sample row keys:', rows.length > 0 ? Object.keys(rows[0]) : [])
 
-				// Fetch MyJKKN learners for all unique institution codes in the import
+				// Get unique institution codes from the import file
 				const uniqueInstitutionCodes = [...new Set(
 					rows
 						.map(r => String(r['Institution Code'] || '').trim())
 						.filter(code => code !== '')
 				)]
-				console.log('[handleImport] Unique institution codes:', uniqueInstitutionCodes)
+				console.log('[handleImport] Unique institution codes from file:', uniqueInstitutionCodes)
 
-				// Fetch learners from MyJKKN API for each institution
-				const myjkknLearnersMap = new Map<string, any[]>()
+				// Collect all myjkkn_institution_ids from all institutions in the import
+				// This gets both Aided and Self-financing institution IDs for proper learner lookup
+				const allMyjkknInstIds: string[] = []
 				for (const instCode of uniqueInstitutionCodes) {
-					try {
-						console.log(`[handleImport] Fetching learners for institution: ${instCode}`)
-						const learners = await fetchLearners(instCode)
-						console.log(`[handleImport] Loaded ${learners.length} learners for ${instCode}`)
-						myjkknLearnersMap.set(instCode, learners)
-					} catch (error) {
-						console.error(`[handleImport] Failed to fetch learners for ${instCode}:`, error)
-						myjkknLearnersMap.set(instCode, [])
+					const inst = institutionsToUse.find(i =>
+						i.institution_code?.toUpperCase() === instCode.toUpperCase()
+					) as any
+					if (inst?.myjkkn_institution_ids?.length) {
+						allMyjkknInstIds.push(...inst.myjkkn_institution_ids)
+						console.log(`[handleImport] Institution ${instCode} has myjkkn_institution_ids:`, inst.myjkkn_institution_ids)
 					}
 				}
+				const uniqueMyjkknInstIds = [...new Set(allMyjkknInstIds)]
+				console.log('[handleImport] All unique MyJKKN institution IDs:', uniqueMyjkknInstIds)
+
+				// Fetch learners from MyJKKN API using myjkkn_institution_ids (includes Aided + Self-financing)
+				console.log('[handleImport] Fetching learners from MyJKKN using counselling codes...')
+				let allMyjkknLearners: any[] = []
+				try {
+					// If we have specific MyJKKN institution IDs, fetch learners for each
+					if (uniqueMyjkknInstIds.length > 0) {
+						for (const myjkknInstId of uniqueMyjkknInstIds) {
+							try {
+								// Fetch learners for this MyJKKN institution ID
+								const res = await fetch(`/api/myjkkn/learner-profiles?fetchAll=true&institution_id=${myjkknInstId}`)
+								if (res.ok) {
+									const result = await res.json()
+									const data = Array.isArray(result) ? result : result.data || []
+									console.log(`[handleImport] Loaded ${data.length} learners for MyJKKN institution ${myjkknInstId}`)
+									allMyjkknLearners.push(...data)
+								}
+							} catch (error) {
+								console.error(`[handleImport] Failed to fetch learners for MyJKKN institution ${myjkknInstId}:`, error)
+							}
+						}
+					} else {
+						// Fallback: fetch all learners without filter
+						allMyjkknLearners = await fetchLearners()
+					}
+					console.log(`[handleImport] Loaded ${allMyjkknLearners.length} total learners from MyJKKN`)
+				} catch (error) {
+					console.error('[handleImport] Failed to fetch learners from MyJKKN:', error)
+				}
+
+				// Create a lookup map by register_number for fast matching
+				// Deduplicate by register_number in case same student appears in multiple institution fetches
+				const learnersByRegisterNo = new Map<string, any>()
+				for (const learner of allMyjkknLearners) {
+					if (learner.register_number && !learnersByRegisterNo.has(learner.register_number)) {
+						learnersByRegisterNo.set(learner.register_number, learner)
+					}
+				}
+				console.log(`[handleImport] Created lookup map with ${learnersByRegisterNo.size} learners by register number`)
 
 				const now = new Date().toISOString()
 				const preValidationErrors: Array<{
@@ -803,7 +914,8 @@ export default function ExamRegistrationsPage() {
 						continue
 					}
 
-					// Step 4: Validate Course Code
+					// Step 4: Validate Course Code with hierarchy check
+					// Lookup: Institution → Session → Program (from session.programs_included) → Course
 					const courseCode = String(r['Course Code'] || '').trim()
 					if (!courseCode) {
 						preValidationErrors.push({
@@ -816,6 +928,7 @@ export default function ExamRegistrationsPage() {
 						continue
 					}
 
+					// First check if course exists in system
 					const course = allCourseOfferings.find(c => c.course_code === courseCode)
 					if (!course) {
 						preValidationErrors.push({
@@ -828,13 +941,33 @@ export default function ExamRegistrationsPage() {
 						continue
 					}
 
-					// Step 5: Validate foreign key relationships - all must belong to same institution
+					// Step 5: Validate foreign key relationships with full hierarchy
+					// Hierarchy: Institution → Session → Program → Course
 					const fkErrors: string[] = []
+
+					// 5a: Session must belong to institution
 					if (session.institutions_id !== institution.id) {
 						fkErrors.push(`Examination Session "${sessionCode}" does not belong to Institution "${institutionCode}".`)
 					}
+
+					// 5b: Course must belong to institution
 					if (course.institutions_id !== institution.id) {
 						fkErrors.push(`Course Code "${courseCode}" does not belong to Institution "${institutionCode}".`)
+					}
+
+					// 5c: Course's program must be included in session's programs_included
+					// This validates the hierarchy: Session → Program → Course
+					// Note: programs_included contains UUIDs, so we compare with course.program_id (not program_code)
+					const sessionProgramIds = session.programs_included || []
+					const courseProgramId = course.program_id
+					const courseProgramCode = course.program_code || 'Unknown'
+					if (courseProgramId && sessionProgramIds.length > 0) {
+						if (!sessionProgramIds.includes(courseProgramId)) {
+							fkErrors.push(
+								`Course "${courseCode}" belongs to program "${courseProgramCode}" which is not included in Session "${sessionCode}". ` +
+								`Please ensure the course's program is added to the examination session.`
+							)
+						}
 					}
 
 					if (fkErrors.length > 0) {
@@ -850,11 +983,9 @@ export default function ExamRegistrationsPage() {
 
 					// Step 6: Look up student from MyJKKN learner profiles (REQUIRED)
 					// Match by register_number to get the student_id (learner profile ID)
-					// If not found, row is rejected - student must exist in learners_profiles
-					const institutionLearners = myjkknLearnersMap.get(institutionCode) || []
-					const matchingLearner = institutionLearners.find(l =>
-						l.register_number === studentRegisterNo
-					)
+					// Uses global lookup map (not filtered by institution) to find students
+					// who may be registered under different institutions in MyJKKN
+					const matchingLearner = learnersByRegisterNo.get(studentRegisterNo)
 
 					if (!matchingLearner) {
 						preValidationErrors.push({
@@ -924,6 +1055,7 @@ export default function ExamRegistrationsPage() {
 
 					// Step 8: Create registration data with all validated IDs
 					// student_id comes from MyJKKN learner profile (learners_profiles.id)
+					// Hierarchy validated: Institution → Session → Program → Course
 					const registrationData = {
 						institutions_id: institution.id,
 						student_id: matchingLearner.id, // From MyJKKN learner profile (required)
@@ -944,6 +1076,7 @@ export default function ExamRegistrationsPage() {
 						institution_code: institutionCode,
 						session_code: sessionCode,
 						course_code: courseCode,
+						program_code: matchingLearner.program_code || null, // Get from learner's program (enriched by MyJKKN API)
 						// Store original row data for potential re-export if API fails
 						_originalRow: r,
 						// Store original codes for error display

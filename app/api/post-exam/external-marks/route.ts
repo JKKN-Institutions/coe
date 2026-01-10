@@ -7,13 +7,26 @@ export async function GET(request: Request) {
 		const action = searchParams.get('action')
 		const supabase = getSupabaseServer()
 
+		// Get institution filter params (from useInstitutionFilter hook)
+		const institutionCode = searchParams.get('institution_code')
+		const institutionsIdParam = searchParams.get('institutions_id')
+
 		switch (action) {
 			case 'institutions': {
-				const { data, error } = await supabase
+				// Build query with optional filtering
+				let query = supabase
 					.from('institutions')
 					.select('id, name, institution_code')
 					.eq('is_active', true)
-					.order('name')
+
+				// Apply institution filter if provided (super_admin with specific institution selected)
+				if (institutionCode) {
+					query = query.eq('institution_code', institutionCode)
+				} else if (institutionsIdParam) {
+					query = query.eq('id', institutionsIdParam)
+				}
+
+				const { data, error } = await query.order('name')
 
 				if (error) {
 					console.error('Error fetching institutions:', error)

@@ -67,7 +67,9 @@
       "Bash(timeout 30 npm run dev:*)",
       "Bash(copy \"d:\\\\JKKN\\\\Development\\\\Application\\\\COE\\\\jkkncoe\\\\services\\\\users\\\\students-service.ts\" \"d:\\\\JKKN\\\\Development\\\\Application\\\\COE\\\\jkkncoe\\\\services\\\\users\\\\learners-service.ts\")",
       "Bash(mkdir:*)",
-      "Bash(xxd:*)"
+      "Bash(xxd:*)",
+      "Bash(del \"d:\\\\JKKN\\\\Development\\\\Application\\\\COE\\\\jkkncoe\\\\supabase\\\\migrations\\\\20260109_make_exam_timetables_course_offering_nullable.sql\")",
+      "Bash(timeout 15 npm run dev:*)"
     ],
     "deny": [
       "mcp__filesystem__*"

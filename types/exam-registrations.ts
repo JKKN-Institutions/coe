@@ -82,6 +82,7 @@ export interface ExaminationSessionOption {
 	session_code: string
 	session_name?: string
 	institutions_id?: string
+	programs_included?: string[]  // Array of program codes included in this session
 }
 
 export interface CourseOfferingOption {
@@ -89,5 +90,6 @@ export interface CourseOfferingOption {
 	course_code: string
 	course_name?: string
 	institutions_id?: string
-	program_code?: string
+	program_id?: string      // UUID of the program (for matching with session.programs_included)
+	program_code?: string    // Code of the program (e.g., "UMB", "BCA")
 }

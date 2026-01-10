@@ -169,7 +169,8 @@ export async function fetchExaminationSessions(): Promise<ExaminationSessionOpti
 			id: s.id,
 			session_code: s.session_code,
 			session_name: s.session_name,
-			institutions_id: s.institutions_id
+			institutions_id: s.institutions_id,
+			programs_included: s.programs_included || []  // Include programs for validation
 		}))
 	} catch (e) {
 		console.error('Failed to load examination sessions:', e)
@@ -189,7 +190,8 @@ export async function fetchCourseOfferings(): Promise<CourseOfferingOption[]> {
 			course_code: c.course_code,
 			course_name: c.course_name || c.course_title,
 			institutions_id: c.institutions_id,
-			program_code: c.course_program_code || c.program_code
+			program_id: c.program_id,  // UUID for matching with session.programs_included
+			program_code: c.course_program_code || c.program_code  // Code like "UMB", "BCA"
 		}))
 	} catch (e) {
 		console.error('Failed to load course offerings:', e)

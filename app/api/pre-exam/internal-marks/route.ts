@@ -10,11 +10,24 @@ export async function GET(request: Request) {
 
 		switch (action) {
 			case 'institutions': {
-				const { data, error } = await supabase
+				// Apply institution filter from query params (for normal users)
+				const institutionCode = searchParams.get('institution_code')
+				const institutionsId = searchParams.get('institutions_id')
+
+				let query = supabase
 					.from('institutions')
-					.select('id, name, institution_code')
+					.select('id, name, institution_code, institution_name, myjkkn_institution_ids')
 					.eq('is_active', true)
 					.order('name')
+
+				// Apply filter if provided (normal users always have filter, super_admin optional)
+				if (institutionCode) {
+					query = query.eq('institution_code', institutionCode)
+				} else if (institutionsId) {
+					query = query.eq('id', institutionsId)
+				}
+
+				const { data, error } = await query
 
 				if (error) {
 					console.error('Error fetching institutions:', error)

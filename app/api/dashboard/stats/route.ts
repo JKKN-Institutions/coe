@@ -44,59 +44,32 @@ export async function GET(request: Request) {
 			userError = result.error
 		}
 
-		// If still not found, return default stats (user not in local DB yet)
-		if (userError || !userData) {
-			// Return default stats for users not yet in local database
-			return NextResponse.json({
-				totalLearners: 0,
-				activeCourses: 0,
-				totalPrograms: 0,
-				facultyMembers: 0,
-				totalInstitutions: 0,
-				totalDepartments: 0,
-				totalSemesters: 0,
-				activeExamSessions: 0,
-				totalExaminers: 0,
-				pendingEvaluations: 0,
-				myJKKN: {
-					learners: 0,
-					staff: 0,
-					institutions: 0,
-					departments: 0,
-					programs: 0
-				},
-				attendanceRatio: '0.0%',
-				attendanceDetails: { total: 0, present: 0, absent: 0 },
-				upcomingExams: [],
-				recentResults: [],
-				isSuperAdmin: false,
-				institutionId: null,
-				userRole: 'user',
-				userRoleName: 'User',
-				userRoleDescription: 'Standard user - contact admin to assign roles',
-				userRoles: [],
-				userEmail: userEmail || ''
-			})
-		}
+		// Get institution ID from request params as fallback
+		const requestInstitutionId = searchParams.get('institutions_id')
 
-		const isSuperAdmin = userData.is_super_admin
-		const userInstitutionId = userData.institution_id
+		// If user not found in local DB, use request params for institution filtering
+		const isSuperAdmin = userData?.is_super_admin || false
+		const userInstitutionId = userData?.institution_id || requestInstitutionId
 
 		// Get user's active roles from user_roles table (RBAC system)
-		const { data: userRolesData, error: rolesError } = await supabase
-			.from('user_roles')
-			.select(`
-				role_id,
-				assigned_at,
-				expires_at,
-				roles!inner(id, name, description)
-			`)
-			.eq('user_id', userId)
-			.eq('is_active', true)
-			.or(`expires_at.is.null,expires_at.gt.${new Date().toISOString()}`)
+		let userRolesData: any[] = []
+		if (userData?.id) {
+			const { data: rolesData, error: rolesError } = await supabase
+				.from('user_roles')
+				.select(`
+					role_id,
+					assigned_at,
+					expires_at,
+					roles!inner(id, name, description)
+				`)
+				.eq('user_id', userData.id)
+				.eq('is_active', true)
+				.or(`expires_at.is.null,expires_at.gt.${new Date().toISOString()}`)
 
-		if (rolesError) {
-			console.error('Error fetching user roles:', rolesError)
+			if (rolesError) {
+				console.error('Error fetching user roles:', rolesError)
+			}
+			userRolesData = rolesData || []
 		}
 
 		// Extract role names and details
@@ -274,30 +247,33 @@ export async function GET(request: Request) {
 				*,
 				institutions(id, institution_code, name),
 				examination_sessions(id, session_code, session_name),
-				course_offerings(
-					id,
-					course_id,
-					course_mapping:course_id(
-						id,
-						courses:course_id(course_code, course_name)
-					),
-					programs(id, program_code, program_name)
-				)
+				courses(id, course_code, course_name),
+				course_offerings(id, program_id, programs(id, program_code, program_name))
 			`)
 			.gte('exam_date', today)
 			.order('exam_date', { ascending: true })
 			.limit(5)
 
-		if (!isSuperAdmin && userInstitutionId) {
-			// Get institution UUID
-			const { data: instData } = await supabase
-				.from('institutions')
-				.select('id')
-				.eq('institution_code', userInstitutionId)
-				.single()
+		// Filter by institution - use request param first, then user's institution
+		const institutionIdToFilter = requestInstitutionId || userInstitutionId
+		if (!isSuperAdmin && institutionIdToFilter) {
+			// Check if it's a UUID or institution_code
+			const isUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(institutionIdToFilter)
 
-			if (instData) {
-				upcomingExamsQuery = upcomingExamsQuery.eq('institutions_id', instData.id)
+			if (isUUID) {
+				// Direct UUID filter
+				upcomingExamsQuery = upcomingExamsQuery.eq('institutions_id', institutionIdToFilter)
+			} else {
+				// Get institution UUID from code
+				const { data: instData } = await supabase
+					.from('institutions')
+					.select('id')
+					.eq('institution_code', institutionIdToFilter)
+					.single()
+
+				if (instData) {
+					upcomingExamsQuery = upcomingExamsQuery.eq('institutions_id', instData.id)
+				}
 			}
 		}
 
@@ -315,8 +291,8 @@ export async function GET(request: Request) {
 			exam_mode: exam.exam_mode,
 			institution_name: exam.institutions?.name || 'N/A',
 			session_name: exam.examination_sessions?.session_name || 'N/A',
-			course_code: exam.course_offerings?.course_mapping?.courses?.course_code || 'N/A',
-			course_name: exam.course_offerings?.course_mapping?.courses?.course_name || 'N/A',
+			course_code: exam.courses?.course_code || 'N/A',
+			course_name: exam.courses?.course_name || 'N/A',
 			program_name: exam.course_offerings?.programs?.program_name || 'N/A'
 		}))
 

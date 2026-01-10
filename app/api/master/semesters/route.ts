@@ -32,8 +32,8 @@ export async function GET(req: NextRequest) {
 			query = query.eq('program_id', program_id)
 		}
 		if (program_code) {
-			// Filter by program_code through the joined programs table
-			query = query.eq('programs.program_code', program_code)
+			// Filter by program_code directly on semesters table
+			query = query.eq('program_code', program_code)
 		}
 
 		const { data, error } = await query
@@ -94,13 +94,7 @@ create table if not exists public.semesters (
 			programs: undefined // Remove the joined programs object from response
 		}))
 
-		// Filter by program_code if specified (after mapping)
-		let filteredData = mappedData
-		if (program_code) {
-			filteredData = mappedData.filter(s => s.program_code === program_code)
-		}
-
-		return NextResponse.json(filteredData)
+		return NextResponse.json(mappedData)
 	} catch (err) {
 		console.error('Semester GET error:', err)
 		return NextResponse.json({ error: 'Failed to fetch semesters' }, { status: 500 })

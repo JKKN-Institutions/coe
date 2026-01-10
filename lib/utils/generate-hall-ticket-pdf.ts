@@ -58,8 +58,32 @@ export function generateHallTicketPDF(options: GenerateHallTicketOptions): strin
 	const primaryColor = parseHexColor(settings?.primary_color || data.institution.primary_color)
 	const secondaryColor = parseHexColor(settings?.secondary_color || data.institution.secondary_color)
 
-	// Process each student (one page per student)
-	data.students.forEach((student, studentIndex) => {
+	// Group students by semester_group (year) for year-wise PDF generation
+	// Then sort within each group by register_number
+	const yearOrder = ['I Year', 'II Year', 'III Year', 'IV Year', 'V Year']
+	const groupedByYear = data.students.reduce((acc, student) => {
+		const group = student.semester_group || 'Other'
+		if (!acc[group]) acc[group] = []
+		acc[group].push(student)
+		return acc
+	}, {} as Record<string, HallTicketStudent[]>)
+
+	// Sort each group by register_number
+	Object.values(groupedByYear).forEach(group => {
+		group.sort((a, b) => a.register_number.localeCompare(b.register_number))
+	})
+
+	// Sort groups by year order and flatten
+	const sortedStudents = Object.entries(groupedByYear)
+		.sort((a, b) => {
+			const indexA = yearOrder.indexOf(a[0])
+			const indexB = yearOrder.indexOf(b[0])
+			return (indexA === -1 ? 999 : indexA) - (indexB === -1 ? 999 : indexB)
+		})
+		.flatMap(([, students]) => students)
+
+	// Process each student (one page per student) - now sorted year-wise
+	sortedStudents.forEach((student, studentIndex) => {
 		// Add new page for each student (except the first one)
 		if (studentIndex > 0) {
 			doc.addPage()
@@ -359,7 +383,31 @@ export function generateHallTicketPDFBlob(options: GenerateHallTicketOptions): B
 	const primaryColor = parseHexColor(settings?.primary_color || data.institution.primary_color)
 	const secondaryColor = parseHexColor(settings?.secondary_color || data.institution.secondary_color)
 
-	data.students.forEach((student, studentIndex) => {
+	// Group students by semester_group (year) for year-wise PDF generation
+	// Then sort within each group by register_number
+	const yearOrder = ['I Year', 'II Year', 'III Year', 'IV Year', 'V Year']
+	const groupedByYear = data.students.reduce((acc, student) => {
+		const group = student.semester_group || 'Other'
+		if (!acc[group]) acc[group] = []
+		acc[group].push(student)
+		return acc
+	}, {} as Record<string, HallTicketStudent[]>)
+
+	// Sort each group by register_number
+	Object.values(groupedByYear).forEach(group => {
+		group.sort((a, b) => a.register_number.localeCompare(b.register_number))
+	})
+
+	// Sort groups by year order and flatten
+	const sortedStudents = Object.entries(groupedByYear)
+		.sort((a, b) => {
+			const indexA = yearOrder.indexOf(a[0])
+			const indexB = yearOrder.indexOf(b[0])
+			return (indexA === -1 ? 999 : indexA) - (indexB === -1 ? 999 : indexB)
+		})
+		.flatMap(([, students]) => students)
+
+	sortedStudents.forEach((student, studentIndex) => {
 		if (studentIndex > 0) {
 			doc.addPage()
 		}

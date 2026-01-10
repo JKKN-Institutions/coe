@@ -12,6 +12,7 @@ export interface Institution {
 	id: string
 	institution_code: string
 	institution_name: string
+	myjkkn_institution_ids?: string[] // MyJKKN institution UUIDs for API integration
 }
 
 /**
@@ -33,6 +34,7 @@ export interface Program {
 	id: string
 	program_code: string
 	program_name: string
+	program_order?: number // Sort order for display
 }
 
 /**

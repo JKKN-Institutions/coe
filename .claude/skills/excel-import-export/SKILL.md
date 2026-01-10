@@ -357,6 +357,97 @@ if (wsCompat['!dataValidation'] && wsCompat['!dataValidation'].length > 0) {
 
 ---
 
+## Import Loading Overlay Pattern
+
+**CRITICAL**: Always lock the screen during import to prevent user interaction. This provides visual feedback and prevents duplicate submissions.
+
+**Reference Implementation: `app/(coe)/exam-management/exam-registrations/page.tsx`**
+
+### Required State Variables
+
+```typescript
+// Import progress tracking state
+const [importInProgress, setImportInProgress] = useState(false)
+const [importProgress, setImportProgress] = useState({ current: 0, total: 0 })
+```
+
+### Loading Overlay Component
+
+Add this overlay right after your `<SidebarProvider>` or at the root of your return:
+
+```tsx
+{/* Import Loading Overlay */}
+{importInProgress && (
+  <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-[100] flex items-center justify-center">
+    <div className="bg-white dark:bg-slate-800 rounded-2xl p-8 shadow-2xl max-w-md w-full mx-4">
+      <div className="flex flex-col items-center gap-4">
+        <div className="relative">
+          <Loader2 className="h-12 w-12 text-blue-600 animate-spin" />
+        </div>
+        <div className="text-center">
+          <h3 className="text-lg font-semibold text-slate-900 dark:text-slate-100">
+            Importing [Entity Name]
+          </h3>
+          <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">
+            Please wait while the data is being processed...
+          </p>
+        </div>
+        {importProgress.total > 0 && (
+          <div className="w-full space-y-2">
+            <div className="flex justify-between text-sm text-slate-600 dark:text-slate-300">
+              <span>Progress</span>
+              <span>{importProgress.current} / {importProgress.total}</span>
+            </div>
+            <div className="w-full bg-slate-200 dark:bg-slate-700 rounded-full h-2.5">
+              <div
+                className="bg-blue-600 h-2.5 rounded-full transition-all duration-300"
+                style={{ width: `${(importProgress.current / importProgress.total) * 100}%` }}
+              />
+            </div>
+            <p className="text-xs text-center text-slate-500 dark:text-slate-400">
+              {Math.round((importProgress.current / importProgress.total) * 100)}% complete
+            </p>
+          </div>
+        )}
+      </div>
+    </div>
+  </div>
+)}
+```
+
+### Required Import
+
+```typescript
+import { Loader2 } from 'lucide-react'
+```
+
+### Integration with Import Handler
+
+```typescript
+// At start of import
+setImportInProgress(true)
+setImportProgress({ current: 0, total: rows.length })
+
+// Inside processing loop
+for (let i = 0; i < mapped.length; i++) {
+  setImportProgress({ current: i + 1, total: mapped.length })
+  // ... process row
+}
+
+// On completion (success or error)
+setImportInProgress(false)
+
+// In catch block - IMPORTANT: Always reset on error
+} catch (err) {
+  console.error('Import error:', err)
+  setLoading(false)
+  setImportInProgress(false)  // Reset overlay on error
+  toast({ ... })
+}
+```
+
+---
+
 ## Import Handler Pattern
 
 Implement the import handler in your page component:
@@ -758,11 +849,104 @@ function showUploadToast(total: number, success: number, failed: number) {
 
 ```typescript
 import XLSX from '@/lib/utils/excel-compat'
-import { Download, Upload, FileSpreadsheet, FileJson, RefreshCw, XCircle, AlertTriangle, PlusCircle } from 'lucide-react'
+import { Download, Upload, FileSpreadsheet, FileJson, RefreshCw, XCircle, AlertTriangle, PlusCircle, Loader2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog'
 import { useToast } from '@/hooks/common/use-toast'
+```
+
+---
+
+## Denormalized Code Values Pattern
+
+**IMPORTANT**: When importing data, store both the UUID (foreign key) AND the code value for easier querying and debugging.
+
+**Reference Implementation: `app/api/exam-management/exam-registrations/route.ts`**
+
+### Why Store Code Values?
+
+1. **Easier debugging** - Can query by readable codes instead of UUIDs
+2. **Export consistency** - Export shows same codes as import template
+3. **Data integrity** - Code values match what user sees in Excel
+
+### API Route Pattern (INSERT)
+
+```typescript
+// In POST handler - store both UUID and code values
+const insertPayload: any = {
+  // Foreign key references (UUIDs)
+  institutions_id: body.institutions_id,
+  student_id: body.student_id || null,
+  examination_session_id: body.examination_session_id,
+  course_offering_id: body.course_offering_id,
+
+  // ... other fields ...
+
+  // Store code values for easier querying (denormalized)
+  institution_code: body.institution_code ?? null,
+  session_code: body.session_code ?? null,
+  course_code: body.course_code ?? null,
+}
+```
+
+### API Route Pattern (UPDATE)
+
+```typescript
+// In PUT handler - update both UUID and code values
+const updatePayload: any = {
+  institutions_id: body.institutions_id,
+  student_id: body.student_id,
+  examination_session_id: body.examination_session_id,
+  course_offering_id: body.course_offering_id,
+
+  // ... other fields ...
+
+  // Store code values for easier querying (denormalized)
+  institution_code: body.institution_code ?? null,
+  session_code: body.session_code ?? null,
+  course_code: body.course_code ?? null,
+
+  updated_at: new Date().toISOString(),
+}
+```
+
+### Page Import Logic Pattern
+
+When processing imported rows, send BOTH the UUID and the original code value:
+
+```typescript
+// After looking up UUIDs from codes
+const registrationData = {
+  // Foreign key references (UUIDs - looked up from codes)
+  institutions_id: institution.id,
+  student_id: matchingLearner.id,
+  examination_session_id: session.id,
+  course_offering_id: course.id,
+
+  // ... other fields ...
+
+  // Store code values (denormalized) - from Excel
+  institution_code: institutionCode,  // Original value from Excel
+  session_code: sessionCode,          // Original value from Excel
+  course_code: courseCode,            // Original value from Excel
+}
+```
+
+### Database Table Requirements
+
+Ensure your table has columns for both:
+
+```sql
+-- Foreign keys (UUIDs)
+institutions_id UUID REFERENCES institutions(id),
+examination_session_id UUID REFERENCES examination_sessions(id),
+course_offering_id UUID REFERENCES course_offerings(id),
+
+-- Denormalized code values (for querying/export)
+institution_code VARCHAR(50),
+session_code VARCHAR(50),
+course_code VARCHAR(50),
 ```
 
 ## State Types
@@ -784,6 +968,108 @@ interface UploadSummary {
 
 ---
 
+## Supabase API Route Join Patterns
+
+When fetching data with nested relationships for export or display, follow these patterns:
+
+### Simple Single-Level Joins
+
+```typescript
+// Direct foreign key relationships work automatically
+const { data, error } = await supabase
+  .from('exam_timetables')
+  .select(`
+    *,
+    institutions(id, institution_code, name),
+    examination_sessions(id, session_code, session_name),
+    course_offerings(
+      id,
+      course_id,
+      course_code,
+      program_code,
+      semester
+    )
+  `)
+```
+
+### Multi-Level Nested Joins (Complex Relationships)
+
+**IMPORTANT**: When you need data from deeply nested relationships (e.g., `course_offerings → course_mapping → courses`), use a **two-step fetch pattern** instead of deep nesting, as Supabase PostgREST has limitations with complex nested selects.
+
+```typescript
+// Step 1: Fetch main data with direct relationships
+const { data: timetables, error } = await supabase
+  .from('exam_timetables')
+  .select(`
+    *,
+    institutions(id, institution_code, name),
+    examination_sessions(id, session_code, session_name),
+    course_offerings(
+      id,
+      course_id,
+      course_code,
+      program_code
+    )
+  `)
+
+// Step 2: Fetch nested data separately and merge
+const courseMappingIds = timetables
+  .map(t => t.course_offerings?.course_id)
+  .filter(Boolean)
+
+const { data: courseMappings } = await supabase
+  .from('course_mapping')
+  .select(`
+    id,
+    courses(id, course_code, course_name)
+  `)
+  .in('id', courseMappingIds)
+
+// Step 3: Create a map for quick lookup
+const courseNameMap = new Map(
+  courseMappings.map(cm => [cm.id, cm.courses?.course_name])
+)
+
+// Step 4: Merge data
+const enrichedData = timetables.map(t => ({
+  ...t,
+  course_name: courseNameMap.get(t.course_offerings?.course_id) || 'N/A'
+}))
+```
+
+### Common Field Name Conventions
+
+| Table | Field | Notes |
+|-------|-------|-------|
+| `courses` | `course_name` | NOT `course_title` |
+| `courses` | `course_code` | Standard code field |
+| `institutions` | `name` | NOT `institution_name` |
+| `institutions` | `institution_code` | Standard code field |
+| `course_offerings` | `course_code` | Denormalized from course_mapping |
+| `course_offerings` | `program_code` | Denormalized from MyJKKN |
+
+### Foreign Key Relationship Names
+
+Supabase PostgREST uses the **table name** (not column name) for embedded joins:
+
+```typescript
+// CORRECT: Use table names for joins
+.select(`
+  *,
+  institutions(id, institution_code, name),
+  course_offerings(id, course_code)
+`)
+
+// INCORRECT: Don't use column names with colon syntax
+.select(`
+  *,
+  institutions_id:institutions(id),  // Wrong!
+  course_offering_id:course_offerings(id)  // Wrong!
+`)
+```
+
+---
+
 ## Key Implementation Details
 
 | Feature | Implementation |
@@ -796,6 +1082,9 @@ interface UploadSummary {
 | **Row number in errors** | Use `index + 2` (header = row 1) |
 | **Status mapping** | Accept both `Active/Inactive` and `true/false` |
 | **Header mapping** | Handle `Field Name *` and `field_name` formats |
+| **Loading overlay** | Use `importInProgress` state with fixed overlay |
+| **Progress tracking** | Update `importProgress` in processing loop |
+| **Denormalized codes** | Store both UUID and code values in API |
 
 ---
 
@@ -809,14 +1098,18 @@ interface UploadSummary {
    - Dropdown/enum values (exam_type, status, grade_type, etc.)
    - Boolean fields (is_active → Active/Inactive)
 4. ☐ Add import error state to page component
-5. ☐ Add button group in page header
-6. ☐ Implement `handleImport` with file parsing
-7. ☐ **Add data validations with `showDropDown: true`**
-8. ☐ Implement validation function for import
-9. ☐ Add Error Dialog component
-10. ☐ Test with JSON, CSV, and Excel files
-11. ☐ **Verify invalid values show RED highlight**
-12. ☐ **Use `await` with XLSX.writeFile()** (ExcelJS is async)
+5. ☐ **Add import progress state (`importInProgress`, `importProgress`)**
+6. ☐ Add button group in page header
+7. ☐ Implement `handleImport` with file parsing
+8. ☐ **Add loading overlay component to prevent user interaction**
+9. ☐ **Add data validations with `showDropDown: true`**
+10. ☐ Implement validation function for import
+11. ☐ Add Error Dialog component
+12. ☐ **Update API route to accept denormalized code values**
+13. ☐ **Send code values along with UUIDs in import logic**
+14. ☐ Test with JSON, CSV, and Excel files
+15. ☐ **Verify invalid values show RED highlight**
+16. ☐ **Use `await` with XLSX.writeFile()** (ExcelJS is async)
 
 ## Testing Checklist
 
@@ -835,3 +1128,8 @@ interface UploadSummary {
 - [ ] Upload summary shows correct counts
 - [ ] Toast notifications appear for all cases
 - [ ] Error dialog is scrollable for many errors
+- [ ] **Loading overlay appears during import**
+- [ ] **Progress bar updates as rows are processed**
+- [ ] **Screen is locked (no clicks) during import**
+- [ ] **Overlay dismisses on success or error**
+- [ ] **Code values are stored in database (not just UUIDs)**

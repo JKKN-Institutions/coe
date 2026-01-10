@@ -71,37 +71,76 @@ const supabase = getSupabaseServer()
 
 Users see only their institution's data unless super_admin.
 
-**Key Files:** `context/institution-context.tsx`, `components/layout/institution-selector.tsx`
+**Key Files:** `context/institution-context.tsx`, `hooks/use-institution-filter.ts`, `hooks/use-institution-field.ts`
+
+**Full Guide:** See `.claude/skills/myjkkn-coe-dev-rules/SKILL.md` for complete rules.
 
 ```typescript
-// In pages
-const { filter, shouldFilter, isLoading } = useInstitutionFilter()
+// In pages - use the dedicated hook
+const {
+  filter,
+  isReady,
+  appendToUrl,
+  getInstitutionIdForCreate,
+  mustSelectInstitution,  // true when "All Institutions" selected
+  shouldFilter,
+  institutionId
+} = useInstitutionFilter()
 
+// Fetch with filter
 useEffect(() => {
-  if (!isLoading) {
-    const data = await fetchService(shouldFilter ? filter : undefined)
+  if (isReady) {
+    const url = appendToUrl('/api/entity')
+    fetch(url).then(...)
   }
-}, [filter, shouldFilter, isLoading])
+}, [isReady, filter])
 ```
 
 **Role Behavior:**
-- `super_admin` - Switch institutions or view all
-- `coe/deputy_coe/coe_office` - Only their institution's data
+
+| User Type | View | Create | Update | Delete | Upload | Download |
+|-----------|------|--------|--------|--------|--------|----------|
+| Normal User | Own institution | Own institution (auto-filled) | Own records | Own records | Own institution | Own institution |
+| super_admin (All) | ALL institutions | Must select in form | Any record | Any record | Must select | ALL data |
+| super_admin (Specific) | Selected only | Selected (auto-filled) | Selected records | Selected records | Selected | Selected |
+
+**Key Properties:**
+- `mustSelectInstitution` - `true` when super_admin views "All Institutions" (show institution UI)
+- `shouldFilter` - `true` when filtering should be applied
+- `getInstitutionIdForCreate()` - Returns institution ID for new records
 
 ### MyJKKN API Integration
 
 COE integrates with MyJKKN for shared data (regulations, learners, batches).
 
+**Full Guide:** See `.claude/skills/myjkkn-coe-dev-rules/SKILL.md` for complete field mappings.
+
 **Critical Constraints:**
-1. MyJKKN uses `counselling_code` (not `institution_code`) for institution lookup
+1. Use `myjkkn_institution_ids` array directly - no two-step lookup needed!
 2. Server-side filtering often ignored - **always filter client-side by `institution_id`**
-3. Deduplicate by CODE field (e.g., `regulation_code`), NOT by `id`
+3. Deduplicate by CODE field (e.g., `regulation_code`, `program_id`), NOT by `id`
+
+**Field Name Differences (MyJKKN → COE):**
+
+| MyJKKN Field | COE Local Field | Notes |
+|--------------|-----------------|-------|
+| `course_name` | `course_title` | **Different name!** |
+| `program_id` | `program_code` | MyJKKN `program_id` is CODE ("BCA"), NOT UUID |
+| `institution_id` | `institutions_id` | COE uses **plural** form |
+| `college_email` | `learner_email` | Multiple fallbacks |
 
 **Use the hook:** `useMyJKKNInstitutionFilter` from `hooks/use-myjkkn-institution-filter.ts`
 
 ```typescript
-const { fetchRegulations } = useMyJKKNInstitutionFilter()
-const regs = await fetchRegulations(counsellingCode) // Handles two-step lookup + dedup
+const { fetchPrograms, fetchRegulations } = useMyJKKNInstitutionFilter()
+
+// Get myjkkn_institution_ids from COE institution
+const institution = institutions.find(i => i.id === institutionId)
+const myjkknIds = institution?.myjkkn_institution_ids || []
+
+// Use IDs directly - no lookup needed!
+const programs = await fetchPrograms(myjkknIds)
+const regulations = await fetchRegulations(myjkknIds)
 ```
 
 ## Development Standards
