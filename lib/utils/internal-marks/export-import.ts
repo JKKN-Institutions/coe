@@ -201,6 +201,7 @@ export function exportTemplate(
 	// Sheet 1: Template with sample rows
 	const templateData = [
 		{
+			'Institution Code *': 'CAS',
 			'Register No *': 'STU001',
 			'Course Code *': 'CS101',
 			'Session Code': 'APR2024',
@@ -222,6 +223,7 @@ export function exportTemplate(
 			'Remarks': 'Good performance'
 		},
 		{
+			'Institution Code *': 'CAS',
 			'Register No *': 'STU002',
 			'Course Code *': 'CS101',
 			'Session Code': 'APR2024',
@@ -248,6 +250,7 @@ export function exportTemplate(
 
 	// Set column widths
 	ws['!cols'] = [
+		{ wch: 18 }, // Institution Code
 		{ wch: 15 }, // Register No
 		{ wch: 15 }, // Course Code
 		{ wch: 15 }, // Session Code
@@ -271,7 +274,7 @@ export function exportTemplate(
 
 	// Style the header row - mandatory fields in red
 	const range = XLSX.utils.decode_range(ws['!ref'] || 'A1')
-	const mandatoryFields = ['Register No *', 'Course Code *', 'Max Internal Marks *']
+	const mandatoryFields = ['Institution Code *', 'Register No *', 'Course Code *', 'Max Internal Marks *']
 
 	for (let col = range.s.c; col <= range.e.c; col++) {
 		const cellAddress = XLSX.utils.encode_cell({ r: 0, c: col })
@@ -301,6 +304,7 @@ export function exportTemplate(
 	// Column Reference
 	referenceData.push({ 'Type': 'COLUMN REFERENCE', 'Code': '', 'Name': '', 'Note': '' })
 	const columnInfo = [
+		{ col: 'Institution Code *', req: 'Yes', desc: 'Institution code (e.g., CAS, AHS, COE)' },
 		{ col: 'Register No *', req: 'Yes', desc: 'Student registration number' },
 		{ col: 'Course Code *', req: 'Yes', desc: 'Course code from courses table' },
 		{ col: 'Session Code', req: 'No', desc: 'Examination session code' },
@@ -440,8 +444,8 @@ export async function parseImportFile(file: File): Promise<any[]> {
 	}
 
 	// Excel file
-	const data = new Uint8Array(await file.arrayBuffer())
-	const workbook = XLSX.read(data, { type: 'array' })
+	const data = await file.arrayBuffer()
+	const workbook = await XLSX.read(data)
 	if (!workbook.SheetNames || workbook.SheetNames.length === 0) {
 		throw new Error('The Excel file has no sheets. Please check the file.')
 	}
@@ -457,6 +461,7 @@ export async function parseImportFile(file: File): Promise<any[]> {
  */
 export function mapImportRow(row: any, index: number): {
 	rowNumber: number
+	institution_code: string
 	register_no: string
 	course_code: string
 	session_code: string
@@ -485,32 +490,67 @@ export function mapImportRow(row: any, index: number): {
 		return isNaN(num) ? null : num
 	}
 
-	const register_no = String(row['Register No *'] || row['Register No'] || row['register_no'] || '').trim()
-	const course_code = String(row['Course Code *'] || row['Course Code'] || row['course_code'] || '').trim()
-	const session_code = String(row['Session Code'] || row['session_code'] || '').trim()
-	const program_code = String(row['Program Code'] || row['program_code'] || '').trim()
+	// Helper to get value by flexible key matching (handles whitespace, case variations)
+	const getValue = (keys: string[]): any => {
+		// First try exact match
+		for (const key of keys) {
+			if (row[key] !== undefined) return row[key]
+		}
+		// Then try trimmed keys from row
+		const rowKeys = Object.keys(row)
+		for (const key of keys) {
+			const normalizedKey = key.toLowerCase().replace(/\s+/g, ' ').trim()
+			for (const rowKey of rowKeys) {
+				const normalizedRowKey = rowKey.toLowerCase().replace(/\s+/g, ' ').trim()
+				if (normalizedRowKey === normalizedKey) {
+					return row[rowKey]
+				}
+				// Also check if rowKey contains the key (partial match for flexible column names)
+				if (normalizedRowKey.includes(normalizedKey) || normalizedKey.includes(normalizedRowKey)) {
+					return row[rowKey]
+				}
+			}
+		}
+		return undefined
+	}
 
-	const assignment_marks = parseMarks(row['Assignment Marks'] || row['assignment_marks'])
-	const quiz_marks = parseMarks(row['Quiz Marks'] || row['quiz_marks'])
-	const mid_term_marks = parseMarks(row['Mid Term Marks'] || row['mid_term_marks'])
-	const presentation_marks = parseMarks(row['Presentation Marks'] || row['presentation_marks'])
-	const attendance_marks = parseMarks(row['Attendance Marks'] || row['attendance_marks'])
-	const lab_marks = parseMarks(row['Lab Marks'] || row['lab_marks'])
-	const project_marks = parseMarks(row['Project Marks'] || row['project_marks'])
-	const seminar_marks = parseMarks(row['Seminar Marks'] || row['seminar_marks'])
-	const viva_marks = parseMarks(row['Viva Marks'] || row['viva_marks'])
-	const other_marks = parseMarks(row['Other Marks'] || row['other_marks'])
-	const test_1_mark = parseMarks(row['Test 1 Mark'] || row['test_1_mark'])
-	const test_2_mark = parseMarks(row['Test 2 Mark'] || row['test_2_mark'])
-	const test_3_mark = parseMarks(row['Test 3 Mark'] || row['test_3_mark'])
+	// Debug: Log row keys on first row to help diagnose column matching issues
+	if (index === 0) {
+		console.log('Excel row keys:', Object.keys(row))
+		console.log('Excel row values:', row)
+	}
 
-	const maxMarksStr = String(row['Max Internal Marks *'] || row['Max Internal Marks'] || row['max_internal_marks'] || '100').trim()
+	const institution_code = String(getValue(['Institution Code *', 'Institution Code', 'institution_code']) || '').trim().toUpperCase()
+	const register_no = String(getValue(['Register No *', 'Register No', 'register_no']) || '').trim()
+	const course_code = String(getValue(['Course Code *', 'Course Code', 'course_code']) || '').trim()
+	const session_code = String(getValue(['Session Code', 'session_code']) || '').trim()
+	const program_code = String(getValue(['Program Code', 'program_code']) || '').trim()
+
+	const assignment_marks = parseMarks(getValue(['Assignment Marks', 'assignment_marks']))
+	const quiz_marks = parseMarks(getValue(['Quiz Marks', 'quiz_marks']))
+	const mid_term_marks = parseMarks(getValue(['Mid Term Marks', 'mid_term_marks']))
+	const presentation_marks = parseMarks(getValue(['Presentation Marks', 'presentation_marks']))
+	const attendance_marks = parseMarks(getValue(['Attendance Marks', 'attendance_marks']))
+	const lab_marks = parseMarks(getValue(['Lab Marks', 'lab_marks']))
+	const project_marks = parseMarks(getValue(['Project Marks', 'project_marks']))
+	const seminar_marks = parseMarks(getValue(['Seminar Marks', 'seminar_marks']))
+	const viva_marks = parseMarks(getValue(['Viva Marks', 'viva_marks']))
+	const other_marks = parseMarks(getValue(['Other Marks', 'other_marks']))
+	const test_1_mark = parseMarks(getValue(['Test 1 Mark', 'test_1_mark', 'Test 1 Marks', 'Test1 Mark', 'Test1Mark']))
+	const test_2_mark = parseMarks(getValue(['Test 2 Mark', 'test_2_mark', 'Test 2 Marks', 'Test2 Mark', 'Test2Mark']))
+	const test_3_mark = parseMarks(getValue(['Test 3 Mark', 'test_3_mark', 'Test 3 Marks', 'Test3 Mark', 'Test3Mark']))
+
+	// Also check for total_internal_marks in case user provides it directly
+	const total_internal_marks_provided = parseMarks(getValue(['Total Internal Marks', 'total_internal_marks', 'Total Marks']))
+
+	const maxMarksStr = String(getValue(['Max Internal Marks *', 'Max Internal Marks', 'max_internal_marks']) || '100').trim()
 	const max_internal_marks = parseFloat(maxMarksStr)
-	const remarks = String(row['Remarks'] || row['remarks'] || '').trim()
+	const remarks = String(getValue(['Remarks', 'remarks']) || '').trim()
 
 	// Validation
 	const errors: string[] = []
 
+	if (!institution_code) errors.push('Institution Code is required')
 	if (!register_no) errors.push('Register No is required')
 	if (!course_code) errors.push('Course Code is required')
 	if (isNaN(max_internal_marks) || max_internal_marks <= 0) errors.push('Max Internal Marks must be a positive number')
@@ -537,18 +577,22 @@ export function mapImportRow(row: any, index: number): {
 	validateMarksRange('Test 3 Mark', test_3_mark)
 	validateMarksRange('Other Marks', other_marks)
 
-	// Check if at least one marks type is provided
+	// Check if at least one marks type is provided (or total_internal_marks directly)
 	const hasAnyMarks = assignment_marks !== null || quiz_marks !== null || mid_term_marks !== null ||
 		presentation_marks !== null || attendance_marks !== null || lab_marks !== null ||
 		project_marks !== null || seminar_marks !== null || viva_marks !== null || other_marks !== null ||
-		test_1_mark !== null || test_2_mark !== null || test_3_mark !== null
+		test_1_mark !== null || test_2_mark !== null || test_3_mark !== null ||
+		total_internal_marks_provided !== null
 
 	if (!hasAnyMarks) {
+		// Log available keys for debugging
+		console.log('No marks found in row. Available columns:', Object.keys(row))
 		errors.push('At least one marks type must be provided')
 	}
 
 	return {
 		rowNumber: index + 2,
+		institution_code,
 		register_no,
 		course_code,
 		session_code,

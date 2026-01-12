@@ -48,6 +48,7 @@ export function ImportPreviewDialog({
 						<TableHeader className="sticky top-0 bg-muted">
 							<TableRow>
 								<TableHead className="w-[60px] text-xs">Row</TableHead>
+								<TableHead className="text-xs">Institution</TableHead>
 								{isRegisterMode ? (
 									<>
 										<TableHead className="text-xs">Register No</TableHead>
@@ -72,6 +73,7 @@ export function ImportPreviewDialog({
 									className={row.isValid ? '' : 'bg-red-50 dark:bg-red-900/10'}
 								>
 									<TableCell className="text-xs font-mono">{row.row}</TableCell>
+									<TableCell className="text-xs font-medium">{row.institution_code || '-'}</TableCell>
 									{isRegisterMode ? (
 										<>
 											<TableCell className="text-xs">{row.register_number || '-'}</TableCell>

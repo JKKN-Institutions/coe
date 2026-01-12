@@ -127,93 +127,187 @@ export async function GET(request: Request) {
 				return NextResponse.json(data)
 			}
 
+			// Fetch all sessions (for super_admin with "All Institutions")
+			case 'all-sessions': {
+				const { data, error } = await supabase
+					.from('examination_sessions')
+					.select('id, session_name, session_code, institutions_id')
+					.order('session_name')
+
+				if (error) {
+					console.error('Error fetching all sessions:', error)
+					return NextResponse.json({ error: 'Failed to fetch sessions' }, { status: 400 })
+				}
+
+				return NextResponse.json(data)
+			}
+
+			// Fetch all programs (for super_admin with "All Institutions")
+			case 'all-programs': {
+				const { data, error } = await supabase
+					.from('programs')
+					.select('id, program_code, program_name')
+					.eq('is_active', true)
+					.order('program_name')
+
+				if (error) {
+					console.error('Error fetching all programs:', error)
+					return NextResponse.json({ error: 'Failed to fetch programs' }, { status: 400 })
+				}
+
+				return NextResponse.json(data)
+			}
+
+			// Fetch all courses (for super_admin with "All Institutions")
+			case 'all-courses': {
+				const { data, error } = await supabase
+					.from('courses')
+					.select('id, course_code, course_name, external_max_mark')
+					.order('course_code')
+
+				if (error) {
+					console.error('Error fetching all courses:', error)
+					return NextResponse.json({ error: 'Failed to fetch courses' }, { status: 400 })
+				}
+
+				return NextResponse.json(data)
+			}
+
 			case 'marks': {
-				const institutionId = searchParams.get('institutionId')
+				// institutionId is now optional - uses institution filter from query params
+				const institutionId = searchParams.get('institutionId') || searchParams.get('institutions_id')
 				const sessionId = searchParams.get('sessionId')
 				const programId = searchParams.get('programId')
 				const courseId = searchParams.get('courseId')
 
-				if (!institutionId) {
-					return NextResponse.json({ error: 'Institution ID is required' }, { status: 400 })
-				}
+				console.log('=== DEBUG: Fetching external marks ===')
+				console.log('Filters:', { institutionId, sessionId, programId, courseId })
 
-				let query = supabase
-					.from('marks_entry')
-					.select(`
-						id,
-						institutions_id,
-						examination_session_id,
-						exam_registration_id,
-						student_dummy_number_id,
-						program_id,
-						course_id,
-						dummy_number,
-						total_marks_obtained,
-						marks_out_of,
-						percentage,
-						entry_status,
-						evaluator_remarks,
-						source,
-						created_at,
-						student_dummy_numbers:student_dummy_number_id (
+				// Supabase default limit is 1000 rows - need to paginate to get all records
+				const pageSize = 1000
+				let allData: any[] = []
+				let page = 0
+				let hasMore = true
+
+				while (hasMore) {
+					let query = supabase
+						.from('marks_entry')
+						.select(`
 							id,
+							institutions_id,
+							examination_session_id,
+							exam_registration_id,
+							student_dummy_number_id,
+							program_id,
+							course_id,
 							dummy_number,
-							exam_registrations:exam_registration_id (
+							total_marks_obtained,
+							marks_out_of,
+							percentage,
+							entry_status,
+							evaluator_remarks,
+							source,
+							created_at,
+							institutions (
 								id,
-								student_name
+								name,
+								institution_code
+							),
+							student_dummy_numbers (
+								id,
+								dummy_number,
+								exam_registrations (
+									id,
+									student_name
+								)
+							),
+							exam_registrations (
+								id,
+								student_name,
+								stu_register_no
+							),
+							courses (
+								id,
+								course_code,
+								course_name
+							),
+							examination_sessions (
+								id,
+								session_name,
+								session_code
 							)
-						),
-						courses:course_id (
-							id,
-							course_code,
-							course_name
-						),
-						programs:program_id (
-							id,
-							program_code,
-							program_name
-						),
-						examination_sessions:examination_session_id (
-							id,
-							session_name,
-							session_code
-						)
-					`)
-					.eq('institutions_id', institutionId)
-					.order('created_at', { ascending: false })
-					.limit(1000000)
+						`)
+						.order('created_at', { ascending: false })
+						.range(page * pageSize, (page + 1) * pageSize - 1)
 
-				if (sessionId) {
-					query = query.eq('examination_session_id', sessionId)
-				}
-				if (programId) {
-					query = query.eq('program_id', programId)
-				}
-				if (courseId) {
-					query = query.eq('course_id', courseId)
+					// Apply institution filter only if provided
+					if (institutionId) {
+						query = query.eq('institutions_id', institutionId)
+					}
+					if (sessionId) {
+						query = query.eq('examination_session_id', sessionId)
+					}
+					if (programId) {
+						query = query.eq('program_id', programId)
+					}
+					if (courseId) {
+						query = query.eq('course_id', courseId)
+					}
+
+					const { data: pageData, error: pageError } = await query
+
+					if (pageError) {
+						console.error('Error fetching marks page:', page, pageError)
+						return NextResponse.json({ error: `Failed to fetch external marks: ${pageError.message}` }, { status: 400 })
+					}
+
+					if (pageData && pageData.length > 0) {
+						allData = allData.concat(pageData)
+						page++
+						hasMore = pageData.length === pageSize
+					} else {
+						hasMore = false
+					}
 				}
 
-				const { data, error } = await query
+				const data = allData
+				const error = null
+
+				console.log('=== DEBUG: Query result ===')
+				console.log('data count:', data?.length || 0)
+				console.log('pages fetched:', page)
+				console.log('error:', error)
 
 				if (error) {
 					console.error('Error fetching external marks:', error)
-					return NextResponse.json({ error: 'Failed to fetch external marks' }, { status: 400 })
+					return NextResponse.json({ error: `Failed to fetch external marks: ${error.message}` }, { status: 400 })
 				}
 
-				// Transform data for display
+				// Transform data for display - include institution info
+				// Note: program_name not included as programs come from MyJKKN API
 				const transformedData = data?.map(mark => {
 					const dummyNumData = mark.student_dummy_numbers as any
-					const examReg = dummyNumData?.exam_registrations as any
+					const dummyExamReg = dummyNumData?.exam_registrations as any
+					const directExamReg = mark.exam_registrations as any
+					const institutionData = mark.institutions as any
+
+					// Get student name - try dummy number path first, then direct exam_registrations
+					const studentName = dummyExamReg?.student_name || directExamReg?.student_name || 'Unknown'
+					// Get display identifier - dummy number if available, else register number
+					const displayNumber = dummyNumData?.dummy_number || mark.dummy_number || directExamReg?.stu_register_no || 'N/A'
 
 					return {
 						...mark,
-						student_name: examReg?.student_name || 'Unknown',
-						dummy_number: dummyNumData?.dummy_number || mark.dummy_number || 'N/A',
+						student_name: studentName,
+						dummy_number: displayNumber,
+						register_number: directExamReg?.stu_register_no || '',
 						course_code: (mark.courses as any)?.course_code || '',
 						course_name: (mark.courses as any)?.course_name || '',
-						program_name: (mark.programs as any)?.program_name || '',
+						program_name: '', // Programs come from MyJKKN API, not local DB
 						session_name: (mark.examination_sessions as any)?.session_name || '',
-						remarks: mark.evaluator_remarks || ''
+						remarks: mark.evaluator_remarks || '',
+						institution_code: institutionData?.institution_code || '',
+						institution_name: institutionData?.name || ''
 					}
 				})
 
@@ -250,10 +344,6 @@ export async function POST(request: Request) {
 
 async function handleBulkUpload(supabase: any, body: any) {
 	const {
-		institutions_id,
-		examination_session_id,
-		program_id,
-		course_id,
 		lookup_mode = 'dummy_number', // 'dummy_number' or 'register_number'
 		marks_data,
 		file_name,
@@ -262,10 +352,10 @@ async function handleBulkUpload(supabase: any, body: any) {
 		uploaded_by
 	} = body
 
-	// Validate required fields
-	if (!institutions_id || !marks_data || !Array.isArray(marks_data) || marks_data.length === 0) {
+	// Validate required fields - now uses institution_code from each row
+	if (!marks_data || !Array.isArray(marks_data) || marks_data.length === 0) {
 		return NextResponse.json({
-			error: 'Missing required fields: institutions_id and marks_data array are required'
+			error: 'Missing required fields: marks_data array is required'
 		}, { status: 400 })
 	}
 
@@ -276,88 +366,52 @@ async function handleBulkUpload(supabase: any, body: any) {
 		}, { status: 400 })
 	}
 
+	// Step 1: Fetch all institutions for code-to-id mapping
+	const { data: allInstitutions } = await supabase
+		.from('institutions')
+		.select('id, institution_code')
+		.eq('is_active', true)
+
+	const institutionCodeToId = new Map<string, string>(
+		allInstitutions?.map((i: any) => [i.institution_code?.toUpperCase(), i.id]) || []
+	)
+
+	// Step 2: Get unique institution codes from marks_data
+	const uniqueInstCodes = new Set<string>(
+		marks_data.map((row: any) => String(row.institution_code || '').toUpperCase().trim()).filter(Boolean)
+	)
+
+	// Validate all institution codes exist
+	const invalidInstCodes: string[] = []
+	uniqueInstCodes.forEach(code => {
+		if (!institutionCodeToId.has(code)) {
+			invalidInstCodes.push(code)
+		}
+	})
+
+	if (invalidInstCodes.length > 0) {
+		return NextResponse.json({
+			error: `Invalid institution code(s): ${invalidInstCodes.join(', ')}. Please check the Institution Code column in your Excel file.`
+		}, { status: 400 })
+	}
+
+	// Step 3: Get institution IDs to fetch data for
+	const institutionIdsToFetch: string[] = []
+	uniqueInstCodes.forEach(code => {
+		const id = institutionCodeToId.get(code)
+		if (id) institutionIdsToFetch.push(id)
+	})
+
+	console.log('=== DEBUG: Institution-based External Marks Import ===')
+	console.log('uniqueInstCodes:', Array.from(uniqueInstCodes))
+	console.log('institutionIdsToFetch:', institutionIdsToFetch)
+	console.log('lookup_mode:', lookup_mode)
+
 	// Generate file hash
 	const fileContent = JSON.stringify(marks_data)
 	const file_hash = createHash('sha256').update(fileContent).digest('hex')
 
-	// Create batch record
-	let batch: any = null
-	let batchCreated = false
-
-	// Find course_offering_id if we have course_id and program_id
-	let courseOfferingId: string | null = null
-	if (course_id && program_id && examination_session_id) {
-		const { data: courseOffering } = await supabase
-			.from('course_offerings')
-			.select('id')
-			.eq('course_id', course_id)
-			.eq('program_id', program_id)
-			.limit(1)
-			.maybeSingle()
-
-		courseOfferingId = courseOffering?.id || null
-	}
-
-	// If no course_offering found, try to get first available one for the course
-	if (!courseOfferingId && course_id) {
-		const { data: anyCourseOffering } = await supabase
-			.from('course_offerings')
-			.select('id')
-			.eq('course_id', course_id)
-			.limit(1)
-			.maybeSingle()
-
-		courseOfferingId = anyCourseOffering?.id || null
-	}
-
-	if (examination_session_id && course_id && courseOfferingId) {
-		const { data: batchData, error: batchError } = await supabase
-			.from('marks_upload_batches')
-			.insert({
-				institutions_id,
-				examination_session_id,
-				course_offering_id: courseOfferingId,
-				program_id: program_id || null,
-				course_id,
-				upload_type: 'Marks',
-				total_records: marks_data.length,
-				successful_records: 0,
-				failed_records: 0,
-				skipped_records: 0,
-				file_name: file_name || 'bulk_upload.xlsx',
-				file_size: file_size || fileContent.length,
-				file_type: file_type || 'XLSX',
-				file_hash,
-				upload_status: 'Pending',
-				uploaded_by,
-				uploaded_at: new Date().toISOString(),
-				upload_metadata: {
-					source: 'bulk_external_marks_upload',
-					mark_type: 'external'
-				},
-				is_active: true
-			})
-			.select()
-			.single()
-
-		if (batchError) {
-			console.error('Error creating batch:', batchError)
-			if (batchError.code === '23505') {
-				return NextResponse.json({ error: 'This file has already been uploaded for this session' }, { status: 400 })
-			}
-		} else {
-			batch = batchData
-			batchCreated = true
-
-			// Update to Processing status (triggers processing_started_at)
-			await supabase
-				.from('marks_upload_batches')
-				.update({ upload_status: 'Processing' })
-				.eq('id', batch.id)
-		}
-	}
-
-	// Process marks
+	// Process marks - no batch record since we support multi-institution
 	const results = {
 		successful: 0,
 		failed: 0,
@@ -366,83 +420,87 @@ async function handleBulkUpload(supabase: any, body: any) {
 		validation_errors: [] as any[]
 	}
 
-	// Fetch all student dummy numbers with exam registrations
+	// Fetch all student dummy numbers with exam registrations for relevant institutions
 	// Note: Supabase default limit is 1000 rows per request, so we paginate
 	let dummyNumbers: any[] = []
 	const pageSize = 1000
-	let page = 0
-	let hasMore = true
 
-	while (hasMore) {
-		const { data, error } = await supabase
-			.from('student_dummy_numbers')
-			.select(`
-				id,
-				dummy_number,
-				exam_registration_id,
-				exam_registrations!inner (
+	for (const instId of institutionIdsToFetch) {
+		let page = 0
+		let hasMore = true
+
+		while (hasMore) {
+			const { data, error } = await supabase
+				.from('student_dummy_numbers')
+				.select(`
 					id,
-					student_id,
-					student_name,
-					institutions_id,
-					examination_session_id,
-					course_offering_id,
-					course_offerings!inner (
+					dummy_number,
+					exam_registration_id,
+					exam_registrations!inner (
 						id,
-						course_id,
-						program_id,
-						courses!inner (
+						student_id,
+						student_name,
+						institutions_id,
+						examination_session_id,
+						course_offering_id,
+						course_offerings!inner (
 							id,
-							course_code,
-							external_max_mark
+							course_id,
+							program_id,
+							courses!inner (
+								id,
+								course_code,
+								external_max_mark
+							)
 						)
 					)
-				)
-			`)
-			.eq('exam_registrations.institutions_id', institutions_id)
-			.range(page * pageSize, (page + 1) * pageSize - 1)
+				`)
+				.eq('exam_registrations.institutions_id', instId)
+				.range(page * pageSize, (page + 1) * pageSize - 1)
 
-		if (error) {
-			console.error('Error fetching dummy numbers page:', page, error)
-			break
-		}
+			if (error) {
+				console.error('Error fetching dummy numbers page:', page, 'for institution:', instId, error)
+				break
+			}
 
-		if (data && data.length > 0) {
-			// Data is already filtered by institutions_id at database level
-			dummyNumbers = dummyNumbers.concat(data)
-			page++
-			hasMore = data.length === pageSize
-		} else {
-			hasMore = false
+			if (data && data.length > 0) {
+				dummyNumbers = dummyNumbers.concat(data)
+				page++
+				hasMore = data.length === pageSize
+			} else {
+				hasMore = false
+			}
 		}
 	}
 
-	// Fetch exam attendance data for the institution with pagination
+	// Fetch exam attendance data for all relevant institutions
 	// Note: exam_attendance has unique constraint on (institutions_id, exam_registration_id)
-	// So we lookup by exam_registration_id only
 	let allAttendanceData: any[] = []
-	let attPage = 0
-	let attHasMore = true
 	const attPageSize = 1000
 
-	while (attHasMore) {
-		const { data: attendanceData, error: attendanceError } = await supabase
-			.from('exam_attendance')
-			.select('exam_registration_id, attendance_status')
-			.eq('institutions_id', institutions_id)
-			.range(attPage * attPageSize, (attPage + 1) * attPageSize - 1)
+	for (const instId of institutionIdsToFetch) {
+		let attPage = 0
+		let attHasMore = true
 
-		if (attendanceError) {
-			console.error('Error fetching attendance data page:', attPage, attendanceError)
-			break
-		}
+		while (attHasMore) {
+			const { data: attendanceData, error: attendanceError } = await supabase
+				.from('exam_attendance')
+				.select('exam_registration_id, attendance_status')
+				.eq('institutions_id', instId)
+				.range(attPage * attPageSize, (attPage + 1) * attPageSize - 1)
 
-		if (attendanceData && attendanceData.length > 0) {
-			allAttendanceData = allAttendanceData.concat(attendanceData)
-			attPage++
-			attHasMore = attendanceData.length === attPageSize
-		} else {
-			attHasMore = false
+			if (attendanceError) {
+				console.error('Error fetching attendance data page:', attPage, 'for institution:', instId, attendanceError)
+				break
+			}
+
+			if (attendanceData && attendanceData.length > 0) {
+				allAttendanceData = allAttendanceData.concat(attendanceData)
+				attPage++
+				attHasMore = attendanceData.length === attPageSize
+			} else {
+				attHasMore = false
+			}
 		}
 	}
 
@@ -461,71 +519,88 @@ async function handleBulkUpload(supabase: any, body: any) {
 	console.log('=== DEBUG: Student Dummy Numbers ===')
 	console.log('Total dummy numbers fetched:', dummyNumbers?.length || 0)
 
-	// Get courses for validation
-	const { data: courses } = await supabase
-		.from('courses')
-		.select('id, course_code, external_max_mark')
-		.eq('institutions_id', institutions_id)
+	// Get courses for all relevant institutions
+	let courses: any[] = []
+	for (const instId of institutionIdsToFetch) {
+		const { data: instCourses } = await supabase
+			.from('courses')
+			.select('id, course_code, external_max_mark, institutions_id')
+			.eq('institutions_id', instId)
 
-	// Get sessions for validation (for register_number mode)
-	const { data: examSessions } = await supabase
-		.from('examination_sessions')
-		.select('id, session_code')
-		.eq('institutions_id', institutions_id)
+		if (instCourses) {
+			courses = courses.concat(instCourses)
+		}
+	}
 
-	// Build session map: session_code -> session_id
+	// Get sessions for all relevant institutions (for register_number mode)
+	let examSessions: any[] = []
+	for (const instId of institutionIdsToFetch) {
+		const { data: instSessions } = await supabase
+			.from('examination_sessions')
+			.select('id, session_code, institutions_id')
+			.eq('institutions_id', instId)
+
+		if (instSessions) {
+			examSessions = examSessions.concat(instSessions)
+		}
+	}
+
+	// Build session map: institution_id|session_code -> session_id
 	const sessionMap = new Map<string, string>(
-		examSessions?.map((s: any) => [s.session_code?.toLowerCase()?.trim(), s.id]) || []
+		examSessions?.map((s: any) => [`${s.institutions_id}|${s.session_code?.toLowerCase()?.trim()}`, s.id]) || []
 	)
 
-	// For register_number mode, fetch exam_registrations with stu_register_no
+	// For register_number mode, fetch exam_registrations with stu_register_no for all relevant institutions
 	let examRegistrations: any[] = []
 	if (lookup_mode === 'register_number') {
-		let regPage = 0
-		let regHasMore = true
 		const regPageSize = 1000
 
-		while (regHasMore) {
-			const { data: regData, error: regError } = await supabase
-				.from('exam_registrations')
-				.select(`
-					id,
-					stu_register_no,
-					student_id,
-					student_name,
-					institutions_id,
-					examination_session_id,
-					course_offering_id,
-					examination_sessions!inner (
+		for (const instId of institutionIdsToFetch) {
+			let regPage = 0
+			let regHasMore = true
+
+			while (regHasMore) {
+				const { data: regData, error: regError } = await supabase
+					.from('exam_registrations')
+					.select(`
 						id,
-						session_code
-					),
-					course_offerings!inner (
-						id,
-						course_id,
-						program_id,
-						courses!inner (
+						stu_register_no,
+						student_id,
+						student_name,
+						institutions_id,
+						examination_session_id,
+						course_offering_id,
+						examination_sessions!inner (
 							id,
-							course_code,
-							external_max_mark
+							session_code
+						),
+						course_offerings!inner (
+							id,
+							course_id,
+							program_id,
+							courses!inner (
+								id,
+								course_code,
+								external_max_mark
+							)
 						)
-					)
-				`)
-				.eq('institutions_id', institutions_id)
-				.not('stu_register_no', 'is', null)
-				.range(regPage * regPageSize, (regPage + 1) * regPageSize - 1)
+					`)
+					.eq('institutions_id', instId)
+					.not('stu_register_no', 'is', null)
+					.range(regPage * regPageSize, (regPage + 1) * regPageSize - 1)
 
-			if (regError) {
-				console.error('Error fetching exam registrations page:', regPage, regError)
-				break
-			}
+				if (regError) {
+					console.error('Error fetching exam registrations page:', regPage, 'for institution:', instId, regError)
+					break
+				}
 
-			if (regData && regData.length > 0) {
-				examRegistrations = examRegistrations.concat(regData)
-				regPage++
-				regHasMore = regData.length === regPageSize
-			} else {
-				regHasMore = false
+				if (regData && regData.length > 0) {
+					examRegistrations = examRegistrations.concat(regData)
+					regPage++
+					regHasMore = regData.length === regPageSize
+				} else {
+					regHasMore = false
+				}
 			}
 		}
 
@@ -534,7 +609,7 @@ async function handleBulkUpload(supabase: any, body: any) {
 	}
 
 	// Build maps for fast lookup
-	// Map: dummy_number + course_code -> student info
+	// Map: institution_id|dummy_number|course_code -> student info (for multi-institution support)
 	const dummyMap = new Map<string, {
 		student_dummy_id: string
 		dummy_number: string
@@ -546,6 +621,7 @@ async function handleBulkUpload(supabase: any, body: any) {
 		course_offering_id: string
 		program_id: string
 		examination_session_id: string
+		institutions_id: string
 		external_max_mark: number
 		is_absent: boolean
 		attendance_status: string
@@ -556,8 +632,9 @@ async function handleBulkUpload(supabase: any, body: any) {
 		const courseCode = dn.exam_registrations?.course_offerings?.courses?.course_code?.toLowerCase()?.trim()
 		const courseId = dn.exam_registrations?.course_offerings?.courses?.id
 		const examRegId = dn.exam_registrations?.id
-		if (dummyNo && courseCode && courseId && examRegId) {
-			const key = `${dummyNo}|${courseCode}`
+		const instId = dn.exam_registrations?.institutions_id
+		if (dummyNo && courseCode && courseId && examRegId && instId) {
+			const key = `${instId}|${dummyNo}|${courseCode}`
 			// Look up attendance from exam_attendance table (unique constraint: institutions_id, exam_registration_id)
 			const attendance = attendanceMap.get(examRegId)
 			dummyMap.set(key, {
@@ -571,6 +648,7 @@ async function handleBulkUpload(supabase: any, body: any) {
 				course_offering_id: dn.exam_registrations.course_offerings.id,
 				program_id: dn.exam_registrations.course_offerings.program_id,
 				examination_session_id: dn.exam_registrations.examination_session_id,
+				institutions_id: instId,
 				external_max_mark: dn.exam_registrations.course_offerings.courses.external_max_mark || 100,
 				is_absent: attendance?.is_absent || false,
 				attendance_status: attendance?.attendance_status || 'Present'
@@ -578,7 +656,7 @@ async function handleBulkUpload(supabase: any, body: any) {
 		}
 	})
 
-	// Map for register_number mode: register_number + subject_code + session_code -> student info
+	// Map for register_number mode: institution_id|register_number|subject_code|session_code -> student info
 	const registerMap = new Map<string, {
 		exam_registration_id: string
 		student_id: string
@@ -589,6 +667,7 @@ async function handleBulkUpload(supabase: any, body: any) {
 		course_offering_id: string
 		program_id: string
 		examination_session_id: string
+		institutions_id: string
 		external_max_mark: number
 		is_absent: boolean
 		attendance_status: string
@@ -611,9 +690,10 @@ async function handleBulkUpload(supabase: any, body: any) {
 			const sessionCode = reg.examination_sessions?.session_code?.toLowerCase()?.trim()
 			const courseId = reg.course_offerings?.courses?.id
 			const examRegId = reg.id
+			const instId = reg.institutions_id
 
-			if (registerNo && courseCode && sessionCode && courseId && examRegId) {
-				const key = `${registerNo}|${courseCode}|${sessionCode}`
+			if (registerNo && courseCode && sessionCode && courseId && examRegId && instId) {
+				const key = `${instId}|${registerNo}|${courseCode}|${sessionCode}`
 				const attendance = attendanceMap.get(examRegId)
 				registerMap.set(key, {
 					exam_registration_id: examRegId,
@@ -625,6 +705,7 @@ async function handleBulkUpload(supabase: any, body: any) {
 					course_offering_id: reg.course_offerings.id,
 					program_id: reg.course_offerings.program_id,
 					examination_session_id: reg.examination_session_id,
+					institutions_id: instId,
 					external_max_mark: reg.course_offerings.courses.external_max_mark || 100,
 					is_absent: attendance?.is_absent || false,
 					attendance_status: attendance?.attendance_status || 'Present'
@@ -633,24 +714,15 @@ async function handleBulkUpload(supabase: any, body: any) {
 		})
 	}
 
+	// Course map: institution_id|course_code -> course info
 	const courseMap = new Map<string, { id: string; course_code: string; external_max_mark: number }>(
-		courses?.map((c: any) => [c.course_code?.toLowerCase(), c]) || []
-	)
-
-	const validDummyNumbers = new Set<string>(
-		dummyNumbers?.map((dn: any) => dn.dummy_number?.toLowerCase()?.trim()).filter(Boolean) || []
-	)
-
-	const validRegisterNumbers = new Set<string>(
-		examRegistrations?.map((reg: any) => reg.stu_register_no?.toLowerCase()?.trim()).filter(Boolean) || []
+		courses?.map((c: any) => [`${c.institutions_id}|${c.course_code?.toLowerCase()}`, c]) || []
 	)
 
 	console.log('=== DEBUG: Lookup Maps ===')
 	console.log('Lookup mode:', lookup_mode)
 	console.log('dummyMap keys (first 10):', Array.from(dummyMap.keys()).slice(0, 10))
 	console.log('registerMap keys (first 10):', Array.from(registerMap.keys()).slice(0, 10))
-	console.log('validDummyNumbers (first 10):', Array.from(validDummyNumbers).slice(0, 10))
-	console.log('validRegisterNumbers (first 10):', Array.from(validRegisterNumbers).slice(0, 10))
 	console.log('courseMap keys:', Array.from(courseMap.keys()))
 	console.log('sessionMap keys:', Array.from(sessionMap.keys()))
 
@@ -660,34 +732,51 @@ async function handleBulkUpload(supabase: any, body: any) {
 		const rowNumber = i + 2 // +2 for Excel header row
 		const rowErrors: string[] = []
 
+		// Get institution_id from row's institution_code
+		const rowInstCode = String(row.institution_code || '').toUpperCase().trim()
+		const rowInstId = institutionCodeToId.get(rowInstCode)
+
+		if (!rowInstId) {
+			rowErrors.push(`Invalid institution code "${row.institution_code}"`)
+			results.failed++
+			results.validation_errors.push({
+				row: rowNumber,
+				dummy_number: row.dummy_number || row.register_number || 'N/A',
+				course_code: row.course_code || row.subject_code || 'N/A',
+				errors: rowErrors
+			})
+			continue
+		}
+
 		// Lookup based on mode
 		let studentInfo: any = null
 		let studentDummyId: string | null = null
 		let displayIdentifier = ''
 
 		if (lookup_mode === 'register_number') {
-			// Register number mode: register_number + subject_code + session_code
+			// Register number mode: institution_id + register_number + subject_code + session_code
 			const registerNo = String(row.register_number || '').toLowerCase().trim()
 			const subjectCode = String(row.subject_code || row.course_code || '').toLowerCase().trim()
 			const sessionCode = String(row.session_code || '').toLowerCase().trim()
-			const lookupKey = `${registerNo}|${subjectCode}|${sessionCode}`
+			const lookupKey = `${rowInstId}|${registerNo}|${subjectCode}|${sessionCode}`
 			displayIdentifier = row.register_number || 'N/A'
 
 			const regInfo = registerMap.get(lookupKey)
 
 			if (i < 3) {
 				console.log(`=== DEBUG: Row ${i + 1} Lookup (register_number mode) ===`)
-				console.log('Looking for:', { registerNo, subjectCode, sessionCode, lookupKey })
+				console.log('Looking for:', { rowInstId, registerNo, subjectCode, sessionCode, lookupKey })
 				console.log('Found:', regInfo ? 'YES' : 'NO')
 			}
 
 			if (!regInfo) {
-				if (!validRegisterNumbers.has(registerNo)) {
-					rowErrors.push(`Student with register number "${row.register_number}" not found`)
-				} else if (!courseMap.has(subjectCode)) {
-					rowErrors.push(`Subject/Course with code "${row.subject_code || row.course_code}" not found`)
-				} else if (!sessionMap.has(sessionCode)) {
-					rowErrors.push(`Session with code "${row.session_code}" not found`)
+				// Check specific issues for better error messages
+				const courseKey = `${rowInstId}|${subjectCode}`
+				const sessionKey = `${rowInstId}|${sessionCode}`
+				if (!courseMap.has(courseKey)) {
+					rowErrors.push(`Subject/Course with code "${row.subject_code || row.course_code}" not found for institution "${row.institution_code}"`)
+				} else if (!sessionMap.has(sessionKey)) {
+					rowErrors.push(`Session with code "${row.session_code}" not found for institution "${row.institution_code}"`)
 				} else {
 					rowErrors.push(`No exam registration found for register number "${row.register_number}" in subject "${row.subject_code || row.course_code}" for session "${row.session_code}"`)
 				}
@@ -701,24 +790,15 @@ async function handleBulkUpload(supabase: any, body: any) {
 				continue
 			}
 
-			// Get the student_dummy_number_id from regToDummyMap
+			// Get the student_dummy_number_id from regToDummyMap (optional - may be null)
 			studentDummyId = regToDummyMap.get(regInfo.exam_registration_id) || null
 
-			if (!studentDummyId) {
-				rowErrors.push(`No dummy number assigned for register number "${row.register_number}" in this session. Please ensure dummy numbers are allocated first.`)
-				results.failed++
-				results.validation_errors.push({
-					row: rowNumber,
-					dummy_number: displayIdentifier,
-					course_code: row.subject_code || row.course_code || 'N/A',
-					errors: rowErrors
-				})
-				continue
-			}
+			// Note: studentDummyId can be null for Register Number mode
+			// External marks can be uploaded without dummy numbers allocated
 
 			// Convert to common format
 			studentInfo = {
-				student_dummy_id: studentDummyId,
+				student_dummy_id: studentDummyId, // Can be null for register number mode
 				dummy_number: displayIdentifier, // Use register number as display
 				exam_registration_id: regInfo.exam_registration_id,
 				student_id: regInfo.student_id,
@@ -728,22 +808,23 @@ async function handleBulkUpload(supabase: any, body: any) {
 				course_offering_id: regInfo.course_offering_id,
 				program_id: regInfo.program_id,
 				examination_session_id: regInfo.examination_session_id,
+				institutions_id: regInfo.institutions_id,
 				external_max_mark: regInfo.external_max_mark,
 				is_absent: regInfo.is_absent,
 				attendance_status: regInfo.attendance_status
 			}
 		} else {
-			// Dummy number mode (default): dummy_number + course_code
+			// Dummy number mode (default): institution_id + dummy_number + course_code
 			const dummyNo = String(row.dummy_number || '').toLowerCase().trim()
 			const courseCode = String(row.course_code || '').toLowerCase().trim()
-			const lookupKey = `${dummyNo}|${courseCode}`
+			const lookupKey = `${rowInstId}|${dummyNo}|${courseCode}`
 			displayIdentifier = row.dummy_number || 'N/A'
 
 			studentInfo = dummyMap.get(lookupKey)
 
 			if (i < 3) {
 				console.log(`=== DEBUG: Row ${i + 1} Lookup (dummy_number mode) ===`)
-				console.log('Looking for:', { dummyNo, courseCode, lookupKey })
+				console.log('Looking for:', { rowInstId, dummyNo, courseCode, lookupKey })
 				console.log('Found:', studentInfo ? 'YES' : 'NO')
 				if (studentInfo) {
 					console.log('Attendance:', {
@@ -755,12 +836,11 @@ async function handleBulkUpload(supabase: any, body: any) {
 
 			// Provide specific error messages if not found
 			if (!studentInfo) {
-				if (!validDummyNumbers.has(dummyNo)) {
-					rowErrors.push(`Student with dummy number "${row.dummy_number}" not found`)
-				} else if (!courseMap.has(courseCode)) {
-					rowErrors.push(`Course with code "${row.course_code}" not found`)
+				const courseKey = `${rowInstId}|${courseCode}`
+				if (!courseMap.has(courseKey)) {
+					rowErrors.push(`Course with code "${row.course_code}" not found for institution "${row.institution_code}"`)
 				} else {
-					rowErrors.push(`No exam registration found for dummy number "${row.dummy_number}" in course "${row.course_code}"`)
+					rowErrors.push(`No exam registration found for dummy number "${row.dummy_number}" in course "${row.course_code}" for institution "${row.institution_code}"`)
 				}
 				results.failed++
 				results.validation_errors.push({
@@ -819,13 +899,23 @@ async function handleBulkUpload(supabase: any, body: any) {
 
 		try {
 			// Check if record already exists - if so, skip (don't update)
-			const { data: existing } = await supabase
+			// For Register Number mode (no dummy number), check by exam_registration_id
+			// For Dummy Number mode, check by student_dummy_number_id
+			let existingQuery = supabase
 				.from('marks_entry')
 				.select('id, dummy_number, total_marks_obtained')
-				.eq('institutions_id', institutions_id)
-				.eq('student_dummy_number_id', studentInfo.student_dummy_id)
+				.eq('institutions_id', studentInfo.institutions_id)
 				.eq('course_id', studentInfo.course_id)
-				.maybeSingle()
+
+			if (studentInfo.student_dummy_id) {
+				// Dummy Number mode - check by student_dummy_number_id
+				existingQuery = existingQuery.eq('student_dummy_number_id', studentInfo.student_dummy_id)
+			} else {
+				// Register Number mode - check by exam_registration_id
+				existingQuery = existingQuery.eq('exam_registration_id', studentInfo.exam_registration_id)
+			}
+
+			const { data: existing } = await existingQuery.maybeSingle()
 
 			if (existing) {
 				// Skip - marks already exist for this student/course
@@ -848,12 +938,13 @@ async function handleBulkUpload(supabase: any, body: any) {
 				entry_status: 'Draft'
 			}
 
-			// Insert new record only
+			// Insert new record only - use institution_id from the row's student info
+			// student_dummy_number_id can be null for Register Number mode
 			const insertData: any = {
-				institutions_id,
+				institutions_id: studentInfo.institutions_id,
 				examination_session_id: studentInfo.examination_session_id,
 				exam_registration_id: studentInfo.exam_registration_id,
-				student_dummy_number_id: studentInfo.student_dummy_id,
+				student_dummy_number_id: studentInfo.student_dummy_id || null, // Can be null for register number mode
 				program_id: studentInfo.program_id,
 				course_id: studentInfo.course_id,
 				dummy_number: studentInfo.dummy_number,
@@ -900,50 +991,8 @@ async function handleBulkUpload(supabase: any, body: any) {
 		finalStatus = 'Partial'
 	}
 
-	// Build error summary
-	let errorSummary = null
-	if (results.errors.length > 0 || results.validation_errors.length > 0) {
-		const errorTypes = new Map<string, number>()
-		results.errors.forEach((e: any) => {
-			const type = e.error || 'Unknown error'
-			errorTypes.set(type, (errorTypes.get(type) || 0) + 1)
-		})
-		results.validation_errors.forEach((e: any) => {
-			e.errors?.forEach((err: string) => {
-				errorTypes.set(err, (errorTypes.get(err) || 0) + 1)
-			})
-		})
-		errorSummary = Array.from(errorTypes.entries())
-			.map(([type, count]) => `${type}: ${count}`)
-			.join('; ')
-	}
-
-	// Update batch record with results
-	if (batchCreated && batch) {
-		const { error: updateBatchError } = await supabase
-			.from('marks_upload_batches')
-			.update({
-				successful_records: results.successful,
-				failed_records: results.failed,
-				skipped_records: results.skipped,
-				upload_status: finalStatus,
-				processed_at: new Date().toISOString(),
-				processed_by: uploaded_by,
-				error_details: results.errors.length > 0 ? results.errors : null,
-				error_summary: errorSummary,
-				validation_errors: results.validation_errors.length > 0 ? results.validation_errors : null,
-				processing_notes: `Processed ${marks_data.length} records: ${results.successful} successful, ${results.failed} failed, ${results.skipped} skipped`
-			})
-			.eq('id', batch.id)
-
-		if (updateBatchError) {
-			console.error('Error updating batch:', updateBatchError)
-		}
-	}
-
+	// Return result (no batch tracking for multi-institution upload)
 	return NextResponse.json({
-		batch_id: batch?.id || null,
-		batch_number: batch?.batch_number || 'N/A',
 		status: finalStatus,
 		total: marks_data.length,
 		successful: results.successful,

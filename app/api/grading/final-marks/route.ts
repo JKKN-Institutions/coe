@@ -115,102 +115,175 @@ export async function GET(request: NextRequest) {
 			case 'course-offerings': {
 				const institutionId = searchParams.get('institutionId')
 				const programId = searchParams.get('programId')
+				const programCode = searchParams.get('programCode')
 				const sessionId = searchParams.get('sessionId')
 
-				if (!programId) {
-					return NextResponse.json({ error: 'Program ID is required' }, { status: 400 })
+				// Support both programCode and programId (lookup program_code from programs table)
+				let filterProgramCode = programCode
+				if (!filterProgramCode && programId) {
+					// Lookup program_code from local programs table
+					const { data: programData } = await supabase
+						.from('programs')
+						.select('program_code')
+						.eq('id', programId)
+						.single()
+					filterProgramCode = programData?.program_code
 				}
 
+				if (!filterProgramCode) {
+					return NextResponse.json({ error: 'Program code or ID is required' }, { status: 400 })
+				}
+
+				// First fetch course_offerings - filter by program_code (not program_id)
+				// course_offerings.program_id is MyJKKN UUID, but we have local programs.id
+				// course_offerings.program_code is the CODE field which matches programs.program_code
 				let query = supabase
 					.from('course_offerings')
 					.select(`
 						id,
 						course_id,
+						course_mapping_id,
 						program_id,
+						program_code,
 						semester,
-						section,
-						courses:course_id (
-							id,
-							course_code,
-							course_name,
-							course_type,
-							credit
-						)
+						section
 					`)
-					.eq('program_id', programId)
+					.eq('program_code', filterProgramCode)
 					.eq('is_active', true)
 
 				if (sessionId) {
 					query = query.eq('examination_session_id', sessionId)
 				}
 
-				const { data, error } = await query.order('semester')
+				const { data: offerings, error } = await query.order('semester')
 
 				if (error) {
 					console.error('Error fetching course offerings:', error)
 					return NextResponse.json({ error: 'Failed to fetch course offerings' }, { status: 400 })
 				}
 
+				// Get course_mapping IDs to fetch course details
+				// course_offerings.course_mapping_id is the FK to course_mapping.id
+				// course_offerings.course_id is a denormalized FK to courses.id (different!)
+				const courseMappingIds = (offerings || []).map((o: any) => o.course_mapping_id).filter(Boolean)
+
+				let courseMappingData: any[] = []
+				if (courseMappingIds.length > 0) {
+					const { data: mappingData, error: mappingError } = await supabase
+						.from('course_mapping')
+						.select(`
+							id,
+							course_id,
+							course_code,
+							internal_max_mark,
+							internal_pass_mark,
+							external_max_mark,
+							external_pass_mark,
+							total_max_mark,
+							total_pass_mark,
+							courses (
+								id,
+								course_code,
+								course_name,
+								course_type,
+								credit
+							)
+						`)
+						.in('id', courseMappingIds)
+
+					if (mappingError) {
+						console.error('Course mapping fetch error:', mappingError)
+					} else {
+						courseMappingData = mappingData || []
+					}
+				}
+
+				// Create a map for quick lookup: course_mapping_id -> course details
+				const courseMappingMap = new Map(
+					courseMappingData.map((cm: any) => [
+						cm.id,
+						{
+							course_id: cm.courses?.id || cm.course_id,
+							course_code: cm.courses?.course_code || cm.course_code,
+							course_name: cm.courses?.course_name || cm.courses?.course_code || cm.course_code,
+							course_type: cm.courses?.course_type,
+							credit: cm.courses?.credit
+						}
+					])
+				)
+
 				// Check which courses already have final marks saved and their result_status
 				// Map: course_id -> { is_saved: boolean, result_status: string }
 				const courseStatusMap = new Map<string, { is_saved: boolean; result_status: string }>()
-				if (institutionId && sessionId && data && data.length > 0) {
-					const courseIds = data.map((co: any) => co.course_id)
-					const { data: savedMarks } = await supabase
-						.from('final_marks')
-						.select('course_id, result_status')
-						.eq('institutions_id', institutionId)
-						.eq('program_id', programId)
-						.eq('examination_session_id', sessionId)
-						.in('course_id', courseIds)
-						.eq('is_active', true)
-
-					if (savedMarks) {
-						// Group by course_id and get the most restrictive status
-						// Priority: Published > Under Review > Withheld > Cancelled > Pending
-						const statusPriority: Record<string, number> = {
-							'Published': 5,
-							'Under Review': 4,
-							'Withheld': 3,
-							'Cancelled': 2,
-							'Pending': 1
-						}
-
-						savedMarks.forEach((m: any) => {
-							const existing = courseStatusMap.get(m.course_id)
-							const currentPriority = statusPriority[m.result_status] || 0
-							const existingPriority = existing ? (statusPriority[existing.result_status] || 0) : 0
-
-							if (!existing || currentPriority > existingPriority) {
-								courseStatusMap.set(m.course_id, {
-									is_saved: true,
-									result_status: m.result_status
-								})
-							}
+				if (institutionId && sessionId && offerings && offerings.length > 0) {
+					// Get actual course IDs from course_mapping (courses.id, not course_mapping.id)
+					const courseIds = offerings
+						.map((co: any) => {
+							const mapping = courseMappingMap.get(co.course_mapping_id)
+							return mapping?.course_id
 						})
+						.filter(Boolean)
+
+					if (courseIds.length > 0) {
+						const { data: savedMarks } = await supabase
+							.from('final_marks')
+							.select('course_id, result_status')
+							.eq('institutions_id', institutionId)
+							.eq('program_id', programId)
+							.eq('examination_session_id', sessionId)
+							.in('course_id', courseIds)
+							.eq('is_active', true)
+
+						if (savedMarks) {
+							// Group by course_id and get the most restrictive status
+							// Priority: Published > Under Review > Withheld > Cancelled > Pending
+							const statusPriority: Record<string, number> = {
+								'Published': 5,
+								'Under Review': 4,
+								'Withheld': 3,
+								'Cancelled': 2,
+								'Pending': 1
+							}
+
+							savedMarks.forEach((m: any) => {
+								const existing = courseStatusMap.get(m.course_id)
+								const currentPriority = statusPriority[m.result_status] || 0
+								const existingPriority = existing ? (statusPriority[existing.result_status] || 0) : 0
+
+								if (!existing || currentPriority > existingPriority) {
+									courseStatusMap.set(m.course_id, {
+										is_saved: true,
+										result_status: m.result_status
+									})
+								}
+							})
+						}
 					}
 				}
 
 				// Transform to flatten course data and include result_status
-				const transformed = data?.map((co: any) => {
-					const status = courseStatusMap.get(co.course_id)
+				const transformed = (offerings || []).map((co: any) => {
+					const courseDetails = courseMappingMap.get(co.course_mapping_id) || {}
+					const actualCourseId = courseDetails.course_id || co.course_id
+					const status = courseStatusMap.get(actualCourseId)
 					return {
 						id: co.id,
-						course_id: co.course_id,
+						course_id: actualCourseId,
+						course_mapping_id: co.course_mapping_id,
 						program_id: co.program_id,
 						semester: co.semester,
 						section: co.section,
-						course_code: co.courses?.course_code,
-						course_name: co.courses?.course_name || co.courses?.course_code,
-						course_type: co.courses?.course_type,
-						credits: co.courses?.credit,
+						course_code: courseDetails.course_code,
+						course_name: courseDetails.course_name || courseDetails.course_code,
+						course_type: courseDetails.course_type,
+						credits: courseDetails.credit,
 						is_saved: status?.is_saved || false,
 						result_status: status?.result_status || null,
 						// Can regenerate only if no results exist for this course
 						// Once results are saved, regeneration is blocked regardless of status
 						can_regenerate: !status
 					}
-				}) || []
+				})
 
 				return NextResponse.json(transformed)
 			}
@@ -384,6 +457,22 @@ export async function POST(request: NextRequest) {
 			}, { status: 400 })
 		}
 
+		// Lookup program_code from local programs table
+		// program_id from payload is local programs.id, but course_offerings.program_id is MyJKKN UUID
+		// We need to use program_code which is consistent across both systems
+		const { data: programData } = await supabase
+			.from('programs')
+			.select('program_code')
+			.eq('id', program_id)
+			.single()
+
+		const programCode = programData?.program_code
+		if (!programCode) {
+			return NextResponse.json({
+				error: 'Program not found or program_code is missing'
+			}, { status: 400 })
+		}
+
 		// =========================================================
 		// BUSINESS RULE: Check if results already exist
 		// Generation is ONLY allowed when NO records exist for the course
@@ -453,8 +542,42 @@ export async function POST(request: NextRequest) {
 			}, { status: 400 })
 		}
 
-		// 2. Fetch exam registrations for the selected courses
-		const { data: examRegistrations, error: examRegError } = await supabase
+		// 2. First, get course codes for the given course IDs
+		// course_ids from frontend are courses.id (UUIDs)
+		// We need to get course_codes to filter course_offerings
+		console.log('[Final Marks] Received course_ids from frontend:', course_ids)
+
+		const { data: coursesData } = await supabase
+			.from('courses')
+			.select('id, course_code')
+			.in('id', course_ids)
+
+		console.log('[Final Marks] Found courses in DB:', coursesData?.length || 0, coursesData?.map((c: any) => c.course_code))
+
+		const courseCodes = (coursesData || []).map((c: any) => c.course_code).filter(Boolean)
+
+		if (courseCodes.length === 0) {
+			return NextResponse.json({
+				error: 'No courses found for the selected course IDs.'
+			}, { status: 400 })
+		}
+
+		// Create a map of course_code -> course_id for later use
+		const courseCodeToIdMap = new Map(
+			(coursesData || []).map((c: any) => [c.course_code, c.id])
+		)
+
+		// 3. Fetch exam registrations with course_offerings
+		// NOTE: Don't filter by program_code here because courses can be shared across programs
+		// Instead, filter by course_code and let the course selection determine which courses to include
+		console.log('[Final Marks] Query params:')
+		console.log('  - institutions_id:', institutions_id)
+		console.log('  - examination_session_id:', examination_session_id)
+		console.log('  - program_code (for reference):', programCode)
+		console.log('  - course_codes:', courseCodes)
+
+		// Step 1: Get exam_registrations for the program (without course_code filter on join)
+		const { data: examRegsRaw, error: examRegError } = await supabase
 			.from('exam_registrations')
 			.select(`
 				id,
@@ -464,46 +587,118 @@ export async function POST(request: NextRequest) {
 				course_offering_id,
 				examination_session_id,
 				institutions_id,
-				course_offerings!inner (
+				program_code,
+				course_offerings (
 					id,
 					course_id,
+					course_mapping_id,
 					program_id,
-					semester,
-					courses!inner (
-						id,
-						course_code,
-						course_name,
-						course_type,
-						credit,
-						evaluation_type,
-						internal_max_mark,
-						internal_pass_mark,
-						internal_converted_mark,
-						external_max_mark,
-						external_pass_mark,
-						external_converted_mark,
-						total_max_mark,
-						total_pass_mark
-					)
+					program_code,
+					course_code,
+					semester
 				)
 			`)
 			.eq('institutions_id', institutions_id)
 			.eq('examination_session_id', examination_session_id)
-			.eq('course_offerings.program_id', program_id)
-			.in('course_offerings.course_id', course_ids)
+			.eq('program_code', programCode)
 
 		if (examRegError) {
 			console.error('Error fetching exam registrations:', examRegError)
 			return NextResponse.json({ error: 'Failed to fetch exam registrations' }, { status: 400 })
 		}
 
+		console.log('[Final Marks] Raw exam registrations for program:', examRegsRaw?.length || 0)
+
+		// Step 2: Filter by course_code client-side
+		// The course_offerings.course_code must match one of our selected course codes
+		const examRegistrations = (examRegsRaw || []).filter((er: any) => {
+			const coCode = er.course_offerings?.course_code
+			return coCode && courseCodes.includes(coCode)
+		})
+
 		if (!examRegistrations?.length) {
+			console.log('[Final Marks] No matches after course_code filter')
+			console.log('[Final Marks] Available course_codes in exam_regs:',
+				[...new Set((examRegsRaw || []).map((er: any) => er.course_offerings?.course_code).filter(Boolean))]
+			)
 			return NextResponse.json({
 				error: 'No exam registrations found for the selected courses and session.'
 			}, { status: 400 })
 		}
 
-		// 3. Fetch internal marks for these students/courses
+		console.log('[Final Marks] Exam registrations found after course filter:', examRegistrations.length)
+		console.log('[Final Marks] Sample exam reg:', JSON.stringify(examRegistrations[0], null, 2))
+
+		// 3a. Fetch course_mapping data for the course offerings
+		// course_offerings.course_id references course_mapping.id
+		// NOTE: course_offerings has both course_id (FK to course_mapping) and course_mapping_id
+		const courseMappingIds = [...new Set(
+			examRegistrations.map((er: any) => er.course_offerings?.course_mapping_id || er.course_offerings?.course_id).filter(Boolean)
+		)]
+
+		console.log('[Final Marks] Course mapping IDs to fetch:', courseMappingIds)
+
+		const { data: courseMappingData } = await supabase
+			.from('course_mapping')
+			.select(`
+				id,
+				course_id,
+				course_code,
+				internal_max_mark,
+				internal_pass_mark,
+				external_max_mark,
+				external_pass_mark,
+				total_max_mark,
+				total_pass_mark
+			`)
+			.in('id', courseMappingIds)
+
+		// Create course_mapping lookup map: course_mapping.id -> mapping data
+		const courseMappingMap = new Map<string, any>()
+		courseMappingData?.forEach((cm: any) => {
+			courseMappingMap.set(cm.id, cm)
+		})
+
+		console.log('[Final Marks] Course mappings found:', courseMappingData?.length || 0)
+		console.log('[Final Marks] Sample course mapping:', courseMappingData?.[0])
+
+		// 3b. Fetch course details for the course_mapping entries
+		const actualCourseIds = [...new Set(
+			(courseMappingData || []).map((cm: any) => cm.course_id).filter(Boolean)
+		)]
+
+		console.log('[Final Marks] Actual course IDs to fetch:', actualCourseIds)
+
+		const { data: courseDetails } = await supabase
+			.from('courses')
+			.select(`
+				id,
+				course_code,
+				course_name,
+				course_type,
+				credit,
+				evaluation_type,
+				internal_max_mark,
+				internal_pass_mark,
+				internal_converted_mark,
+				external_max_mark,
+				external_pass_mark,
+				external_converted_mark,
+				total_max_mark,
+				total_pass_mark
+			`)
+			.in('id', actualCourseIds)
+
+		// Create courses lookup map: courses.id -> course data
+		const coursesMap = new Map<string, any>()
+		courseDetails?.forEach((c: any) => {
+			coursesMap.set(c.id, c)
+		})
+
+		console.log('[Final Marks] Courses found:', courseDetails?.length || 0)
+		console.log('[Final Marks] Sample course:', courseDetails?.[0])
+
+		// 4. Fetch internal marks for these students/courses
 		const studentIds = [...new Set(examRegistrations.map((er: any) => er.student_id))]
 		const { data: internalMarks, error: internalError } = await supabase
 			.from('internal_marks')
@@ -581,11 +776,24 @@ export async function POST(request: NextRequest) {
 			skipped_missing_marks: 0
 		}
 
+		let skippedNoCourse = 0
+		let skippedNoMapping = 0
 		for (const examReg of examRegistrations) {
 			const courseOffering = (examReg as any).course_offerings
-			const course = courseOffering?.courses
+			// Look up course_mapping and course from our maps
+			// course_offerings.course_mapping_id is the FK to course_mapping.id
+			const courseMappingId = courseOffering?.course_mapping_id || courseOffering?.course_id
+			const courseMapping = courseMappingMap.get(courseMappingId)
+			const course = courseMapping ? coursesMap.get(courseMapping.course_id) : null
 
-			if (!course) continue
+			if (!courseMapping) {
+				skippedNoMapping++
+				continue
+			}
+			if (!course) {
+				skippedNoCourse++
+				continue
+			}
 
 			const internalKey = `${examReg.student_id}|${course.id}`
 			const internalMark = internalMarksMap.get(internalKey)
@@ -666,13 +874,14 @@ export async function POST(request: NextRequest) {
 				}
 			}
 
-			// Get marks configuration from course table (exact values, no fallbacks)
-			const internalMax = Number(course.internal_max_mark) || 0
-			const internalPassMark = Number(course.internal_pass_mark) || 0
-			const externalMax = Number(course.external_max_mark) || 0
-			const externalPassMark = Number(course.external_pass_mark) || 0
-			const totalMax = Number(course.total_max_mark) || 0
-			const totalPassMark = Number(course.total_pass_mark) || 0
+			// Get marks configuration - prioritize course_mapping values over generic course values
+			// course_mapping has program/semester specific pass marks
+			const internalMax = Number(courseMapping?.internal_max_mark || course.internal_max_mark) || 0
+			const internalPassMark = Number(courseMapping?.internal_pass_mark || course.internal_pass_mark) || 0
+			const externalMax = Number(courseMapping?.external_max_mark || course.external_max_mark) || 0
+			const externalPassMark = Number(courseMapping?.external_pass_mark || course.external_pass_mark) || 0
+			const totalMax = Number(courseMapping?.total_max_mark || course.total_max_mark) || 0
+			const totalPassMark = Number(courseMapping?.total_pass_mark || course.total_pass_mark) || 0
 
 			// Get marks obtained (cap at max values)
 			let internalMarksObtained = Number(internalMark?.total_internal_marks) || 0
@@ -822,6 +1031,13 @@ export async function POST(request: NextRequest) {
 
 			results.push(resultRow)
 		}
+
+		console.log('[Final Marks] Processing complete:')
+		console.log('  - Total exam registrations:', examRegistrations.length)
+		console.log('  - Skipped (no course mapping):', skippedNoMapping)
+		console.log('  - Skipped (no course):', skippedNoCourse)
+		console.log('  - Skipped (missing marks):', summary.skipped_missing_marks)
+		console.log('  - Results generated:', results.length)
 
 		// 6. Save to database if requested
 		let savedCount = 0

@@ -914,8 +914,29 @@ export default function ExamRegistrationsPage() {
 						continue
 					}
 
-					// Step 4: Validate Course Code with hierarchy check
-					// Lookup: Institution → Session → Program (from session.programs_included) → Course
+					// Step 4: Look up student FIRST to get their program_code
+					// This is needed before course lookup since common subjects exist across multiple programs
+					// Match by register_number to get the student_id (learner profile ID)
+					const matchingLearner = learnersByRegisterNo.get(studentRegisterNo)
+
+					if (!matchingLearner) {
+						preValidationErrors.push({
+							row: rowNumber,
+							student_register_no: studentRegisterNo,
+							course_code: String(r['Course Code'] || 'N/A'),
+							errors: [`Student with register number "${studentRegisterNo}" not found in learners profiles`]
+						})
+						failedRows.push(r)
+						continue
+					}
+
+					// Get the student's program_code from MyJKKN learner profile
+					const studentProgramCode = matchingLearner.program_code || matchingLearner.program_id
+
+					// Step 5: Validate Course Code with full hierarchy check
+					// Lookup: Institution → Session → Student's Program → Course
+					// CRITICAL: Common subjects like 24UGTA01 exist across multiple programs
+					// We MUST match by student's program_code to get the correct course_offering_id
 					const courseCode = String(r['Course Code'] || '').trim()
 					if (!courseCode) {
 						preValidationErrors.push({
@@ -928,36 +949,67 @@ export default function ExamRegistrationsPage() {
 						continue
 					}
 
-					// First check if course exists in system
-					const course = allCourseOfferings.find(c => c.course_code === courseCode)
+					// Find course offering with FULL hierarchy match:
+					// course_code + institution + session + student's program
+					let course = allCourseOfferings.find(c =>
+						c.course_code === courseCode &&
+						c.institutions_id === institution.id &&
+						c.examination_session_id === session.id &&
+						c.program_code === studentProgramCode
+					)
+
+					// If not found with session filter, try without session (for flexibility)
 					if (!course) {
-						preValidationErrors.push({
-							row: rowNumber,
-							student_register_no: studentRegisterNo,
-							course_code: courseCode,
-							errors: [`Course Code "${courseCode}" not found. Please ensure the course exists in the system.`]
-						})
+						course = allCourseOfferings.find(c =>
+							c.course_code === courseCode &&
+							c.institutions_id === institution.id &&
+							c.program_code === studentProgramCode
+						)
+					}
+
+					// If still not found, check if course exists at all (for better error message)
+					if (!course) {
+						const courseExistsAnywhere = allCourseOfferings.find(c => c.course_code === courseCode)
+						if (!courseExistsAnywhere) {
+							preValidationErrors.push({
+								row: rowNumber,
+								student_register_no: studentRegisterNo,
+								course_code: courseCode,
+								errors: [`Course Code "${courseCode}" not found. Please ensure the course exists in the system.`]
+							})
+						} else {
+							// Course exists but not for this student's program
+							const availablePrograms = allCourseOfferings
+								.filter(c => c.course_code === courseCode && c.institutions_id === institution.id)
+								.map(c => c.program_code)
+								.filter((v, i, a) => a.indexOf(v) === i) // unique
+								.join(', ')
+							preValidationErrors.push({
+								row: rowNumber,
+								student_register_no: studentRegisterNo,
+								course_code: courseCode,
+								errors: [
+									`Course "${courseCode}" not found for student's program "${studentProgramCode}". ` +
+									`Available programs for this course: ${availablePrograms || 'None in this institution'}. ` +
+									`Please ensure the course offering exists for the student's program.`
+								]
+							})
+						}
 						failedRows.push(r)
 						continue
 					}
 
-					// Step 5: Validate foreign key relationships with full hierarchy
+					// Step 6: Validate foreign key relationships with full hierarchy
 					// Hierarchy: Institution → Session → Program → Course
 					const fkErrors: string[] = []
 
-					// 5a: Session must belong to institution
+					// 6a: Session must belong to institution
 					if (session.institutions_id !== institution.id) {
 						fkErrors.push(`Examination Session "${sessionCode}" does not belong to Institution "${institutionCode}".`)
 					}
 
-					// 5b: Course must belong to institution
-					if (course.institutions_id !== institution.id) {
-						fkErrors.push(`Course Code "${courseCode}" does not belong to Institution "${institutionCode}".`)
-					}
-
-					// 5c: Course's program must be included in session's programs_included
+					// 6b: Course's program must be included in session's programs_included
 					// This validates the hierarchy: Session → Program → Course
-					// Note: programs_included contains UUIDs, so we compare with course.program_id (not program_code)
 					const sessionProgramIds = session.programs_included || []
 					const courseProgramId = course.program_id
 					const courseProgramCode = course.program_code || 'Unknown'
@@ -981,24 +1033,7 @@ export default function ExamRegistrationsPage() {
 						continue
 					}
 
-					// Step 6: Look up student from MyJKKN learner profiles (REQUIRED)
-					// Match by register_number to get the student_id (learner profile ID)
-					// Uses global lookup map (not filtered by institution) to find students
-					// who may be registered under different institutions in MyJKKN
-					const matchingLearner = learnersByRegisterNo.get(studentRegisterNo)
-
-					if (!matchingLearner) {
-						preValidationErrors.push({
-							row: rowNumber,
-							student_register_no: studentRegisterNo,
-							course_code: courseCode,
-							errors: [`Student with register number "${studentRegisterNo}" not found in learners profiles`]
-						})
-						failedRows.push(r)
-						continue
-					}
-
-					// Get student name from Excel or from MyJKKN learner profile
+					// Step 7: Get student name from Excel or from MyJKKN learner profile
 					let studentName = String(r['Student Name'] || '').trim()
 					if (!studentName) {
 						// Auto-fill from MyJKKN learner profile

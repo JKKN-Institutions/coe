@@ -69,7 +69,17 @@
       "Bash(mkdir:*)",
       "Bash(xxd:*)",
       "Bash(del \"d:\\\\JKKN\\\\Development\\\\Application\\\\COE\\\\jkkncoe\\\\supabase\\\\migrations\\\\20260109_make_exam_timetables_course_offering_nullable.sql\")",
-      "Bash(timeout 15 npm run dev:*)"
+      "Bash(timeout 15 npm run dev:*)",
+      "Bash(npx next build:*)",
+      "mcp__playwright__browser_navigate",
+      "mcp__playwright__browser_console_messages",
+      "mcp__playwright__browser_wait_for",
+      "mcp__playwright__browser_snapshot",
+      "mcp__playwright__browser_file_upload",
+      "mcp__playwright__browser_press_key",
+      "mcp__playwright__browser_close",
+      "Bash(del \"d:\\\\JKKN\\\\Development\\\\Application\\\\COE\\\\jkkncoe\\\\test_external_marks.csv\")",
+      "mcp__playwright__browser_network_requests"
     ],
     "deny": [
       "mcp__filesystem__*"

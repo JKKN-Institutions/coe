@@ -3,29 +3,26 @@
 /**
  * Custom Hook for External Marks Bulk Upload
  * Manages state, data fetching, filtering, sorting, and pagination
+ * Uses institution filter for proper multi-tenant support
  */
 
 import { useState, useEffect, useMemo, useCallback } from 'react'
 import type {
 	ExternalMark,
-	Institution,
 	ExamSession,
 	Program,
 	Course,
+	Institution,
 	ImportPreviewRow,
 	UploadSummary,
 	UploadError,
 	LookupMode
 } from '@/types/external-marks'
 import {
-	fetchInstitutions as fetchInstitutionsApi,
-	fetchSessions as fetchSessionsApi,
-	fetchPrograms as fetchProgramsApi,
-	fetchCourses as fetchCoursesApi,
-	fetchExternalMarks,
 	bulkUploadMarks,
 	bulkDeleteMarks
 } from '@/services/post-exam/external-marks-bulk-service'
+import { useInstitutionFilter } from '@/hooks/use-institution-filter'
 
 interface UseExternalMarksBulkReturn {
 	// Data
@@ -39,8 +36,12 @@ interface UseExternalMarksBulkReturn {
 	loading: boolean
 	fetchError: string | null
 
+	// Institution filter info
+	institutionId: string | null
+	mustSelectInstitution: boolean
+	isReady: boolean
+
 	// Filters
-	selectedInstitution: string
 	selectedSession: string
 	selectedProgram: string
 	selectedCourse: string
@@ -48,7 +49,6 @@ interface UseExternalMarksBulkReturn {
 	searchTerm: string
 
 	// Filter Setters
-	setSelectedInstitution: (id: string) => void
 	setSelectedSession: (id: string) => void
 	setSelectedProgram: (id: string) => void
 	setSelectedCourse: (id: string) => void
@@ -99,6 +99,15 @@ interface UseExternalMarksBulkReturn {
 }
 
 export function useExternalMarksBulk(): UseExternalMarksBulkReturn {
+	// Use institution filter for multi-tenant support
+	const {
+		institutionId,
+		appendToUrl,
+		isReady,
+		mustSelectInstitution,
+		getInstitutionIdForCreate
+	} = useInstitutionFilter()
+
 	// Data State
 	const [items, setItems] = useState<ExternalMark[]>([])
 	const [institutions, setInstitutions] = useState<Institution[]>([])
@@ -111,7 +120,6 @@ export function useExternalMarksBulk(): UseExternalMarksBulkReturn {
 	const [fetchError, setFetchError] = useState<string | null>(null)
 
 	// Filter State
-	const [selectedInstitution, setSelectedInstitution] = useState('')
 	const [selectedSession, setSelectedSession] = useState('')
 	const [selectedProgram, setSelectedProgram] = useState('')
 	const [selectedCourse, setSelectedCourse] = useState('')
@@ -142,77 +150,137 @@ export function useExternalMarksBulk(): UseExternalMarksBulkReturn {
 
 	// Fetch institutions on mount
 	useEffect(() => {
-		const loadInstitutions = async () => {
-			try {
-				const data = await fetchInstitutionsApi()
-				setInstitutions(data)
-			} catch (error) {
-				console.error('Failed to fetch institutions:', error)
-			}
+		if (isReady) {
+			fetchInstitutions()
+			fetchSessions()
 		}
-		loadInstitutions()
-	}, [])
+	}, [isReady])
 
-	// Fetch dependent data when institution changes
+	// Fetch programs and courses based on institution context
 	useEffect(() => {
-		if (selectedInstitution) {
-			const loadDependentData = async () => {
-				try {
-					const [sessionsData, programsData, coursesData] = await Promise.all([
-						fetchSessionsApi(selectedInstitution),
-						fetchProgramsApi(selectedInstitution),
-						fetchCoursesApi(selectedInstitution)
-					])
-					setSessions(sessionsData)
-					setPrograms(programsData)
-					setCourses(coursesData)
-				} catch (error) {
-					console.error('Failed to fetch dependent data:', error)
-				}
+		if (isReady) {
+			const instId = getInstitutionIdForCreate()
+			if (instId) {
+				fetchPrograms(instId)
+				fetchCourses(instId)
+			} else if (mustSelectInstitution) {
+				// super_admin with "All Institutions" - fetch all
+				fetchAllPrograms()
+				fetchAllCourses()
 			}
-			loadDependentData()
-		} else {
-			setSessions([])
-			setPrograms([])
-			setCourses([])
 		}
-		setSelectedSession('')
-		setSelectedProgram('')
-		setSelectedCourse('')
-	}, [selectedInstitution])
+	}, [isReady, mustSelectInstitution, getInstitutionIdForCreate])
 
-	// Fetch marks when filters change
+	// Fetch marks when ready or filters change
+	useEffect(() => {
+		if (isReady) {
+			fetchMarks()
+		}
+	}, [isReady, selectedSession, selectedProgram, selectedCourse])
+
+	const fetchInstitutions = async () => {
+		try {
+			const res = await fetch('/api/post-exam/external-marks-bulk?action=institutions')
+			if (res.ok) {
+				const data = await res.json()
+				setInstitutions(data)
+			}
+		} catch (error) {
+			console.error('Failed to fetch institutions:', error)
+		}
+	}
+
+	const fetchSessions = async () => {
+		try {
+			const res = await fetch('/api/post-exam/external-marks-bulk?action=all-sessions')
+			if (res.ok) {
+				const data = await res.json()
+				setSessions(data)
+			}
+		} catch (error) {
+			console.error('Failed to fetch sessions:', error)
+		}
+	}
+
+	const fetchPrograms = async (instId: string) => {
+		try {
+			const res = await fetch(`/api/post-exam/external-marks-bulk?action=programs&institutionId=${instId}`)
+			if (res.ok) {
+				const data = await res.json()
+				setPrograms(data)
+			}
+		} catch (error) {
+			console.error('Failed to fetch programs:', error)
+		}
+	}
+
+	const fetchAllPrograms = async () => {
+		try {
+			const res = await fetch('/api/post-exam/external-marks-bulk?action=all-programs')
+			if (res.ok) {
+				const data = await res.json()
+				setPrograms(data)
+			}
+		} catch (error) {
+			console.error('Failed to fetch all programs:', error)
+		}
+	}
+
+	const fetchCourses = async (instId: string) => {
+		try {
+			const res = await fetch(`/api/post-exam/external-marks-bulk?action=courses&institutionId=${instId}`)
+			if (res.ok) {
+				const data = await res.json()
+				setCourses(data)
+			}
+		} catch (error) {
+			console.error('Failed to fetch courses:', error)
+		}
+	}
+
+	const fetchAllCourses = async () => {
+		try {
+			const res = await fetch('/api/post-exam/external-marks-bulk?action=all-courses')
+			if (res.ok) {
+				const data = await res.json()
+				setCourses(data)
+			}
+		} catch (error) {
+			console.error('Failed to fetch all courses:', error)
+		}
+	}
+
+	// Fetch marks using institution filter
 	const fetchMarks = useCallback(async () => {
-		if (!selectedInstitution) return
-
 		try {
 			setLoading(true)
 			setFetchError(null)
-			const data = await fetchExternalMarks({
-				institutionId: selectedInstitution,
-				sessionId: selectedSession || undefined,
-				programId: selectedProgram || undefined,
-				courseId: selectedCourse || undefined
-			})
-			setItems(data)
-			setFetchError(null)
+
+			// Use appendToUrl for proper institution filtering based on user role
+			let url = appendToUrl('/api/post-exam/external-marks-bulk?action=marks')
+			if (selectedSession) url += `&sessionId=${selectedSession}`
+			if (selectedProgram) url += `&programId=${selectedProgram}`
+			if (selectedCourse) url += `&courseId=${selectedCourse}`
+
+			const res = await fetch(url)
+			const data = await res.json()
+
+			if (res.ok) {
+				setItems(data)
+				setFetchError(null)
+			} else {
+				console.error('Failed to fetch marks:', data.error)
+				setFetchError(data.error || 'Failed to fetch marks')
+				setItems([])
+			}
 		} catch (error) {
 			console.error('Failed to fetch marks:', error)
-			const errorMsg = error instanceof Error
-				? error.message
-				: 'Unable to connect to the server. Please check your connection and try again.'
-			setFetchError(errorMsg)
+			setFetchError('Unable to connect to the server. Please check your connection and try again.')
 			setItems([])
 		} finally {
 			setLoading(false)
 		}
-	}, [selectedInstitution, selectedSession, selectedProgram, selectedCourse])
-
-	useEffect(() => {
-		if (selectedInstitution) {
-			fetchMarks()
-		}
-	}, [selectedInstitution, selectedSession, selectedProgram, selectedCourse, fetchMarks])
+	}, [appendToUrl, selectedSession, selectedProgram, selectedCourse])
 
 	// Sorting
 	const handleSort = useCallback((column: string) => {
@@ -287,15 +355,16 @@ export function useExternalMarksBulk(): UseExternalMarksBulkReturn {
 		setSelectAll(false)
 	}, [])
 
-	// Upload marks
+	// Upload marks - uses institution_code from each row (like internal marks)
 	const uploadMarks = useCallback(async (
 		validRows: ImportPreviewRow[],
 		userId: string | undefined,
 		lookupMode: LookupMode = 'dummy_number'
 	) => {
-		if (!selectedInstitution) {
-			return { success: false, error: 'Please select an institution before uploading marks.' }
-		}
+		console.log('=== useExternalMarksBulk.uploadMarks called ===')
+		console.log('validRows count:', validRows.length)
+		console.log('lookupMode:', lookupMode)
+		console.log('userId:', userId)
 
 		if (validRows.length === 0) {
 			return { success: false, error: 'No valid rows to upload.' }
@@ -304,7 +373,9 @@ export function useExternalMarksBulk(): UseExternalMarksBulkReturn {
 		setLoading(true)
 
 		try {
+			// Include institution_code from each row for multi-institution support
 			const marksData = validRows.map(row => ({
+				institution_code: row.institution_code,
 				dummy_number: row.dummy_number,
 				register_number: row.register_number,
 				subject_code: row.subject_code,
@@ -316,12 +387,11 @@ export function useExternalMarksBulk(): UseExternalMarksBulkReturn {
 				remarks: row.remarks
 			}))
 
+			console.log('Prepared marksData:', marksData.length, 'rows')
+			console.log('First row:', marksData[0])
+
 			const result = await bulkUploadMarks({
 				action: 'bulk-upload',
-				institutions_id: selectedInstitution,
-				examination_session_id: selectedSession || null,
-				program_id: selectedProgram || null,
-				course_id: selectedCourse || null,
 				lookup_mode: lookupMode,
 				marks_data: marksData,
 				file_name: 'bulk_upload.xlsx',
@@ -329,12 +399,14 @@ export function useExternalMarksBulk(): UseExternalMarksBulkReturn {
 				uploaded_by: userId
 			})
 
+			console.log('bulkUploadMarks returned:', result)
+
 			// Update summary
 			setUploadSummary({
-				total: result.total,
-				success: result.successful,
-				failed: result.failed,
-				skipped: result.skipped
+				total: result.total || 0,
+				success: result.successful || 0,
+				failed: result.failed || 0,
+				skipped: result.skipped || 0
 			})
 
 			// Collect errors
@@ -353,15 +425,32 @@ export function useExternalMarksBulk(): UseExternalMarksBulkReturn {
 
 			return { success: true, result }
 		} catch (error) {
-			console.error('Upload error:', error)
+			console.error('=== uploadMarks catch error ===', error)
+			const errorMessage = error instanceof Error ? error.message : 'Failed to upload marks'
+
+			// Set error summary so dialog can show
+			setUploadSummary({
+				total: validRows.length,
+				success: 0,
+				failed: validRows.length,
+				skipped: 0
+			})
+			setUploadErrors([{
+				row: 0,
+				dummy_number: '-',
+				course_code: '-',
+				errors: [errorMessage]
+			}])
+
 			return {
 				success: false,
-				error: error instanceof Error ? error.message : 'Failed to upload marks'
+				error: errorMessage
 			}
 		} finally {
 			setLoading(false)
+			console.log('=== uploadMarks completed ===')
 		}
-	}, [selectedInstitution, selectedSession, selectedProgram, selectedCourse, fetchMarks])
+	}, [fetchMarks])
 
 	// Delete selected marks
 	const deleteSelected = useCallback(async () => {
@@ -424,8 +513,12 @@ export function useExternalMarksBulk(): UseExternalMarksBulkReturn {
 		loading,
 		fetchError,
 
+		// Institution filter info
+		institutionId,
+		mustSelectInstitution,
+		isReady,
+
 		// Filters
-		selectedInstitution,
 		selectedSession,
 		selectedProgram,
 		selectedCourse,
@@ -433,7 +526,6 @@ export function useExternalMarksBulk(): UseExternalMarksBulkReturn {
 		searchTerm,
 
 		// Filter Setters
-		setSelectedInstitution,
 		setSelectedSession,
 		setSelectedProgram,
 		setSelectedCourse,

@@ -357,11 +357,11 @@ if (wsCompat['!dataValidation'] && wsCompat['!dataValidation'].length > 0) {
 
 ---
 
-## Import Loading Overlay Pattern
+## Import Loading Modal Pattern
 
-**CRITICAL**: Always lock the screen during import to prevent user interaction. This provides visual feedback and prevents duplicate submissions.
+**CRITICAL**: Always lock the screen during import with a centered modal overlay. This provides visual feedback and prevents duplicate submissions or user interaction.
 
-**Reference Implementation: `app/(coe)/exam-management/exam-registrations/page.tsx`**
+**Reference Implementation: `app/(coe)/exam-management/exam-registrations/page.tsx` (lines 1275-1308)**
 
 ### Required State Variables
 
@@ -371,19 +371,22 @@ const [importInProgress, setImportInProgress] = useState(false)
 const [importProgress, setImportProgress] = useState({ current: 0, total: 0 })
 ```
 
-### Loading Overlay Component
+### Centered Modal Overlay Component
 
-Add this overlay right after your `<SidebarProvider>` or at the root of your return:
+Add this modal right after your `<SidebarProvider>` or at the root of your return statement:
 
 ```tsx
-{/* Import Loading Overlay */}
+{/* Import Loading Modal - Full Screen Overlay with Centered Card */}
 {importInProgress && (
   <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-[100] flex items-center justify-center">
     <div className="bg-white dark:bg-slate-800 rounded-2xl p-8 shadow-2xl max-w-md w-full mx-4">
       <div className="flex flex-col items-center gap-4">
+        {/* Large Spinning Loader */}
         <div className="relative">
           <Loader2 className="h-12 w-12 text-blue-600 animate-spin" />
         </div>
+
+        {/* Title and Description */}
         <div className="text-center">
           <h3 className="text-lg font-semibold text-slate-900 dark:text-slate-100">
             Importing [Entity Name]
@@ -392,6 +395,8 @@ Add this overlay right after your `<SidebarProvider>` or at the root of your ret
             Please wait while the data is being processed...
           </p>
         </div>
+
+        {/* Progress Bar with Counter */}
         {importProgress.total > 0 && (
           <div className="w-full space-y-2">
             <div className="flex justify-between text-sm text-slate-600 dark:text-slate-300">
@@ -415,6 +420,19 @@ Add this overlay right after your `<SidebarProvider>` or at the root of your ret
 )}
 ```
 
+### Modal Styling Breakdown
+
+| Element | Classes | Purpose |
+|---------|---------|---------|
+| **Outer overlay** | `fixed inset-0 bg-black/50 backdrop-blur-sm z-[100]` | Full-screen semi-transparent backdrop with blur |
+| **Centering** | `flex items-center justify-center` | Centers modal vertically and horizontally |
+| **Modal card** | `bg-white dark:bg-slate-800 rounded-2xl p-8 shadow-2xl max-w-md w-full mx-4` | White card with rounded corners, shadow, responsive width |
+| **Loader** | `h-12 w-12 text-blue-600 animate-spin` | Large spinning icon (12x12 = 48px) |
+| **Title** | `text-lg font-semibold text-slate-900 dark:text-slate-100` | Bold heading with dark mode support |
+| **Description** | `text-sm text-slate-500 dark:text-slate-400` | Muted helper text |
+| **Progress bar bg** | `bg-slate-200 dark:bg-slate-700 rounded-full h-2.5` | Track background |
+| **Progress bar fill** | `bg-blue-600 h-2.5 rounded-full transition-all duration-300` | Animated fill |
+
 ### Required Import
 
 ```typescript
@@ -424,17 +442,17 @@ import { Loader2 } from 'lucide-react'
 ### Integration with Import Handler
 
 ```typescript
-// At start of import
+// At start of import (before processing begins)
 setImportInProgress(true)
 setImportProgress({ current: 0, total: rows.length })
 
-// Inside processing loop
+// Inside processing loop - update progress for each row
 for (let i = 0; i < mapped.length; i++) {
   setImportProgress({ current: i + 1, total: mapped.length })
-  // ... process row
+  // ... process row (API call, validation, etc.)
 }
 
-// On completion (success or error)
+// On successful completion
 setImportInProgress(false)
 
 // In catch block - IMPORTANT: Always reset on error
@@ -442,9 +460,22 @@ setImportInProgress(false)
   console.error('Import error:', err)
   setLoading(false)
   setImportInProgress(false)  // Reset overlay on error
-  toast({ ... })
+  toast({
+    title: "❌ Import Error",
+    description: "Import failed. Please check your file format and try again.",
+    variant: "destructive",
+    className: "bg-red-50 border-red-200 text-red-800 dark:bg-red-900/20 dark:border-red-800 dark:text-red-200",
+  })
 }
 ```
+
+### Why Use Modal Instead of Inline Progress?
+
+1. **Screen Lock**: Users cannot click anything behind the modal
+2. **Visual Focus**: Centered card draws attention to the import status
+3. **Prevents Duplicates**: No accidental double-clicks on import button
+4. **Professional UX**: Matches modern app patterns (e.g., file upload in cloud apps)
+5. **Dark Mode Support**: Built-in dark/light theme handling
 
 ---
 
@@ -1082,7 +1113,7 @@ Supabase PostgREST uses the **table name** (not column name) for embedded joins:
 | **Row number in errors** | Use `index + 2` (header = row 1) |
 | **Status mapping** | Accept both `Active/Inactive` and `true/false` |
 | **Header mapping** | Handle `Field Name *` and `field_name` formats |
-| **Loading overlay** | Use `importInProgress` state with fixed overlay |
+| **Import modal** | Use `importInProgress` state with centered modal overlay |
 | **Progress tracking** | Update `importProgress` in processing loop |
 | **Denormalized codes** | Store both UUID and code values in API |
 
@@ -1101,7 +1132,7 @@ Supabase PostgREST uses the **table name** (not column name) for embedded joins:
 5. ☐ **Add import progress state (`importInProgress`, `importProgress`)**
 6. ☐ Add button group in page header
 7. ☐ Implement `handleImport` with file parsing
-8. ☐ **Add loading overlay component to prevent user interaction**
+8. ☐ **Add centered import modal component to lock screen during import**
 9. ☐ **Add data validations with `showDropDown: true`**
 10. ☐ Implement validation function for import
 11. ☐ Add Error Dialog component
@@ -1128,8 +1159,9 @@ Supabase PostgREST uses the **table name** (not column name) for embedded joins:
 - [ ] Upload summary shows correct counts
 - [ ] Toast notifications appear for all cases
 - [ ] Error dialog is scrollable for many errors
-- [ ] **Loading overlay appears during import**
+- [ ] **Centered modal appears during import (bg-black/50 backdrop-blur-sm)**
+- [ ] **Modal shows large spinner (h-12 w-12), title, and description**
 - [ ] **Progress bar updates as rows are processed**
-- [ ] **Screen is locked (no clicks) during import**
-- [ ] **Overlay dismisses on success or error**
+- [ ] **Screen is locked (no clicks behind modal) during import**
+- [ ] **Modal dismisses on success or error**
 - [ ] **Code values are stored in database (not just UUIDs)**

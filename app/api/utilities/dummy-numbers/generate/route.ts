@@ -86,6 +86,7 @@ export async function POST(request: Request) {
 			let hasMore = true
 
 			while (hasMore && allData.length < maxRecords) {
+				// Simplified query using relationship aliases (PostgREST auto-discovers FKs)
 				let query = supabase
 					.from('exam_attendance')
 					.select(`
@@ -98,25 +99,7 @@ export async function POST(request: Request) {
 							id,
 							stu_register_no,
 							is_regular,
-							course_offering:course_offerings (
-								course_code,
-								course:courses (
-									course_code,
-									course_name,
-									course_type,
-									course_category,
-									board_code,
-									board:board (
-										board_code,
-										board_order
-									)
-								),
-								program:programs (
-									program_code,
-									program_name,
-									program_order
-								)
-							)
+							course_offering_id
 						),
 						student:students (
 							id,
@@ -134,7 +117,7 @@ export async function POST(request: Request) {
 
 				if (error) {
 					console.error('Error fetching attendance data:', error)
-					return NextResponse.json({ error: 'Failed to fetch attendance data' }, { status: 500 })
+					return NextResponse.json({ error: 'Failed to fetch attendance data: ' + error.message }, { status: 500 })
 				}
 
 				if (data && data.length > 0) {
@@ -153,7 +136,94 @@ export async function POST(request: Request) {
 			}
 
 			console.log(`📊 Total attendance records fetched: ${allData.length}`)
-			studentsData = allData
+
+			// Get unique course_offering_ids to fetch course and program details
+			const courseOfferingIds = [...new Set(allData.map(att => att.exam_registration?.course_offering_id).filter(Boolean))]
+
+			// Fetch course offerings with nested details
+			let courseOfferingMap = new Map<string, any>()
+			if (courseOfferingIds.length > 0) {
+				console.log(`📊 Fetching details for ${courseOfferingIds.length} course offerings...`)
+				const { data: offerings, error: offeringsError } = await supabase
+					.from('course_offerings')
+					.select(`
+						id,
+						course_code,
+						program_id,
+						course_id,
+						course_mapping:course_mapping!course_offerings_course_id_fkey (
+							course_code,
+							course_order,
+							course:courses!course_mapping_course_id_fkey (
+								course_code,
+								course_name,
+								course_type,
+								course_category,
+								board_code,
+								board:board!courses_board_code_fkey (
+									board_code,
+									board_order
+								)
+							)
+						),
+						program:programs!course_offerings_program_id_fkey (
+							program_code,
+							program_name,
+							program_order
+						)
+					`)
+					.in('id', courseOfferingIds)
+
+				if (offeringsError) {
+					console.error('Error fetching course offerings:', offeringsError)
+					// Continue without the course details, will fall back
+				} else if (offerings) {
+					offerings.forEach((co: any) => {
+						courseOfferingMap.set(co.id, co)
+					})
+					console.log(`✅ Loaded ${offerings.length} course offering details`)
+				}
+			}
+
+			// Transform attendance data with enriched course offering details
+			studentsData = allData.map((att: any) => {
+				const reg = att.exam_registration
+				const courseOfferingId = reg?.course_offering_id
+				const courseOffering = courseOfferingMap.get(courseOfferingId)
+				const courseMapping = courseOffering?.course_mapping
+				const course = courseMapping?.course
+				const board = course?.board
+				const program = courseOffering?.program
+
+				return {
+					id: att.id,
+					exam_registration_id: att.exam_registration_id,
+					exam_timetable_id: att.exam_timetable_id,
+					student_id: att.student_id,
+					attendance_status: att.attendance_status,
+					exam_registration: reg ? {
+						id: reg.id,
+						stu_register_no: reg.stu_register_no,
+						is_regular: reg.is_regular,
+						course_offering: courseOffering ? {
+							id: courseOffering.id,
+							course_code: courseOffering.course_code,
+							program_id: courseOffering.program_id,
+							course_order: courseMapping?.course_order,
+							course: course ? {
+								course_code: course.course_code,
+								course_name: course.course_name,
+								course_type: course.course_type,
+								course_category: course.course_category,
+								board_code: course.board_code,
+								board: board
+							} : null,
+							program: program
+						} : null
+					} : null,
+					student: att.student
+				}
+			})
 		} else {
 			// Fetch from exam_registrations (All approved students, Theory papers only)
 			// Support up to 100,000 records with efficient pagination
@@ -164,6 +234,7 @@ export async function POST(request: Request) {
 			let hasMore = true
 
 			while (hasMore && allData.length < maxRecords) {
+				// Simplified query using relationship aliases
 				let query = supabase
 					.from('exam_registrations')
 					.select(`
@@ -171,26 +242,7 @@ export async function POST(request: Request) {
 						stu_register_no,
 						is_regular,
 						student_id,
-						course_offering:course_offerings (
-							id,
-							course_code,
-							course:courses (
-								course_code,
-								course_name,
-								course_type,
-								course_category,
-								board_code,
-								board:board (
-								board_code,
-								board_order
-							)
-							),
-							program:programs (
-								program_code,
-								program_name,
-								program_order
-							)
-						),
+						course_offering_id,
 						student:students (
 							id,
 							roll_number,
@@ -207,7 +259,7 @@ export async function POST(request: Request) {
 
 				if (error) {
 					console.error('Error fetching registration data:', error)
-					return NextResponse.json({ error: 'Failed to fetch registration data' }, { status: 500 })
+					return NextResponse.json({ error: 'Failed to fetch registration data: ' + error.message }, { status: 500 })
 				}
 
 				if (data && data.length > 0) {
@@ -226,25 +278,97 @@ export async function POST(request: Request) {
 			}
 
 			console.log(`📊 Total registrations fetched: ${allData.length}`)
-			const data = allData
 
-			if (!data || data.length === 0) {
+			if (!allData || allData.length === 0) {
 				return NextResponse.json({
 					error: 'No approved registrations found for the selected institution and session'
 				}, { status: 400 })
 			}
 
-			// Transform registration data to match attendance structure
-			studentsData = (data || []).map((reg: any) => ({
-				exam_registration_id: reg.id,
-				exam_timetable_id: null, // Will need to be fetched separately or left null for registration mode
-				student_id: reg.student_id,
-				exam_registration: {
-					...reg,
-					course_offering: reg.course_offering // Ensure course_offering is at the right level
-				},
-				student: reg.student
-			}))
+			// Get unique course_offering_ids to fetch course and program details
+			const courseOfferingIds = [...new Set(allData.map(reg => reg.course_offering_id).filter(Boolean))]
+
+			// Fetch course offerings with nested details
+			let courseOfferingMap = new Map<string, any>()
+			if (courseOfferingIds.length > 0) {
+				console.log(`📊 Fetching details for ${courseOfferingIds.length} course offerings...`)
+				const { data: offerings, error: offeringsError } = await supabase
+					.from('course_offerings')
+					.select(`
+						id,
+						course_code,
+						program_id,
+						course_id,
+						course_mapping:course_mapping!course_offerings_course_id_fkey (
+							course_code,
+							course_order,
+							course:courses!course_mapping_course_id_fkey (
+								course_code,
+								course_name,
+								course_type,
+								course_category,
+								board_code,
+								board:board!courses_board_code_fkey (
+									board_code,
+									board_order
+								)
+							)
+						),
+						program:programs!course_offerings_program_id_fkey (
+							program_code,
+							program_name,
+							program_order
+						)
+					`)
+					.in('id', courseOfferingIds)
+
+				if (offeringsError) {
+					console.error('Error fetching course offerings:', offeringsError)
+					// Continue without the course details, will fall back
+				} else if (offerings) {
+					offerings.forEach((co: any) => {
+						courseOfferingMap.set(co.id, co)
+					})
+					console.log(`✅ Loaded ${offerings.length} course offering details`)
+				}
+			}
+
+			// Transform registration data with enriched course offering details
+			studentsData = allData.map((reg: any) => {
+				const courseOfferingId = reg.course_offering_id
+				const courseOffering = courseOfferingMap.get(courseOfferingId)
+				const courseMapping = courseOffering?.course_mapping
+				const course = courseMapping?.course
+				const board = course?.board
+				const program = courseOffering?.program
+
+				return {
+					exam_registration_id: reg.id,
+					exam_timetable_id: null, // Will need to be fetched separately or left null for registration mode
+					student_id: reg.student_id,
+					exam_registration: {
+						id: reg.id,
+						stu_register_no: reg.stu_register_no,
+						is_regular: reg.is_regular,
+						course_offering: courseOffering ? {
+							id: courseOffering.id,
+							course_code: courseOffering.course_code,
+							program_id: courseOffering.program_id,
+							course_order: courseMapping?.course_order,
+							course: course ? {
+								course_code: course.course_code,
+								course_name: course.course_name,
+								course_type: course.course_type,
+								course_category: course.course_category,
+								board_code: course.board_code,
+								board: board
+							} : null,
+							program: program
+						} : null
+					},
+					student: reg.student
+				}
+			})
 		}
 
 		// Debug: Log course categories before filtering
@@ -286,36 +410,7 @@ export async function POST(request: Request) {
 
 		console.log(`📋 Final filtered count: ${studentsData.length} students`)
 
-		// Step 2: Fetch course_mapping to get course_order for each course
-		// Database Relationship: course_mapping.id = course_offerings.id (shared primary key)
-		// This extends course_offerings with program/batch-specific data like course_order
-		// SQL Equivalent: LEFT JOIN course_mapping cm ON co.id = cm.id
-		const uniqueCourseOfferingIds = [...new Set(studentsData.map(s =>
-			s.exam_registration?.course_offering?.id
-		).filter(Boolean))]
-
-		const courseMappingMap = new Map<string, number>()
-
-		if (uniqueCourseOfferingIds.length > 0) {
-			console.log(`📊 Fetching course_order for ${uniqueCourseOfferingIds.length} unique course offerings...`)
-
-			const { data: courseMappings, error: cmError } = await supabase
-				.from('course_mapping')
-				.select('id, course_id, course_order')
-				.in('id', uniqueCourseOfferingIds)
-
-			if (!cmError && courseMappings) {
-				courseMappings.forEach((cm: any) => {
-					courseMappingMap.set(cm.id, cm.course_order || 999)
-				})
-				console.log(`✅ Loaded course_order for ${courseMappings.length} course mappings`)
-			} else if (cmError) {
-				console.warn('⚠️ Could not fetch course_mapping data:', cmError)
-			}
-		}
-
-
-		// Step 3: Sort students by board_order -> course_order -> program_order -> is_regular -> stu_register_no
+		// Step 2: Sort students by board_order -> course_order -> program_order -> is_regular -> stu_register_no
 		// SQL Equivalent:
 		// ORDER BY
 		//   COALESCE(b.board_order, 999) ASC,
@@ -329,11 +424,9 @@ export async function POST(request: Request) {
 			const bBoardOrder = b.exam_registration?.course_offering?.course?.board?.board_order || 999
 			if (aBoardOrder !== bBoardOrder) return aBoardOrder - bBoardOrder
 
-			// 2. Course order (from course_mapping)
-			const aCourseOfferingId = a.exam_registration?.course_offering?.id
-			const bCourseOfferingId = b.exam_registration?.course_offering?.id
-			const aCourseOrder = aCourseOfferingId ? (courseMappingMap.get(aCourseOfferingId) || 999) : 999
-			const bCourseOrder = bCourseOfferingId ? (courseMappingMap.get(bCourseOfferingId) || 999) : 999
+			// 2. Course order (from course_offering)
+			const aCourseOrder = a.exam_registration?.course_offering?.course_order || 999
+			const bCourseOrder = b.exam_registration?.course_offering?.course_order || 999
 			if (aCourseOrder !== bCourseOrder) return aCourseOrder - bCourseOrder
 
 			// 3. Program order

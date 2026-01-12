@@ -10,52 +10,43 @@ export async function GET(request: Request) {
 
 		switch (action) {
 			case 'institutions': {
-				// Apply institution filter from query params (for normal users)
-				const institutionCode = searchParams.get('institution_code')
-				const institutionsId = searchParams.get('institutions_id')
-
-				let query = supabase
+				// Note: institutions table has 'name' not 'institution_name'
+				// Return all active institutions - filtering is done client-side
+				const { data, error } = await supabase
 					.from('institutions')
-					.select('id, name, institution_code, institution_name, myjkkn_institution_ids')
+					.select('id, name, institution_code, myjkkn_institution_ids')
 					.eq('is_active', true)
 					.order('name')
-
-				// Apply filter if provided (normal users always have filter, super_admin optional)
-				if (institutionCode) {
-					query = query.eq('institution_code', institutionCode)
-				} else if (institutionsId) {
-					query = query.eq('id', institutionsId)
-				}
-
-				const { data, error } = await query
 
 				if (error) {
 					console.error('Error fetching institutions:', error)
 					return NextResponse.json({ error: 'Failed to fetch institutions' }, { status: 400 })
 				}
 
-				return NextResponse.json(data)
+				// Map to include institution_name for compatibility
+				const mappedData = (data || []).map(inst => ({
+					...inst,
+					institution_name: inst.name  // Add institution_name alias for compatibility
+				}))
+
+				return NextResponse.json(mappedData)
 			}
 
 			case 'sessions': {
-				const institutionId = searchParams.get('institutionId')
-
-				if (!institutionId) {
-					return NextResponse.json({ error: 'Institution ID is required' }, { status: 400 })
-				}
-
+				// Fetch all active sessions - no institution filter
+				// Client-side filtering is done based on selected institution if needed
 				const { data, error } = await supabase
 					.from('examination_sessions')
-					.select('id, session_name, session_code')
-					.eq('institutions_id', institutionId)
-					.order('session_name')
+					.select('id, session_name, session_code, institutions_id')
+					.eq('is_active', true)
+					.order('session_name', { ascending: false })
 
 				if (error) {
 					console.error('Error fetching sessions:', error)
 					return NextResponse.json({ error: 'Failed to fetch sessions' }, { status: 400 })
 				}
 
-				return NextResponse.json(data)
+				return NextResponse.json(data || [])
 			}
 
 			case 'programs': {
@@ -80,6 +71,22 @@ export async function GET(request: Request) {
 				return NextResponse.json(data)
 			}
 
+			case 'all-programs': {
+				// Fetch all active programs (for super_admin with "All Institutions")
+				const { data, error } = await supabase
+					.from('programs')
+					.select('id, program_code, program_name')
+					.eq('is_active', true)
+					.order('program_name')
+
+				if (error) {
+					console.error('Error fetching all programs:', error)
+					return NextResponse.json({ error: 'Failed to fetch programs' }, { status: 400 })
+				}
+
+				return NextResponse.json(data || [])
+			}
+
 			case 'courses': {
 				const institutionId = searchParams.get('institutionId')
 
@@ -99,6 +106,21 @@ export async function GET(request: Request) {
 				}
 
 				return NextResponse.json(data)
+			}
+
+			case 'all-courses': {
+				// Fetch all courses (for super_admin with "All Institutions")
+				const { data, error } = await supabase
+					.from('courses')
+					.select('id, course_code, course_name, internal_max_mark')
+					.order('course_code')
+
+				if (error) {
+					console.error('Error fetching all courses:', error)
+					return NextResponse.json({ error: 'Failed to fetch courses' }, { status: 400 })
+				}
+
+				return NextResponse.json(data || [])
 			}
 
 			case 'internal-types': {
@@ -122,14 +144,11 @@ export async function GET(request: Request) {
 			}
 
 			case 'marks': {
-				const institutionId = searchParams.get('institutionId')
+				// institutionId is optional - if not provided, fetch all (for super_admin)
+				const institutionId = searchParams.get('institutionId') || searchParams.get('institutions_id')
 				const sessionId = searchParams.get('sessionId')
 				const programId = searchParams.get('programId')
 				const courseId = searchParams.get('courseId')
-
-				if (!institutionId) {
-					return NextResponse.json({ error: 'Institution ID is required' }, { status: 400 })
-				}
 
 				// Paginate to bypass Supabase 1000 row limit - fetch up to 1,000,000 records
 				let allMarks: any[] = []
@@ -145,6 +164,7 @@ export async function GET(request: Request) {
 							institutions_id,
 							examination_session_id,
 							program_id,
+							program_code,
 							course_id,
 							student_id,
 							assignment_marks,
@@ -177,21 +197,25 @@ export async function GET(request: Request) {
 								course_code,
 								course_name
 							),
-							programs:program_id (
-								id,
-								program_code,
-								program_name
-							),
 							examination_sessions:examination_session_id (
 								id,
 								session_name,
 								session_code
+							),
+							institutions:institutions_id (
+								id,
+								institution_code,
+								name
 							)
 						`)
-						.eq('institutions_id', institutionId)
 						.eq('is_active', true)
 						.order('created_at', { ascending: false })
 						.range(page * pageSize, (page + 1) * pageSize - 1)
+
+					// Apply institution filter only if provided (normal users always have it, super_admin may not)
+					if (institutionId) {
+						query = query.eq('institutions_id', institutionId)
+					}
 
 					if (sessionId) {
 						query = query.eq('examination_session_id', sessionId)
@@ -207,7 +231,11 @@ export async function GET(request: Request) {
 
 					if (error) {
 						console.error('Error fetching internal marks page:', page, error)
-						return NextResponse.json({ error: 'Failed to fetch internal marks' }, { status: 400 })
+						return NextResponse.json({
+							error: `Failed to fetch internal marks: ${error.message || error.code || 'Unknown error'}`,
+							details: error.details || null,
+							hint: error.hint || null
+						}, { status: 400 })
 					}
 
 					if (data && data.length > 0) {
@@ -223,6 +251,7 @@ export async function GET(request: Request) {
 				// Transform data for display
 				const transformedData = allMarks.map(mark => {
 					const examReg = mark.exam_registrations as any
+					const institution = mark.institutions as any
 
 					// Get student info from exam_registration (student_id is from MyJKKN API, not a local table)
 					const studentName = examReg?.student_name || 'Unknown'
@@ -233,8 +262,10 @@ export async function GET(request: Request) {
 						register_no: examReg?.stu_register_no || 'N/A',
 						course_code: (mark.courses as any)?.course_code || '',
 						course_name: (mark.courses as any)?.course_name || '',
-						program_name: (mark.programs as any)?.program_name || '',
-						session_name: (mark.examination_sessions as any)?.session_name || ''
+						program_name: mark.program_code || '',
+						session_name: (mark.examination_sessions as any)?.session_name || '',
+						institution_code: institution?.institution_code || '',
+						institution_name: institution?.name || ''
 					}
 				})
 
@@ -429,7 +460,7 @@ async function handleSingleInsert(supabase: any, body: any) {
 
 async function handleBulkUpload(supabase: any, body: any) {
 	const {
-		institutions_id,
+		institutions_id,  // Can be null for super_admin - will use institution_code from each row
 		examination_session_id,
 		program_id,
 		course_id,
@@ -439,13 +470,22 @@ async function handleBulkUpload(supabase: any, body: any) {
 		file_size,
 		file_type,
 		user_id,
-		user_email
+		user_email,
+		is_super_admin  // Flag to indicate if user is super_admin
 	} = body
 
 	// Validate required fields
-	if (!institutions_id || !marks_data || !Array.isArray(marks_data) || marks_data.length === 0) {
+	if (!marks_data || !Array.isArray(marks_data) || marks_data.length === 0) {
 		return NextResponse.json({
-			error: 'Missing required fields: institutions_id and marks_data array are required'
+			error: 'Missing required fields: marks_data array is required'
+		}, { status: 400 })
+	}
+
+	// For normal users, institutions_id is required
+	// For super_admin, institution_code in each row is used
+	if (!is_super_admin && !institutions_id) {
+		return NextResponse.json({
+			error: 'Missing required field: institutions_id is required for non-admin users'
 		}, { status: 400 })
 	}
 
@@ -485,9 +525,17 @@ async function handleBulkUpload(supabase: any, body: any) {
 
 	// Debug: Log the institutions_id being used
 	console.log('=== DEBUG: Bulk Upload Request ===')
+	console.log('Full body:', JSON.stringify({
+		institutions_id,
+		is_super_admin,
+		examination_session_id,
+		program_id,
+		course_id,
+		marks_data_count: marks_data?.length
+	}, null, 2))
 	console.log('institutions_id from request:', institutions_id)
-	console.log('Expected institutions_id for JKKN Arts:', '5aae1d9d-f4c3-4fa9-8806-d45c71ae35e4')
-	console.log('Match:', institutions_id === '5aae1d9d-f4c3-4fa9-8806-d45c71ae35e4')
+	console.log('is_super_admin from request:', is_super_admin)
+	console.log('First row from Excel:', marks_data?.[0])
 
 	// Generate file hash
 	const fileContent = JSON.stringify(marks_data)
@@ -547,53 +595,127 @@ async function handleBulkUpload(supabase: any, body: any) {
 		validation_errors: [] as any[]
 	}
 
+	// Step 1: Fetch all institutions to create institution_code -> id map
+	const { data: allInstitutions } = await supabase
+		.from('institutions')
+		.select('id, institution_code')
+		.eq('is_active', true)
+
+	const institutionCodeToId = new Map<string, string>(
+		allInstitutions?.map((i: any) => [i.institution_code?.toUpperCase(), i.id]) || []
+	)
+	const institutionIdToCode = new Map<string, string>(
+		allInstitutions?.map((i: any) => [i.id, i.institution_code?.toUpperCase()]) || []
+	)
+
+	// Step 2: Get unique institution codes from marks_data
+	const uniqueInstCodes = new Set<string>(
+		marks_data.map((row: any) => String(row.institution_code || '').toUpperCase().trim()).filter(Boolean)
+	)
+
+	// Step 3: Validate institution codes and permissions
+	// For normal users: All rows must have the same institution_code matching their institution
+	if (!is_super_admin) {
+		const userInstCode = institutionIdToCode.get(institutions_id)?.toUpperCase()
+		const invalidRows: number[] = []
+
+		marks_data.forEach((row: any, index: number) => {
+			const rowInstCode = String(row.institution_code || '').toUpperCase().trim()
+			if (rowInstCode && rowInstCode !== userInstCode) {
+				invalidRows.push(index + 2) // +2 for Excel row number (1-indexed + header)
+			}
+		})
+
+		if (invalidRows.length > 0) {
+			return NextResponse.json({
+				error: `Permission denied: You can only import data for your institution (${userInstCode}). Rows ${invalidRows.slice(0, 5).join(', ')}${invalidRows.length > 5 ? '...' : ''} have different institution codes.`
+			}, { status: 403 })
+		}
+	}
+
+	// Step 4: Get institution IDs to fetch exam registrations for
+	// For normal users: only their institution
+	// For super_admin: all institutions in the Excel file
+	const institutionIdsToFetch: string[] = []
+	if (is_super_admin) {
+		uniqueInstCodes.forEach(code => {
+			const id = institutionCodeToId.get(code)
+			if (id) institutionIdsToFetch.push(id)
+		})
+	} else {
+		institutionIdsToFetch.push(institutions_id)
+	}
+
+	// Validate all institution codes exist
+	const invalidInstCodes: string[] = []
+	uniqueInstCodes.forEach(code => {
+		if (!institutionCodeToId.has(code)) {
+			invalidInstCodes.push(code)
+		}
+	})
+
+	if (invalidInstCodes.length > 0) {
+		return NextResponse.json({
+			error: `Invalid institution code(s): ${invalidInstCodes.join(', ')}. Please check the Institution Code column in your Excel file.`
+		}, { status: 400 })
+	}
+
+	console.log('=== DEBUG: Institution-based Import ===')
+	console.log('is_super_admin:', is_super_admin)
+	console.log('uniqueInstCodes:', Array.from(uniqueInstCodes))
+	console.log('institutionIdsToFetch:', institutionIdsToFetch)
+	console.log('examination_session_id:', examination_session_id)
+
 	// Get exam registrations with student and course info for validation
-	// This links register numbers to students and courses via course_offerings
-	// We need to fetch ALL exam registrations for this institution to allow matching across sessions
-	// Paginate to bypass Supabase 1000 row limit
+	// Fetch for all relevant institutions AND filter by examination_session_id if provided
 	let examRegistrations: any[] = []
 	let examRegError = null
 	const pageSize = 1000
-	let page = 0
-	let hasMore = true
 
-	while (hasMore) {
-		const { data, error } = await supabase
-			.from('exam_registrations')
-			.select(`
-				id,
-				stu_register_no,
-				student_id,
-				student_name,
-				course_offering_id,
-				examination_session_id,
-				institutions_id,
-				course_offerings!inner (
+	for (const instId of institutionIdsToFetch) {
+		let page = 0
+		let hasMore = true
+
+		while (hasMore) {
+			// Join with course_offerings to get course_id for internal_marks FK
+			let query = supabase
+				.from('exam_registrations')
+				.select(`
 					id,
-					course_id,
-					program_id,
-					courses!inner (
-						id,
-						course_code,
-						internal_max_mark
+					stu_register_no,
+					student_id,
+					student_name,
+					course_offering_id,
+					examination_session_id,
+					institutions_id,
+					program_code,
+					course_code,
+					course_offerings:course_offering_id (
+						course_id
 					)
-				)
-			`)
-			.eq('institutions_id', institutions_id)
-			.range(page * pageSize, (page + 1) * pageSize - 1)
+				`)
+				.eq('institutions_id', instId)
 
-		if (error) {
-			examRegError = error
-			console.error('Error fetching exam registrations page:', page, error)
-			break
-		}
+			// Filter by examination_session_id if provided
+			if (examination_session_id) {
+				query = query.eq('examination_session_id', examination_session_id)
+			}
 
-		if (data && data.length > 0) {
-			examRegistrations = examRegistrations.concat(data)
-			page++
-			hasMore = data.length === pageSize
-		} else {
-			hasMore = false
+			const { data, error } = await query.range(page * pageSize, (page + 1) * pageSize - 1)
+
+			if (error) {
+				examRegError = error
+				console.error('Error fetching exam registrations page:', page, 'for institution:', instId, error)
+				break
+			}
+
+			if (data && data.length > 0) {
+				examRegistrations = examRegistrations.concat(data)
+				page++
+				hasMore = data.length === pageSize
+			} else {
+				hasMore = false
+			}
 		}
 	}
 
@@ -607,25 +729,28 @@ async function handleBulkUpload(supabase: any, body: any) {
 	if (examRegistrations && examRegistrations.length > 0) {
 		console.log('Sample registration:', JSON.stringify(examRegistrations[0], null, 2))
 		console.log('Register numbers found (first 10):', examRegistrations.slice(0, 10).map((er: any) => er.stu_register_no))
+	}
 
-		// Check specifically for JUGENG students
-		const engStudents = examRegistrations.filter((er: any) =>
-			er.stu_register_no?.toUpperCase()?.includes('JUGENG')
-		)
-		console.log('Total JUGENG (English) students found:', engStudents.length)
-		if (engStudents.length > 0) {
-			console.log('JUGENG students:', engStudents.slice(0, 20).map((er: any) => er.stu_register_no))
+	// Also get courses directly for all relevant institutions
+	let courses: any[] = []
+	for (const instId of institutionIdsToFetch) {
+		const { data: instCourses } = await supabase
+			.from('courses')
+			.select('id, course_code, internal_max_mark, institutions_id')
+			.eq('institutions_id', instId)
+
+		if (instCourses) {
+			courses = courses.concat(instCourses)
 		}
 	}
 
-	// Also get courses directly for validation (in case course is not in exam_registrations)
-	const { data: courses } = await supabase
-		.from('courses')
-		.select('id, course_code, internal_max_mark')
-		.eq('institutions_id', institutions_id)
+	// Create course map grouped by institution FIRST (needed for examRegMap)
+	const courseMap = new Map<string, { id: string; course_code: string; internal_max_mark: number }>(
+		courses?.map((c: any) => [`${c.institutions_id}|${c.course_code?.toLowerCase()}`, c]) || []
+	)
 
 	// Build maps for fast lookup
-	// Map: register_no + course_code -> exam_registration info
+	// Key includes institution_id for multi-institution support: institution_id|register_no|course_code
 	const examRegMap = new Map<string, {
 		exam_registration_id: string
 		student_id: string
@@ -633,45 +758,98 @@ async function handleBulkUpload(supabase: any, body: any) {
 		course_id: string
 		course_code: string
 		course_offering_id: string
-		program_id: string
+		program_id: string | null
+		program_code: string | null
 		examination_session_id: string
+		institutions_id: string
 		internal_max_mark: number
 	}>()
 
 	examRegistrations?.forEach((er: any) => {
 		const regNo = er.stu_register_no?.toLowerCase()?.trim()
-		const courseCode = er.course_offerings?.courses?.course_code?.toLowerCase()?.trim()
-		if (regNo && courseCode) {
-			const key = `${regNo}|${courseCode}`
+		const instId = er.institutions_id
+		// Use denormalized course_code directly from exam_registrations
+		const courseCode = er.course_code?.toLowerCase()?.trim()
+		// Get course_id from joined course_offerings
+		const courseOfferingData = er.course_offerings as { course_id: string | null } | null
+		const courseIdFromOffering = courseOfferingData?.course_id
+
+		if (regNo && courseCode && instId && courseIdFromOffering) {
+			const key = `${instId}|${regNo}|${courseCode}`
+			// Get course info from courseMap for internal_max_mark
+			const courseInfo = courseMap.get(`${instId}|${courseCode}`)
 			examRegMap.set(key, {
 				exam_registration_id: er.id,
 				student_id: er.student_id,
 				student_name: er.student_name,
-				course_id: er.course_offerings.courses.id,
-				course_code: er.course_offerings.courses.course_code,
-				course_offering_id: er.course_offerings.id,
-				program_id: er.course_offerings.program_id,
+				course_id: courseIdFromOffering,
+				course_code: er.course_code,
+				course_offering_id: er.course_offering_id,
+				program_id: null, // Will be looked up from programs table if needed
+				program_code: er.program_code || null,
 				examination_session_id: er.examination_session_id,
-				internal_max_mark: er.course_offerings.courses.internal_max_mark || 100
+				institutions_id: instId,
+				internal_max_mark: courseInfo?.internal_max_mark || 100
 			})
 		}
 	})
 
-	// Also create a simple course map for validation messages
-	const courseMap = new Map<string, { id: string; course_code: string; internal_max_mark: number }>(
-		courses?.map((c: any) => [c.course_code?.toLowerCase(), c]) || []
-	)
+	// Get local programs to validate program_id exists
+	const { data: localPrograms } = await supabase
+		.from('programs')
+		.select('id')
 
-	// Create a set of valid register numbers for better error messages
-	const validRegisterNos = new Set<string>(
-		examRegistrations?.map((er: any) => er.stu_register_no?.toLowerCase()?.trim()).filter(Boolean) || []
-	)
+	const localProgramIds = new Set<string>(localPrograms?.map((p: any) => p.id) || [])
+
+	// Create validation sets grouped by institution for better error messages
+	// Key: institution_id|register_no or institution_id|course_code
+	const validRegisterNosByInst = new Map<string, Set<string>>()
+	const validCourseCodesByInst = new Map<string, Set<string>>()
+
+	examRegistrations?.forEach((er: any) => {
+		const instId = er.institutions_id
+		const regNo = er.stu_register_no?.toLowerCase()?.trim()
+		const courseCode = (er.course_code || er.course_offerings?.course_code || er.course_offerings?.courses?.course_code)?.toLowerCase()?.trim()
+
+		if (instId && regNo) {
+			if (!validRegisterNosByInst.has(instId)) {
+				validRegisterNosByInst.set(instId, new Set())
+			}
+			validRegisterNosByInst.get(instId)!.add(regNo)
+		}
+
+		if (instId && courseCode) {
+			if (!validCourseCodesByInst.has(instId)) {
+				validCourseCodesByInst.set(instId, new Set())
+			}
+			validCourseCodesByInst.get(instId)!.add(courseCode)
+		}
+	})
 
 	// Debug: Log the lookup maps
 	console.log('=== DEBUG: Lookup Maps ===')
+	console.log('examRegMap size:', examRegMap.size)
 	console.log('examRegMap keys (first 10):', Array.from(examRegMap.keys()).slice(0, 10))
-	console.log('validRegisterNos (first 10):', Array.from(validRegisterNos).slice(0, 10))
-	console.log('courseMap keys:', Array.from(courseMap.keys()))
+	console.log('validRegisterNosByInst sizes:', Array.from(validRegisterNosByInst.entries()).map(([k, v]) => `${institutionIdToCode.get(k)}: ${v.size}`))
+	console.log('validCourseCodesByInst sizes:', Array.from(validCourseCodesByInst.entries()).map(([k, v]) => `${institutionIdToCode.get(k)}: ${v.size}`))
+
+	// More detailed debug: Show first few register numbers for each institution
+	console.log('=== DEBUG: Register Numbers by Institution ===')
+	if (validRegisterNosByInst.size === 0) {
+		console.log('WARNING: validRegisterNosByInst is EMPTY - no exam registrations found!')
+		console.log('institutionIdsToFetch was:', institutionIdsToFetch)
+	}
+	validRegisterNosByInst.forEach((regNos, instId) => {
+		const instCode = institutionIdToCode.get(instId) || 'UNKNOWN'
+		console.log(`Institution ${instCode} (${instId}): First 10 register numbers:`, Array.from(regNos).slice(0, 10))
+	})
+
+	// Show first few course codes for each institution
+	console.log('=== DEBUG: Course Codes by Institution ===')
+	validCourseCodesByInst.forEach((courseCodes, instId) => {
+		const instCode = institutionIdToCode.get(instId) || 'UNKNOWN'
+		console.log(`Institution ${instCode} (${instId}): First 10 course codes:`, Array.from(courseCodes).slice(0, 10))
+	})
 
 	// Process each row
 	for (let i = 0; i < marks_data.length; i++) {
@@ -679,36 +857,64 @@ async function handleBulkUpload(supabase: any, body: any) {
 		const rowNumber = i + 2 // +2 for Excel header row
 		const rowErrors: string[] = []
 
-		// Look up exam registration by register_no + course_code combination
+		// Get institution ID from row's institution_code
+		const rowInstCode = String(row.institution_code || '').toUpperCase().trim()
+		const rowInstId = institutionCodeToId.get(rowInstCode)
+
+		if (!rowInstId) {
+			rowErrors.push(`Invalid Institution Code "${row.institution_code}"`)
+			results.failed++
+			results.validation_errors.push({
+				row: rowNumber,
+				register_no: row.register_no || 'N/A',
+				course_code: row.course_code || 'N/A',
+				institution_code: row.institution_code || 'N/A',
+				errors: rowErrors
+			})
+			continue
+		}
+
+		// Look up exam registration by institution_id + register_no + course_code combination
 		const registerNo = String(row.register_no || '').toLowerCase().trim()
 		const courseCode = String(row.course_code || '').toLowerCase().trim()
-		const lookupKey = `${registerNo}|${courseCode}`
+		const lookupKey = `${rowInstId}|${registerNo}|${courseCode}`
 		const examReg = examRegMap.get(lookupKey)
 
+		// Get validation sets for this institution
+		const validRegisterNos = validRegisterNosByInst.get(rowInstId) || new Set()
+		const validCourseCodes = validCourseCodesByInst.get(rowInstId) || new Set()
+
 		// Debug: Log the first few lookups
-		if (i < 3) {
+		if (i < 5) {
 			console.log(`=== DEBUG: Row ${i + 1} Lookup ===`)
-			console.log('Looking for:', { registerNo, courseCode, lookupKey })
-			console.log('Found:', examReg ? 'YES' : 'NO')
+			console.log('Raw Excel data:', { institution_code: row.institution_code, register_no: row.register_no, course_code: row.course_code })
+			console.log('Normalized for lookup:', { rowInstCode, rowInstId, registerNo, courseCode, lookupKey })
+			console.log('Found examReg:', examReg ? 'YES' : 'NO')
+			console.log('validRegisterNos size:', validRegisterNos.size)
 			console.log('validRegisterNos.has(registerNo):', validRegisterNos.has(registerNo))
-			console.log('courseMap.has(courseCode):', courseMap.has(courseCode))
+			console.log('validCourseCodes size:', validCourseCodes.size)
+			console.log('validCourseCodes.has(courseCode):', validCourseCodes.has(courseCode))
+			// Show a few register numbers from the set for comparison
+			console.log('Sample register numbers in validRegisterNos:', Array.from(validRegisterNos).slice(0, 5))
+			console.log('Sample course codes in validCourseCodes:', Array.from(validCourseCodes).slice(0, 5))
 		}
 
 		// Provide specific error messages and skip if no exam registration
 		if (!examReg) {
-			// Check if register number exists at all
+			// Check if register number exists at all in exam registrations for this institution
 			if (!validRegisterNos.has(registerNo)) {
-				rowErrors.push(`Student with register number "${row.register_no}" not found in exam registrations`)
-			} else if (!courseMap.has(courseCode)) {
-				rowErrors.push(`Course with code "${row.course_code}" not found`)
+				rowErrors.push(`Student with register number "${row.register_no}" not found in exam registrations for institution ${rowInstCode}`)
+			} else if (!validCourseCodes.has(courseCode)) {
+				rowErrors.push(`Course with code "${row.course_code}" not found in exam registrations for institution ${rowInstCode}`)
 			} else {
-				rowErrors.push(`No exam registration found for student "${row.register_no}" in course "${row.course_code}"`)
+				rowErrors.push(`No exam registration found for student "${row.register_no}" in course "${row.course_code}" at institution ${rowInstCode}`)
 			}
 			results.failed++
 			results.validation_errors.push({
 				row: rowNumber,
 				register_no: row.register_no || 'N/A',
 				course_code: row.course_code || 'N/A',
+				institution_code: row.institution_code || 'N/A',
 				errors: rowErrors
 			})
 			continue
@@ -781,16 +987,23 @@ async function handleBulkUpload(supabase: any, body: any) {
 		}
 
 		try {
-			// Check if record exists
+			// Check if record exists - use course_offering_id from examReg for accurate lookup
+			// The unique constraint is on (institutions_id, exam_registration_id, course_offering_id)
+			// and (student_id, course_offering_id, examination_session_id)
 			const { data: existing } = await supabase
 				.from('internal_marks')
 				.select('id')
-				.eq('institutions_id', institutions_id)
 				.eq('student_id', examReg.student_id)
-				.eq('course_id', examReg.course_id)
+				.eq('course_offering_id', examReg.course_offering_id)
+				.eq('examination_session_id', examReg.examination_session_id)
 				.maybeSingle()
 
 			// Build marks data object with exam registration info
+			// Only use program_id if it exists in local programs table to avoid FK violation
+			const validProgramId = examReg.program_id && localProgramIds.has(examReg.program_id)
+				? examReg.program_id
+				: null
+
 			const marksDataObj: any = {
 				assignment_marks: assignmentMarks,
 				quiz_marks: quizMarks,
@@ -808,7 +1021,8 @@ async function handleBulkUpload(supabase: any, body: any) {
 				max_internal_marks: maxInternalMarks || examReg.internal_max_mark,
 				remarks: remarks || null,
 				examination_session_id: examReg.examination_session_id,
-				program_id: examReg.program_id,
+				program_id: validProgramId,
+				program_code: examReg.program_code || null,
 				course_offering_id: examReg.course_offering_id,
 				exam_registration_id: examReg.exam_registration_id,
 				faculty_id: uploaded_by,
@@ -835,9 +1049,9 @@ async function handleBulkUpload(supabase: any, body: any) {
 				console.log('Updated record:', existing.id, 'for student:', examReg.student_id)
 				results.successful++
 			} else {
-				// Insert new
+				// Insert new - use institution from examReg (based on row's institution_code)
 				const insertData: any = {
-					institutions_id,
+					institutions_id: examReg.institutions_id,
 					course_id: examReg.course_id,
 					student_id: examReg.student_id,
 					marks_status: 'Draft',

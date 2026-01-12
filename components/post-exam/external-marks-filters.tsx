@@ -9,17 +9,15 @@ import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, Command
 import { Label } from '@/components/ui/label'
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
 import { Check, ChevronsUpDown, Search, RefreshCw, Download, Upload, FileSpreadsheet, Trash2, Hash, User } from 'lucide-react'
-import type { Institution, ExamSession, Program, Course, LookupMode } from '@/types/external-marks'
+import type { ExamSession, Program, Course, LookupMode } from '@/types/external-marks'
 
 interface ExternalMarksFiltersProps {
 	// Data
-	institutions: Institution[]
 	sessions: ExamSession[]
 	programs: Program[]
 	courses: Course[]
 
 	// Selected Values
-	selectedInstitution: string
 	selectedSession: string
 	selectedProgram: string
 	selectedCourse: string
@@ -28,7 +26,6 @@ interface ExternalMarksFiltersProps {
 	lookupMode: LookupMode
 
 	// Handlers
-	onInstitutionChange: (id: string) => void
 	onSessionChange: (id: string) => void
 	onProgramChange: (id: string) => void
 	onCourseChange: (id: string) => void
@@ -50,18 +47,15 @@ interface ExternalMarksFiltersProps {
 }
 
 export function ExternalMarksFilters({
-	institutions,
 	sessions,
 	programs,
 	courses,
-	selectedInstitution,
 	selectedSession,
 	selectedProgram,
 	selectedCourse,
 	statusFilter,
 	searchTerm,
 	lookupMode,
-	onInstitutionChange,
 	onSessionChange,
 	onProgramChange,
 	onCourseChange,
@@ -78,7 +72,6 @@ export function ExternalMarksFilters({
 	selectedCount
 }: ExternalMarksFiltersProps) {
 	// Popover states
-	const [institutionOpen, setInstitutionOpen] = useState(false)
 	const [sessionOpen, setSessionOpen] = useState(false)
 	const [programOpen, setProgramOpen] = useState(false)
 	const [courseOpen, setCourseOpen] = useState(false)
@@ -112,49 +105,6 @@ export function ExternalMarksFilters({
 
 			{/* Filters Row 1 - Searchable Dropdowns */}
 			<div className="flex flex-wrap gap-2 mb-2">
-				{/* Institution Dropdown */}
-				<Popover open={institutionOpen} onOpenChange={setInstitutionOpen}>
-					<PopoverTrigger asChild>
-						<Button
-							variant="outline"
-							role="combobox"
-							aria-expanded={institutionOpen}
-							className="w-[180px] h-8 justify-between text-xs font-normal"
-						>
-							<span className="truncate">
-								{selectedInstitution
-									? institutions.find(inst => inst.id === selectedInstitution)?.name ||
-									  institutions.find(inst => inst.id === selectedInstitution)?.institution_code
-									: "Select Institution"}
-							</span>
-							<ChevronsUpDown className="ml-2 h-3 w-3 shrink-0 opacity-50" />
-						</Button>
-					</PopoverTrigger>
-					<PopoverContent className="w-[250px] p-0">
-						<Command>
-							<CommandInput placeholder="Search institution..." className="h-9" />
-							<CommandList>
-								<CommandEmpty>No institution found.</CommandEmpty>
-								<CommandGroup>
-									{institutions.map(inst => (
-										<CommandItem
-											key={inst.id}
-											value={`${inst.name} ${inst.institution_code}`}
-											onSelect={() => {
-												onInstitutionChange(inst.id)
-												setInstitutionOpen(false)
-											}}
-										>
-											<Check className={`mr-2 h-4 w-4 ${selectedInstitution === inst.id ? "opacity-100" : "opacity-0"}`} />
-											{inst.name || inst.institution_code}
-										</CommandItem>
-									))}
-								</CommandGroup>
-							</CommandList>
-						</Command>
-					</PopoverContent>
-				</Popover>
-
 				{/* Session Dropdown */}
 				<Popover open={sessionOpen} onOpenChange={setSessionOpen}>
 					<PopoverTrigger asChild>
@@ -162,7 +112,6 @@ export function ExternalMarksFilters({
 							variant="outline"
 							role="combobox"
 							aria-expanded={sessionOpen}
-							disabled={!selectedInstitution}
 							className="w-[180px] h-8 justify-between text-xs font-normal"
 						>
 							<span className="truncate">
@@ -215,7 +164,6 @@ export function ExternalMarksFilters({
 							variant="outline"
 							role="combobox"
 							aria-expanded={programOpen}
-							disabled={!selectedInstitution}
 							className="w-[180px] h-8 justify-between text-xs font-normal"
 						>
 							<span className="truncate">
@@ -268,7 +216,6 @@ export function ExternalMarksFilters({
 							variant="outline"
 							role="combobox"
 							aria-expanded={courseOpen}
-							disabled={!selectedInstitution}
 							className="w-[180px] h-8 justify-between text-xs font-normal"
 						>
 							<span className="truncate">
@@ -348,7 +295,7 @@ export function ExternalMarksFilters({
 						size="sm"
 						className="text-xs px-2 h-8"
 						onClick={onRefresh}
-						disabled={loading || !selectedInstitution}
+						disabled={loading}
 					>
 						<RefreshCw className={`h-3 w-3 mr-1 ${loading ? 'animate-spin' : ''}`} />
 						Refresh
@@ -377,7 +324,6 @@ export function ExternalMarksFilters({
 						size="sm"
 						className="text-xs px-2 h-8"
 						onClick={onImportFile}
-						disabled={!selectedInstitution}
 					>
 						<Upload className="h-3 w-3 mr-1" />
 						Import

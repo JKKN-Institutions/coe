@@ -1,7 +1,8 @@
 import { NextResponse } from 'next/server'
 import { getSupabaseServer } from '@/lib/supabase-server'
+import { createRouteHandlerSupabaseClient } from '@/lib/supabase-route-handler'
 import {
-	fetchMyJKKNStudents,
+	fetchMyJKKNLearnerProfiles,
 	fetchMyJKKNStaff,
 	fetchMyJKKNInstitutions,
 	fetchMyJKKNDepartments,
@@ -12,8 +13,15 @@ export async function GET(request: Request) {
 	try {
 		const supabase = getSupabaseServer()
 		const { searchParams } = new URL(request.url)
-		const userId = searchParams.get('user_id')
-		const userEmail = searchParams.get('email')
+
+		// Get authenticated user from session
+		const routeHandlerSupabase = await createRouteHandlerSupabaseClient()
+		const { data: authData } = await routeHandlerSupabase.auth.getUser()
+		const authUser = authData?.user
+
+		// Fall back to query params if no session (for backward compatibility)
+		const userId = authUser?.id || searchParams.get('user_id')
+		const userEmail = authUser?.email || searchParams.get('email')
 
 		if (!userId && !userEmail) {
 			return NextResponse.json({ error: 'User ID or email is required' }, { status: 400 })
@@ -21,7 +29,6 @@ export async function GET(request: Request) {
 
 		// Get user details - try by email first (for parent app OAuth), then by ID
 		let userData = null
-		let userError = null
 
 		if (userEmail) {
 			const result = await supabase
@@ -30,7 +37,6 @@ export async function GET(request: Request) {
 				.eq('email', userEmail)
 				.single()
 			userData = result.data
-			userError = result.error
 		}
 
 		// If not found by email, try by ID
@@ -41,7 +47,6 @@ export async function GET(request: Request) {
 				.eq('id', userId)
 				.single()
 			userData = result.data
-			userError = result.error
 		}
 
 		// Get institution ID from request params as fallback
@@ -247,8 +252,7 @@ export async function GET(request: Request) {
 				*,
 				institutions(id, institution_code, name),
 				examination_sessions(id, session_code, session_name),
-				courses(id, course_code, course_name),
-				course_offerings(id, program_id, programs(id, program_code, program_name))
+				courses(id, course_code, course_name)
 			`)
 			.gte('exam_date', today)
 			.order('exam_date', { ascending: true })
@@ -292,8 +296,7 @@ export async function GET(request: Request) {
 			institution_name: exam.institutions?.name || 'N/A',
 			session_name: exam.examination_sessions?.session_name || 'N/A',
 			course_code: exam.courses?.course_code || 'N/A',
-			course_name: exam.courses?.course_name || 'N/A',
-			program_name: exam.course_offerings?.programs?.program_name || 'N/A'
+			course_name: exam.courses?.course_name || 'N/A'
 		}))
 
 		// 6. Exam Attendance Ratio
@@ -425,20 +428,23 @@ export async function GET(request: Request) {
 		}
 
 		// 13. Recent Results (last 5 published semester results)
+		// Use semester_results_detailed_view which has student details pre-joined
 		let recentResultsQuery = supabase
-			.from('semester_results')
+			.from('semester_results_detailed_view')
 			.select(`
 				id,
-				stu_register_no,
+				register_number,
+				student_name,
 				semester,
-				gpa,
+				sgpa,
 				cgpa,
-				pass_status,
-				published_at,
-				examination_sessions(session_name)
+				result_status,
+				published_date,
+				session_name
 			`)
 			.eq('is_published', true)
-			.order('published_at', { ascending: false })
+			.eq('is_active', true)
+			.order('published_date', { ascending: false })
 			.limit(5)
 
 		if (!isSuperAdmin && userInstitutionId) {
@@ -461,13 +467,14 @@ export async function GET(request: Request) {
 
 		const transformedResults = (recentResults || []).map(result => ({
 			id: result.id,
-			register_no: result.stu_register_no,
+			register_no: result.register_number || 'N/A',
+			student_name: result.student_name || 'N/A',
 			semester: result.semester,
-			gpa: result.gpa,
+			gpa: result.sgpa,
 			cgpa: result.cgpa,
-			pass_status: result.pass_status,
-			published_at: result.published_at,
-			session_name: (result.examination_sessions as any)?.session_name || 'N/A'
+			pass_status: result.result_status,
+			published_at: result.published_date,
+			session_name: result.session_name || 'N/A'
 		}))
 
 		// 14. Fetch MyJKKN API data for live counts
@@ -478,12 +485,45 @@ export async function GET(request: Request) {
 		let myJKKNPrograms = 0
 
 		try {
-			// Fetch learners count from MyJKKN
-			const learnersResponse = await fetchMyJKKNStudents({
+			// Get myjkkn_institution_ids from COE institution for filtering
+			// This is the correct pattern per myjkkn-coe-dev-rules skill
+			let myjkknInstitutionIds: string[] = []
+
+			if (!isSuperAdmin && userInstitutionId) {
+				// Lookup the institution to get myjkkn_institution_ids array
+				const { data: instData } = await supabase
+					.from('institutions')
+					.select('id, myjkkn_institution_ids')
+					.eq('id', userInstitutionId)
+					.single()
+
+				// If not found by UUID, try by institution_code
+				if (!instData) {
+					const { data: instByCode } = await supabase
+						.from('institutions')
+						.select('id, myjkkn_institution_ids')
+						.eq('institution_code', userInstitutionId)
+						.single()
+
+					if (instByCode?.myjkkn_institution_ids) {
+						myjkknInstitutionIds = instByCode.myjkkn_institution_ids
+					}
+				} else if (instData.myjkkn_institution_ids) {
+					myjkknInstitutionIds = instData.myjkkn_institution_ids
+				}
+
+				console.log('[Dashboard Stats] MyJKKN institution IDs:', myjkknInstitutionIds)
+			}
+
+			// Fetch learners count from MyJKKN using correct endpoint and institution_id
+			// Use the first myjkkn_institution_id for API calls (they share the same data)
+			const myjkknInstId = myjkknInstitutionIds.length > 0 ? myjkknInstitutionIds[0] : undefined
+
+			const learnersResponse = await fetchMyJKKNLearnerProfiles({
 				page: 1,
 				limit: 1,
 				is_active: true,
-				...(userInstitutionId && !isSuperAdmin ? { institution_code: userInstitutionId } : {})
+				...(myjkknInstId ? { institution_id: myjkknInstId } : {})
 			})
 			myJKKNLearners = learnersResponse.metadata?.total || 0
 
@@ -492,7 +532,7 @@ export async function GET(request: Request) {
 				page: 1,
 				limit: 1,
 				is_active: true,
-				...(userInstitutionId && !isSuperAdmin ? { institution_code: userInstitutionId } : {})
+				...(myjkknInstId ? { institution_id: myjkknInstId } : {})
 			})
 			myJKKNStaff = staffResponse.metadata?.total || 0
 
@@ -511,7 +551,7 @@ export async function GET(request: Request) {
 				page: 1,
 				limit: 1,
 				is_active: true,
-				...(userInstitutionId && !isSuperAdmin ? { institution_code: userInstitutionId } : {})
+				...(myjkknInstId ? { institution_id: myjkknInstId } : {})
 			})
 			myJKKNDepartments = departmentsResponse.metadata?.total || 0
 
@@ -520,7 +560,7 @@ export async function GET(request: Request) {
 				page: 1,
 				limit: 1,
 				is_active: true,
-				...(userInstitutionId && !isSuperAdmin ? { institution_code: userInstitutionId } : {})
+				...(myjkknInstId ? { institution_id: myjkknInstId } : {})
 			})
 			myJKKNPrograms = programsResponse.metadata?.total || 0
 
@@ -565,7 +605,7 @@ export async function GET(request: Request) {
 			userRoleName: formattedRoleName,
 			userRoleDescription: roleDescription,
 			userRoles: userRoles,
-			userEmail: userData.email
+			userEmail: userData?.email || userEmail || ''
 		})
 	} catch (e) {
 		console.error('Dashboard stats API error:', e)

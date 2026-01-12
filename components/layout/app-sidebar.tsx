@@ -246,6 +246,7 @@ const data = {
 			roles: ["super_admin", "coe"],
 			items: [
 				{ title: "Attendance Report", url: "/exam-management/reports/attendance", icon: PieChart },
+				{ title: "Course Count Report", url: "/exam-management/reports/course-count", icon: Calculator },
 			],
 		},
 		{

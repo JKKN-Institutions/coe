@@ -21,8 +21,10 @@ import { Card, CardContent, CardHeader } from "@/components/ui/card"
 import { useToast } from "@/hooks/common/use-toast"
 import { useAuth } from "@/lib/auth/auth-context-parent"
 import Link from "next/link"
-import { Upload } from "lucide-react"
+import { Upload, CheckCircle, AlertTriangle, XCircle, Loader2 } from "lucide-react"
 import { useState } from "react"
+import { AlertDialog, AlertDialogAction, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog"
+import { Button } from "@/components/ui/button"
 
 // Custom Hook
 import { useExternalMarksBulk } from "@/hooks/post-exam/use-external-marks-bulk"
@@ -48,9 +50,14 @@ export default function ExternalMarkBulkUploadPage() {
 	const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
 	const [previewDialogOpen, setPreviewDialogOpen] = useState(false)
 	const [errorDialogOpen, setErrorDialogOpen] = useState(false)
+	const [confirmationDialogOpen, setConfirmationDialogOpen] = useState(false)
 
 	// Upload Mode: 'dummy_number' or 'register_number'
 	const [lookupMode, setLookupMode] = useState<LookupMode>('dummy_number')
+
+	// Import Progress State (for centered modal overlay - matches exam-registrations pattern)
+	const [importInProgress, setImportInProgress] = useState(false)
+	const [importProgress, setImportProgress] = useState({ current: 0, total: 0 })
 
 	// Use custom hook for all state management
 	const {
@@ -65,8 +72,12 @@ export default function ExternalMarkBulkUploadPage() {
 		loading,
 		fetchError,
 
+		// Institution filter info
+		institutionId,
+		mustSelectInstitution,
+		isReady,
+
 		// Filters
-		selectedInstitution,
 		selectedSession,
 		selectedProgram,
 		selectedCourse,
@@ -74,7 +85,6 @@ export default function ExternalMarkBulkUploadPage() {
 		searchTerm,
 
 		// Filter Setters
-		setSelectedInstitution,
 		setSelectedSession,
 		setSelectedProgram,
 		setSelectedCourse,
@@ -127,9 +137,10 @@ export default function ExternalMarkBulkUploadPage() {
 		let sheetName: string
 
 		if (lookupMode === 'register_number') {
-			// Register Number mode template
+			// Register Number mode template - includes Institution Code for multi-institution support
 			templateData = [
 				{
+					'Institution Code *': 'CAS',
 					'Register Number *': 'REG001',
 					'Subject Code *': 'CS101',
 					'Session Code *': 'APR2024',
@@ -138,6 +149,7 @@ export default function ExternalMarkBulkUploadPage() {
 					'Remarks': 'Good performance'
 				},
 				{
+					'Institution Code *': 'CAS',
 					'Register Number *': 'REG002',
 					'Subject Code *': 'CS101',
 					'Session Code *': 'APR2024',
@@ -148,6 +160,7 @@ export default function ExternalMarkBulkUploadPage() {
 			]
 
 			columnsReference = [
+				{ 'Column Name': 'Institution Code *', 'Required': 'Yes', 'Description': 'Institution code (e.g., CAS, CAHS, etc.)', 'Example': 'CAS' },
 				{ 'Column Name': 'Register Number *', 'Required': 'Yes', 'Description': 'Student register number (stu_register_no from exam registration)', 'Example': 'REG001' },
 				{ 'Column Name': 'Subject Code *', 'Required': 'Yes', 'Description': 'Subject/Course code from courses table', 'Example': 'CS101' },
 				{ 'Column Name': 'Session Code *', 'Required': 'Yes', 'Description': 'Examination session code', 'Example': 'APR2024' },
@@ -157,9 +170,10 @@ export default function ExternalMarkBulkUploadPage() {
 			]
 			sheetName = 'Register Number Template'
 		} else {
-			// Dummy Number mode template (default)
+			// Dummy Number mode template (default) - includes Institution Code for multi-institution support
 			templateData = [
 				{
+					'Institution Code *': 'CAS',
 					'Dummy Number *': 'D001',
 					'Course Code *': 'CS101',
 					'Session Code': 'APR2024',
@@ -169,6 +183,7 @@ export default function ExternalMarkBulkUploadPage() {
 					'Remarks': 'Good performance'
 				},
 				{
+					'Institution Code *': 'CAS',
 					'Dummy Number *': 'D002',
 					'Course Code *': 'CS101',
 					'Session Code': 'APR2024',
@@ -180,6 +195,7 @@ export default function ExternalMarkBulkUploadPage() {
 			]
 
 			columnsReference = [
+				{ 'Column Name': 'Institution Code *', 'Required': 'Yes', 'Description': 'Institution code (e.g., CAS, CAHS, etc.)', 'Example': 'CAS' },
 				{ 'Column Name': 'Dummy Number *', 'Required': 'Yes', 'Description': 'Student dummy number from exam registration', 'Example': 'D001' },
 				{ 'Column Name': 'Course Code *', 'Required': 'Yes', 'Description': 'Course code from courses table', 'Example': 'CS101' },
 				{ 'Column Name': 'Session Code', 'Required': 'No', 'Description': 'Examination session code', 'Example': 'APR2024' },
@@ -196,6 +212,7 @@ export default function ExternalMarkBulkUploadPage() {
 		// Set column widths based on mode
 		if (lookupMode === 'register_number') {
 			ws['!cols'] = [
+				{ wch: 18 }, // Institution Code
 				{ wch: 20 }, // Register Number
 				{ wch: 15 }, // Subject Code
 				{ wch: 15 }, // Session Code
@@ -205,6 +222,7 @@ export default function ExternalMarkBulkUploadPage() {
 			]
 		} else {
 			ws['!cols'] = [
+				{ wch: 18 }, // Institution Code
 				{ wch: 20 }, // Dummy Number
 				{ wch: 15 }, // Course Code
 				{ wch: 15 }, // Session Code
@@ -314,7 +332,7 @@ export default function ExternalMarkBulkUploadPage() {
 
 		XLSX.utils.book_append_sheet(wb, ws, 'External Marks Data')
 
-		const fileName = `external_marks_export_${selectedInstitution ? institutions.find(i => i.id === selectedInstitution)?.institution_code || 'all' : 'all'}_${new Date().toISOString().split('T')[0]}.xlsx`
+		const fileName = `external_marks_export_${institutionId ? institutions.find(i => i.id === institutionId)?.institution_code || 'all' : 'all'}_${new Date().toISOString().split('T')[0]}.xlsx`
 		XLSX.writeFile(wb, fileName)
 
 		toast({
@@ -326,17 +344,25 @@ export default function ExternalMarkBulkUploadPage() {
 
 	// Import File
 	const handleImportFile = () => {
+		console.log('=== handleImportFile called ===')
 		const input = document.createElement('input')
 		input.type = 'file'
 		input.accept = '.xlsx,.xls,.csv'
 		input.onchange = async (e) => {
+			console.log('=== File selected ===')
 			const file = (e.target as HTMLInputElement).files?.[0]
-			if (!file) return
+			if (!file) {
+				console.log('No file selected')
+				return
+			}
+			console.log('File:', file.name, file.size, 'bytes')
 
 			try {
 				let rows: any[] = []
+				console.log('Starting file parsing...')
 
 				if (file.name.endsWith('.csv')) {
+					console.log('Parsing CSV file...')
 					const text = await file.text()
 					const lines = text.split('\n').filter(line => line.trim())
 					if (lines.length < 2) {
@@ -357,9 +383,17 @@ export default function ExternalMarkBulkUploadPage() {
 						})
 						return row
 					})
+					console.log('CSV parsed, rows:', rows.length)
 				} else {
-					const data = new Uint8Array(await file.arrayBuffer())
-					const wb = XLSX.read(data, { type: 'array' })
+					console.log('Parsing Excel file...')
+					const arrayBuffer = await file.arrayBuffer()
+					console.log('ArrayBuffer size:', arrayBuffer.byteLength)
+
+					console.log('Calling XLSX.read (async)...')
+					// XLSX.read is async in excel-compat - must await it
+					const wb = await XLSX.read(arrayBuffer)
+					console.log('XLSX.read completed, SheetNames:', wb.SheetNames)
+
 					if (!wb.SheetNames || wb.SheetNames.length === 0) {
 						toast({
 							title: "Invalid Excel File",
@@ -369,6 +403,8 @@ export default function ExternalMarkBulkUploadPage() {
 						return
 					}
 					const ws = wb.Sheets[wb.SheetNames[0]]
+					console.log('First sheet retrieved:', wb.SheetNames[0])
+
 					if (!ws) {
 						toast({
 							title: "Invalid Excel File",
@@ -377,12 +413,21 @@ export default function ExternalMarkBulkUploadPage() {
 						})
 						return
 					}
+					console.log('Converting sheet to JSON...')
 					rows = XLSX.utils.sheet_to_json(ws) as Record<string, unknown>[]
+					console.log('Excel parsed, rows:', rows.length)
+					if (rows.length > 0) {
+						console.log('First row keys:', Object.keys(rows[0]))
+						console.log('First row:', rows[0])
+					}
 				}
 
 				// Parse and validate based on lookup mode
 				const previewData: ImportPreviewRow[] = rows.map((row, index) => {
 					const errors: string[] = []
+
+					// Parse institution code (required for both modes)
+					const institutionCode = String(row['Institution Code *'] || row['Institution Code'] || row['institution_code'] || '').trim()
 
 					// Parse fields based on lookup mode
 					let dummyNumber = ''
@@ -391,6 +436,9 @@ export default function ExternalMarkBulkUploadPage() {
 					let courseCode = ''
 					let sessionCode = ''
 					let programCode = ''
+
+					// Validate institution code is required
+					if (!institutionCode) errors.push('Institution Code is required')
 
 					if (lookupMode === 'register_number') {
 						// Register Number mode - register_number + subject_code + session_code
@@ -441,6 +489,7 @@ export default function ExternalMarkBulkUploadPage() {
 
 					return {
 						row: index + 2,
+						institution_code: institutionCode,
 						dummy_number: dummyNumber,
 						register_number: registerNumber,
 						subject_code: subjectCode,
@@ -456,8 +505,13 @@ export default function ExternalMarkBulkUploadPage() {
 					}
 				})
 
+				console.log('Parsed previewData:', previewData.length, 'rows')
+				console.log('Valid rows:', previewData.filter(r => r.isValid).length)
+				console.log('First row:', previewData[0])
+
 				setImportPreviewData(previewData)
 				setPreviewDialogOpen(true)
+				console.log('Preview dialog should be open now')
 
 			} catch (error) {
 				console.error('Import error:', error)
@@ -471,18 +525,19 @@ export default function ExternalMarkBulkUploadPage() {
 		input.click()
 	}
 
-	// Upload Marks Handler
+	// Upload Marks Handler - now uses institution_code from each Excel row
 	const handleUploadMarks = async () => {
-		if (!selectedInstitution) {
-			toast({
-				title: "Select Institution",
-				description: "Please select an institution before uploading marks.",
-				variant: "destructive",
-			})
-			return
-		}
+		console.log('=== handleUploadMarks called ===')
+		console.log('importPreviewData:', importPreviewData.length, 'rows')
+		console.log('lookupMode:', lookupMode)
+		console.log('user?.id:', user?.id)
 
 		const validRows = importPreviewData.filter(row => row.isValid)
+		console.log('validRows:', validRows.length, 'rows')
+		if (validRows.length > 0) {
+			console.log('First valid row:', validRows[0])
+		}
+
 		if (validRows.length === 0) {
 			toast({
 				title: "No Valid Data",
@@ -494,43 +549,32 @@ export default function ExternalMarkBulkUploadPage() {
 
 		setPreviewDialogOpen(false)
 
-		const result = await uploadMarks(validRows, user?.id, lookupMode)
+		// Show import progress modal (matches exam-registrations pattern)
+		setImportInProgress(true)
+		setImportProgress({ current: 0, total: validRows.length })
 
-		if (result.success && result.result) {
-			const { successful, failed, batch_number } = result.result
+		console.log('Calling uploadMarks...')
 
-			// Show error dialog if there are errors
-			if (uploadErrors.length > 0) {
-				setErrorDialogOpen(true)
+		try {
+			const result = await uploadMarks(validRows, user?.id, lookupMode)
+			console.log('uploadMarks result:', result)
+
+			// Update progress to 100% when complete
+			setImportProgress({ current: validRows.length, total: validRows.length })
+
+			// Hide import modal and show confirmation dialog
+			setImportInProgress(false)
+			setConfirmationDialogOpen(true)
+
+			if (!result.success) {
+				console.log('Upload failed with error:', result.error)
 			}
-
-			// Show toast
-			if (successful > 0 && failed === 0) {
-				toast({
-					title: "Upload Complete",
-					description: `Successfully uploaded all ${successful} record(s). Batch #${batch_number}`,
-					className: "bg-green-50 border-green-200 text-green-800 dark:bg-green-900/20 dark:border-green-800 dark:text-green-200",
-					duration: 5000,
-				})
-			} else if (successful > 0 && failed > 0) {
-				toast({
-					title: "Partial Upload",
-					description: `${successful} successful, ${failed} failed. Batch #${batch_number}`,
-					className: "bg-yellow-50 border-yellow-200 text-yellow-800 dark:bg-yellow-900/20 dark:border-yellow-800 dark:text-yellow-200",
-					duration: 6000,
-				})
-			} else {
-				toast({
-					title: "Upload Failed",
-					description: `All ${failed} record(s) failed. Check errors for details.`,
-					variant: "destructive",
-					duration: 6000,
-				})
-			}
-		} else {
+		} catch (error) {
+			console.error('handleUploadMarks error:', error)
+			setImportInProgress(false)
 			toast({
 				title: "Upload Error",
-				description: result.error || 'Failed to upload marks',
+				description: error instanceof Error ? error.message : 'Failed to upload marks',
 				variant: "destructive",
 			})
 		}
@@ -629,18 +673,15 @@ export default function ExternalMarkBulkUploadPage() {
 
 							{/* Filters */}
 							<ExternalMarksFilters
-								institutions={institutions}
 								sessions={sessions}
 								programs={programs}
 								courses={courses}
-								selectedInstitution={selectedInstitution}
 								selectedSession={selectedSession}
 								selectedProgram={selectedProgram}
 								selectedCourse={selectedCourse}
 								statusFilter={statusFilter}
 								searchTerm={searchTerm}
 								lookupMode={lookupMode}
-								onInstitutionChange={setSelectedInstitution}
 								onSessionChange={setSelectedSession}
 								onProgramChange={setSelectedProgram}
 								onCourseChange={setSelectedCourse}
@@ -665,7 +706,7 @@ export default function ExternalMarkBulkUploadPage() {
 								filtered={filtered}
 								loading={loading}
 								fetchError={fetchError}
-								selectedInstitution={selectedInstitution}
+								mustSelectInstitution={mustSelectInstitution}
 								selectedIds={selectedIds}
 								selectAll={selectAll}
 								onSelectAll={handleSelectAll}
@@ -712,6 +753,135 @@ export default function ExternalMarkBulkUploadPage() {
 				uploadSummary={uploadSummary}
 				uploadErrors={uploadErrors}
 			/>
+
+			{/* Upload Confirmation Dialog */}
+			<AlertDialog open={confirmationDialogOpen} onOpenChange={setConfirmationDialogOpen}>
+				<AlertDialogContent className="max-w-md">
+					<AlertDialogHeader>
+						<div className="flex items-center gap-3">
+							<div className={`h-12 w-12 rounded-full flex items-center justify-center ${
+								uploadSummary.failed === 0
+									? 'bg-green-100 dark:bg-green-900/20'
+									: uploadSummary.success > 0
+										? 'bg-yellow-100 dark:bg-yellow-900/20'
+										: 'bg-red-100 dark:bg-red-900/20'
+							}`}>
+								{uploadSummary.failed === 0 ? (
+									<CheckCircle className="h-6 w-6 text-green-600 dark:text-green-400" />
+								) : uploadSummary.success > 0 ? (
+									<AlertTriangle className="h-6 w-6 text-yellow-600 dark:text-yellow-400" />
+								) : (
+									<XCircle className="h-6 w-6 text-red-600 dark:text-red-400" />
+								)}
+							</div>
+							<div>
+								<AlertDialogTitle className={`text-xl font-bold ${
+									uploadSummary.failed === 0
+										? 'text-green-600 dark:text-green-400'
+										: uploadSummary.success > 0
+											? 'text-yellow-600 dark:text-yellow-400'
+											: 'text-red-600 dark:text-red-400'
+								}`}>
+									{uploadSummary.failed === 0
+										? 'Upload Successful'
+										: uploadSummary.success > 0
+											? 'Partial Upload'
+											: 'Upload Failed'}
+								</AlertDialogTitle>
+								<AlertDialogDescription className="text-sm text-muted-foreground mt-1">
+									{uploadSummary.failed === 0
+										? 'All records have been uploaded successfully'
+										: uploadSummary.success > 0
+											? 'Some records failed during upload'
+											: 'All records failed during upload'}
+								</AlertDialogDescription>
+							</div>
+						</div>
+					</AlertDialogHeader>
+
+					{/* Summary Cards */}
+					<div className="grid grid-cols-2 gap-3 py-4">
+						<div className="bg-blue-50 dark:bg-blue-900/10 border border-blue-200 dark:border-blue-800 rounded-lg p-4 text-center">
+							<div className="text-sm text-blue-600 dark:text-blue-400 font-medium mb-1">Total Records</div>
+							<div className="text-3xl font-bold text-blue-700 dark:text-blue-300">{uploadSummary.total}</div>
+						</div>
+						<div className="bg-green-50 dark:bg-green-900/10 border border-green-200 dark:border-green-800 rounded-lg p-4 text-center">
+							<div className="text-sm text-green-600 dark:text-green-400 font-medium mb-1">Successful</div>
+							<div className="text-3xl font-bold text-green-700 dark:text-green-300">{uploadSummary.success}</div>
+						</div>
+						<div className="bg-red-50 dark:bg-red-900/10 border border-red-200 dark:border-red-800 rounded-lg p-4 text-center">
+							<div className="text-sm text-red-600 dark:text-red-400 font-medium mb-1">Failed</div>
+							<div className="text-3xl font-bold text-red-700 dark:text-red-300">{uploadSummary.failed}</div>
+						</div>
+						<div className="bg-yellow-50 dark:bg-yellow-900/10 border border-yellow-200 dark:border-yellow-800 rounded-lg p-4 text-center">
+							<div className="text-sm text-yellow-600 dark:text-yellow-400 font-medium mb-1">Skipped</div>
+							<div className="text-3xl font-bold text-yellow-700 dark:text-yellow-300">{uploadSummary.skipped}</div>
+						</div>
+					</div>
+
+					<AlertDialogFooter className="flex-row gap-2">
+						{uploadSummary.failed > 0 && (
+							<Button
+								variant="outline"
+								size="sm"
+								onClick={() => {
+									setConfirmationDialogOpen(false)
+									setErrorDialogOpen(true)
+								}}
+								className="bg-red-50 hover:bg-red-100 text-red-700 border-red-200 dark:bg-red-900/20 dark:hover:bg-red-900/30 dark:text-red-300 dark:border-red-800"
+							>
+								<XCircle className="h-4 w-4 mr-2" />
+								View Errors
+							</Button>
+						)}
+						<div className="flex-1" />
+						<AlertDialogAction
+							onClick={() => setConfirmationDialogOpen(false)}
+							className="bg-slate-900 hover:bg-slate-800 text-white px-6"
+						>
+							Close
+						</AlertDialogAction>
+					</AlertDialogFooter>
+				</AlertDialogContent>
+			</AlertDialog>
+
+			{/* Import Loading Overlay - matches exam-registrations pattern */}
+			{importInProgress && (
+				<div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-[100] flex items-center justify-center">
+					<div className="bg-white dark:bg-slate-800 rounded-2xl p-8 shadow-2xl max-w-md w-full mx-4">
+						<div className="flex flex-col items-center gap-4">
+							<div className="relative">
+								<Loader2 className="h-12 w-12 animate-spin text-blue-600" />
+							</div>
+							<div className="text-center">
+								<h3 className="text-lg font-semibold text-slate-900 dark:text-slate-100">
+									Importing External Marks
+								</h3>
+								<p className="text-sm text-slate-500 dark:text-slate-400 mt-1">
+									Please wait while the data is being processed...
+								</p>
+							</div>
+							{importProgress.total > 0 && (
+								<div className="w-full space-y-2">
+									<div className="flex justify-between text-sm text-slate-600 dark:text-slate-300">
+										<span>Progress</span>
+										<span>{importProgress.current} / {importProgress.total}</span>
+									</div>
+									<div className="w-full bg-slate-200 dark:bg-slate-700 rounded-full h-2.5">
+										<div
+											className="bg-blue-600 h-2.5 rounded-full transition-all duration-300"
+											style={{ width: `${(importProgress.current / importProgress.total) * 100}%` }}
+										/>
+									</div>
+									<p className="text-xs text-center text-slate-500 dark:text-slate-400">
+										{Math.round((importProgress.current / importProgress.total) * 100)}% complete
+									</p>
+								</div>
+							)}
+						</div>
+					</div>
+				</div>
+			)}
 		</SidebarProvider>
 	)
 }

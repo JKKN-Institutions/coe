@@ -190,6 +190,7 @@ export async function fetchCourseOfferings(): Promise<CourseOfferingOption[]> {
 			course_code: c.course_code,
 			course_name: c.course_name || c.course_title,
 			institutions_id: c.institutions_id,
+			examination_session_id: c.examination_session_id,  // For matching with session
 			program_id: c.program_id,  // UUID for matching with session.programs_included
 			program_code: c.course_program_code || c.program_code  // Code like "UMB", "BCA"
 		}))

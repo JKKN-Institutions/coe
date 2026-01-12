@@ -6,15 +6,18 @@ export interface ExternalMark {
 	institutions_id: string
 	examination_session_id: string
 	exam_registration_id: string
-	student_dummy_number_id: string
+	student_dummy_number_id: string | null // Nullable for Register Number mode uploads
 	program_id: string | null
 	course_id: string
-	dummy_number: string
+	dummy_number: string // Display number (dummy or register number)
+	register_number?: string // Register number if available
 	student_name: string
 	course_code: string
 	course_name: string
 	program_name: string
 	session_name: string
+	institution_code: string
+	institution_name: string
 	total_marks_obtained: number
 	marks_out_of: number
 	percentage: number
@@ -31,6 +34,7 @@ export type LookupMode = 'dummy_number' | 'register_number'
 
 export interface ImportPreviewRow {
 	row: number
+	institution_code: string // Required for multi-institution support
 	// Either dummy_number or register_number will be used based on lookup_mode
 	dummy_number: string
 	register_number: string
@@ -96,12 +100,9 @@ export interface ExternalMarksFilters {
 
 export interface BulkUploadPayload {
 	action: 'bulk-upload'
-	institutions_id: string
-	examination_session_id: string | null
-	program_id: string | null
-	course_id: string | null
 	lookup_mode: LookupMode // 'dummy_number' or 'register_number'
 	marks_data: {
+		institution_code: string // Required for multi-institution support
 		dummy_number: string
 		register_number: string
 		subject_code: string // Maps to course_code

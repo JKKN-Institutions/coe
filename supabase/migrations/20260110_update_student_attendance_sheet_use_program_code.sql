@@ -1,9 +1,10 @@
 -- =====================================================
--- Student Attendance Sheet Function (USE PROGRAM_CODE)
+-- Student Attendance Sheet Function (USE PROGRAM_CODE + EXAM_REGISTRATIONS)
 -- =====================================================
--- Purpose: Update function to use program_code directly instead of FK relationship
--- This aligns with MyJKKN COE dev rules where programs are fetched from MyJKKN API
--- and course_offerings stores program_code (CODE field) not program_id (UUID)
+-- Purpose: Update function to use:
+-- 1. program_code directly instead of FK relationship (MyJKKN pattern)
+-- 2. exam_registrations for student details (stu_register_no, student_name)
+--    instead of local students table (learner data comes from MyJKKN API)
 -- =====================================================
 
 -- Drop the old function first (return type changed)
@@ -38,27 +39,27 @@ BEGIN
 	RETURN QUERY
 	SELECT
 		TO_CHAR(et.exam_date, 'DD-MM-YYYY') AS exam_date,
-		et.session AS session,
-		c.course_code,
-		c.course_name AS course_title,
+		et.session::TEXT AS session,
+		c.course_code::TEXT AS course_code,
+		c.course_name::TEXT AS course_title,
 		-- Use program_code from course_offerings directly (MyJKKN pattern)
-		COALESCE(co.program_code, ea.program_code, '-') AS program_code,
+		COALESCE(co.program_code, ea.program_code, '-')::TEXT AS program_code,
 		-- Program name: try to get from programs table if exists, fallback to program_code
-		COALESCE(p.program_name, co.program_code, ea.program_code, '-') AS program_name,
+		COALESCE(p.program_name, co.program_code, ea.program_code, '-')::TEXT AS program_name,
 		-- Program order: try to get from programs table if exists, fallback to 999
 		COALESCE(p.program_order, 999) AS program_order,
-		COALESCE(er.semester::TEXT, '-') AS semester,
-		COALESCE(r.regulation_code, '-') AS regulation_code,
-		i.name AS institution_name,
-		i.institution_code,
-		es.session_name,
-		s.register_no AS register_number,
-		s.name AS student_name,
-		ea.attendance_status,
-		COALESCE(ea.remarks, '') AS remarks
+		COALESCE(co.semester::TEXT, '-') AS semester,
+		COALESCE(r.regulation_code::TEXT, '-') AS regulation_code,
+		i.name::TEXT AS institution_name,
+		i.institution_code::TEXT AS institution_code,
+		es.session_name::TEXT AS session_name,
+		-- Use exam_registrations for student details (from MyJKKN learner data during import)
+		COALESCE(er.stu_register_no, '-')::TEXT AS register_number,
+		COALESCE(er.student_name, '-')::TEXT AS student_name,
+		ea.attendance_status::TEXT AS attendance_status,
+		COALESCE(ea.remarks, '')::TEXT AS remarks
 	FROM public.exam_attendance ea
 	INNER JOIN public.exam_registrations er ON ea.exam_registration_id = er.id
-	INNER JOIN public.students s ON ea.student_id = s.id
 	INNER JOIN public.course_offerings co ON er.course_offering_id = co.id
 	INNER JOIN public.courses c ON co.course_id = c.id
 	-- LEFT JOIN programs table to get program_name if available (match by program_code)
@@ -83,11 +84,11 @@ BEGIN
 		COALESCE(p.program_order, 999),
 		COALESCE(co.program_code, ea.program_code, ''),
 		c.course_code,
-		s.register_no;
+		er.stu_register_no;
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
 
 GRANT EXECUTE ON FUNCTION get_student_attendance_sheet(TEXT, DATE, TEXT, TEXT, TEXT) TO authenticated;
 GRANT EXECUTE ON FUNCTION get_student_attendance_sheet(TEXT, DATE, TEXT, TEXT, TEXT) TO service_role;
 
-COMMENT ON FUNCTION get_student_attendance_sheet IS 'Generates student-wise attendance sheets for PDF generation. Uses program_code directly (MyJKKN pattern) instead of FK relationship.';
+COMMENT ON FUNCTION get_student_attendance_sheet IS 'Generates student-wise attendance sheets for PDF generation. Uses program_code directly (MyJKKN pattern) and exam_registrations for student details (stu_register_no, student_name) instead of local students table.';

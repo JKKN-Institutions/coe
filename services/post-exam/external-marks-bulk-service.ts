@@ -86,19 +86,39 @@ export async function fetchExternalMarks(filters: {
  * Bulk upload external marks
  */
 export async function bulkUploadMarks(payload: BulkUploadPayload): Promise<BulkUploadResponse> {
-	const res = await fetch(API_BASE, {
-		method: 'POST',
-		headers: { 'Content-Type': 'application/json' },
-		body: JSON.stringify(payload)
-	})
+	console.log('=== bulkUploadMarks called ===')
+	console.log('payload:', { ...payload, marks_data: `${payload.marks_data.length} rows` })
+	console.log('First row sample:', payload.marks_data[0])
 
-	const result = await res.json()
+	try {
+		const controller = new AbortController()
+		const timeoutId = setTimeout(() => controller.abort(), 120000) // 2 minute timeout
 
-	if (!res.ok) {
-		throw new Error(result.error || 'Upload failed')
+		const res = await fetch(API_BASE, {
+			method: 'POST',
+			headers: { 'Content-Type': 'application/json' },
+			body: JSON.stringify(payload),
+			signal: controller.signal
+		})
+
+		clearTimeout(timeoutId)
+
+		console.log('API response status:', res.status)
+		const result = await res.json()
+		console.log('API response result:', result)
+
+		if (!res.ok) {
+			throw new Error(result.error || 'Upload failed')
+		}
+
+		return result
+	} catch (error: any) {
+		console.error('=== bulkUploadMarks error ===', error)
+		if (error.name === 'AbortError') {
+			throw new Error('Upload timed out. Please try with fewer rows.')
+		}
+		throw error
 	}
-
-	return result
 }
 
 /**

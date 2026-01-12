@@ -90,6 +90,7 @@ export interface CourseOfferingOption {
 	course_code: string
 	course_name?: string
 	institutions_id?: string
+	examination_session_id?: string  // For matching course to specific session
 	program_id?: string      // UUID of the program (for matching with session.programs_included)
 	program_code?: string    // Code of the program (e.g., "UMB", "BCA")
 }

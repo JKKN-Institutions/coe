@@ -25,7 +25,7 @@ interface ExternalMarksTableProps {
 	// State
 	loading: boolean
 	fetchError: string | null
-	selectedInstitution: string
+	mustSelectInstitution: boolean
 
 	// Selection
 	selectedIds: Set<string>
@@ -56,7 +56,7 @@ export function ExternalMarksTable({
 	filtered,
 	loading,
 	fetchError,
-	selectedInstitution,
+	mustSelectInstitution,
 	selectedIds,
 	selectAll,
 	onSelectAll,
@@ -78,16 +78,6 @@ export function ExternalMarksTable({
 		return sortDirection === 'asc' ? <ArrowUp className="h-3 w-3" /> : <ArrowDown className="h-3 w-3" />
 	}
 
-	// Empty State - No Institution Selected
-	if (!selectedInstitution) {
-		return (
-			<div className="flex flex-col items-center justify-center h-[400px] text-muted-foreground">
-				<ClipboardList className="h-12 w-12 mb-4 opacity-50" />
-				<p className="text-sm">Please select an institution to view marks</p>
-			</div>
-		)
-	}
-
 	return (
 		<>
 			<div className="rounded-md border overflow-hidden" style={{ height: "400px" }}>
@@ -104,6 +94,14 @@ export function ExternalMarksTable({
 								<TableHead className="w-[50px] py-2 text-center">
 									<div className="text-xs font-medium">S.No</div>
 								</TableHead>
+								{/* Show Institution column when "All Institutions" is selected */}
+								{mustSelectInstitution && (
+									<TableHead className="py-2 cursor-pointer" onClick={() => onSort('institution_code')}>
+										<div className="flex items-center gap-1 text-xs font-medium">
+											Institution {getSortIcon('institution_code')}
+										</div>
+									</TableHead>
+								)}
 								<TableHead className="py-2 cursor-pointer" onClick={() => onSort('dummy_number')}>
 									<div className="flex items-center gap-1 text-xs font-medium">
 										Dummy No {getSortIcon('dummy_number')}
@@ -139,14 +137,14 @@ export function ExternalMarksTable({
 						<TableBody>
 							{loading ? (
 								<TableRow>
-									<TableCell colSpan={10} className="text-center py-8 text-muted-foreground">
+									<TableCell colSpan={mustSelectInstitution ? 11 : 10} className="text-center py-8 text-muted-foreground">
 										<RefreshCw className="h-4 w-4 animate-spin inline mr-2" />
 										Loading...
 									</TableCell>
 								</TableRow>
 							) : fetchError ? (
 								<TableRow>
-									<TableCell colSpan={10} className="text-center py-8">
+									<TableCell colSpan={mustSelectInstitution ? 11 : 10} className="text-center py-8">
 										<div className="flex flex-col items-center gap-3">
 											<div className="h-12 w-12 rounded-full bg-red-100 dark:bg-red-900/20 flex items-center justify-center">
 												<XCircle className="h-6 w-6 text-red-600 dark:text-red-400" />
@@ -169,7 +167,7 @@ export function ExternalMarksTable({
 								</TableRow>
 							) : pageItems.length === 0 ? (
 								<TableRow>
-									<TableCell colSpan={10} className="text-center py-8 text-muted-foreground">
+									<TableCell colSpan={mustSelectInstitution ? 11 : 10} className="text-center py-8 text-muted-foreground">
 										No records found
 									</TableCell>
 								</TableRow>
@@ -185,6 +183,12 @@ export function ExternalMarksTable({
 										<TableCell className="py-2 text-center text-xs text-muted-foreground">
 											{startIndex + index + 1}
 										</TableCell>
+										{/* Show Institution column when "All Institutions" is selected */}
+										{mustSelectInstitution && (
+											<TableCell className="py-2 text-xs font-medium">
+												{item.institution_code || 'N/A'}
+											</TableCell>
+										)}
 										<TableCell className="py-2 text-xs font-medium">{item.dummy_number}</TableCell>
 										<TableCell className="py-2 text-xs whitespace-normal break-words">{item.student_name}</TableCell>
 										<TableCell className="py-2 text-xs font-mono">{item.course_code}</TableCell>
@@ -196,7 +200,7 @@ export function ExternalMarksTable({
 											{item.marks_out_of}
 										</TableCell>
 										<TableCell className="py-2 text-center text-xs font-medium">
-											{item.percentage.toFixed(1)}%
+											{item.percentage?.toFixed(1) || '0.0'}%
 										</TableCell>
 										<TableCell className="py-2">
 											<Badge
@@ -235,6 +239,7 @@ export function ExternalMarksTable({
 								<SelectItem value="20">20</SelectItem>
 								<SelectItem value="50">50</SelectItem>
 								<SelectItem value="100">100</SelectItem>
+								<SelectItem value="100000">100000</SelectItem>
 							</SelectContent>
 						</Select>
 					</div>

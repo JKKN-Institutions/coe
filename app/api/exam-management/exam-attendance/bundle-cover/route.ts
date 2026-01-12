@@ -47,22 +47,17 @@ export async function GET(request: Request) {
 			)
 		}
 
-		// Get program details (optional)
+		// Get program details (optional) - try local programs table first, fallback to program_code
 		let program = null
 		if (programCode) {
-			const { data: programData, error: programError } = await supabase
+			const { data: programData } = await supabase
 				.from('programs')
 				.select('program_code, program_name')
 				.eq('program_code', programCode)
 				.single()
 
-			if (programError || !programData) {
-				return NextResponse.json(
-					{ error: 'Program not found' },
-					{ status: 404 }
-				)
-			}
-			program = programData
+			// If found in local table, use it; otherwise use program_code as name (MyJKKN pattern)
+			program = programData || { program_code: programCode, program_name: programCode }
 		}
 
 		// Get course details (optional)
@@ -83,7 +78,8 @@ export async function GET(request: Request) {
 			course = courseData
 		}
 
-		// Build the attendance query
+		// Build the attendance query - using program_code directly (MyJKKN pattern)
+		// No INNER JOIN to programs table since program_id may be NULL
 		let query = supabase
 			.from('exam_attendance')
 			.select(`
@@ -91,21 +87,19 @@ export async function GET(request: Request) {
 				student_id,
 				attendance_status,
 				remarks,
+				program_code,
 				exam_registrations!inner (
 					stu_register_no,
 					student_name,
 					is_regular,
+					program_code,
 					course_offerings!inner (
 						course_id,
-						program_id,
+						program_code,
 						examination_session_id,
 						courses!inner (
 							course_code,
 							course_name
-						),
-						programs!inner (
-							program_code,
-							program_name
 						)
 					)
 				),
@@ -119,9 +113,10 @@ export async function GET(request: Request) {
 			.eq('exam_timetables.session', sessionType)
 			.in('attendance_status', ['Present', 'Absent'])
 
-		// Apply optional filters
+		// Apply optional filters using program_code directly
 		if (programCode) {
-			query = query.eq('exam_registrations.course_offerings.programs.program_code', programCode)
+			// Filter by program_code in exam_attendance or course_offerings
+			query = query.or(`program_code.eq.${programCode},exam_registrations.program_code.eq.${programCode},exam_registrations.course_offerings.program_code.eq.${programCode}`)
 		}
 
 		if (courseCode) {
@@ -152,8 +147,13 @@ export async function GET(request: Request) {
 		attendanceData.forEach((record: any) => {
 			const courseCode = record.exam_registrations.course_offerings.courses.course_code
 			const courseName = record.exam_registrations.course_offerings.courses.course_name
-			const programCode = record.exam_registrations.course_offerings.programs.program_code
-			const programName = record.exam_registrations.course_offerings.programs.program_name
+			// Get program_code from exam_attendance, exam_registrations, or course_offerings (MyJKKN pattern)
+			const recordProgramCode = record.program_code ||
+				record.exam_registrations.program_code ||
+				record.exam_registrations.course_offerings.program_code ||
+				'-'
+			// Program name: use from local lookup or fallback to program_code
+			const programName = program?.program_name || recordProgramCode
 
 			if (!groupedBySubject[courseCode]) {
 				groupedBySubject[courseCode] = []
@@ -165,7 +165,7 @@ export async function GET(request: Request) {
 				is_regular: record.exam_registrations.is_regular,
 				course_code: courseCode,
 				course_name: courseName,
-				program_code: programCode,
+				program_code: recordProgramCode,
 				program_name: programName
 			})
 		})

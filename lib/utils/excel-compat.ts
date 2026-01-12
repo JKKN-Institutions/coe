@@ -393,8 +393,16 @@ export async function read(data: ArrayBuffer): Promise<WorkbookCompat> {
     let maxRow = 0
     let maxCol = 0
 
-    worksheet.eachRow((row, rowNumber) => {
-      row.eachCell((cell, colNumber) => {
+    // Use includeEmpty: true to include empty cells
+    worksheet.eachRow({ includeEmpty: false }, (row, rowNumber) => {
+      // Get actual column count from first row to determine maxCol
+      if (rowNumber === 1) {
+        maxCol = row.cellCount
+      }
+
+      // Iterate through all columns (including empty ones)
+      for (let colNumber = 1; colNumber <= Math.max(row.cellCount, maxCol); colNumber++) {
+        const cell = row.getCell(colNumber)
         const colIndex = colNumber - 1
         const rowIndex = rowNumber - 1
 
@@ -423,9 +431,10 @@ export async function read(data: ArrayBuffer): Promise<WorkbookCompat> {
           t: typeof value === 'number' ? 'n' : 's'
         }
 
-        maxRow = Math.max(maxRow, rowNumber)
         maxCol = Math.max(maxCol, colNumber)
-      })
+      }
+
+      maxRow = Math.max(maxRow, rowNumber)
     })
 
     ws['!ref'] = `A1:${String.fromCharCode(64 + maxCol)}${maxRow}`

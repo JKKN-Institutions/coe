@@ -40,6 +40,7 @@ import { Badge } from '@/components/ui/badge'
 import { useToast } from "@/hooks/common/use-toast"
 import { Shuffle, Hash, Trash2, Download, Eye, EyeOff, FileText } from 'lucide-react'
 import { useAuth } from '@/context/auth-context'
+import { useInstitutionFilter } from '@/hooks/use-institution-filter'
 import jsPDF from 'jspdf'
 import autoTable from 'jspdf-autotable'
 import Link from 'next/link'
@@ -91,10 +92,17 @@ export default function DummyNumbersPage() {
 	const { toast } = useToast()
 	const { user } = useAuth()
 
-	// Form state
+	// Global institution filter - uses context from header dropdown
+	const {
+		isReady,
+		institutionId,
+		institutionCode,
+		mustSelectInstitution,
+	} = useInstitutionFilter()
+
+	// Form state - removed local institution selection (uses global filter)
 	const [institutions, setInstitutions] = useState<Institution[]>([])
 	const [sessions, setSessions] = useState<ExaminationSession[]>([])
-	const [selectedInstitution, setSelectedInstitution] = useState('')
 	const [selectedSession, setSelectedSession] = useState('')
 	const [sourceMode, setSourceMode] = useState<'attendance' | 'registration'>('attendance')
 	const [generationMode, setGenerationMode] = useState<'sequence' | 'shuffle'>('sequence')
@@ -116,33 +124,35 @@ export default function DummyNumbersPage() {
 	const [showDeleteDialog, setShowDeleteDialog] = useState(false)
 	const [hideActualNumbers, setHideActualNumbers] = useState(true)
 
-	// Fetch institutions
+	// Fetch institutions for display purposes (e.g., PDF export)
 	useEffect(() => {
-		fetchInstitutions()
-	}, [])
+		if (isReady) {
+			fetchInstitutions()
+		}
+	}, [isReady])
 
-	// Fetch sessions when institution changes
+	// Fetch sessions when global institution filter changes
 	useEffect(() => {
-		if (selectedInstitution) {
+		if (isReady && institutionId) {
 			fetchSessions()
 		} else {
 			setSessions([])
 			setSelectedSession('')
 		}
-	}, [selectedInstitution])
+	}, [isReady, institutionId])
 
 	// Fetch dummy numbers when institution, session, or filters change
 	useEffect(() => {
-		if (selectedInstitution && selectedSession) {
+		if (isReady && institutionId && selectedSession) {
 			fetchDummyNumbers()
 		} else {
 			setDummyNumbers([])
 		}
-	}, [selectedInstitution, selectedSession, selectedBoard, selectedCourse, selectedProgram])
+	}, [isReady, institutionId, selectedSession, selectedBoard, selectedCourse, selectedProgram])
 
 	// Fetch filter options when session changes
 	useEffect(() => {
-		if (selectedInstitution && selectedSession) {
+		if (isReady && institutionId && selectedSession) {
 			fetchFilterOptions()
 		} else {
 			setBoards([])
@@ -152,7 +162,7 @@ export default function DummyNumbersPage() {
 			setSelectedCourse('')
 			setSelectedProgram('')
 		}
-	}, [selectedInstitution, selectedSession])
+	}, [isReady, institutionId, selectedSession])
 
 	const fetchInstitutions = async () => {
 		try {
@@ -167,8 +177,9 @@ export default function DummyNumbersPage() {
 	}
 
 	const fetchSessions = async () => {
+		if (!institutionId) return
 		try {
-			const res = await fetch(`/api/exam-management/examination-sessions?institutions_id=${selectedInstitution}`)
+			const res = await fetch(`/api/exam-management/examination-sessions?institutions_id=${institutionId}`)
 			if (res.ok) {
 				const data = await res.json()
 				setSessions(data)
@@ -179,16 +190,17 @@ export default function DummyNumbersPage() {
 	}
 
 	const fetchFilterOptions = async () => {
+		if (!institutionId) return
 		try {
 			// Fetch boards filtered by institution_id
-			const boardsRes = await fetch(`/api/master/boards?institutions_id=${selectedInstitution}`)
+			const boardsRes = await fetch(`/api/master/boards?institutions_id=${institutionId}`)
 			if (boardsRes.ok) {
 				const boardsData = await boardsRes.json()
 				setBoards(boardsData.map((b: any) => b.board_code).filter(Boolean))
 			}
 
-			// Fetch courses (only Theory courses)
-			const coursesRes = await fetch(`/api/master/courses?institution_code=${institutions.find(i => i.id === selectedInstitution)?.institution_code || ''}`)
+			// Fetch courses (only Theory courses) - use institutionCode from global filter
+			const coursesRes = await fetch(`/api/master/courses?institution_code=${institutionCode || ''}`)
 			if (coursesRes.ok) {
 				const coursesData = await coursesRes.json()
 				// Filter to only show Theory courses for dummy number generation
@@ -201,8 +213,8 @@ export default function DummyNumbersPage() {
 				})))
 			}
 
-			// Fetch programs
-			const programsRes = await fetch(`/api/master/programs?institution_code=${institutions.find(i => i.id === selectedInstitution)?.institution_code || ''}`)
+			// Fetch programs - use institutionCode from global filter
+			const programsRes = await fetch(`/api/master/programs?institution_code=${institutionCode || ''}`)
 			if (programsRes.ok) {
 				const programsData = await programsRes.json()
 				setPrograms(programsData.map((p: any) => ({ program_code: p.program_code, program_name: p.program_name })))
@@ -213,9 +225,10 @@ export default function DummyNumbersPage() {
 	}
 
 	const fetchDummyNumbers = async () => {
+		if (!institutionId) return
 		try {
 			setLoading(true)
-			let url = `/api/utilities/dummy-numbers?institutions_id=${selectedInstitution}&examination_session_id=${selectedSession}`
+			let url = `/api/utilities/dummy-numbers?institutions_id=${institutionId}&examination_session_id=${selectedSession}`
 
 			if (selectedBoard) url += `&board_code=${selectedBoard}`
 			if (selectedCourse) url += `&course_code=${selectedCourse}`
@@ -234,10 +247,10 @@ export default function DummyNumbersPage() {
 	}
 
 	const handleGenerate = async () => {
-		if (!selectedInstitution || !selectedSession) {
+		if (!institutionId || !selectedSession) {
 			toast({
 				title: '⚠️ Missing Information',
-				description: 'Please select both institution and examination session',
+				description: 'Please select an institution from the header and an examination session',
 				variant: 'destructive',
 			})
 			return
@@ -266,7 +279,7 @@ export default function DummyNumbersPage() {
 			setGenerating(true)
 
 			const payload: any = {
-				institutions_id: selectedInstitution,
+				institutions_id: institutionId,
 				examination_session_id: selectedSession,
 				source_mode: sourceMode,
 				generation_mode: generationMode,
@@ -314,7 +327,7 @@ export default function DummyNumbersPage() {
 	}
 
 	const handleDeleteAll = async () => {
-		if (!selectedInstitution || !selectedSession) {
+		if (!institutionId || !selectedSession) {
 			return
 		}
 
@@ -322,7 +335,7 @@ export default function DummyNumbersPage() {
 			setLoading(true)
 
 			const res = await fetch(
-				`/api/utilities/dummy-numbers?institutions_id=${selectedInstitution}&examination_session_id=${selectedSession}`,
+				`/api/utilities/dummy-numbers?institutions_id=${institutionId}&examination_session_id=${selectedSession}`,
 				{ method: 'DELETE' }
 			)
 
@@ -412,7 +425,7 @@ export default function DummyNumbersPage() {
 		}
 
 		// Get institution and session names
-		const institution = institutions.find((i) => i.id === selectedInstitution)
+		const institution = institutions.find((i) => i.id === institutionId)
 		const session = sessions.find((s) => s.id === selectedSession)
 
 		const doc = new jsPDF('landscape')
@@ -487,8 +500,11 @@ export default function DummyNumbersPage() {
 	return (
 		<SidebarProvider>
 			<AppSidebar />
-			<SidebarInset>
-				<AppHeader>
+			<SidebarInset className="flex flex-col min-h-screen">
+				<AppHeader />
+
+				<div className="flex flex-1 flex-col gap-4 p-4 pt-0 overflow-y-auto">
+					{/* Breadcrumb */}
 					<Breadcrumb>
 						<BreadcrumbList>
 							<BreadcrumbItem>
@@ -499,7 +515,7 @@ export default function DummyNumbersPage() {
 							<BreadcrumbSeparator />
 							<BreadcrumbItem>
 								<BreadcrumbLink asChild>
-									<Link href="/exam-conduct">Exam Conduct</Link>
+									<Link href="/utilities">Utilities</Link>
 								</BreadcrumbLink>
 							</BreadcrumbItem>
 							<BreadcrumbSeparator />
@@ -508,9 +524,8 @@ export default function DummyNumbersPage() {
 							</BreadcrumbItem>
 						</BreadcrumbList>
 					</Breadcrumb>
-				</AppHeader>
 
-				<div className="p-6 space-y-6">
+					<div className="space-y-6">
 					{/* Header */}
 					<div>
 						<h1 className="text-3xl font-bold text-heading">Dummy Number Generation</h1>
@@ -524,30 +539,21 @@ export default function DummyNumbersPage() {
 				<CardHeader>
 					<CardTitle>Configuration</CardTitle>
 					<CardDescription>
-						Select institution, session, and configure dummy number generation settings
+						Select session and configure dummy number generation settings
 					</CardDescription>
 				</CardHeader>
 				<CardContent className="space-y-6">
-					{/* Institution & Session Selection */}
-					<div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-						<div className="space-y-2">
-							<Label htmlFor="institution">
-								Institution <span className="text-red-500">*</span>
-							</Label>
-							<Select value={selectedInstitution} onValueChange={setSelectedInstitution}>
-								<SelectTrigger>
-									<SelectValue placeholder="Select institution" />
-								</SelectTrigger>
-								<SelectContent>
-									{institutions.map((inst) => (
-										<SelectItem key={inst.id} value={inst.id}>
-											{inst.institution_code} - {inst.name}
-										</SelectItem>
-									))}
-								</SelectContent>
-							</Select>
+					{/* Show message when super_admin has "All Institutions" selected */}
+					{mustSelectInstitution && (
+						<div className="p-4 border border-amber-200 bg-amber-50 dark:bg-amber-900/20 dark:border-amber-800 rounded-lg">
+							<p className="text-sm text-amber-800 dark:text-amber-200">
+								Please select a specific institution from the header dropdown to generate dummy numbers.
+							</p>
 						</div>
+					)}
 
+					{/* Session Selection - only show when institution is selected */}
+					{!mustSelectInstitution && (
 						<div className="space-y-2">
 							<Label htmlFor="session">
 								Examination Session <span className="text-red-500">*</span>
@@ -555,10 +561,10 @@ export default function DummyNumbersPage() {
 							<Select
 								value={selectedSession}
 								onValueChange={setSelectedSession}
-								disabled={!selectedInstitution}
+								disabled={!institutionId}
 							>
 								<SelectTrigger>
-									<SelectValue placeholder="Select session" />
+									<SelectValue placeholder={!institutionId ? "Select institution first" : "Select session"} />
 								</SelectTrigger>
 								<SelectContent>
 									{sessions.map((session) => (
@@ -569,10 +575,10 @@ export default function DummyNumbersPage() {
 								</SelectContent>
 							</Select>
 						</div>
-					</div>
+					)}
 
 					{/* Filter Options */}
-					{selectedInstitution && selectedSession && (
+					{institutionId && selectedSession && (
 						<div className="space-y-2">
 							<Label className="text-sm font-semibold">Filter Options (Optional)</Label>
 							<p className="text-xs text-muted-foreground">
@@ -743,7 +749,7 @@ export default function DummyNumbersPage() {
 					<div className="flex gap-2">
 						<Button
 							onClick={handleGenerate}
-							disabled={generating || !selectedInstitution || !selectedSession}
+							disabled={generating || !institutionId || !selectedSession || mustSelectInstitution}
 							className="w-full md:w-auto"
 						>
 							{generating ? 'Generating...' : 'Generate Dummy Numbers'}
@@ -786,7 +792,7 @@ export default function DummyNumbersPage() {
 			</Card>
 
 			{/* Data Table */}
-			{selectedInstitution && selectedSession && (
+			{institutionId && selectedSession && !mustSelectInstitution && (
 				<Card>
 					<CardHeader>
 						<CardTitle>Generated Dummy Numbers ({dummyNumbers.length})</CardTitle>
@@ -874,6 +880,7 @@ export default function DummyNumbersPage() {
 							</AlertDialogFooter>
 						</AlertDialogContent>
 					</AlertDialog>
+					</div>
 				</div>
 
 				<AppFooter />
