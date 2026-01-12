@@ -566,11 +566,13 @@ export default function CourseMappingEditPage() {
 
 	const fetchInstitutionName = async (code: string) => {
 		try {
-			const res = await fetch(`/api/master/institutions?institution_code=${code}`)
+			const res = await fetch(`/api/master/institutions`)
 			if (res.ok) {
 				const data = await res.json()
-				if (data.length > 0) {
-					setInstitutionName(data[0].name)
+				// Find the institution matching the code
+				const institution = data.find((inst: any) => inst.institution_code === code)
+				if (institution) {
+					setInstitutionName(institution.name)
 				}
 			}
 		} catch (err) {
