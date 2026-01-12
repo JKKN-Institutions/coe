@@ -42,6 +42,7 @@ interface UseExternalMarksBulkReturn {
 	isReady: boolean
 
 	// Filters
+	selectedInstitution: string
 	selectedSession: string
 	selectedProgram: string
 	selectedCourse: string
@@ -49,6 +50,7 @@ interface UseExternalMarksBulkReturn {
 	searchTerm: string
 
 	// Filter Setters
+	setSelectedInstitution: (id: string) => void
 	setSelectedSession: (id: string) => void
 	setSelectedProgram: (id: string) => void
 	setSelectedCourse: (id: string) => void
@@ -120,11 +122,19 @@ export function useExternalMarksBulk(): UseExternalMarksBulkReturn {
 	const [fetchError, setFetchError] = useState<string | null>(null)
 
 	// Filter State
+	const [selectedInstitution, setSelectedInstitutionState] = useState('')
 	const [selectedSession, setSelectedSession] = useState('')
 	const [selectedProgram, setSelectedProgram] = useState('')
 	const [selectedCourse, setSelectedCourse] = useState('')
 	const [statusFilter, setStatusFilter] = useState('all')
 	const [searchTerm, setSearchTerm] = useState('')
+
+	// Handle institution change - reset dependent filters
+	const setSelectedInstitution = useCallback((id: string) => {
+		setSelectedInstitutionState(id)
+		// Reset session when institution changes (sessions are filtered by institution)
+		setSelectedSession('')
+	}, [])
 
 	// Sort State
 	const [sortColumn, setSortColumn] = useState<string | null>(null)
@@ -176,7 +186,7 @@ export function useExternalMarksBulk(): UseExternalMarksBulkReturn {
 		if (isReady) {
 			fetchMarks()
 		}
-	}, [isReady, selectedSession, selectedProgram, selectedCourse])
+	}, [isReady, selectedInstitution, selectedSession, selectedProgram, selectedCourse])
 
 	const fetchInstitutions = async () => {
 		try {
@@ -258,6 +268,8 @@ export function useExternalMarksBulk(): UseExternalMarksBulkReturn {
 
 			// Use appendToUrl for proper institution filtering based on user role
 			let url = appendToUrl('/api/post-exam/external-marks-bulk?action=marks')
+			// Add selected institution filter (for super_admin filtering within "All Institutions" view)
+			if (selectedInstitution) url += `&institutionId=${selectedInstitution}`
 			if (selectedSession) url += `&sessionId=${selectedSession}`
 			if (selectedProgram) url += `&programId=${selectedProgram}`
 			if (selectedCourse) url += `&courseId=${selectedCourse}`
@@ -280,7 +292,7 @@ export function useExternalMarksBulk(): UseExternalMarksBulkReturn {
 		} finally {
 			setLoading(false)
 		}
-	}, [appendToUrl, selectedSession, selectedProgram, selectedCourse])
+	}, [appendToUrl, selectedInstitution, selectedSession, selectedProgram, selectedCourse])
 
 	// Sorting
 	const handleSort = useCallback((column: string) => {
@@ -305,14 +317,28 @@ export function useExternalMarksBulk(): UseExternalMarksBulkReturn {
 			data = data.filter((i) => i.entry_status?.toLowerCase() === statusFilter.toLowerCase())
 		}
 
-		if (!sortColumn) return data
+		// If user clicked a column header, use that sort
+		if (sortColumn) {
+			return [...data].sort((a, b) => {
+				const av = (a as any)[sortColumn]
+				const bv = (b as any)[sortColumn]
+				if (av === bv) return 0
+				if (sortDirection === 'asc') return av > bv ? 1 : -1
+				return av < bv ? 1 : -1
+			})
+		}
 
+		// Default sort: Institution → Exam Session → Course Order
+		// This ensures consistent ordering after search/filter
 		return [...data].sort((a, b) => {
-			const av = (a as any)[sortColumn]
-			const bv = (b as any)[sortColumn]
-			if (av === bv) return 0
-			if (sortDirection === 'asc') return av > bv ? 1 : -1
-			return av < bv ? 1 : -1
+			// First by institution_code
+			const instCompare = (a.institution_code || '').localeCompare(b.institution_code || '')
+			if (instCompare !== 0) return instCompare
+			// Then by session_name
+			const sessionCompare = (a.session_name || '').localeCompare(b.session_name || '')
+			if (sessionCompare !== 0) return sessionCompare
+			// Then by course_order
+			return (a.course_order || 999) - (b.course_order || 999)
 		})
 	}, [items, searchTerm, sortColumn, sortDirection, statusFilter])
 
@@ -519,6 +545,7 @@ export function useExternalMarksBulk(): UseExternalMarksBulkReturn {
 		isReady,
 
 		// Filters
+		selectedInstitution,
 		selectedSession,
 		selectedProgram,
 		selectedCourse,
@@ -526,6 +553,7 @@ export function useExternalMarksBulk(): UseExternalMarksBulkReturn {
 		searchTerm,
 
 		// Filter Setters
+		setSelectedInstitution,
 		setSelectedSession,
 		setSelectedProgram,
 		setSelectedCourse,

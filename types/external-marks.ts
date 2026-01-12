@@ -14,6 +14,7 @@ export interface ExternalMark {
 	student_name: string
 	course_code: string
 	course_name: string
+	course_order?: number // Course order from course_mapping for sorting
 	program_name: string
 	session_name: string
 	institution_code: string

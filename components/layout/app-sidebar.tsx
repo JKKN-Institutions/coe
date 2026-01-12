@@ -234,6 +234,7 @@ const data = {
 			items: [
 				{ title: "Dummy Numbers", url: "/utilities/dummy-numbers", icon: Hash },
 				{ title: "Answer Sheet Packets", url: "/post-exam/answer-sheet-packets", icon: Package },
+				{ title: "Attendance Bulk Upload", url: "/post-exam/exam-attendance-bulk", icon: ClipboardCheck },
 				{ title: "External Mark Entry", url: "/post-exam/external-mark-entry", icon: FileText },
 				{ title: "External Mark Bulk Upload", url: "/post-exam/external-mark-bulk-upload", icon: FileText },
 				{ title: "External Mark Correction", url: "/post-exam/external-mark-correction", icon: Edit },

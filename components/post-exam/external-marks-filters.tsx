@@ -9,15 +9,17 @@ import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, Command
 import { Label } from '@/components/ui/label'
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
 import { Check, ChevronsUpDown, Search, RefreshCw, Download, Upload, FileSpreadsheet, Trash2, Hash, User } from 'lucide-react'
-import type { ExamSession, Program, Course, LookupMode } from '@/types/external-marks'
+import type { ExamSession, Program, Course, LookupMode, Institution } from '@/types/external-marks'
 
 interface ExternalMarksFiltersProps {
 	// Data
+	institutions: Institution[]
 	sessions: ExamSession[]
 	programs: Program[]
 	courses: Course[]
 
 	// Selected Values
+	selectedInstitution: string
 	selectedSession: string
 	selectedProgram: string
 	selectedCourse: string
@@ -25,7 +27,11 @@ interface ExternalMarksFiltersProps {
 	searchTerm: string
 	lookupMode: LookupMode
 
+	// Institution filter info
+	mustSelectInstitution: boolean
+
 	// Handlers
+	onInstitutionChange: (id: string) => void
 	onSessionChange: (id: string) => void
 	onProgramChange: (id: string) => void
 	onCourseChange: (id: string) => void
@@ -47,15 +53,19 @@ interface ExternalMarksFiltersProps {
 }
 
 export function ExternalMarksFilters({
+	institutions,
 	sessions,
 	programs,
 	courses,
+	selectedInstitution,
 	selectedSession,
 	selectedProgram,
 	selectedCourse,
 	statusFilter,
 	searchTerm,
 	lookupMode,
+	mustSelectInstitution,
+	onInstitutionChange,
 	onSessionChange,
 	onProgramChange,
 	onCourseChange,
@@ -72,9 +82,15 @@ export function ExternalMarksFilters({
 	selectedCount
 }: ExternalMarksFiltersProps) {
 	// Popover states
+	const [institutionOpen, setInstitutionOpen] = useState(false)
 	const [sessionOpen, setSessionOpen] = useState(false)
 	const [programOpen, setProgramOpen] = useState(false)
 	const [courseOpen, setCourseOpen] = useState(false)
+
+	// Filter sessions by selected institution when mustSelectInstitution is true
+	const filteredSessions = mustSelectInstitution && selectedInstitution
+		? sessions.filter(s => (s as any).institutions_id === selectedInstitution)
+		: sessions
 
 	return (
 		<>
@@ -105,7 +121,61 @@ export function ExternalMarksFilters({
 
 			{/* Filters Row 1 - Searchable Dropdowns */}
 			<div className="flex flex-wrap gap-2 mb-2">
-				{/* Session Dropdown */}
+				{/* Institution Dropdown - Only show when "All Institutions" is selected globally */}
+				{mustSelectInstitution && (
+					<Popover open={institutionOpen} onOpenChange={setInstitutionOpen}>
+						<PopoverTrigger asChild>
+							<Button
+								variant="outline"
+								role="combobox"
+								aria-expanded={institutionOpen}
+								className="w-[180px] h-8 justify-between text-xs font-normal"
+							>
+								<span className="truncate">
+									{selectedInstitution
+										? institutions.find(i => i.id === selectedInstitution)?.name
+										: "All Institutions"}
+								</span>
+								<ChevronsUpDown className="ml-2 h-3 w-3 shrink-0 opacity-50" />
+							</Button>
+						</PopoverTrigger>
+						<PopoverContent className="w-[280px] p-0">
+							<Command>
+								<CommandInput placeholder="Search institution..." className="h-9" />
+								<CommandList>
+									<CommandEmpty>No institution found.</CommandEmpty>
+									<CommandGroup>
+										<CommandItem
+											value="all-institutions"
+											onSelect={() => {
+												onInstitutionChange("")
+												setInstitutionOpen(false)
+											}}
+										>
+											<Check className={`mr-2 h-4 w-4 ${!selectedInstitution ? "opacity-100" : "opacity-0"}`} />
+											All Institutions
+										</CommandItem>
+										{institutions.map(inst => (
+											<CommandItem
+												key={inst.id}
+												value={`${inst.name} ${inst.institution_code}`}
+												onSelect={() => {
+													onInstitutionChange(inst.id)
+													setInstitutionOpen(false)
+												}}
+											>
+												<Check className={`mr-2 h-4 w-4 ${selectedInstitution === inst.id ? "opacity-100" : "opacity-0"}`} />
+												{inst.name} ({inst.institution_code})
+											</CommandItem>
+										))}
+									</CommandGroup>
+								</CommandList>
+							</Command>
+						</PopoverContent>
+					</Popover>
+				)}
+
+				{/* Session Dropdown - filtered by institution when applicable */}
 				<Popover open={sessionOpen} onOpenChange={setSessionOpen}>
 					<PopoverTrigger asChild>
 						<Button
@@ -116,7 +186,7 @@ export function ExternalMarksFilters({
 						>
 							<span className="truncate">
 								{selectedSession
-									? sessions.find(s => s.id === selectedSession)?.session_name
+									? filteredSessions.find(s => s.id === selectedSession)?.session_name
 									: "All Sessions"}
 							</span>
 							<ChevronsUpDown className="ml-2 h-3 w-3 shrink-0 opacity-50" />
@@ -138,7 +208,7 @@ export function ExternalMarksFilters({
 										<Check className={`mr-2 h-4 w-4 ${!selectedSession ? "opacity-100" : "opacity-0"}`} />
 										All Sessions
 									</CommandItem>
-									{sessions.map(session => (
+									{filteredSessions.map(session => (
 										<CommandItem
 											key={session.id}
 											value={`${session.session_name} ${session.session_code}`}

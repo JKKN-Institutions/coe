@@ -78,6 +78,7 @@ export default function ExternalMarkBulkUploadPage() {
 		isReady,
 
 		// Filters
+		selectedInstitution,
 		selectedSession,
 		selectedProgram,
 		selectedCourse,
@@ -85,6 +86,7 @@ export default function ExternalMarkBulkUploadPage() {
 		searchTerm,
 
 		// Filter Setters
+		setSelectedInstitution,
 		setSelectedSession,
 		setSelectedProgram,
 		setSelectedCourse,
@@ -673,15 +675,19 @@ export default function ExternalMarkBulkUploadPage() {
 
 							{/* Filters */}
 							<ExternalMarksFilters
+								institutions={institutions}
 								sessions={sessions}
 								programs={programs}
 								courses={courses}
+								selectedInstitution={selectedInstitution}
 								selectedSession={selectedSession}
 								selectedProgram={selectedProgram}
 								selectedCourse={selectedCourse}
 								statusFilter={statusFilter}
 								searchTerm={searchTerm}
 								lookupMode={lookupMode}
+								mustSelectInstitution={mustSelectInstitution}
+								onInstitutionChange={setSelectedInstitution}
 								onSessionChange={setSelectedSession}
 								onProgramChange={setSelectedProgram}
 								onCourseChange={setSelectedCourse}

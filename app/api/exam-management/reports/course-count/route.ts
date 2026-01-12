@@ -48,13 +48,15 @@ export async function GET(request: NextRequest) {
 			: []
 
 		// Fetch institution details
+		// Note: institutions table has 'name' column, not 'institution_name'
 		const { data: institution, error: instError } = await supabase
 			.from('institutions')
-			.select('id, institution_code, institution_name')
+			.select('id, institution_code, name')
 			.eq('id', institutionId)
 			.single()
 
 		if (instError || !institution) {
+			console.error('Error fetching institution:', instError)
 			return NextResponse.json(
 				{ error: 'Institution not found' },
 				{ status: 404 }
@@ -77,25 +79,49 @@ export async function GET(request: NextRequest) {
 
 		// Build the main query for course counts
 		// exam_registrations has denormalized program_code and course_code columns
-		const { data: registrations, error: regError } = await supabase
-			.from('exam_registrations')
-			.select(`
-				id,
-				is_regular,
-				program_code,
-				course_code
-			`)
-			.eq('institutions_id', institutionId)
-			.eq('examination_session_id', sessionId)
-			.eq('fee_paid', true)
+		// Supabase default limit is 1000 rows - need to paginate to get all records
+		const pageSize = 1000
+		let allRegistrations: any[] = []
+		let page = 0
+		let hasMore = true
 
-		if (regError) {
-			console.error('Error fetching registrations:', regError)
-			return NextResponse.json(
-				{ error: 'Failed to fetch exam registrations', details: regError.message },
-				{ status: 500 }
-			)
+		console.log('=== Course Count Report: Fetching exam_registrations ===')
+		console.log('Filters:', { institutionId, sessionId })
+
+		while (hasMore) {
+			const { data: pageData, error: pageError } = await supabase
+				.from('exam_registrations')
+				.select(`
+					id,
+					is_regular,
+					program_code,
+					course_code
+				`)
+				.eq('institutions_id', institutionId)
+				.eq('examination_session_id', sessionId)
+				.eq('fee_paid', true)
+				.range(page * pageSize, (page + 1) * pageSize - 1)
+
+			if (pageError) {
+				console.error('Error fetching registrations page:', page, pageError)
+				return NextResponse.json(
+					{ error: 'Failed to fetch exam registrations', details: pageError.message },
+					{ status: 500 }
+				)
+			}
+
+			if (pageData && pageData.length > 0) {
+				allRegistrations = allRegistrations.concat(pageData)
+				console.log(`Page ${page}: Fetched ${pageData.length} records, total so far: ${allRegistrations.length}`)
+				page++
+				hasMore = pageData.length === pageSize
+			} else {
+				hasMore = false
+			}
 		}
+
+		const registrations = allRegistrations
+		console.log(`Total exam_registrations fetched: ${registrations.length}`)
 
 		// Fetch course details (course_name, board_code) from courses table
 		const uniqueCourseCodes = [...new Set((registrations || []).map(r => r.course_code).filter(Boolean))]
@@ -282,7 +308,7 @@ export async function GET(request: NextRequest) {
 		const responseData: CourseCountReportData = {
 			metadata: {
 				institution_id: institution.id,
-				institution_name: institution.institution_name,
+				institution_name: institution.name,
 				institution_code: institution.institution_code,
 				examination_session_id: session.id,
 				session_name: session.session_name,

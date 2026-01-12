@@ -495,6 +495,7 @@ export async function GET(req: NextRequest) {
 		}
 
 		// Get semesters from course_offerings for a given program
+		// Falls back to final_marks if course_offerings is empty
 		if (action === 'semesters') {
 			const institutionId = searchParams.get('institutionId')
 			const programId = searchParams.get('programId')
@@ -504,6 +505,7 @@ export async function GET(req: NextRequest) {
 				return NextResponse.json({ error: 'institutionId and programId are required' }, { status: 400 })
 			}
 
+			// First try course_offerings
 			let query = supabase
 				.from('course_offerings')
 				.select('semester')
@@ -517,10 +519,47 @@ export async function GET(req: NextRequest) {
 
 			const { data, error } = await query
 
-			if (error) throw error
+			if (error) {
+				console.error('Error fetching semesters from course_offerings:', error)
+				throw error
+			}
 
 			// Get unique semesters sorted
-			const semesters = [...new Set(data?.map(d => d.semester) || [])].sort((a, b) => a - b)
+			let semesters = [...new Set(data?.map(d => d.semester) || [])].sort((a, b) => a - b)
+
+			// If no semesters found in course_offerings, try to get from final_marks via course_offerings join
+			if (semesters.length === 0 && sessionId) {
+				console.log('No semesters in course_offerings, trying final_marks...')
+				const { data: fmData, error: fmError } = await supabase
+					.from('final_marks')
+					.select('course_offerings!inner(semester)')
+					.eq('institutions_id', institutionId)
+					.eq('program_id', programId)
+					.eq('examination_session_id', sessionId)
+					.eq('is_active', true)
+
+				if (!fmError && fmData) {
+					const fmSemesters = fmData.map((fm: any) => fm.course_offerings?.semester).filter(Boolean)
+					semesters = [...new Set(fmSemesters)].sort((a, b) => a - b)
+					console.log('Semesters from final_marks:', semesters)
+				}
+			}
+
+			// If still no semesters, try course_offerings without session filter as last resort
+			if (semesters.length === 0) {
+				console.log('No semesters found, trying course_offerings without session filter...')
+				const { data: allCoData, error: allCoError } = await supabase
+					.from('course_offerings')
+					.select('semester')
+					.eq('institutions_id', institutionId)
+					.eq('program_id', programId)
+					.eq('is_active', true)
+
+				if (!allCoError && allCoData) {
+					semesters = [...new Set(allCoData.map(d => d.semester))].sort((a, b) => a - b)
+					console.log('Semesters from course_offerings (no session filter):', semesters)
+				}
+			}
 
 			return NextResponse.json(semesters)
 		}
@@ -851,7 +890,13 @@ export async function GET(req: NextRequest) {
 
 			const { data, error } = await query
 
-			if (error) throw error
+			if (error) {
+				console.error('Program results query error:', error)
+				return NextResponse.json({
+					error: `Database query failed: ${error.message}`,
+					details: error.details || error.hint || 'Check that all required tables and relationships exist'
+				}, { status: 500 })
+			}
 
 			// Group results by student
 			const studentMap: Record<string, any> = {}

@@ -224,7 +224,16 @@ export async function GET(request: Request) {
 							exam_registrations (
 								id,
 								student_name,
-								stu_register_no
+								stu_register_no,
+								course_offering_id,
+								course_offerings (
+									id,
+									course_mapping_id,
+									course_mapping (
+										id,
+										course_order
+									)
+								)
 							),
 							courses (
 								id,
@@ -237,10 +246,11 @@ export async function GET(request: Request) {
 								session_code
 							)
 						`)
-						.order('created_at', { ascending: false })
-						.range(page * pageSize, (page + 1) * pageSize - 1)
 
-					// Apply institution filter only if provided
+					// Apply filters BEFORE range (required for proper pagination)
+					// Filter for external marks only (no examiner assignment)
+					query = query.is('examiner_assignment_id', null)
+
 					if (institutionId) {
 						query = query.eq('institutions_id', institutionId)
 					}
@@ -254,7 +264,13 @@ export async function GET(request: Request) {
 						query = query.eq('course_id', courseId)
 					}
 
+					// Apply order and range AFTER filters
+					query = query.order('created_at', { ascending: false })
+						.range(page * pageSize, (page + 1) * pageSize - 1)
+
 					const { data: pageData, error: pageError } = await query
+
+					console.log(`=== Page ${page}: Fetched ${pageData?.length || 0} records ===`)
 
 					if (pageError) {
 						console.error('Error fetching marks page:', page, pageError)
@@ -263,9 +279,13 @@ export async function GET(request: Request) {
 
 					if (pageData && pageData.length > 0) {
 						allData = allData.concat(pageData)
+						console.log(`Page ${page}: Added ${pageData.length} records, total so far: ${allData.length}`)
 						page++
+						// Continue fetching if we got a full page (might be more data)
 						hasMore = pageData.length === pageSize
+						console.log(`hasMore: ${hasMore} (pageData.length=${pageData.length}, pageSize=${pageSize})`)
 					} else {
+						console.log(`Page ${page}: No more data`)
 						hasMore = false
 					}
 				}
@@ -274,9 +294,9 @@ export async function GET(request: Request) {
 				const error = null
 
 				console.log('=== DEBUG: Query result ===')
-				console.log('data count:', data?.length || 0)
-				console.log('pages fetched:', page)
-				console.log('error:', error)
+				console.log('Total records fetched:', data?.length || 0)
+				console.log('Pages fetched:', page)
+				console.log('Filters applied:', { institutionId, sessionId, programId, courseId })
 
 				if (error) {
 					console.error('Error fetching external marks:', error)
@@ -295,6 +315,8 @@ export async function GET(request: Request) {
 					const studentName = dummyExamReg?.student_name || directExamReg?.student_name || 'Unknown'
 					// Get display identifier - dummy number if available, else register number
 					const displayNumber = dummyNumData?.dummy_number || mark.dummy_number || directExamReg?.stu_register_no || 'N/A'
+					// Get course_order from course_mapping via exam_registrations -> course_offerings -> course_mapping
+					const courseOrder = directExamReg?.course_offerings?.course_mapping?.course_order || 999
 
 					return {
 						...mark,
@@ -303,12 +325,25 @@ export async function GET(request: Request) {
 						register_number: directExamReg?.stu_register_no || '',
 						course_code: (mark.courses as any)?.course_code || '',
 						course_name: (mark.courses as any)?.course_name || '',
+						course_order: courseOrder,
 						program_name: '', // Programs come from MyJKKN API, not local DB
 						session_name: (mark.examination_sessions as any)?.session_name || '',
 						remarks: mark.evaluator_remarks || '',
 						institution_code: institutionData?.institution_code || '',
 						institution_name: institutionData?.name || ''
 					}
+				})
+
+				// Sort by institution_code, then session_name, then course_order
+				transformedData?.sort((a, b) => {
+					// First by institution_code
+					const instCompare = (a.institution_code || '').localeCompare(b.institution_code || '')
+					if (instCompare !== 0) return instCompare
+					// Then by session_name
+					const sessionCompare = (a.session_name || '').localeCompare(b.session_name || '')
+					if (sessionCompare !== 0) return sessionCompare
+					// Then by course_order
+					return (a.course_order || 999) - (b.course_order || 999)
 				})
 
 				return NextResponse.json(transformedData)

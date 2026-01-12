@@ -603,99 +603,7 @@ export default function SemesterResultsPage() {
 	const [creatingBacklogs, setCreatingBacklogs] = useState(false)
 	const [resultsExist, setResultsExist] = useState(false)
 
-	// Fetch institutions on mount when ready
-	useEffect(() => {
-		if (isReady) {
-			fetchInstitutions()
-		}
-	}, [isReady, fetchInstitutions])
-
-	// Auto-fill institution from context when available
-	useEffect(() => {
-		if (isReady && !mustSelectInstitution && institutions.length > 0) {
-			const autoId = getInstitutionIdForCreate()
-			if (autoId && !selectedInstitution) {
-				setSelectedInstitution(autoId)
-			}
-		}
-	}, [isReady, mustSelectInstitution, institutions, getInstitutionIdForCreate, selectedInstitution])
-
-	// Fetch sessions and programs in parallel when institution changes
-	useEffect(() => {
-		if (selectedInstitution) {
-			// Fetch sessions and programs in parallel for better performance
-			Promise.all([
-				fetchSessions(selectedInstitution),
-				fetchPrograms(selectedInstitution)
-			])
-		} else {
-			setSessions([])
-			setPrograms([])
-		}
-		setSelectedSession("")
-		setSelectedPrograms([])
-		setSelectedSemesters([])
-		setSemesters([])
-		setLearnerResults([])
-		setSummary(null)
-		setProgramType(null)
-	}, [selectedInstitution, fetchSessions, fetchPrograms])
-
-	// Fetch semesters when programs and session change
-	useEffect(() => {
-		if (selectedPrograms.length > 0 && selectedSession) {
-			// Fetch semesters for the first selected program
-			fetchSemesters(selectedInstitution, selectedPrograms[0], selectedSession)
-		} else {
-			setSemesters([])
-		}
-		setSelectedSemesters([])
-		setLearnerResults([])
-		setSummary(null)
-	}, [selectedPrograms, selectedSession, selectedInstitution])
-
-	// Update program type when programs selection changes
-	useEffect(() => {
-		if (selectedPrograms.length > 0) {
-			const firstProgram = programs.find(p => p.id === selectedPrograms[0])
-			setProgramType(firstProgram?.type || null)
-		} else {
-			setProgramType(null)
-		}
-	}, [selectedPrograms, programs])
-
-	// Check if semester results already exist when selection changes
-	useEffect(() => {
-		const checkExistingResults = async () => {
-			if (!selectedInstitution || !selectedSession || selectedPrograms.length === 0) {
-				setResultsExist(false)
-				return
-			}
-
-			try {
-				const params = new URLSearchParams({
-					action: 'check-exists',
-					institutionId: selectedInstitution,
-					sessionId: selectedSession,
-					programId: selectedPrograms[0] // Check first program
-				})
-				if (selectedSemesters.length === 1) {
-					params.append('semester', String(selectedSemesters[0]))
-				}
-
-				const res = await fetch(`/api/grading/semester-results?${params.toString()}`)
-				if (res.ok) {
-					const data = await res.json()
-					setResultsExist(data.exists || false)
-				}
-			} catch (e) {
-				console.error('Failed to check existing results:', e)
-			}
-		}
-
-		checkExistingResults()
-	}, [selectedInstitution, selectedSession, selectedPrograms, selectedSemesters])
-
+	// Callback definitions - must be before useEffect hooks that use them
 	const fetchInstitutions = useCallback(async () => {
 		try {
 			const url = appendToUrl('/api/grading/final-marks?action=institutions')
@@ -748,15 +656,113 @@ export default function SemesterResultsPage() {
 
 	const fetchSemesters = useCallback(async (institutionId: string, programId: string, sessionId: string) => {
 		try {
+			console.log('Fetching semesters with:', { institutionId, programId, sessionId })
 			const res = await fetch(`/api/grading/semester-results?action=semesters&institutionId=${institutionId}&programId=${programId}&sessionId=${sessionId}`)
 			if (res.ok) {
 				const data = await res.json()
+				console.log('Semesters fetched:', data)
 				setSemesters(data)
+			} else {
+				const errorData = await res.json()
+				console.error('Failed to fetch semesters:', errorData)
 			}
 		} catch (e) {
 			console.error('Failed to fetch semesters:', e)
 		}
 	}, [])
+
+	// Fetch institutions on mount when ready
+	useEffect(() => {
+		if (isReady) {
+			fetchInstitutions()
+		}
+	}, [isReady, fetchInstitutions])
+
+	// Auto-fill institution from context when available
+	useEffect(() => {
+		if (isReady && !mustSelectInstitution && institutions.length > 0) {
+			const autoId = getInstitutionIdForCreate()
+			if (autoId && !selectedInstitution) {
+				setSelectedInstitution(autoId)
+			}
+		}
+	}, [isReady, mustSelectInstitution, institutions, getInstitutionIdForCreate, selectedInstitution])
+
+	// Fetch sessions and programs in parallel when institution changes
+	useEffect(() => {
+		if (selectedInstitution) {
+			// Fetch sessions and programs in parallel for better performance
+			Promise.all([
+				fetchSessions(selectedInstitution),
+				fetchPrograms(selectedInstitution)
+			])
+		} else {
+			setSessions([])
+			setPrograms([])
+		}
+		setSelectedSession("")
+		setSelectedPrograms([])
+		setSelectedSemesters([])
+		setSemesters([])
+		setLearnerResults([])
+		setSummary(null)
+		setProgramType(null)
+	}, [selectedInstitution, fetchSessions, fetchPrograms])
+
+	// Fetch semesters when programs and session change
+	useEffect(() => {
+		if (selectedPrograms.length > 0 && selectedSession && selectedInstitution) {
+			// Fetch semesters for the first selected program
+			fetchSemesters(selectedInstitution, selectedPrograms[0], selectedSession)
+		} else {
+			setSemesters([])
+		}
+		setSelectedSemesters([])
+		setLearnerResults([])
+		setSummary(null)
+	}, [selectedPrograms, selectedSession, selectedInstitution, fetchSemesters])
+
+	// Update program type when programs selection changes
+	useEffect(() => {
+		if (selectedPrograms.length > 0) {
+			const firstProgram = programs.find(p => p.id === selectedPrograms[0])
+			setProgramType(firstProgram?.type || null)
+		} else {
+			setProgramType(null)
+		}
+	}, [selectedPrograms, programs])
+
+	// Check if semester results already exist when selection changes
+	useEffect(() => {
+		const checkExistingResults = async () => {
+			if (!selectedInstitution || !selectedSession || selectedPrograms.length === 0) {
+				setResultsExist(false)
+				return
+			}
+
+			try {
+				const params = new URLSearchParams({
+					action: 'check-exists',
+					institutionId: selectedInstitution,
+					sessionId: selectedSession,
+					programId: selectedPrograms[0] // Check first program
+				})
+				if (selectedSemesters.length === 1) {
+					params.append('semester', String(selectedSemesters[0]))
+				}
+
+				const res = await fetch(`/api/grading/semester-results?${params.toString()}`)
+				if (res.ok) {
+					const data = await res.json()
+					setResultsExist(data.exists || false)
+				}
+			} catch (e) {
+				console.error('Failed to check existing results:', e)
+			}
+		}
+
+		checkExistingResults()
+	}, [selectedInstitution, selectedSession, selectedPrograms, selectedSemesters])
 
 	const fetchResults = async () => {
 		if (!selectedInstitution || !selectedSession || selectedPrograms.length === 0) {
