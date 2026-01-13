@@ -20,7 +20,7 @@ import {
 	fetchCourseOfferings
 } from '@/services/exam-management/exam-registrations-service'
 
-export function useExamRegistrations(programId?: string) {
+export function useExamRegistrations(programId?: string, sessionId?: string) {
 	const { toast } = useToast()
 
 	// Institution filter integration
@@ -117,7 +117,7 @@ export function useExamRegistrations(programId?: string) {
 		return filtered
 	}, [allCourseOfferings, selectedInstitutionId, selectedExaminationSessionId])
 
-	// Fetch exam registrations with institution and program filter
+	// Fetch exam registrations with institution, program, and session filter
 	const fetchExamRegistrations = useCallback(async () => {
 		try {
 			setLoading(true)
@@ -125,6 +125,10 @@ export function useExamRegistrations(programId?: string) {
 			// Add program_id filter if provided
 			if (programId && programId !== 'all') {
 				url += `&program_id=${encodeURIComponent(programId)}`
+			}
+			// Add session_id filter if provided
+			if (sessionId && sessionId !== 'all') {
+				url += `&examination_session_id=${encodeURIComponent(sessionId)}`
 			}
 			const response = await fetch(url)
 			if (!response.ok) {
@@ -149,7 +153,7 @@ export function useExamRegistrations(programId?: string) {
 		} finally {
 			setLoading(false)
 		}
-	}, [appendToUrl, shouldFilter, institutionId, programId, toast])
+	}, [appendToUrl, shouldFilter, institutionId, programId, sessionId, toast])
 
 	// Refresh exam registrations
 	const refreshExamRegistrations = useCallback(async () => {
@@ -159,6 +163,10 @@ export function useExamRegistrations(programId?: string) {
 			// Add program_id filter if provided
 			if (programId && programId !== 'all') {
 				url += `&program_id=${encodeURIComponent(programId)}`
+			}
+			// Add session_id filter if provided
+			if (sessionId && sessionId !== 'all') {
+				url += `&examination_session_id=${encodeURIComponent(sessionId)}`
 			}
 			const response = await fetch(url)
 			if (!response.ok) {
@@ -188,7 +196,7 @@ export function useExamRegistrations(programId?: string) {
 		} finally {
 			setLoading(false)
 		}
-	}, [appendToUrl, shouldFilter, institutionId, programId, toast])
+	}, [appendToUrl, shouldFilter, institutionId, programId, sessionId, toast])
 
 	// Save exam registration (create or update)
 	const saveExamRegistration = useCallback(async (data: ExamRegistrationFormData, editing: ExamRegistration | null) => {
@@ -265,12 +273,12 @@ export function useExamRegistrations(programId?: string) {
 		}
 	}, [])
 
-	// Load data when institution filter is ready or program filter changes
+	// Load data when institution filter is ready or program/session filter changes
 	useEffect(() => {
 		if (!isReady) return
 		fetchExamRegistrations()
 		loadDropdownData()
-	}, [isReady, filter, programId])
+	}, [isReady, filter, programId, sessionId])
 
 	return {
 		examRegistrations,

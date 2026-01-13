@@ -32,10 +32,11 @@ import { PlusCircle, Edit, Trash2, Search, ChevronLeft, ChevronRight, ArrowUpDow
 export default function ExamRegistrationsPage() {
 	const { toast } = useToast()
 
-	// Program filter state - defined first so it can be passed to hook
+	// Filter states - defined first so they can be passed to hook
 	const [programFilter, setProgramFilter] = useState("all")
+	const [sessionFilter, setSessionFilter] = useState("all")
 
-	// Use custom hook for exam registrations data management with program filter
+	// Use custom hook for exam registrations data management with program and session filter
 	const {
 		examRegistrations,
 		loading,
@@ -66,7 +67,13 @@ export default function ExamRegistrationsPage() {
 		shouldFilter,
 		institutionId,
 		getInstitutionIdForCreate,
-	} = useExamRegistrations(programFilter)
+	} = useExamRegistrations(programFilter, sessionFilter)
+
+	// Get sessions filtered by current institution for the filter dropdown
+	const sessionsForFilter = useMemo(() => {
+		if (!institutionId) return allExaminationSessions
+		return allExaminationSessions.filter(s => s.institutions_id === institutionId)
+	}, [allExaminationSessions, institutionId])
 
 	// Get institution_code for MyJKKN API filter
 	const selectedInstitutionCode = useMemo(() => {
@@ -1379,94 +1386,94 @@ export default function ExamRegistrationsPage() {
 
 						{/* Premium Stats Cards */}
 						<div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-							<Card className="border-slate-200 shadow-sm rounded-2xl">
+							<Card className="border-slate-200 dark:border-slate-700 shadow-sm rounded-2xl bg-white dark:bg-slate-800">
 								<CardContent className="p-6">
 									<div className="flex items-center justify-between">
 										<div>
-											<p className="text-sm text-slate-600">Total Registrations</p>
-											<p className="text-3xl font-bold text-slate-900 mt-1 font-grotesk">{items.length}</p>
+											<p className="text-sm text-slate-600 dark:text-slate-400">Total Registrations</p>
+											<p className="text-3xl font-bold text-slate-900 dark:text-slate-100 mt-1 font-grotesk">{items.length}</p>
 										</div>
-										<div className="h-12 w-12 rounded-xl bg-blue-50 flex items-center justify-center ring-1 ring-blue-100">
-											<ClipboardCheck className="h-6 w-6 text-blue-600" />
+										<div className="h-12 w-12 rounded-xl bg-blue-50 dark:bg-blue-900/30 flex items-center justify-center ring-1 ring-blue-100 dark:ring-blue-800">
+											<ClipboardCheck className="h-6 w-6 text-blue-600 dark:text-blue-400" />
 										</div>
 									</div>
 								</CardContent>
 							</Card>
 
-							<Card className="border-slate-200 shadow-sm rounded-2xl">
+							<Card className="border-slate-200 dark:border-slate-700 shadow-sm rounded-2xl bg-white dark:bg-slate-800">
 								<CardContent className="p-6">
 									<div className="flex items-center justify-between">
 										<div>
-											<p className="text-sm text-slate-600">Approved</p>
-											<p className="text-3xl font-bold text-emerald-600 mt-1 font-grotesk">{items.filter(i => i.registration_status === 'Approved').length}</p>
+											<p className="text-sm text-slate-600 dark:text-slate-400">Approved</p>
+											<p className="text-3xl font-bold text-emerald-600 dark:text-emerald-400 mt-1 font-grotesk">{items.filter(i => i.registration_status === 'Approved').length}</p>
 										</div>
-										<div className="h-12 w-12 rounded-xl bg-emerald-50 flex items-center justify-center ring-1 ring-emerald-100">
-											<CheckCircle className="h-6 w-6 text-emerald-600" />
+										<div className="h-12 w-12 rounded-xl bg-emerald-50 dark:bg-emerald-900/30 flex items-center justify-center ring-1 ring-emerald-100 dark:ring-emerald-800">
+											<CheckCircle className="h-6 w-6 text-emerald-600 dark:text-emerald-400" />
 										</div>
 									</div>
 								</CardContent>
 							</Card>
 
-							<Card className="border-slate-200 shadow-sm rounded-2xl">
+							<Card className="border-slate-200 dark:border-slate-700 shadow-sm rounded-2xl bg-white dark:bg-slate-800">
 								<CardContent className="p-6">
 									<div className="flex items-center justify-between">
 										<div>
-											<p className="text-sm text-slate-600">Pending</p>
-											<p className="text-3xl font-bold text-amber-600 mt-1 font-grotesk">{items.filter(i => i.registration_status === 'Pending').length}</p>
+											<p className="text-sm text-slate-600 dark:text-slate-400">Pending</p>
+											<p className="text-3xl font-bold text-amber-600 dark:text-amber-400 mt-1 font-grotesk">{items.filter(i => i.registration_status === 'Pending').length}</p>
 										</div>
-										<div className="h-12 w-12 rounded-xl bg-amber-50 flex items-center justify-center ring-1 ring-amber-100">
-											<AlertTriangle className="h-6 w-6 text-amber-600" />
+										<div className="h-12 w-12 rounded-xl bg-amber-50 dark:bg-amber-900/30 flex items-center justify-center ring-1 ring-amber-100 dark:ring-amber-800">
+											<AlertTriangle className="h-6 w-6 text-amber-600 dark:text-amber-400" />
 										</div>
 									</div>
 								</CardContent>
 							</Card>
 
-							<Card className="border-slate-200 shadow-sm rounded-2xl">
+							<Card className="border-slate-200 dark:border-slate-700 shadow-sm rounded-2xl bg-white dark:bg-slate-800">
 								<CardContent className="p-6">
 									<div className="flex items-center justify-between">
 										<div>
-											<p className="text-sm text-slate-600">Fee Paid</p>
-											<p className="text-3xl font-bold text-purple-600 mt-1 font-grotesk">{items.filter(i => i.fee_paid).length}</p>
+											<p className="text-sm text-slate-600 dark:text-slate-400">Fee Paid</p>
+											<p className="text-3xl font-bold text-purple-600 dark:text-purple-400 mt-1 font-grotesk">{items.filter(i => i.fee_paid).length}</p>
 										</div>
-										<div className="h-12 w-12 rounded-xl bg-purple-50 flex items-center justify-center ring-1 ring-purple-100">
-											<TrendingUp className="h-6 w-6 text-purple-600" />
+										<div className="h-12 w-12 rounded-xl bg-purple-50 dark:bg-purple-900/30 flex items-center justify-center ring-1 ring-purple-100 dark:ring-purple-800">
+											<TrendingUp className="h-6 w-6 text-purple-600 dark:text-purple-400" />
 										</div>
 									</div>
 								</CardContent>
 							</Card>
 						</div>
 
-						<Card className="flex-1 flex flex-col min-h-0 border-slate-200 shadow-sm rounded-2xl">
-							<CardHeader className="flex-shrink-0 px-8 py-6 border-b border-slate-200">
+						<Card className="flex-1 flex flex-col min-h-0 border-slate-200 dark:border-slate-700 shadow-sm rounded-2xl bg-white dark:bg-slate-800">
+							<CardHeader className="flex-shrink-0 px-8 py-6 border-b border-slate-200 dark:border-slate-700">
 								<div className="space-y-4">
 									{/* Row 1: Title (Left) & Action Buttons (Right) - Same Line */}
 									<div className="flex items-center justify-between">
 										{/* Title Section - Left */}
 										<div className="flex items-center gap-3">
-											<div className="h-12 w-12 rounded-xl bg-emerald-50 flex items-center justify-center ring-1 ring-emerald-100">
-												<ClipboardCheck className="h-6 w-6 text-emerald-600" />
+											<div className="h-12 w-12 rounded-xl bg-emerald-50 dark:bg-emerald-900/30 flex items-center justify-center ring-1 ring-emerald-100 dark:ring-emerald-800">
+												<ClipboardCheck className="h-6 w-6 text-emerald-600 dark:text-emerald-400" />
 											</div>
 											<div>
-												<h2 className="text-xl font-bold text-slate-900 font-grotesk">All Exam Registrations</h2>
-												<p className="text-sm text-slate-600">Manage learner exam course registrations</p>
+												<h2 className="text-xl font-bold text-slate-900 dark:text-slate-100 font-grotesk">All Exam Registrations</h2>
+												<p className="text-sm text-slate-600 dark:text-slate-400">Manage learner exam course registrations</p>
 											</div>
 										</div>
 
 										{/* Action Buttons - Right (Icon Only) */}
 										<div className="flex items-center gap-2">
-											<Button variant="outline" size="sm" onClick={fetchExamRegistrations} disabled={loading} className="h-9 w-9 rounded-lg hover:bg-slate-100 text-slate-600 hover:text-slate-900 transition-colors border border-slate-300 p-0" title="Refresh">
+											<Button variant="outline" size="sm" onClick={fetchExamRegistrations} disabled={loading} className="h-9 w-9 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-100 transition-colors border border-slate-300 dark:border-slate-600 p-0" title="Refresh">
 												<RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
 											</Button>
-											<Button variant="outline" size="sm" onClick={handleTemplateExport} className="h-9 w-9 rounded-lg hover:bg-slate-100 text-slate-600 hover:text-slate-900 transition-colors border border-slate-300 p-0" title="Download Template">
+											<Button variant="outline" size="sm" onClick={handleTemplateExport} className="h-9 w-9 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-100 transition-colors border border-slate-300 dark:border-slate-600 p-0" title="Download Template">
 												<FileSpreadsheet className="h-4 w-4" />
 											</Button>
-											<Button variant="outline" size="sm" onClick={handleDownload} className="h-9 w-9 rounded-lg hover:bg-slate-100 text-slate-600 hover:text-slate-900 transition-colors border border-slate-300 p-0" title="Export JSON">
+											<Button variant="outline" size="sm" onClick={handleDownload} className="h-9 w-9 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-100 transition-colors border border-slate-300 dark:border-slate-600 p-0" title="Export JSON">
 												<FileJson className="h-4 w-4" />
 											</Button>
-											<Button variant="outline" size="sm" onClick={handleExport} className="h-9 w-9 rounded-lg hover:bg-slate-100 text-slate-600 hover:text-slate-900 transition-colors border border-slate-300 p-0" title="Export Excel">
+											<Button variant="outline" size="sm" onClick={handleExport} className="h-9 w-9 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-100 transition-colors border border-slate-300 dark:border-slate-600 p-0" title="Export Excel">
 												<Download className="h-4 w-4" />
 											</Button>
-											<Button variant="outline" size="sm" onClick={handleImport} className="h-9 w-9 rounded-lg hover:bg-slate-100 text-slate-600 hover:text-slate-900 transition-colors border border-slate-300 p-0" title="Import File">
+											<Button variant="outline" size="sm" onClick={handleImport} className="h-9 w-9 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-100 transition-colors border border-slate-300 dark:border-slate-600 p-0" title="Import File">
 												<Upload className="h-4 w-4" />
 											</Button>
 											<Button size="sm" onClick={openAdd} disabled={loading} className="h-9 px-4 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white transition-all duration-200 shadow-sm disabled:opacity-50 disabled:cursor-not-allowed" title="Add Registration">
@@ -1477,9 +1484,9 @@ export default function ExamRegistrationsPage() {
 									</div>
 
 									{/* Row 2: Filter and Search Row */}
-									<div className="flex items-center gap-2">
+									<div className="flex items-center gap-2 flex-wrap">
 										<Select value={statusFilter} onValueChange={setStatusFilter}>
-											<SelectTrigger className="h-9 rounded-lg border-slate-300 focus:border-emerald-500 w-[140px]">
+											<SelectTrigger className="h-9 rounded-lg border-slate-300 dark:border-slate-600 focus:border-emerald-500 w-[130px]">
 												<SelectValue placeholder="All Status" />
 											</SelectTrigger>
 											<SelectContent>
@@ -1491,8 +1498,22 @@ export default function ExamRegistrationsPage() {
 											</SelectContent>
 										</Select>
 
+										<Select value={sessionFilter} onValueChange={setSessionFilter}>
+											<SelectTrigger className="h-9 rounded-lg border-slate-300 dark:border-slate-600 focus:border-emerald-500 w-[180px]">
+												<SelectValue placeholder="All Sessions" />
+											</SelectTrigger>
+											<SelectContent>
+												<SelectItem value="all">All Sessions</SelectItem>
+												{sessionsForFilter.map(session => (
+													<SelectItem key={session.id} value={session.id}>
+														{session.session_code}
+													</SelectItem>
+												))}
+											</SelectContent>
+										</Select>
+
 										<Select value={programFilter} onValueChange={setProgramFilter} disabled={programsLoading}>
-											<SelectTrigger className="h-9 rounded-lg border-slate-300 focus:border-emerald-500 w-[180px]">
+											<SelectTrigger className="h-9 rounded-lg border-slate-300 dark:border-slate-600 focus:border-emerald-500 w-[180px]">
 												<SelectValue placeholder={programsLoading ? "Loading..." : "All Programs"} />
 											</SelectTrigger>
 											<SelectContent>
@@ -1506,102 +1527,102 @@ export default function ExamRegistrationsPage() {
 										</Select>
 
 										<div className="relative flex-1 max-w-sm">
-											<Search className="absolute left-2 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
+											<Search className="absolute left-2 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400 dark:text-slate-500" />
 											<Input
 												value={searchTerm}
 												onChange={(e) => setSearchTerm(e.target.value)}
 												placeholder="Search registrations..."
-												className="pl-8 h-9 rounded-lg border-slate-300 focus:border-emerald-500 focus:ring-emerald-500/20"
+												className="pl-8 h-9 rounded-lg border-slate-300 dark:border-slate-600 focus:border-emerald-500 focus:ring-emerald-500/20"
 											/>
 										</div>
 									</div>
 								</div>
 							</CardHeader>
 
-							<CardContent className="flex-1 overflow-auto px-8 py-6 bg-slate-50/50">
-								<div className="rounded-xl border border-slate-200 overflow-hidden bg-white">
+							<CardContent className="flex-1 overflow-auto px-8 py-6 bg-slate-50/50 dark:bg-slate-900/50">
+								<div className="rounded-xl border border-slate-200 dark:border-slate-700 overflow-hidden bg-white dark:bg-slate-800">
 									<Table>
-										<TableHeader className="bg-slate-50 border-b border-slate-200">
+										<TableHeader className="bg-slate-50 dark:bg-slate-800/80 border-b border-slate-200 dark:border-slate-700">
 											<TableRow>
 												{/* Show Institution column only when "All Institutions" is selected */}
 												{mustSelectInstitution && (
-													<TableHead className="text-sm font-semibold text-slate-700">Institution</TableHead>
+													<TableHead className="text-sm font-semibold text-slate-700 dark:text-slate-300">Institution</TableHead>
 												)}
-												<TableHead className="text-sm font-semibold text-slate-700">
-													<Button variant="ghost" size="sm" onClick={() => handleSort("student")} className="px-2 hover:bg-slate-100 rounded-lg transition-colors">
+												<TableHead className="text-sm font-semibold text-slate-700 dark:text-slate-300">
+													<Button variant="ghost" size="sm" onClick={() => handleSort("student")} className="px-2 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-lg transition-colors">
 														Learner
 														<span className="ml-1">{getSortIcon("student")}</span>
 													</Button>
 												</TableHead>
-												<TableHead className="text-sm font-semibold text-slate-700">
-													<Button variant="ghost" size="sm" onClick={() => handleSort("examination_session")} className="px-2 hover:bg-slate-100 rounded-lg transition-colors">
+												<TableHead className="text-sm font-semibold text-slate-700 dark:text-slate-300">
+													<Button variant="ghost" size="sm" onClick={() => handleSort("examination_session")} className="px-2 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-lg transition-colors">
 														Session
 														<span className="ml-1">{getSortIcon("examination_session")}</span>
 													</Button>
 												</TableHead>
-												<TableHead className="text-sm font-semibold text-slate-700">Course</TableHead>
-												<TableHead className="text-sm font-semibold text-slate-700">
-													<Button variant="ghost" size="sm" onClick={() => handleSort("registration_status")} className="px-2 hover:bg-slate-100 rounded-lg transition-colors">
+												<TableHead className="text-sm font-semibold text-slate-700 dark:text-slate-300">Course</TableHead>
+												<TableHead className="text-sm font-semibold text-slate-700 dark:text-slate-300">
+													<Button variant="ghost" size="sm" onClick={() => handleSort("registration_status")} className="px-2 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-lg transition-colors">
 														Status
 														<span className="ml-1">{getSortIcon("registration_status")}</span>
 													</Button>
 												</TableHead>
-												<TableHead className="text-sm font-semibold text-slate-700">Type</TableHead>
-												<TableHead className="text-sm font-semibold text-slate-700">Attempt</TableHead>
-												<TableHead className="text-sm font-semibold text-slate-700">Fee Paid</TableHead>
-												<TableHead className="text-center text-sm font-semibold text-slate-700">Actions</TableHead>
+												<TableHead className="text-sm font-semibold text-slate-700 dark:text-slate-300">Type</TableHead>
+												<TableHead className="text-sm font-semibold text-slate-700 dark:text-slate-300">Attempt</TableHead>
+												<TableHead className="text-sm font-semibold text-slate-700 dark:text-slate-300">Fee Paid</TableHead>
+												<TableHead className="text-center text-sm font-semibold text-slate-700 dark:text-slate-300">Actions</TableHead>
 											</TableRow>
 										</TableHeader>
 										<TableBody>
 											{loading || !isReady ? (
 												<TableRow>
-													<TableCell colSpan={mustSelectInstitution ? 9 : 8} className="h-24 text-center text-sm text-slate-500">Loading…</TableCell>
+													<TableCell colSpan={mustSelectInstitution ? 9 : 8} className="h-24 text-center text-sm text-slate-500 dark:text-slate-400">Loading…</TableCell>
 												</TableRow>
 											) : pageItems.length ? (
 												<>
 													{pageItems.map((row) => (
-														<TableRow key={row.id} className="border-b border-slate-200 hover:bg-slate-50 transition-colors">
+														<TableRow key={row.id} className="border-b border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-700/50 transition-colors">
 															{/* Show Institution cell only when "All Institutions" is selected */}
 															{mustSelectInstitution && (
-																<TableCell className="text-sm text-slate-700">
+																<TableCell className="text-sm text-slate-700 dark:text-slate-300">
 																	{institutions.find(i => i.id === row.institutions_id)?.institution_code || '-'}
 																</TableCell>
 															)}
-															<TableCell className="font-medium text-sm text-slate-900 font-grotesk">
-																{row.student?.register_number || '-'}
+															<TableCell className="font-medium text-sm text-slate-900 dark:text-slate-100 font-grotesk">
+																{row.stu_register_no || '-'}
 																<br />
-																<span className="text-slate-500 text-xs">
-																	{row.student ? `${row.student.first_name} ` : ''}
+																<span className="text-slate-500 dark:text-slate-400 text-xs">
+																	{row.student_name || (row.student ? `${row.student.first_name} ${row.student.last_name || ''}`.trim() : '')}
 																</span>
 															</TableCell>
-															<TableCell className="text-sm text-slate-700">
+															<TableCell className="text-sm text-slate-700 dark:text-slate-300">
 																{row.examination_session?.session_code || '-'}
 															</TableCell>
-															<TableCell className="text-sm text-slate-700">
+															<TableCell className="text-sm text-slate-700 dark:text-slate-300">
 																{row.course_offering?.course_code || '-'}
 																<br />
-																<span className="text-slate-500 text-xs">
+																<span className="text-slate-500 dark:text-slate-400 text-xs">
 																	{row.course_offering?.course_name || ''}
 																</span>
 															</TableCell>
 															<TableCell>
 																<Badge variant={row.registration_status === 'Approved' ? 'default' : 'secondary'} className={`text-xs ${
-																	row.registration_status === 'Approved' ? 'bg-emerald-100 text-emerald-700 border-emerald-200' :
-																	row.registration_status === 'Pending' ? 'bg-amber-100 text-amber-700 border-amber-200' :
-																	row.registration_status === 'Rejected' ? 'bg-red-100 text-red-700 border-red-200' :
-																	'bg-slate-100 text-slate-700 border-slate-200'
+																	row.registration_status === 'Approved' ? 'bg-emerald-100 dark:bg-emerald-900/40 text-emerald-700 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800' :
+																	row.registration_status === 'Pending' ? 'bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-300 border-amber-200 dark:border-amber-800' :
+																	row.registration_status === 'Rejected' ? 'bg-red-100 dark:bg-red-900/40 text-red-700 dark:text-red-300 border-red-200 dark:border-red-800' :
+																	'bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-600'
 																}`}>
 																	{row.registration_status}
 																</Badge>
 															</TableCell>
-															<TableCell className="text-sm text-slate-600">
+															<TableCell className="text-sm text-slate-600 dark:text-slate-400">
 																{row.is_regular ? 'Regular' : 'Arrear'}
 															</TableCell>
-															<TableCell className="text-sm text-slate-600">
+															<TableCell className="text-sm text-slate-600 dark:text-slate-400">
 																{row.attempt_number}
 															</TableCell>
 															<TableCell>
-																<Badge variant={row.fee_paid ? 'default' : 'secondary'} className={`text-xs ${row.fee_paid ? 'bg-emerald-100 text-emerald-700 border-emerald-200' : 'bg-slate-100 text-slate-700 border-slate-200'}`}>
+																<Badge variant={row.fee_paid ? 'default' : 'secondary'} className={`text-xs ${row.fee_paid ? 'bg-emerald-100 dark:bg-emerald-900/40 text-emerald-700 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800' : 'bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-600'}`}>
 																	{row.fee_paid ? 'Yes' : 'No'}
 																</Badge>
 															</TableCell>
@@ -1610,7 +1631,7 @@ export default function ExamRegistrationsPage() {
 																	<Button
 																		variant="ghost"
 																		size="sm"
-																		className="h-8 w-8 p-0 rounded-lg hover:bg-emerald-100 text-emerald-600 transition-colors"
+																		className="h-8 w-8 p-0 rounded-lg hover:bg-emerald-100 dark:hover:bg-emerald-900/40 text-emerald-600 dark:text-emerald-400 transition-colors"
 																		onClick={() => openEdit(row)}
 																		title="Edit"
 																	>
@@ -1621,7 +1642,7 @@ export default function ExamRegistrationsPage() {
 																			<Button
 																				variant="ghost"
 																				size="sm"
-																				className="h-8 w-8 p-0 rounded-lg hover:bg-red-100 text-red-600 transition-colors"
+																				className="h-8 w-8 p-0 rounded-lg hover:bg-red-100 dark:hover:bg-red-900/40 text-red-600 dark:text-red-400 transition-colors"
 																				title="Delete"
 																			>
 																				<Trash2 className="h-4 w-4" />
@@ -1647,7 +1668,7 @@ export default function ExamRegistrationsPage() {
 												</>
 											) : (
 												<TableRow>
-													<TableCell colSpan={mustSelectInstitution ? 9 : 8} className="h-24 text-center text-sm text-slate-500">No data</TableCell>
+													<TableCell colSpan={mustSelectInstitution ? 9 : 8} className="h-24 text-center text-sm text-slate-500 dark:text-slate-400">No data</TableCell>
 												</TableRow>
 											)}
 										</TableBody>
@@ -1655,20 +1676,20 @@ export default function ExamRegistrationsPage() {
 								</div>
 
 								{/* Pagination */}
-								<div className="flex items-center justify-between mt-4 pt-4 border-t border-slate-200">
+								<div className="flex items-center justify-between mt-4 pt-4 border-t border-slate-200 dark:border-slate-700">
 									<div className="flex items-center gap-4">
-										<div className="text-sm text-slate-600">
+										<div className="text-sm text-slate-600 dark:text-slate-400">
 											Showing {filtered.length === 0 ? 0 : startIndex + 1}-{Math.min(endIndex, filtered.length)} of {filtered.length} registrations
 										</div>
 										<div className="flex items-center gap-2">
-											<Label htmlFor="page-size" className="text-sm text-slate-600">
+											<Label htmlFor="page-size" className="text-sm text-slate-600 dark:text-slate-400">
 												Rows per page:
 											</Label>
 											<Select
 												value={String(itemsPerPage)}
 												onValueChange={(value) => setItemsPerPage(value === "all" ? "all" : Number(value))}
 											>
-												<SelectTrigger id="page-size" className="h-9 rounded-lg border-slate-300 w-[100px]">
+												<SelectTrigger id="page-size" className="h-9 rounded-lg border-slate-300 dark:border-slate-600 w-[100px]">
 													<SelectValue />
 												</SelectTrigger>
 												<SelectContent>
@@ -1687,11 +1708,11 @@ export default function ExamRegistrationsPage() {
 											size="sm"
 											onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
 											disabled={currentPage === 1 || itemsPerPage === "all"}
-											className="h-9 px-4 rounded-lg border-slate-300 hover:bg-slate-50 transition-colors disabled:opacity-50"
+											className="h-9 px-4 rounded-lg border-slate-300 dark:border-slate-600 hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors disabled:opacity-50"
 										>
 											<ChevronLeft className="h-4 w-4 mr-1" /> Previous
 										</Button>
-										<div className="text-sm text-slate-600 px-2">
+										<div className="text-sm text-slate-600 dark:text-slate-400 px-2">
 											Page {currentPage} of {totalPages}
 										</div>
 										<Button
@@ -1699,7 +1720,7 @@ export default function ExamRegistrationsPage() {
 											size="sm"
 											onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
 											disabled={currentPage >= totalPages || itemsPerPage === "all"}
-											className="h-9 px-4 rounded-lg border-slate-300 hover:bg-slate-50 transition-colors disabled:opacity-50"
+											className="h-9 px-4 rounded-lg border-slate-300 dark:border-slate-600 hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors disabled:opacity-50"
 										>
 											Next <ChevronRight className="h-4 w-4 ml-1" />
 										</Button>
@@ -1714,17 +1735,17 @@ export default function ExamRegistrationsPage() {
 
 			<Sheet open={sheetOpen} onOpenChange={(o) => { if (!o) resetForm(); setSheetOpen(o) }}>
 				<SheetContent className="sm:max-w-[800px] overflow-y-auto">
-					<SheetHeader className="pb-6 border-b border-slate-200">
+					<SheetHeader className="pb-6 border-b border-slate-200 dark:border-slate-700">
 						<div className="flex items-center justify-between">
 							<div className="flex items-center gap-3">
-								<div className="h-12 w-12 rounded-xl bg-emerald-50 flex items-center justify-center ring-1 ring-emerald-100">
-									<ClipboardCheck className="h-6 w-6 text-emerald-600" />
+								<div className="h-12 w-12 rounded-xl bg-emerald-50 dark:bg-emerald-900/30 flex items-center justify-center ring-1 ring-emerald-100 dark:ring-emerald-800">
+									<ClipboardCheck className="h-6 w-6 text-emerald-600 dark:text-emerald-400" />
 								</div>
 								<div>
-									<SheetTitle className="text-xl font-bold text-slate-900 font-grotesk">
+									<SheetTitle className="text-xl font-bold text-slate-900 dark:text-slate-100 font-grotesk">
 										{editing ? "Edit Exam Registration" : "Add Exam Registration"}
 									</SheetTitle>
-									<p className="text-sm text-slate-600 mt-1">
+									<p className="text-sm text-slate-600 dark:text-slate-400 mt-1">
 										{editing ? "Update exam registration information" : "Create a new exam registration record"}
 									</p>
 								</div>
@@ -1735,11 +1756,11 @@ export default function ExamRegistrationsPage() {
 					<div className="mt-6 space-y-8">
 						{/* Basic Information Section */}
 						<div className="space-y-4">
-							<div className="flex items-center gap-3 pb-3 border-b border-slate-200">
-								<div className="h-8 w-8 rounded-lg bg-emerald-50 flex items-center justify-center ring-1 ring-emerald-100">
-									<ClipboardCheck className="h-4 w-4 text-emerald-600" />
+							<div className="flex items-center gap-3 pb-3 border-b border-slate-200 dark:border-slate-700">
+								<div className="h-8 w-8 rounded-lg bg-emerald-50 dark:bg-emerald-900/30 flex items-center justify-center ring-1 ring-emerald-100 dark:ring-emerald-800">
+									<ClipboardCheck className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
 								</div>
-								<h3 className="text-lg font-semibold text-slate-900 font-grotesk">Basic Information</h3>
+								<h3 className="text-lg font-semibold text-slate-900 dark:text-slate-100 font-grotesk">Basic Information</h3>
 							</div>
 							<div className="grid grid-cols-1 md:grid-cols-2 gap-4">
 								{/* Institution dropdown - show only when needed */}
@@ -1958,11 +1979,11 @@ export default function ExamRegistrationsPage() {
 
 						{/* Fee Information Section */}
 						<div className="space-y-4">
-							<div className="flex items-center gap-3 pb-3 border-b border-slate-200">
-								<div className="h-8 w-8 rounded-lg bg-purple-50 flex items-center justify-center ring-1 ring-purple-100">
-									<TrendingUp className="h-4 w-4 text-purple-600" />
+							<div className="flex items-center gap-3 pb-3 border-b border-slate-200 dark:border-slate-700">
+								<div className="h-8 w-8 rounded-lg bg-purple-50 dark:bg-purple-900/30 flex items-center justify-center ring-1 ring-purple-100 dark:ring-purple-800">
+									<TrendingUp className="h-4 w-4 text-purple-600 dark:text-purple-400" />
 								</div>
-								<h3 className="text-lg font-semibold text-slate-900 font-grotesk">Fee Information</h3>
+								<h3 className="text-lg font-semibold text-slate-900 dark:text-slate-100 font-grotesk">Fee Information</h3>
 							</div>
 							<div className="grid grid-cols-1 md:grid-cols-2 gap-4">
 								<div className="space-y-2">
@@ -2027,11 +2048,11 @@ export default function ExamRegistrationsPage() {
 						</div>
 
 						{/* Action Buttons */}
-						<div className="flex justify-end gap-3 pt-6 border-t border-slate-200">
+						<div className="flex justify-end gap-3 pt-6 border-t border-slate-200 dark:border-slate-700">
 							<Button
 								variant="outline"
 								size="sm"
-								className="h-10 px-6 rounded-lg border-slate-300 hover:bg-slate-50"
+								className="h-10 px-6 rounded-lg border-slate-300 dark:border-slate-600 hover:bg-slate-50 dark:hover:bg-slate-700"
 								onClick={() => { setSheetOpen(false); resetForm() }}
 							>
 								Cancel
@@ -2051,25 +2072,25 @@ export default function ExamRegistrationsPage() {
 
 			{/* Upload Results Dialog */}
 			<AlertDialog open={errorPopupOpen} onOpenChange={setErrorPopupOpen}>
-				<AlertDialogContent className="max-w-4xl max-h-[80vh] overflow-y-auto rounded-3xl border-slate-200">
+				<AlertDialogContent className="max-w-4xl max-h-[80vh] overflow-y-auto rounded-3xl border-slate-200 dark:border-slate-700">
 					<AlertDialogHeader>
 						<div className="flex items-center gap-3">
 							<div className={`h-10 w-10 rounded-full flex items-center justify-center ${
-								uploadSummary.failed === 0 ? 'bg-green-100' :
-								uploadSummary.success > 0 ? 'bg-amber-100' : 'bg-red-100'
+								uploadSummary.failed === 0 ? 'bg-green-100 dark:bg-green-900/40' :
+								uploadSummary.success > 0 ? 'bg-amber-100 dark:bg-amber-900/40' : 'bg-red-100 dark:bg-red-900/40'
 							}`}>
 								{uploadSummary.failed === 0 ? (
-									<CheckCircle className="h-5 w-5 text-green-600" />
+									<CheckCircle className="h-5 w-5 text-green-600 dark:text-green-400" />
 								) : uploadSummary.success > 0 ? (
-									<AlertTriangle className="h-5 w-5 text-amber-600" />
+									<AlertTriangle className="h-5 w-5 text-amber-600 dark:text-amber-400" />
 								) : (
-									<XCircle className="h-5 w-5 text-red-600" />
+									<XCircle className="h-5 w-5 text-red-600 dark:text-red-400" />
 								)}
 							</div>
 							<div>
 								<AlertDialogTitle className={`text-xl font-bold ${
-									uploadSummary.failed === 0 ? 'text-green-600' :
-									uploadSummary.success > 0 ? 'text-amber-600' : 'text-red-600'
+									uploadSummary.failed === 0 ? 'text-green-600 dark:text-green-400' :
+									uploadSummary.success > 0 ? 'text-amber-600 dark:text-amber-400' : 'text-red-600 dark:text-red-400'
 								}`}>
 									{uploadSummary.failed === 0 ? 'Upload Successful' :
 									 uploadSummary.success > 0 ? 'Partial Upload Complete' : 'Upload Failed'}
@@ -2089,17 +2110,17 @@ export default function ExamRegistrationsPage() {
 						{/* Upload Summary Cards */}
 						{uploadSummary.total > 0 && (
 							<div className="grid grid-cols-3 gap-3">
-								<div className="bg-blue-50 border-blue-200 rounded-lg p-3">
-									<div className="text-xs text-blue-600 font-medium mb-1">Total Rows</div>
-									<div className="text-2xl font-bold text-blue-700">{uploadSummary.total}</div>
+								<div className="bg-blue-50 dark:bg-blue-900/30 border-blue-200 dark:border-blue-800 rounded-lg p-3">
+									<div className="text-xs text-blue-600 dark:text-blue-400 font-medium mb-1">Total Rows</div>
+									<div className="text-2xl font-bold text-blue-700 dark:text-blue-300">{uploadSummary.total}</div>
 								</div>
-								<div className="bg-green-50 border-green-200 rounded-lg p-3">
-									<div className="text-xs text-green-600 font-medium mb-1">Successful</div>
-									<div className="text-2xl font-bold text-green-700">{uploadSummary.success}</div>
+								<div className="bg-green-50 dark:bg-green-900/30 border-green-200 dark:border-green-800 rounded-lg p-3">
+									<div className="text-xs text-green-600 dark:text-green-400 font-medium mb-1">Successful</div>
+									<div className="text-2xl font-bold text-green-700 dark:text-green-300">{uploadSummary.success}</div>
 								</div>
-								<div className="bg-red-50 border-red-200 rounded-lg p-3">
-									<div className="text-xs text-red-600 font-medium mb-1">Failed</div>
-									<div className="text-2xl font-bold text-red-700">{uploadSummary.failed}</div>
+								<div className="bg-red-50 dark:bg-red-900/30 border-red-200 dark:border-red-800 rounded-lg p-3">
+									<div className="text-xs text-red-600 dark:text-red-400 font-medium mb-1">Failed</div>
+									<div className="text-2xl font-bold text-red-700 dark:text-red-300">{uploadSummary.failed}</div>
 								</div>
 							</div>
 						)}
@@ -2107,14 +2128,14 @@ export default function ExamRegistrationsPage() {
 						{/* Error Summary - Only show if there are errors */}
 						{importErrors.length > 0 && (
 							<>
-								<div className="bg-red-50 border border-red-200 rounded-lg p-4">
+								<div className="bg-red-50 dark:bg-red-900/30 border border-red-200 dark:border-red-800 rounded-lg p-4">
 									<div className="flex items-center gap-2 mb-2">
-										<AlertTriangle className="h-4 w-4 text-red-600" />
-										<span className="font-semibold text-red-800">
+										<AlertTriangle className="h-4 w-4 text-red-600 dark:text-red-400" />
+										<span className="font-semibold text-red-800 dark:text-red-300">
 											{importErrors.length} row{importErrors.length > 1 ? 's' : ''} failed validation
 										</span>
 									</div>
-									<p className="text-sm text-red-700">
+									<p className="text-sm text-red-700 dark:text-red-400">
 										Please correct these errors in your Excel file and try uploading again. Row numbers correspond to your Excel file (including header row).
 									</p>
 								</div>
@@ -2122,13 +2143,13 @@ export default function ExamRegistrationsPage() {
 								{/* Detailed Error List */}
 								<div className="space-y-3">
 									{importErrors.map((error, index) => (
-										<div key={index} className="border border-red-200 rounded-xl p-4 bg-red-50/50">
+										<div key={index} className="border border-red-200 dark:border-red-800 rounded-xl p-4 bg-red-50/50 dark:bg-red-900/20">
 											<div className="flex items-start justify-between mb-2">
 												<div className="flex items-center gap-2">
-													<Badge variant="outline" className="text-xs bg-red-100 text-red-800 border-red-300 rounded-lg">
+													<Badge variant="outline" className="text-xs bg-red-100 dark:bg-red-900/40 text-red-800 dark:text-red-300 border-red-300 dark:border-red-700 rounded-lg">
 														Row {error.row}
 													</Badge>
-													<span className="font-medium text-sm">
+													<span className="font-medium text-sm dark:text-slate-200">
 														{error.student_register_no} - {error.course_code}
 													</span>
 												</div>
@@ -2137,8 +2158,8 @@ export default function ExamRegistrationsPage() {
 											<div className="space-y-1">
 												{error.errors.map((err, errIndex) => (
 													<div key={errIndex} className="flex items-start gap-2 text-sm">
-														<XCircle className="h-3 w-3 text-red-500 mt-0.5 flex-shrink-0" />
-														<span className="text-red-700">{err}</span>
+														<XCircle className="h-3 w-3 text-red-500 dark:text-red-400 mt-0.5 flex-shrink-0" />
+														<span className="text-red-700 dark:text-red-400">{err}</span>
 													</div>
 												))}
 											</div>
@@ -2150,10 +2171,10 @@ export default function ExamRegistrationsPage() {
 
 						{/* Success Message - Only show if no errors */}
 						{importErrors.length === 0 && uploadSummary.total > 0 && (
-							<div className="bg-green-50 border border-green-200 rounded-lg p-4">
+							<div className="bg-green-50 dark:bg-green-900/30 border border-green-200 dark:border-green-800 rounded-lg p-4">
 								<div className="flex items-center gap-2">
-									<CheckCircle className="h-5 w-5 text-green-600" />
-									<span className="font-semibold text-green-800">
+									<CheckCircle className="h-5 w-5 text-green-600 dark:text-green-400" />
+									<span className="font-semibold text-green-800 dark:text-green-300">
 										All {uploadSummary.success} exam registration{uploadSummary.success > 1 ? 's' : ''} uploaded successfully
 									</span>
 								</div>
@@ -2162,14 +2183,14 @@ export default function ExamRegistrationsPage() {
 
 						{/* Helpful Tips - Only show if there are errors */}
 						{importErrors.length > 0 && (
-							<div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+							<div className="bg-blue-50 dark:bg-blue-900/30 border border-blue-200 dark:border-blue-800 rounded-lg p-4">
 								<div className="flex items-start gap-2">
-									<div className="h-5 w-5 rounded-full bg-blue-100 flex items-center justify-center mt-0.5">
-										<span className="text-xs font-bold text-blue-600">i</span>
+									<div className="h-5 w-5 rounded-full bg-blue-100 dark:bg-blue-900/50 flex items-center justify-center mt-0.5">
+										<span className="text-xs font-bold text-blue-600 dark:text-blue-400">i</span>
 									</div>
 									<div>
-										<h4 className="font-semibold text-blue-800 text-sm mb-1">Required Excel Format & Tips:</h4>
-										<ul className="text-xs text-blue-700 space-y-1">
+										<h4 className="font-semibold text-blue-800 dark:text-blue-300 text-sm mb-1">Required Excel Format & Tips:</h4>
+										<ul className="text-xs text-blue-700 dark:text-blue-400 space-y-1">
 											<li>• <strong>Institution Code</strong> (required): Must match existing institution (e.g., JKKNCAS)</li>
 											<li>• <strong>Learner Register Number</strong> (required): e.g., 24JUGEN6001</li>
 											<li>• <strong>Learner Name</strong> (required): Full name of the learner</li>
@@ -2183,9 +2204,9 @@ export default function ExamRegistrationsPage() {
 											<li>• <strong>Payment Date</strong> (optional): Format DD-MM-YYYY</li>
 											<li>• <strong>Registration Date</strong> (optional): Format DD-MM-YYYY (default: today)</li>
 										</ul>
-										<div className="mt-2 pt-2 border-t border-blue-200">
-											<p className="text-xs text-blue-700 font-medium">Common Fixes:</p>
-											<ul className="text-xs text-blue-700 space-y-1 mt-1">
+										<div className="mt-2 pt-2 border-t border-blue-200 dark:border-blue-700">
+											<p className="text-xs text-blue-700 dark:text-blue-400 font-medium">Common Fixes:</p>
+											<ul className="text-xs text-blue-700 dark:text-blue-400 space-y-1 mt-1">
 												<li>• <strong>Important:</strong> Examination Session and Course Offering must belong to the specified Institution</li>
 												<li>• Examination Session Code format: INSTITUTION-MONTH-YEAR (e.g., JKKNCAS-NOV-DEC-2025)</li>
 												<li>• Course Code format: YearCodeSubject (e.g., 24UENS03)</li>
@@ -2200,14 +2221,14 @@ export default function ExamRegistrationsPage() {
 					</div>
 
 					<AlertDialogFooter className="flex-col sm:flex-row gap-2">
-						<AlertDialogCancel className="bg-gray-100 hover:bg-gray-200">
+						<AlertDialogCancel className="bg-gray-100 dark:bg-slate-700 hover:bg-gray-200 dark:hover:bg-slate-600 dark:text-slate-200">
 							Close
 						</AlertDialogCancel>
 						{failedRowsData.length > 0 && (
 							<Button
 								onClick={handleDownloadFailedRows}
 								variant="outline"
-								className="border-amber-500 text-amber-700 hover:bg-amber-50"
+								className="border-amber-500 dark:border-amber-600 text-amber-700 dark:text-amber-400 hover:bg-amber-50 dark:hover:bg-amber-900/30"
 							>
 								<Download className="h-4 w-4 mr-2" />
 								Download Failed Rows ({failedRowsData.length})

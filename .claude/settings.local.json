@@ -79,7 +79,9 @@
       "mcp__playwright__browser_press_key",
       "mcp__playwright__browser_close",
       "Bash(del \"d:\\\\JKKN\\\\Development\\\\Application\\\\COE\\\\jkkncoe\\\\test_external_marks.csv\")",
-      "mcp__playwright__browser_network_requests"
+      "mcp__playwright__browser_network_requests",
+      "mcp__playwright__browser_type",
+      "Bash(supabase db push:*)"
     ],
     "deny": [
       "mcp__filesystem__*"

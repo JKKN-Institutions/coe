@@ -55,46 +55,85 @@ export async function GET(request: NextRequest) {
 			return NextResponse.json(mapped)
 		}
 
-		// Dropdown: Get programs that have final marks for a session
+		// Dropdown: Get programs from MyJKKN API
+		// Programs are fetched from MyJKKN API using myjkkn_institution_ids
 		if (type === 'programs') {
 			if (!institutionId || !sessionId) {
 				return NextResponse.json({ error: 'institution_id and session_id are required' }, { status: 400 })
 			}
 
-			// Get programs that have final marks in this session
-			const { data, error } = await supabase
-				.from('final_marks')
-				.select(`
-					program_id,
-					programs:program_id (
-						id,
-						program_code,
-						program_name,
-						display_name
-					)
-				`)
-				.eq('institutions_id', institutionId)
-				.eq('examination_session_id', sessionId)
-				.eq('is_active', true)
+			// Get the institution's myjkkn_institution_ids
+			const { data: institution, error: instError } = await supabase
+				.from('institutions')
+				.select('myjkkn_institution_ids')
+				.eq('id', institutionId)
+				.single()
 
-			if (error) throw error
+			if (instError) throw instError
 
-			// Get unique programs
-			const uniquePrograms = new Map()
-			data?.forEach((item: any) => {
-				if (item.programs && !uniquePrograms.has(item.programs.id)) {
-					uniquePrograms.set(item.programs.id, item.programs)
+			const myjkknIds = institution?.myjkkn_institution_ids || []
+			console.log('Fetching programs for myjkkn_institution_ids:', myjkknIds)
+
+			if (myjkknIds.length === 0) {
+				console.log('No myjkkn_institution_ids found for institution:', institutionId)
+				return NextResponse.json([])
+			}
+
+			// Fetch programs from MyJKKN API for each institution ID
+			const allPrograms: any[] = []
+			const seenCodes = new Set<string>()
+
+			for (const myjkknInstId of myjkknIds) {
+				try {
+					const myjkknUrl = `${process.env.MYJKKN_API_URL || 'https://jkkn.ai'}/api/programs?institution_id=${myjkknInstId}&is_active=true&limit=1000`
+					console.log('Fetching from MyJKKN:', myjkknUrl)
+
+					const res = await fetch(myjkknUrl, {
+						headers: {
+							'Authorization': `Bearer ${process.env.MYJKKN_API_KEY || ''}`,
+							'Content-Type': 'application/json'
+						}
+					})
+
+					if (res.ok) {
+						const response = await res.json()
+						const data = response.data || response || []
+
+						console.log('MyJKKN programs response for', myjkknInstId, ':', data.length, 'programs')
+
+						// Client-side filter and deduplicate by program_code
+						if (Array.isArray(data)) {
+							for (const p of data) {
+								// MyJKKN uses program_id as CODE field (e.g., "BCA"), NOT UUID
+								const programCode = p?.program_id || p?.program_code
+								if (programCode && p.is_active !== false && !seenCodes.has(programCode)) {
+									seenCodes.add(programCode)
+									allPrograms.push({
+										id: p.id, // UUID from MyJKKN
+										program_code: programCode,
+										program_name: p.program_name || p.name || programCode,
+										display_name: p.program_name || p.name || programCode
+									})
+								}
+							}
+						}
+					} else {
+						console.error('MyJKKN API error:', res.status, res.statusText)
+					}
+				} catch (fetchError) {
+					console.error('Error fetching from MyJKKN for institution', myjkknInstId, ':', fetchError)
 				}
-			})
+			}
 
-			const programs = Array.from(uniquePrograms.values()).sort((a, b) =>
-				a.program_name.localeCompare(b.program_name)
-			)
+			// Sort by program_code
+			allPrograms.sort((a, b) => (a.program_code || '').localeCompare(b.program_code || ''))
 
-			return NextResponse.json(programs)
+			console.log('Total unique programs from MyJKKN:', allPrograms.length)
+			return NextResponse.json(allPrograms)
 		}
 
 		// Dropdown: Get semesters for a program in a session
+		// Note: programId can be either MyJKKN UUID or program_code - we filter by both
 		if (type === 'semesters') {
 			if (!institutionId || !sessionId || !programId) {
 				return NextResponse.json({ error: 'institution_id, session_id, and program_id are required' }, { status: 400 })
@@ -106,7 +145,7 @@ export async function GET(request: NextRequest) {
 				.select('semester')
 				.eq('institutions_id', institutionId)
 				.eq('examination_session_id', sessionId)
-				.eq('program_id', programId)
+				.or(`program_id.eq.${programId},program_code.eq.${programId}`)
 				.eq('is_active', true)
 
 			if (error) throw error
@@ -162,23 +201,32 @@ export async function GET(request: NextRequest) {
 			end_date: sessionRaw.exam_end_date
 		} : null
 
-		// Fetch program details
-		const { data: program, error: progError } = await supabase
-			.from('programs')
-			.select(`
-				id,
-				program_code,
-				program_name,
-				display_name,
-				degrees:degree_id (degree_code, degree_name)
-			`)
-			.eq('id', programId)
+		// Fetch program details from final_marks (programs are from MyJKKN API, no local table)
+		// programId could be either the MyJKKN UUID or program_code
+		const { data: programData, error: progError } = await supabase
+			.from('final_marks')
+			.select('program_id, program_code')
+			.eq('institutions_id', institutionId)
+			.eq('examination_session_id', sessionId)
+			.or(`program_id.eq.${programId},program_code.eq.${programId}`)
+			.eq('is_active', true)
+			.limit(1)
 			.single()
 
-		if (progError) throw progError
+		if (progError && progError.code !== 'PGRST116') throw progError // PGRST116 = no rows
+
+		// Construct program object from final_marks data
+		const program = programData ? {
+			id: programData.program_id || programData.program_code,
+			program_code: programData.program_code,
+			program_name: programData.program_code, // program_name not available locally
+			display_name: programData.program_code,
+			degrees: null // degree info not available without programs table
+		} : null
 
 		// Fetch final marks with direct query and joins
 		// Note: We use exam_registrations for student info since users table FK is not in schema cache
+		// Note: programId can be either MyJKKN UUID or program_code - we filter by both
 		const { data: finalMarksRaw, error: marksError } = await supabase
 			.from('final_marks')
 			.select(`
@@ -216,7 +264,7 @@ export async function GET(request: NextRequest) {
 			`)
 			.eq('institutions_id', institutionId)
 			.eq('examination_session_id', sessionId)
-			.eq('program_id', programId)
+			.or(`program_id.eq.${programId},program_code.eq.${programId}`)
 			.eq('is_active', true)
 
 		if (marksError) throw marksError
@@ -294,6 +342,7 @@ export async function GET(request: NextRequest) {
 			})
 
 		// Fetch semester results for the students (no need for students join - we get it from final_marks)
+		// Note: programId can be either MyJKKN UUID or program_code - we filter by both
 		const { data: semesterResults, error: semResultsError } = await supabase
 			.from('semester_results')
 			.select(`
@@ -313,7 +362,7 @@ export async function GET(request: NextRequest) {
 			`)
 			.eq('institutions_id', institutionId)
 			.eq('examination_session_id', sessionId)
-			.eq('program_id', programId)
+			.or(`program_id.eq.${programId},program_code.eq.${programId}`)
 			.eq('semester', parseInt(semester))
 			.eq('is_active', true)
 

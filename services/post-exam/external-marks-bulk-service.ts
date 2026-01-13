@@ -83,16 +83,115 @@ export async function fetchExternalMarks(filters: {
 }
 
 /**
- * Bulk upload external marks
+ * Bulk upload external marks - processes in batches for better performance
+ * @param payload - Upload payload with marks data
+ * @param onProgress - Optional callback for progress updates
  */
-export async function bulkUploadMarks(payload: BulkUploadPayload): Promise<BulkUploadResponse> {
+export async function bulkUploadMarks(
+	payload: BulkUploadPayload,
+	onProgress?: (current: number, total: number) => void
+): Promise<BulkUploadResponse> {
 	console.log('=== bulkUploadMarks called ===')
 	console.log('payload:', { ...payload, marks_data: `${payload.marks_data.length} rows` })
 	console.log('First row sample:', payload.marks_data[0])
 
+	const BATCH_SIZE = 50 // Process 50 rows at a time to avoid timeouts
+	const totalRows = payload.marks_data.length
+
+	// If small dataset, process all at once
+	if (totalRows <= BATCH_SIZE) {
+		return await processSingleBatch(payload)
+	}
+
+	// Process in batches for large datasets
+	console.log(`Processing ${totalRows} rows in batches of ${BATCH_SIZE}`)
+
+	const aggregatedResult: BulkUploadResponse = {
+		total: 0,
+		successful: 0,
+		failed: 0,
+		skipped: 0,
+		batch_number: '',
+		errors: [],
+		validation_errors: []
+	}
+
+	let processed = 0
+	const batches = Math.ceil(totalRows / BATCH_SIZE)
+
+	for (let i = 0; i < batches; i++) {
+		const start = i * BATCH_SIZE
+		const end = Math.min(start + BATCH_SIZE, totalRows)
+		const batchData = payload.marks_data.slice(start, end)
+
+		console.log(`Processing batch ${i + 1}/${batches}: rows ${start + 1} to ${end}`)
+
+		const batchPayload: BulkUploadPayload = {
+			...payload,
+			marks_data: batchData
+		}
+
+		try {
+			const batchResult = await processSingleBatch(batchPayload)
+
+			// Aggregate results
+			aggregatedResult.total += batchResult.total
+			aggregatedResult.successful += batchResult.successful
+			aggregatedResult.failed += batchResult.failed
+			aggregatedResult.skipped += batchResult.skipped
+			aggregatedResult.batch_number = batchResult.batch_number // Use last batch number
+
+			if (batchResult.errors) {
+				// Adjust row numbers for batch offset
+				const adjustedErrors = batchResult.errors.map(err => ({
+					...err,
+					row: err.row + start
+				}))
+				aggregatedResult.errors = [...(aggregatedResult.errors || []), ...adjustedErrors]
+			}
+			if (batchResult.validation_errors) {
+				const adjustedValidationErrors = batchResult.validation_errors.map(err => ({
+					...err,
+					row: err.row + start
+				}))
+				aggregatedResult.validation_errors = [...(aggregatedResult.validation_errors || []), ...adjustedValidationErrors]
+			}
+
+			processed = end
+
+			// Report progress
+			if (onProgress) {
+				onProgress(processed, totalRows)
+			}
+
+		} catch (error) {
+			console.error(`Batch ${i + 1} failed:`, error)
+			// Continue with remaining batches even if one fails
+			aggregatedResult.failed += batchData.length
+			processed = end
+
+			if (onProgress) {
+				onProgress(processed, totalRows)
+			}
+		}
+
+		// Small delay between batches to prevent overwhelming the server
+		if (i < batches - 1) {
+			await new Promise(resolve => setTimeout(resolve, 100))
+		}
+	}
+
+	console.log('=== Batch processing complete ===', aggregatedResult)
+	return aggregatedResult
+}
+
+/**
+ * Process a single batch of marks data
+ */
+async function processSingleBatch(payload: BulkUploadPayload): Promise<BulkUploadResponse> {
 	try {
 		const controller = new AbortController()
-		const timeoutId = setTimeout(() => controller.abort(), 120000) // 2 minute timeout
+		const timeoutId = setTimeout(() => controller.abort(), 60000) // 1 minute timeout per batch
 
 		const res = await fetch(API_BASE, {
 			method: 'POST',
@@ -113,9 +212,9 @@ export async function bulkUploadMarks(payload: BulkUploadPayload): Promise<BulkU
 
 		return result
 	} catch (error: any) {
-		console.error('=== bulkUploadMarks error ===', error)
+		console.error('=== processSingleBatch error ===', error)
 		if (error.name === 'AbortError') {
-			throw new Error('Upload timed out. Please try with fewer rows.')
+			throw new Error('Batch upload timed out.')
 		}
 		throw error
 	}

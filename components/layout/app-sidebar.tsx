@@ -58,6 +58,7 @@ import {
 	Percent,
 	Ticket,
 	Globe,
+	Search,
 } from "lucide-react"
 
 import { NavMain } from "@/components/layout/nav-main"
@@ -186,6 +187,7 @@ const data = {
 				{ title: "Exam Types",            url: "/exam-management/exam-types",           icon: Tags },
 				{ title: "Examination Sessions",  url: "/exam-management/examination-sessions", icon: CalendarDays },
 				{ title: "Exam Registrations",    url: "/exam-management/exam-registrations",   icon: UserPlus },
+				{ title: "Registration Lookup",   url: "/exam-management/exam-registrations/lookup", icon: Search },
 				{ title: "Exam Timetable",        url: "/exam-management/exam-timetables",      icon: Calendar },
 				{ title: "Hall Tickets",          url: "/pre-exam/hall-tickets",                icon: Ticket },
 				{ title: "Bulk Internal Marks",   url: "/pre-exam/bulk-internal-marks",         icon: FileText },
@@ -246,6 +248,7 @@ const data = {
 			icon: PieChart,
 			roles: ["super_admin", "coe"],
 			items: [
+				{ title: "Comprehensive Reports", url: "/reports/comprehensive", icon: BarChart3 },
 				{ title: "Attendance Report", url: "/exam-management/reports/attendance", icon: PieChart },
 				{ title: "Course Count Report", url: "/exam-management/reports/course-count", icon: Calculator },
 				{ title: "Marksheet Distribution", url: "/reports/marksheet-distribution", icon: FileText },

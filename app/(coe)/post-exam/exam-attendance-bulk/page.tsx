@@ -143,7 +143,8 @@ export default function ExamAttendanceBulkPage() {
 
 	// Import state
 	const [importInProgress, setImportInProgress] = useState(false)
-	const [importProgress, setImportProgress] = useState({ current: 0, total: 0 })
+	const [importProgress, setImportProgress] = useState({ current: 0, total: 0, success: 0, failed: 0, skipped: 0 })
+	const [importPhase, setImportPhase] = useState<'preparing' | 'uploading' | 'complete'>('preparing')
 	const [errorPopupOpen, setErrorPopupOpen] = useState(false)
 	const [importErrors, setImportErrors] = useState<ImportError[]>([])
 	const [uploadSummary, setUploadSummary] = useState<UploadSummary>({ total: 0, success: 0, failed: 0 })
@@ -478,7 +479,7 @@ export default function ExamAttendanceBulkPage() {
 		})
 	}
 
-	// Handle import
+	// Handle import with batch processing for large files
 	const handleImport = () => {
 		const input = document.createElement("input")
 		input.type = "file"
@@ -489,7 +490,8 @@ export default function ExamAttendanceBulkPage() {
 
 			try {
 				setImportInProgress(true)
-				setImportProgress({ current: 0, total: 0 })
+				setImportPhase('preparing')
+				setImportProgress({ current: 0, total: 0, success: 0, failed: 0, skipped: 0 })
 
 				let rows: Record<string, unknown>[] = []
 
@@ -544,67 +546,139 @@ export default function ExamAttendanceBulkPage() {
 					remarks: String(r["Remarks"] || r["remarks"] || ""),
 				}))
 
-				setImportProgress({ current: 0, total: mapped.length })
+				setImportProgress({ current: 0, total: mapped.length, success: 0, failed: 0, skipped: 0 })
 
-				// Call API to bulk upload
-				const response = await fetch("/api/post-exam/exam-attendance-bulk", {
+				// Get unique institution codes for prepare call
+				const uniqueInstCodes = [...new Set(mapped.map(r => r.institution_code.toUpperCase().trim()).filter(Boolean))]
+
+				// Step 1: Prepare batch upload - fetch all lookup data once
+				const prepareResponse = await fetch("/api/post-exam/exam-attendance-bulk", {
 					method: "POST",
 					headers: { "Content-Type": "application/json" },
 					body: JSON.stringify({
-						action: "bulk-upload",
-						attendance_data: mapped,
-						uploaded_by: user?.email || "unknown",
+						action: "prepare-batch-upload",
+						institution_codes: uniqueInstCodes,
 					}),
 				})
 
-				const result = await response.json()
+				const prepareResult = await prepareResponse.json()
 
-				setImportInProgress(false)
-
-				if (!response.ok) {
+				if (!prepareResponse.ok) {
 					toast({
-						title: "Import Failed",
-						description: result.error || "Failed to import attendance records.",
+						title: "Preparation Failed",
+						description: prepareResult.error || "Failed to prepare import.",
 						variant: "destructive",
 					})
+					setImportInProgress(false)
 					return
 				}
 
+				// Extract lookup data
+				const { institutionMapping, sessionLookup, registerLookup, existingAttendanceLookup } = prepareResult
+
+				// Step 2: Process in batches
+				setImportPhase('uploading')
+				const BATCH_SIZE = 50 // Process 50 records at a time
+				const totalBatches = Math.ceil(mapped.length / BATCH_SIZE)
+
+				let totalSuccess = 0
+				let totalFailed = 0
+				let totalSkipped = 0
+				const allErrors: ImportError[] = []
+
+				// Create a mutable copy of existingAttendanceLookup to track new additions
+				const existingLookupCopy = { ...existingAttendanceLookup }
+
+				for (let batchIndex = 0; batchIndex < totalBatches; batchIndex++) {
+					const startIdx = batchIndex * BATCH_SIZE
+					const endIdx = Math.min(startIdx + BATCH_SIZE, mapped.length)
+					const batchData = mapped.slice(startIdx, endIdx)
+
+					const batchResponse = await fetch("/api/post-exam/exam-attendance-bulk", {
+						method: "POST",
+						headers: { "Content-Type": "application/json" },
+						body: JSON.stringify({
+							action: "process-batch",
+							batch_data: batchData,
+							uploaded_by: user?.email || "unknown",
+							institutionMapping,
+							sessionLookup,
+							registerLookup,
+							existingAttendanceLookup: existingLookupCopy,
+							batch_start_index: startIdx,
+						}),
+					})
+
+					const batchResult = await batchResponse.json()
+
+					if (batchResponse.ok) {
+						totalSuccess += batchResult.successful || 0
+						totalFailed += batchResult.failed || 0
+						totalSkipped += batchResult.skipped || 0
+
+						// Collect errors with original data
+						const batchErrors = [...(batchResult.validation_errors || []), ...(batchResult.errors || [])]
+						allErrors.push(...batchErrors)
+
+						// Update existingLookupCopy with new keys to prevent duplicates in subsequent batches
+						if (batchResult.newExistingKeys) {
+							batchResult.newExistingKeys.forEach((key: string) => {
+								existingLookupCopy[key] = true
+							})
+						}
+					} else {
+						// If batch fails entirely, mark all as failed
+						totalFailed += batchData.length
+						batchData.forEach((row, idx) => {
+							allErrors.push({
+								row: startIdx + idx + 2,
+								register_number: row.register_number || 'N/A',
+								course_code: row.course_code || 'N/A',
+								errors: [batchResult.error || 'Batch processing failed'],
+								original_data: row
+							})
+						})
+					}
+
+					// Update progress
+					setImportProgress({
+						current: endIdx,
+						total: mapped.length,
+						success: totalSuccess,
+						failed: totalFailed,
+						skipped: totalSkipped,
+					})
+				}
+
+				// Step 3: Complete
+				setImportPhase('complete')
+				setImportInProgress(false)
+
 				// Update summary
 				setUploadSummary({
-					total: result.total,
-					success: result.successful,
-					failed: result.failed,
-					skipped: result.skipped,
+					total: mapped.length,
+					success: totalSuccess,
+					failed: totalFailed,
+					skipped: totalSkipped,
 				})
 
-				// Show errors if any - attach original data for download
-				const allErrors = [...(result.validation_errors || []), ...(result.errors || [])]
+				// Show errors if any
 				if (allErrors.length > 0) {
-					// Attach original row data to each error for download
-					const errorsWithData = allErrors.map((err: ImportError) => {
-						const rowIndex = err.row - 2 // -2 because row numbers are 1-indexed + header row
-						const originalRow = mapped[rowIndex]
-						return {
-							...err,
-							original_data: originalRow || {}
-						}
-					})
-					setImportErrors(errorsWithData)
+					setImportErrors(allErrors)
 					setErrorPopupOpen(true)
 				}
 
 				// Show toast
-				if (result.successful > 0 && result.failed === 0 && result.skipped === 0) {
+				if (totalSuccess > 0 && totalFailed === 0 && totalSkipped === 0) {
 					toast({
 						title: "✅ Upload Complete",
-						description: `Successfully uploaded ${result.successful} attendance record${result.successful > 1 ? "s" : ""}.`,
+						description: `Successfully uploaded ${totalSuccess} attendance record${totalSuccess > 1 ? "s" : ""}.`,
 						className: "bg-green-50 border-green-200 text-green-800",
 					})
-				} else if (result.successful > 0) {
+				} else if (totalSuccess > 0) {
 					toast({
 						title: "⚠️ Partial Upload",
-						description: `${result.successful} successful, ${result.failed} failed, ${result.skipped || 0} skipped.`,
+						description: `${totalSuccess} successful, ${totalFailed} failed, ${totalSkipped} skipped.`,
 						className: "bg-yellow-50 border-yellow-200 text-yellow-800",
 					})
 				} else {
@@ -630,11 +704,21 @@ export default function ExamAttendanceBulkPage() {
 		input.click()
 	}
 
-	// Handle download failed rows
+	// Handle download failed rows - same format as upload template with error column added
 	const handleDownloadFailedRows = async () => {
 		if (importErrors.length === 0) return
 
+		// Determine status based on error message
+		const getErrorStatus = (errors: string[]) => {
+			const errorStr = errors.join(' ').toLowerCase()
+			if (errorStr.includes('skipped') || errorStr.includes('already exists') || errorStr.includes('duplicate')) {
+				return 'Skipped'
+			}
+			return 'Failed'
+		}
+
 		const failedData = importErrors.map((err) => ({
+			// Same format as upload template (first 8 columns)
 			"Institution Code *": err.original_data?.institution_code || "",
 			"Session Code *": err.original_data?.session_code || "",
 			"Register Number *": err.original_data?.register_number || err.register_number || "",
@@ -643,8 +727,10 @@ export default function ExamAttendanceBulkPage() {
 			"Entry Time": err.original_data?.entry_time || "",
 			"Identity Verified": err.original_data?.identity_verified || "No",
 			"Remarks": err.original_data?.remarks || "",
-			"Error Reference": err.errors.join("; "),
-			"Row Number": err.row,
+			// Error columns added at end
+			"Status": getErrorStatus(err.errors),
+			"Error Message": err.errors.join("; "),
+			"Original Row #": err.row,
 		}))
 
 		const ws = XLSX.utils.json_to_sheet(failedData)
@@ -659,17 +745,23 @@ export default function ExamAttendanceBulkPage() {
 			{ wch: 15 }, // Entry Time
 			{ wch: 18 }, // Identity Verified
 			{ wch: 30 }, // Remarks
-			{ wch: 60 }, // Error Reference
-			{ wch: 12 }, // Row Number
+			{ wch: 12 }, // Status
+			{ wch: 70 }, // Error Message
+			{ wch: 14 }, // Original Row #
 		]
 
 		const wb = XLSX.utils.book_new()
 		XLSX.utils.book_append_sheet(wb, ws, "Failed Rows")
-		await XLSX.writeFile(wb, `exam_attendance_failed_rows_${new Date().toISOString().split("T")[0]}.xlsx`)
+
+		// Count failed vs skipped
+		const failedCount = failedData.filter(d => d.Status === 'Failed').length
+		const skippedCount = failedData.filter(d => d.Status === 'Skipped').length
+
+		await XLSX.writeFile(wb, `exam_attendance_errors_${new Date().toISOString().split("T")[0]}.xlsx`)
 
 		toast({
 			title: "✅ Downloaded",
-			description: `Downloaded ${importErrors.length} failed row(s) with error references.`,
+			description: `Downloaded ${failedCount} failed and ${skippedCount} skipped row(s) with error details.`,
 			className: "bg-green-50 border-green-200 text-green-800",
 		})
 	}
@@ -730,11 +822,11 @@ export default function ExamAttendanceBulkPage() {
 			{/* Import Loading Modal - Full Screen Overlay with Centered Card */}
 			{importInProgress && (
 				<div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-[100] flex items-center justify-center">
-					<div className="bg-white dark:bg-slate-800 rounded-2xl p-8 shadow-2xl max-w-md w-full mx-4">
-						<div className="flex flex-col items-center gap-4">
+					<div className="bg-white dark:bg-slate-800 rounded-2xl p-8 shadow-2xl max-w-lg w-full mx-4">
+						<div className="flex flex-col items-center gap-5">
 							{/* Large Spinning Loader */}
 							<div className="relative">
-								<Loader2 className="h-12 w-12 text-blue-600 animate-spin" />
+								<Loader2 className="h-14 w-14 text-blue-600 animate-spin" />
 							</div>
 
 							{/* Title and Description */}
@@ -743,30 +835,70 @@ export default function ExamAttendanceBulkPage() {
 									Importing Exam Attendance
 								</h3>
 								<p className="text-sm text-slate-500 dark:text-slate-400 mt-1">
-									Please wait while the data is being processed...
+									{importPhase === 'preparing'
+										? 'Preparing data and validating records...'
+										: 'Processing records in batches...'}
 								</p>
 							</div>
 
 							{/* Progress Bar with Counter */}
 							{importProgress.total > 0 && (
-								<div className="w-full space-y-2">
+								<div className="w-full space-y-3">
+									{/* Progress Numbers */}
 									<div className="flex justify-between text-sm text-slate-600 dark:text-slate-300">
 										<span>Progress</span>
-										<span>
+										<span className="font-medium">
 											{importProgress.current} / {importProgress.total}
 										</span>
 									</div>
-									<div className="w-full bg-slate-200 dark:bg-slate-700 rounded-full h-2.5">
+
+									{/* Progress Bar */}
+									<div className="w-full bg-slate-200 dark:bg-slate-700 rounded-full h-3 overflow-hidden">
 										<div
-											className="bg-blue-600 h-2.5 rounded-full transition-all duration-300"
+											className="bg-gradient-to-r from-blue-500 to-blue-600 h-3 rounded-full transition-all duration-300 ease-out"
 											style={{
 												width: `${(importProgress.current / importProgress.total) * 100}%`,
 											}}
 										/>
 									</div>
-									<p className="text-xs text-center text-slate-500 dark:text-slate-400">
+
+									{/* Percentage */}
+									<p className="text-lg font-bold text-center text-blue-600 dark:text-blue-400">
 										{Math.round((importProgress.current / importProgress.total) * 100)}% complete
 									</p>
+
+									{/* Live Stats */}
+									{importPhase === 'uploading' && (
+										<div className="grid grid-cols-3 gap-3 mt-4 pt-4 border-t border-slate-200 dark:border-slate-700">
+											<div className="text-center">
+												<div className="flex items-center justify-center gap-1.5">
+													<CheckCircle className="h-4 w-4 text-green-500" />
+													<span className="text-lg font-bold text-green-600 dark:text-green-400">
+														{importProgress.success}
+													</span>
+												</div>
+												<p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">Success</p>
+											</div>
+											<div className="text-center">
+												<div className="flex items-center justify-center gap-1.5">
+													<XCircle className="h-4 w-4 text-red-500" />
+													<span className="text-lg font-bold text-red-600 dark:text-red-400">
+														{importProgress.failed}
+													</span>
+												</div>
+												<p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">Failed</p>
+											</div>
+											<div className="text-center">
+												<div className="flex items-center justify-center gap-1.5">
+													<AlertTriangle className="h-4 w-4 text-yellow-500" />
+													<span className="text-lg font-bold text-yellow-600 dark:text-yellow-400">
+														{importProgress.skipped}
+													</span>
+												</div>
+												<p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">Skipped</p>
+											</div>
+										</div>
+									)}
 								</div>
 							)}
 						</div>

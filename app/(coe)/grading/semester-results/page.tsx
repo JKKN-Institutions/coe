@@ -23,6 +23,8 @@ import { Checkbox } from "@/components/ui/checkbox"
 import { useToast } from "@/hooks/common/use-toast"
 import { useAuth } from "@/lib/auth/auth-context-parent"
 import { useInstitutionFilter } from "@/hooks/use-institution-filter"
+import { useInstitution } from "@/context/institution-context"
+import { useMyJKKNInstitutionFilter } from "@/hooks/use-myjkkn-institution-filter"
 import Link from "next/link"
 import {
 	Calculator,
@@ -302,9 +304,10 @@ interface MultiSelectProgramProps {
 	onSelectionChange: (ids: string[]) => void
 	placeholder: string
 	disabled?: boolean
+	loading?: boolean
 }
 
-function MultiSelectProgram({ options, selectedIds, onSelectionChange, placeholder, disabled }: MultiSelectProgramProps) {
+function MultiSelectProgram({ options, selectedIds, onSelectionChange, placeholder, disabled, loading }: MultiSelectProgramProps) {
 	const [open, setOpen] = useState(false)
 	const [searchQuery, setSearchQuery] = useState("")
 
@@ -361,11 +364,16 @@ function MultiSelectProgram({ options, selectedIds, onSelectionChange, placehold
 					variant="outline"
 					role="combobox"
 					aria-expanded={open}
-					disabled={disabled}
+					disabled={disabled || loading}
 					className="w-full justify-between font-normal min-h-[40px] h-auto"
 				>
 					<div className="flex flex-wrap gap-1 flex-1 text-left">
-						{selectedOptions.length > 0 ? (
+						{loading ? (
+							<span className="flex items-center gap-2 text-muted-foreground">
+								<Loader2 className="h-4 w-4 animate-spin" />
+								Loading programs...
+							</span>
+						) : selectedOptions.length > 0 ? (
 							selectedOptions.length <= 2 ? (
 								selectedOptions.map(opt => (
 									<Badge key={opt.id} variant="secondary" className="text-xs">
@@ -564,6 +572,12 @@ export default function SemesterResultsPage() {
 		institutionId
 	} = useInstitutionFilter()
 
+	// Institution context for accessing available institutions with myjkkn_institution_ids
+	const { availableInstitutions } = useInstitution()
+
+	// MyJKKN institution filter hook for fetching programs from MyJKKN API
+	const { fetchPrograms: fetchMyJKKNPrograms } = useMyJKKNInstitutionFilter()
+
 	// Selection state - updated for multi-select
 	const [selectedInstitution, setSelectedInstitution] = useState("")
 	const [selectedSession, setSelectedSession] = useState("")
@@ -572,9 +586,10 @@ export default function SemesterResultsPage() {
 	const [programType, setProgramType] = useState<ProgramType | null>(null)
 
 	// Dropdown data
-	const [institutions, setInstitutions] = useState<DropdownOption[]>([])
+	const [institutions, setInstitutions] = useState<(DropdownOption & { myjkkn_institution_ids?: string[] })[]>([])
 	const [sessions, setSessions] = useState<DropdownOption[]>([])
 	const [programs, setPrograms] = useState<DropdownOption[]>([])
+	const [programsLoading, setProgramsLoading] = useState(false)
 	const [semesters, setSemesters] = useState<number[]>([])
 
 	// Results state
@@ -609,9 +624,36 @@ export default function SemesterResultsPage() {
 	const [creatingBacklogs, setCreatingBacklogs] = useState(false)
 	const [resultsExist, setResultsExist] = useState(false)
 
+	// Helper function to infer UG/PG grade system from program code/name
+	const inferGradeSystemFromProgram = useCallback((programCode?: string, programName?: string): ProgramType => {
+		const code = (programCode || '').toUpperCase()
+		const name = (programName || '').toUpperCase()
+		// PG patterns: M.A., M.Sc., MBA, MCA, M.Com, M.Phil, Ph.D, etc.
+		const pgPatterns = ['M.', 'MA', 'MSC', 'MBA', 'MCA', 'MCOM', 'MPHIL', 'PHD', 'PH.D', 'MASTER', 'POST']
+		for (const pattern of pgPatterns) {
+			if (code.includes(pattern) || name.includes(pattern)) {
+				return 'PG'
+			}
+		}
+		return 'UG'
+	}, [])
+
 	// Callback definitions - must be before useEffect hooks that use them
 	const fetchInstitutions = useCallback(async () => {
 		try {
+			// Use institutions from context if available (for super_admin or single institution)
+			if (availableInstitutions.length > 0) {
+				const mapped = availableInstitutions.map(inst => ({
+					id: inst.id,
+					code: inst.institution_code,
+					name: inst.institution_name,
+					myjkkn_institution_ids: (inst as any).myjkkn_institution_ids || []
+				}))
+				setInstitutions(mapped)
+				return
+			}
+
+			// Fallback to API fetch
 			const url = appendToUrl('/api/grading/final-marks?action=institutions')
 			const res = await fetch(url)
 			if (res.ok) {
@@ -619,13 +661,14 @@ export default function SemesterResultsPage() {
 				setInstitutions(data.map((i: any) => ({
 					id: i.id,
 					code: i.institution_code,
-					name: i.name
+					name: i.name,
+					myjkkn_institution_ids: i.myjkkn_institution_ids || []
 				})))
 			}
 		} catch (e) {
 			console.error('Failed to fetch institutions:', e)
 		}
-	}, [appendToUrl])
+	}, [appendToUrl, availableInstitutions])
 
 	const fetchSessions = useCallback(async (institutionId: string) => {
 		try {
@@ -643,27 +686,75 @@ export default function SemesterResultsPage() {
 		}
 	}, [])
 
+	// Use ref for institutions to avoid dependency cycle
+	const institutionsRef = useRef(institutions)
+	useEffect(() => {
+		institutionsRef.current = institutions
+	}, [institutions])
+
+	// Fetch programs from MyJKKN API using myjkkn_institution_ids
 	const fetchPrograms = useCallback(async (institutionId: string) => {
 		try {
-			const res = await fetch(`/api/grading/final-marks?action=programs&institutionId=${institutionId}`)
-			if (res.ok) {
-				const data = await res.json()
-				setPrograms(data.map((p: any) => ({
-					id: p.id,
-					code: p.program_code,
-					name: p.program_name,
-					type: (p.grade_system_code || 'UG') as ProgramType
-				})))
+			setProgramsLoading(true)
+			setPrograms([])
+
+			// Get the institution with its myjkkn_institution_ids from ref to avoid dependency cycle
+			const currentInstitutions = institutionsRef.current
+			const institution = currentInstitutions.find(i => i.id === institutionId)
+			const myjkknIds = institution?.myjkkn_institution_ids || []
+
+			if (myjkknIds.length === 0) {
+				console.warn('[SemesterResults] No MyJKKN institution IDs found for institution:', institutionId)
+				// Fallback to local programs table
+				const res = await fetch(`/api/grading/final-marks?action=programs&institutionId=${institutionId}`)
+				if (res.ok) {
+					const data = await res.json()
+					setPrograms(data.map((p: any) => ({
+						id: p.id,
+						code: p.program_code,
+						name: p.program_name,
+						type: (p.grade_system_code || 'UG') as ProgramType
+					})))
+				}
+				return
 			}
+
+			// Fetch programs from MyJKKN API using the hook
+			console.log('[SemesterResults] Fetching programs from MyJKKN for institution IDs:', myjkknIds)
+			const progs = await fetchMyJKKNPrograms(myjkknIds)
+
+			// Transform MyJKKN programs to DropdownOption format and sort by program_code
+			const transformedPrograms = progs.map(p => ({
+				id: p.id, // MyJKKN UUID
+				code: p.program_code, // Code like "BCA"
+				name: p.program_name,
+				type: inferGradeSystemFromProgram(p.program_code, p.program_name)
+			})).sort((a, b) => a.code.localeCompare(b.code))
+
+			console.log('[SemesterResults] Fetched', transformedPrograms.length, 'programs from MyJKKN')
+			setPrograms(transformedPrograms)
 		} catch (e) {
 			console.error('Failed to fetch programs:', e)
+			setPrograms([])
+		} finally {
+			setProgramsLoading(false)
 		}
-	}, [])
+	}, [fetchMyJKKNPrograms, inferGradeSystemFromProgram])
 
-	const fetchSemesters = useCallback(async (institutionId: string, programId: string, sessionId: string) => {
+	const fetchSemesters = useCallback(async (institutionId: string, programId: string, sessionId: string, programCode?: string) => {
 		try {
-			console.log('Fetching semesters with:', { institutionId, programId, sessionId })
-			const res = await fetch(`/api/grading/semester-results?action=semesters&institutionId=${institutionId}&programId=${programId}&sessionId=${sessionId}`)
+			console.log('Fetching semesters with:', { institutionId, programId, sessionId, programCode })
+			// Pass both programId (MyJKKN UUID) and programCode (text like "BCA") for filtering
+			const params = new URLSearchParams({
+				action: 'semesters',
+				institutionId,
+				programId,
+				sessionId
+			})
+			if (programCode) {
+				params.append('programCode', programCode)
+			}
+			const res = await fetch(`/api/grading/semester-results?${params.toString()}`)
 			if (res.ok) {
 				const data = await res.json()
 				console.log('Semesters fetched:', data)
@@ -694,14 +785,20 @@ export default function SemesterResultsPage() {
 		}
 	}, [isReady, mustSelectInstitution, institutions, getInstitutionIdForCreate, selectedInstitution])
 
-	// Fetch sessions and programs in parallel when institution changes
+	// Fetch sessions and programs when institution changes
+	// Note: Programs need institutions to be loaded to get myjkkn_institution_ids
+	// Using institutionsRef to avoid dependency cycle - only run when selectedInstitution changes
 	useEffect(() => {
-		if (selectedInstitution) {
+		const currentInstitutions = institutionsRef.current
+		if (selectedInstitution && currentInstitutions.length > 0) {
 			// Fetch sessions and programs in parallel for better performance
 			Promise.all([
 				fetchSessions(selectedInstitution),
 				fetchPrograms(selectedInstitution)
 			])
+		} else if (selectedInstitution && currentInstitutions.length === 0) {
+			// Institution selected but institutions not loaded yet - just fetch sessions
+			fetchSessions(selectedInstitution)
 		} else {
 			setSessions([])
 			setPrograms([])
@@ -713,20 +810,24 @@ export default function SemesterResultsPage() {
 		setLearnerResults([])
 		setSummary(null)
 		setProgramType(null)
+		// eslint-disable-next-line react-hooks/exhaustive-deps
 	}, [selectedInstitution, fetchSessions, fetchPrograms])
 
 	// Fetch semesters when programs and session change
 	useEffect(() => {
 		if (selectedPrograms.length > 0 && selectedSession && selectedInstitution) {
 			// Fetch semesters for the first selected program
-			fetchSemesters(selectedInstitution, selectedPrograms[0], selectedSession)
+			// Get programCode from programs state for filtering course_offerings
+			const selectedProgramData = programs.find(p => p.id === selectedPrograms[0])
+			const programCode = selectedProgramData?.code || ''
+			fetchSemesters(selectedInstitution, selectedPrograms[0], selectedSession, programCode)
 		} else {
 			setSemesters([])
 		}
 		setSelectedSemesters([])
 		setLearnerResults([])
 		setSummary(null)
-	}, [selectedPrograms, selectedSession, selectedInstitution, fetchSemesters])
+	}, [selectedPrograms, selectedSession, selectedInstitution, fetchSemesters, programs])
 
 	// Update program type when programs selection changes
 	useEffect(() => {
@@ -747,12 +848,19 @@ export default function SemesterResultsPage() {
 			}
 
 			try {
+				// Get programCode from programs state
+				const selectedProgramData = programs.find(p => p.id === selectedPrograms[0])
+				const programCode = selectedProgramData?.code || ''
+
 				const params = new URLSearchParams({
 					action: 'check-exists',
 					institutionId: selectedInstitution,
 					sessionId: selectedSession,
-					programId: selectedPrograms[0] // Check first program
+					programId: selectedPrograms[0] // MyJKKN UUID (fallback)
 				})
+				if (programCode) {
+					params.append('programCode', programCode) // Text code like "BCA" (preferred)
+				}
 				if (selectedSemesters.length === 1) {
 					params.append('semester', String(selectedSemesters[0]))
 				}
@@ -768,7 +876,7 @@ export default function SemesterResultsPage() {
 		}
 
 		checkExistingResults()
-	}, [selectedInstitution, selectedSession, selectedPrograms, selectedSemesters])
+	}, [selectedInstitution, selectedSession, selectedPrograms, selectedSemesters, programs])
 
 	const fetchResults = async () => {
 		if (!selectedInstitution || !selectedSession || selectedPrograms.length === 0) {
@@ -788,11 +896,16 @@ export default function SemesterResultsPage() {
 		try {
 			// For now, fetch results for the first selected program
 			// TODO: Support multiple programs in a single fetch
+			// Get program_code from programs state (MyJKKN data)
+			const selectedProgramData = programs.find(p => p.id === selectedPrograms[0])
+			const programCode = selectedProgramData?.code || ''
+
 			const params = new URLSearchParams({
 				action: 'program-results',
 				institutionId: selectedInstitution,
 				sessionId: selectedSession,
 				programId: selectedPrograms[0],
+				programCode: programCode, // Add program_code for filtering final_marks
 				programType: programType || 'UG',
 				includePartBreakdown: groupByPart ? 'true' : 'false'
 			})
@@ -853,12 +966,19 @@ export default function SemesterResultsPage() {
 			const allResults: StoredSemesterResult[] = []
 
 			for (const programId of selectedPrograms) {
+				// Get programCode from programs state
+				const programData = programs.find(p => p.id === programId)
+				const programCode = programData?.code || ''
+
 				const params = new URLSearchParams({
 					action: 'stored-results',
 					institutionId: selectedInstitution,
 					sessionId: selectedSession,
-					programId: programId
+					programId: programId // MyJKKN UUID (fallback)
 				})
+				if (programCode) {
+					params.append('programCode', programCode) // Text code like "BCA" (preferred)
+				}
 
 				if (selectedSemesters.length === 1) {
 					params.append('semester', String(selectedSemesters[0]))
@@ -1421,6 +1541,7 @@ export default function SemesterResultsPage() {
 										onSelectionChange={setSelectedPrograms}
 										placeholder="Select program(s)"
 										disabled={mustSelectInstitution && !selectedInstitution}
+										loading={programsLoading}
 									/>
 								</div>
 								<div className="space-y-2">

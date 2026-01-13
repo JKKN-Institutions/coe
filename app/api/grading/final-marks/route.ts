@@ -9,7 +9,8 @@ import type {
 /**
  * GET /api/grading/final-marks
  * Fetch data for the final marks generation page
- * Actions: institutions, sessions, programs, courses, course-offerings, grades, final-marks
+ * Actions: institutions, sessions, programs (DEPRECATED), courses, course-offerings, grades, final-marks
+ * NOTE: Programs should be fetched from MyJKKN API using useMyJKKNInstitutionFilter hook
  */
 export async function GET(request: NextRequest) {
 	try {
@@ -21,7 +22,7 @@ export async function GET(request: NextRequest) {
 			case 'institutions': {
 				const { data, error } = await supabase
 					.from('institutions')
-					.select('id, name, institution_code')
+					.select('id, name, institution_code, myjkkn_institution_ids')
 					.eq('is_active', true)
 					.order('name')
 
@@ -52,91 +53,25 @@ export async function GET(request: NextRequest) {
 			}
 
 			case 'programs': {
-				const institutionId = searchParams.get('institutionId')
-				if (!institutionId) {
-					return NextResponse.json({ error: 'Institution ID is required' }, { status: 400 })
-				}
-
-				// Fetch programs with degree info
-				const { data: programsData, error: programsError } = await supabase
-					.from('programs')
-					.select(`
-						id,
-						program_code,
-						program_name,
-						degree_id,
-						degrees (
-							id,
-							degree_code,
-							degree_name
-						)
-					`)
-					.eq('institutions_id', institutionId)
-					.eq('is_active', true)
-					.order('program_name')
-
-				if (programsError) {
-					console.error('Error fetching programs:', programsError)
-					return NextResponse.json({ error: 'Failed to fetch programs' }, { status: 400 })
-				}
-
-				// Helper function to determine UG/PG from degree code/name
-				const inferGradeSystem = (degreeCode?: string, degreeName?: string): 'UG' | 'PG' => {
-					const code = (degreeCode || '').toUpperCase()
-					const name = (degreeName || '').toUpperCase()
-					// PG patterns: M.A., M.Sc., MBA, MCA, M.Com, M.Phil, Ph.D, etc.
-					const pgPatterns = ['M.', 'MA', 'MSC', 'MBA', 'MCA', 'MCOM', 'MPHIL', 'PHD', 'PH.D', 'MASTER', 'POST']
-					for (const pattern of pgPatterns) {
-						if (code.includes(pattern) || name.includes(pattern)) {
-							return 'PG'
-						}
-					}
-					return 'UG'
-				}
-
-				// Transform to include grade_system_code based on degree name/code
-				const transformed = programsData?.map((p: any) => {
-					const degreeCode = p.degrees?.degree_code || null
-					const degreeName = p.degrees?.degree_name || null
-					return {
-						id: p.id,
-						program_code: p.program_code,
-						program_name: p.program_name,
-						degree_id: p.degree_id,
-						degree_code: degreeCode,
-						degree_name: degreeName,
-						grade_system_code: inferGradeSystem(degreeCode, degreeName)
-					}
-				}) || []
-
-				return NextResponse.json(transformed)
+				// DEPRECATED: Programs should be fetched from MyJKKN API
+				// The local 'programs' table no longer exists
+				// Frontend should use useMyJKKNInstitutionFilter hook instead
+				console.warn('[final-marks API] DEPRECATED: programs action called. Programs should be fetched from MyJKKN API.')
+				return NextResponse.json([])
 			}
 
 			case 'course-offerings': {
 				const institutionId = searchParams.get('institutionId')
-				const programId = searchParams.get('programId')
-				const programCode = searchParams.get('programCode')
+				const programId = searchParams.get('programId') // MyJKKN UUID (for reference)
+				const programCode = searchParams.get('programCode') // Text code like "BCA"
 				const sessionId = searchParams.get('sessionId')
 
-				// Support both programCode and programId (lookup program_code from programs table)
-				let filterProgramCode = programCode
-				if (!filterProgramCode && programId) {
-					// Lookup program_code from local programs table
-					const { data: programData } = await supabase
-						.from('programs')
-						.select('program_code')
-						.eq('id', programId)
-						.single()
-					filterProgramCode = programData?.program_code
+				if (!programCode) {
+					return NextResponse.json({ error: 'Program code is required' }, { status: 400 })
 				}
 
-				if (!filterProgramCode) {
-					return NextResponse.json({ error: 'Program code or ID is required' }, { status: 400 })
-				}
-
-				// First fetch course_offerings - filter by program_code (not program_id)
-				// course_offerings.program_id is MyJKKN UUID, but we have local programs.id
-				// course_offerings.program_code is the CODE field which matches programs.program_code
+				// Filter course_offerings by program_code (text code like "BCA")
+				// course_offerings maintains program_code separately
 				let query = supabase
 					.from('course_offerings')
 					.select(`
@@ -148,7 +83,7 @@ export async function GET(request: NextRequest) {
 						semester,
 						section
 					`)
-					.eq('program_code', filterProgramCode)
+					.eq('program_code', programCode)
 					.eq('is_active', true)
 
 				if (sessionId) {
@@ -442,6 +377,7 @@ export async function POST(request: NextRequest) {
 		const {
 			institutions_id,
 			program_id,
+			program_code: providedProgramCode,
 			examination_session_id,
 			course_ids,
 			regulation_id,
@@ -457,19 +393,11 @@ export async function POST(request: NextRequest) {
 			}, { status: 400 })
 		}
 
-		// Lookup program_code from local programs table
-		// program_id from payload is local programs.id, but course_offerings.program_id is MyJKKN UUID
-		// We need to use program_code which is consistent across both systems
-		const { data: programData } = await supabase
-			.from('programs')
-			.select('program_code')
-			.eq('id', program_id)
-			.single()
-
-		const programCode = programData?.program_code
+		// program_code must be provided from MyJKKN API (no local programs table fallback)
+		const programCode = providedProgramCode
 		if (!programCode) {
 			return NextResponse.json({
-				error: 'Program not found or program_code is missing'
+				error: 'program_code is required. It must be provided from MyJKKN API since the local programs table no longer exists.'
 			}, { status: 400 })
 		}
 
@@ -1055,6 +983,7 @@ export async function POST(request: NextRequest) {
 						exam_registration_id: result.exam_registration_id,
 						course_offering_id: result.course_offering_id,
 						program_id,
+						program_code: programCode, // Required: text code like "BCA" from MyJKKN API
 						course_id: result.course_id,
 						student_id: result.student_id,
 						internal_marks_id: result.internal_marks_id,

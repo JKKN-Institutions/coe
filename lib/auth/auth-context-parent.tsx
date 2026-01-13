@@ -299,6 +299,53 @@ function AuthProviderInner({
 		initializeAuth()
 	}, [initializeAuth])
 
+	// Auto-refresh session every 30 minutes to prevent logout
+	useEffect(() => {
+		if (!user) return
+
+		const REFRESH_INTERVAL = 30 * 60 * 1000 // 30 minutes
+
+		const autoRefresh = async () => {
+			const token = parentAuthService.getAccessToken()
+			const refreshToken = parentAuthService.getRefreshToken()
+			const storedUser = parentAuthService.getStoredUser()
+
+			if (!token && refreshToken) {
+				// Token expired but refresh token exists - try to refresh
+				const success = await parentAuthService.refreshToken()
+				if (success) {
+					const newUser = parentAuthService.getStoredUser()
+					if (newUser) setUser(newUser)
+				}
+			} else if (token && storedUser) {
+				// Token exists - extend cookie expiry by calling sync-session
+				// This keeps the session alive during active use
+				try {
+					await fetch('/api/auth/sync-session', {
+						method: 'POST',
+						headers: { 'Content-Type': 'application/json' },
+						credentials: 'include',
+						body: JSON.stringify({
+							email: storedUser.email,
+							user_id: storedUser.id,
+							role: storedUser.role,
+							institution_id: storedUser.institution_id,
+							access_token: token,
+							refresh_token: refreshToken,
+						}),
+					})
+				} catch (err) {
+					console.warn('Auto-refresh session failed:', err)
+				}
+			}
+		}
+
+		// Set up interval for periodic refresh (don't run immediately - already synced on login)
+		const intervalId = setInterval(autoRefresh, REFRESH_INTERVAL)
+
+		return () => clearInterval(intervalId)
+	}, [user?.id])
+
 	const login = useCallback((redirectUrl?: string) => {
 		parentAuthService.login(redirectUrl || pathname)
 	}, [pathname])

@@ -316,7 +316,8 @@ export async function GET(req: NextRequest) {
 		if (action === 'stored-results') {
 			const institutionId = searchParams.get('institutionId')
 			const sessionId = searchParams.get('sessionId')
-			const programId = searchParams.get('programId')
+			const programId = searchParams.get('programId') // MyJKKN UUID (for fallback)
+			const programCode = searchParams.get('programCode') // Text code like "BCA" (preferred)
 			const semester = searchParams.get('semester')
 			const status = searchParams.get('status') // 'Pending', 'Pass', 'Fail', etc.
 			const isPublished = searchParams.get('isPublished') // 'true' or 'false'
@@ -334,7 +335,10 @@ export async function GET(req: NextRequest) {
 			if (sessionId) {
 				query = query.eq('examination_session_id', sessionId)
 			}
-			if (programId) {
+			// Filter by program_code (preferred) or program_id (fallback)
+			if (programCode) {
+				query = query.eq('program_code', programCode)
+			} else if (programId) {
 				query = query.eq('program_id', programId)
 			}
 			if (semester) {
@@ -385,10 +389,11 @@ export async function GET(req: NextRequest) {
 		if (action === 'check-exists') {
 			const institutionId = searchParams.get('institutionId')
 			const sessionId = searchParams.get('sessionId')
-			const programId = searchParams.get('programId')
+			const programId = searchParams.get('programId') // MyJKKN UUID (for fallback)
+			const programCode = searchParams.get('programCode') // Text code like "BCA" (preferred)
 			const semester = searchParams.get('semester')
 
-			if (!institutionId || !sessionId || !programId) {
+			if (!institutionId || !sessionId || (!programCode && !programId)) {
 				return NextResponse.json({ exists: false })
 			}
 
@@ -397,8 +402,14 @@ export async function GET(req: NextRequest) {
 				.select('id', { count: 'exact', head: true })
 				.eq('institutions_id', institutionId)
 				.eq('examination_session_id', sessionId)
-				.eq('program_id', programId)
 				.eq('is_active', true)
+
+			// Filter by program_code (preferred) or program_id (fallback)
+			if (programCode) {
+				query = query.eq('program_code', programCode)
+			} else if (programId) {
+				query = query.eq('program_id', programId)
+			}
 
 			if (semester) {
 				query = query.eq('semester', parseInt(semester))
@@ -498,20 +509,33 @@ export async function GET(req: NextRequest) {
 		// Falls back to final_marks if course_offerings is empty
 		if (action === 'semesters') {
 			const institutionId = searchParams.get('institutionId')
-			const programId = searchParams.get('programId')
+			const programId = searchParams.get('programId') // MyJKKN UUID (for fallback)
+			const programCode = searchParams.get('programCode') // Text code like "BCA" (preferred)
 			const sessionId = searchParams.get('sessionId')
 
-			if (!institutionId || !programId) {
-				return NextResponse.json({ error: 'institutionId and programId are required' }, { status: 400 })
+			if (!institutionId) {
+				return NextResponse.json({ error: 'institutionId is required' }, { status: 400 })
 			}
 
-			// First try course_offerings
+			// Need either programCode or programId
+			if (!programCode && !programId) {
+				return NextResponse.json({ error: 'Either programCode or programId is required' }, { status: 400 })
+			}
+
+			// First try course_offerings - prefer program_code over program_id
+			// NOTE: course_offerings now uses program_code for MyJKKN integration
 			let query = supabase
 				.from('course_offerings')
 				.select('semester')
 				.eq('institutions_id', institutionId)
-				.eq('program_id', programId)
 				.eq('is_active', true)
+
+			// Filter by program_code (preferred) or program_id (fallback)
+			if (programCode) {
+				query = query.eq('program_code', programCode)
+			} else if (programId) {
+				query = query.eq('program_id', programId)
+			}
 
 			if (sessionId) {
 				query = query.eq('examination_session_id', sessionId)
@@ -527,16 +551,25 @@ export async function GET(req: NextRequest) {
 			// Get unique semesters sorted
 			let semesters = [...new Set(data?.map(d => d.semester) || [])].sort((a, b) => a - b)
 
-			// If no semesters found in course_offerings, try to get from final_marks via course_offerings join
+			// If no semesters found in course_offerings, try to get from final_marks
+			// final_marks.program_code stores text like "BCA"
 			if (semesters.length === 0 && sessionId) {
 				console.log('No semesters in course_offerings, trying final_marks...')
-				const { data: fmData, error: fmError } = await supabase
+				let fmQuery = supabase
 					.from('final_marks')
 					.select('course_offerings!inner(semester)')
 					.eq('institutions_id', institutionId)
-					.eq('program_id', programId)
 					.eq('examination_session_id', sessionId)
 					.eq('is_active', true)
+
+				// Filter by program_code (preferred) for final_marks
+				if (programCode) {
+					fmQuery = fmQuery.eq('program_code', programCode)
+				} else if (programId) {
+					fmQuery = fmQuery.eq('program_id', programId)
+				}
+
+				const { data: fmData, error: fmError } = await fmQuery
 
 				if (!fmError && fmData) {
 					const fmSemesters = fmData.map((fm: any) => fm.course_offerings?.semester).filter(Boolean)
@@ -548,12 +581,19 @@ export async function GET(req: NextRequest) {
 			// If still no semesters, try course_offerings without session filter as last resort
 			if (semesters.length === 0) {
 				console.log('No semesters found, trying course_offerings without session filter...')
-				const { data: allCoData, error: allCoError } = await supabase
+				let allCoQuery = supabase
 					.from('course_offerings')
 					.select('semester')
 					.eq('institutions_id', institutionId)
-					.eq('program_id', programId)
 					.eq('is_active', true)
+
+				if (programCode) {
+					allCoQuery = allCoQuery.eq('program_code', programCode)
+				} else if (programId) {
+					allCoQuery = allCoQuery.eq('program_id', programId)
+				}
+
+				const { data: allCoData, error: allCoError } = await allCoQuery
 
 				if (!allCoError && allCoData) {
 					semesters = [...new Set(allCoData.map(d => d.semester))].sort((a, b) => a - b)
@@ -820,20 +860,29 @@ export async function GET(req: NextRequest) {
 		if (action === 'program-results') {
 			const institutionId = searchParams.get('institutionId')
 			const sessionId = searchParams.get('sessionId')
-			const programId = searchParams.get('programId')
+			const programId = searchParams.get('programId') // MyJKKN UUID (for reference, not used in query)
+			const programCode = searchParams.get('programCode') // Text code like "BCA" - used for filtering
 			const semester = searchParams.get('semester')
 			const programType = (searchParams.get('programType') || 'UG') as 'UG' | 'PG'
 			const includePartBreakdown = searchParams.get('includePartBreakdown') === 'true'
 
-			if (!institutionId || !sessionId || !programId) {
+			if (!institutionId || !sessionId) {
 				return NextResponse.json({
-					error: 'institutionId, sessionId, and programId are required'
+					error: 'institutionId and sessionId are required'
+				}, { status: 400 })
+			}
+
+			// Need either programCode or programId for filtering
+			if (!programCode && !programId) {
+				return NextResponse.json({
+					error: 'Either programCode or programId is required'
 				}, { status: 400 })
 			}
 
 			// Build query with course_part_master, semester_code, pass marks, and grade info from database
 			// IMPORTANT: grade_points and letter_grade are fetched from final_marks table
 			// These values are populated by database trigger from grade_system table
+			// NOTE: Filter by program_code (not program_id) since programs come from MyJKKN API
 			let query = supabase
 				.from('final_marks')
 				.select(`
@@ -875,8 +924,15 @@ export async function GET(req: NextRequest) {
 				`)
 				.eq('institutions_id', institutionId)
 				.eq('examination_session_id', sessionId)
-				.eq('program_id', programId)
 				.eq('is_active', true)
+
+			// Filter by program_code (preferred) or program_id (fallback)
+			// program_code stores text like "BCA", program_id stores MyJKKN UUID
+			if (programCode) {
+				query = query.eq('program_code', programCode)
+			} else if (programId) {
+				query = query.eq('program_id', programId)
+			}
 
 			if (semester) {
 				query = query.eq('course_offerings.semester', parseInt(semester))
@@ -1072,6 +1128,7 @@ export async function GET(req: NextRequest) {
 		if (action === 'backlogs') {
 			const institutionId = searchParams.get('institutionId')
 			const programId = searchParams.get('programId')
+			const programCode = searchParams.get('programCode') // Text code like "BCA" from MyJKKN
 			const studentId = searchParams.get('studentId')
 			const sessionId = searchParams.get('sessionId')
 			const status = searchParams.get('status') // 'pending', 'cleared', 'all'
@@ -1089,7 +1146,10 @@ export async function GET(req: NextRequest) {
 			if (institutionId) {
 				query = query.eq('institutions_id', institutionId)
 			}
-			if (programId) {
+			// Prefer programCode filter since programs are now from MyJKKN API
+			if (programCode) {
+				query = query.eq('program_code', programCode)
+			} else if (programId) {
 				query = query.eq('program_id', programId)
 			}
 			if (studentId) {
@@ -1251,6 +1311,7 @@ export async function POST(req: NextRequest) {
 			// Fetch all final marks with course and student info for calculation
 			// Include external marks to calculate is_pass dynamically (same as preview)
 			// Using LEFT JOINs to ensure records are returned even if some relations are missing
+			// Note: program_code is stored directly in final_marks (programs come from MyJKKN API)
 			let finalMarksQuery = supabase
 				.from('final_marks')
 				.select(`
@@ -1259,6 +1320,7 @@ export async function POST(req: NextRequest) {
 					course_id,
 					institutions_id,
 					program_id,
+					program_code,
 					examination_session_id,
 					exam_registration_id,
 					grade_points,
@@ -1277,9 +1339,6 @@ export async function POST(req: NextRequest) {
 						id,
 						stu_register_no,
 						student_name
-					),
-					programs (
-						program_code
 					)
 				`)
 				.eq('examination_session_id', sessionId)
@@ -1371,7 +1430,7 @@ export async function POST(req: NextRequest) {
 			finalMarksData.forEach((fm: any) => {
 				const studentId = fm.student_id
 				const registerNo = fm.exam_registrations?.stu_register_no || ''
-				const programCode = fm.programs?.program_code || ''
+				const programCode = fm.program_code || '' // program_code is stored directly in final_marks
 
 				if (!studentMarksMap[studentId]) {
 					studentMarksMap[studentId] = {

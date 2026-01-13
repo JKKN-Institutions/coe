@@ -364,11 +364,11 @@ export async function GET(request: Request) {
 			console.error('Error fetching semesters count:', semError)
 		}
 
-		// 10. Active Exam Sessions Count
+		// 10. Exam Sessions Count
+		// Note: examination_sessions table does NOT have is_active column
 		let examSessionsQuery = supabase
 			.from('examination_sessions')
 			.select('id', { count: 'exact', head: true })
-			.eq('is_active', true)
 
 		if (!isSuperAdmin && userInstitutionId) {
 			const { data: instData } = await supabase

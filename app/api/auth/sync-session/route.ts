@@ -275,7 +275,8 @@ export async function POST(request: Request) {
 			// Fetch user permissions from database based on role
 			const permissions = await fetchUserPermissions(supabase, existingUser.id, role)
 
-			return NextResponse.json({
+			// Create response with session data
+			const response = NextResponse.json({
 				success: true,
 				message: 'Session synced',
 				user_id: existingUser.id,
@@ -292,6 +293,30 @@ export async function POST(request: Request) {
 				permissions,
 				roles: [role].filter(Boolean)
 			})
+
+			// Extend cookie expiry on every sync (keeps session alive during active use)
+			if (access_token) {
+				const sevenDaysInSeconds = 7 * 24 * 60 * 60
+				response.cookies.set('access_token', access_token, {
+					path: '/',
+					maxAge: sevenDaysInSeconds,
+					httpOnly: false, // Needs to be readable by client JS
+					sameSite: 'lax',
+					secure: process.env.NODE_ENV === 'production'
+				})
+				if (refresh_token) {
+					const thirtyDaysInSeconds = 30 * 24 * 60 * 60
+					response.cookies.set('refresh_token', refresh_token, {
+						path: '/',
+						maxAge: thirtyDaysInSeconds,
+						httpOnly: false,
+						sameSite: 'lax',
+						secure: process.env.NODE_ENV === 'production'
+					})
+				}
+			}
+
+			return response
 		} else {
 			// User doesn't exist in local DB - they need to be added by admin
 			// Still try to fetch permissions by role name (in case role exists)

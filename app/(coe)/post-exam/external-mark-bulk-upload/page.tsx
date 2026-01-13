@@ -555,7 +555,10 @@ export default function ExternalMarkBulkUploadPage() {
 		console.log('Calling uploadMarks...')
 
 		try {
-			const result = await uploadMarks(validRows, user?.id, lookupMode)
+			// Pass progress callback to update UI in real-time
+			const result = await uploadMarks(validRows, user?.id, lookupMode, (current, total) => {
+				setImportProgress({ current, total })
+			})
 			console.log('uploadMarks result:', result)
 
 			// Update progress to 100% when complete

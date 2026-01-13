@@ -338,13 +338,20 @@ export default function BulkInternalMarksPage() {
 			// Use appendToUrl for proper institution filtering based on user role
 			let url = appendToUrl('/api/pre-exam/internal-marks?action=marks')
 			if (selectedSession) url += `&sessionId=${selectedSession}`
-			if (selectedProgram) url += `&programId=${selectedProgram}`
+			if (selectedProgram) url += `&programCode=${selectedProgram}`
 			if (selectedCourse) url += `&courseId=${selectedCourse}`
 
+			console.log('[fetchMarks] Fetching from URL:', url)
 			const res = await fetch(url)
 			const data = await res.json()
 
+			console.log('[fetchMarks] Response status:', res.ok, 'Data length:', Array.isArray(data) ? data.length : 'not array')
+			if (Array.isArray(data) && data.length > 0) {
+				console.log('[fetchMarks] First item sample:', data[0])
+			}
+
 			if (res.ok) {
+				console.log('[fetchMarks] Setting items, count:', data?.length || 0)
 				setItems(data)
 			} else {
 				console.error('Failed to fetch marks:', data.error || 'Unknown error')
@@ -511,6 +518,13 @@ export default function BulkInternalMarksPage() {
 		const getErrorReference = (errors: string[]): { category: string; reference: string } => {
 			const errorText = errors.join(' ').toLowerCase()
 
+			// Check for "Mark already added" - skipped rows
+			if (errorText.includes('mark already added') || errorText.includes('already added')) {
+				return {
+					category: 'MARK_ALREADY_EXISTS',
+					reference: 'Mark already added for this learner and course. Row skipped to prevent duplicate. No action needed - this is expected if re-uploading same data.'
+				}
+			}
 			if (errorText.includes('learner') || errorText.includes('student') || errorText.includes('register')) {
 				return {
 					category: 'LEARNER_NOT_FOUND',
@@ -1008,8 +1022,9 @@ export default function BulkInternalMarksPage() {
 				skipped: totalSkipped
 			})
 
-			// Store failed rows for potential download
-			if (totalFailed > 0 && allErrors.length > 0) {
+			// Store failed/skipped rows for potential download
+			// Include both failed and skipped rows in the error file
+			if ((totalFailed > 0 || totalSkipped > 0) && allErrors.length > 0) {
 				setFailedRowsData(failedRows)
 				setUploadErrors(allErrors)
 			}
@@ -1247,7 +1262,7 @@ export default function BulkInternalMarksPage() {
 									<SelectContent>
 										<SelectItem value="all">All Programs</SelectItem>
 										{programs.map(prog => (
-											<SelectItem key={prog.id} value={prog.id}>
+											<SelectItem key={prog.id} value={prog.program_code}>
 												{prog.program_name}
 											</SelectItem>
 										))}
@@ -1811,7 +1826,7 @@ export default function BulkInternalMarksPage() {
 					</div>
 
 					<AlertDialogFooter className="flex-shrink-0 flex-row gap-2 pt-4 border-t">
-						{/* Download Failed Rows Button */}
+						{/* Download Failed/Skipped Rows Button */}
 						{failedRowsData.length > 0 && (
 							<Button
 								variant="outline"
@@ -1820,7 +1835,7 @@ export default function BulkInternalMarksPage() {
 								className="bg-red-50 hover:bg-red-100 text-red-700 border-red-200 dark:bg-red-900/20 dark:hover:bg-red-900/30 dark:text-red-300 dark:border-red-800"
 							>
 								<Download className="h-4 w-4 mr-2" />
-								Download Failed Rows ({failedRowsData.length})
+								Download Error Report ({failedRowsData.length})
 							</Button>
 						)}
 						<div className="flex-1" />

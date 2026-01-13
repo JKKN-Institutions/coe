@@ -33,17 +33,17 @@ export async function GET(request: Request) {
 			}
 
 			case 'sessions': {
-				// Fetch all active sessions - no institution filter
+				// Fetch all sessions - no institution filter
 				// Client-side filtering is done based on selected institution if needed
+				// Note: examination_sessions table does NOT have is_active column
 				const { data, error } = await supabase
 					.from('examination_sessions')
 					.select('id, session_name, session_code, institutions_id')
-					.eq('is_active', true)
 					.order('session_name', { ascending: false })
 
 				if (error) {
 					console.error('Error fetching sessions:', error)
-					return NextResponse.json({ error: 'Failed to fetch sessions' }, { status: 400 })
+					return NextResponse.json({ error: 'Failed to fetch sessions', details: error.message }, { status: 400 })
 				}
 
 				return NextResponse.json(data || [])
@@ -147,8 +147,15 @@ export async function GET(request: Request) {
 				// institutionId is optional - if not provided, fetch all (for super_admin)
 				const institutionId = searchParams.get('institutionId') || searchParams.get('institutions_id')
 				const sessionId = searchParams.get('sessionId')
-				const programId = searchParams.get('programId')
+				const programCode = searchParams.get('programCode')
 				const courseId = searchParams.get('courseId')
+
+				// Debug logging
+				console.log('=== DEBUG: Fetching Internal Marks ===')
+				console.log('institutionId:', institutionId)
+				console.log('sessionId:', sessionId)
+				console.log('programCode:', programCode)
+				console.log('courseId:', courseId)
 
 				// Paginate to bypass Supabase 1000 row limit - fetch up to 1,000,000 records
 				let allMarks: any[] = []
@@ -220,8 +227,8 @@ export async function GET(request: Request) {
 					if (sessionId) {
 						query = query.eq('examination_session_id', sessionId)
 					}
-					if (programId) {
-						query = query.eq('program_id', programId)
+					if (programCode) {
+						query = query.eq('program_code', programCode)
 					}
 					if (courseId) {
 						query = query.eq('course_id', courseId)
@@ -246,6 +253,21 @@ export async function GET(request: Request) {
 					} else {
 						hasMore = false
 					}
+				}
+
+				// Debug: Log fetch results
+				console.log('=== DEBUG: Internal Marks Fetch Results ===')
+				console.log('Total marks fetched:', allMarks.length)
+
+				// Check for records with null exam_registrations (missing student info)
+				const missingExamReg = allMarks.filter(m => !m.exam_registrations)
+				if (missingExamReg.length > 0) {
+					console.log('WARNING: Records with missing exam_registrations:', missingExamReg.length)
+					console.log('Sample missing record:', JSON.stringify(missingExamReg[0], null, 2))
+				}
+
+				if (allMarks.length > 0) {
+					console.log('First mark sample:', JSON.stringify(allMarks[0], null, 2))
 				}
 
 				// Transform data for display
@@ -667,7 +689,12 @@ async function handleBulkUpload(supabase: any, body: any) {
 	console.log('examination_session_id:', examination_session_id)
 
 	// Get exam registrations with student and course info for validation
-	// Fetch for all relevant institutions AND filter by examination_session_id if provided
+	// Fetch for all relevant institutions
+	// IMPORTANT: Do NOT filter by examination_session_id here - we need to find ALL registrations
+	// for a student/course to handle reappear/backlog cases where:
+	// - Original registration (Session A) has internal_marks linked
+	// - Reappear registration (Session B) only has external marks
+	// We need to find the original registration that has internal_marks to update it
 	let examRegistrations: any[] = []
 	let examRegError = null
 	const pageSize = 1000
@@ -678,7 +705,9 @@ async function handleBulkUpload(supabase: any, body: any) {
 
 		while (hasMore) {
 			// Join with course_offerings to get course_id for internal_marks FK
-			let query = supabase
+			// Also join with internal_marks to know which registrations already have marks
+			// DO NOT filter by examination_session_id - we need all registrations across sessions
+			const query = supabase
 				.from('exam_registrations')
 				.select(`
 					id,
@@ -692,14 +721,15 @@ async function handleBulkUpload(supabase: any, body: any) {
 					course_code,
 					course_offerings:course_offering_id (
 						course_id
+					),
+					internal_marks!left (
+						id
 					)
 				`)
 				.eq('institutions_id', instId)
 
-			// Filter by examination_session_id if provided
-			if (examination_session_id) {
-				query = query.eq('examination_session_id', examination_session_id)
-			}
+			// NOTE: Removed examination_session_id filter to support reappear/backlog students
+			// The session filter is applied when DISPLAYING marks, not when uploading
 
 			const { data, error } = await query.range(page * pageSize, (page + 1) * pageSize - 1)
 
@@ -763,7 +793,19 @@ async function handleBulkUpload(supabase: any, body: any) {
 		examination_session_id: string
 		institutions_id: string
 		internal_max_mark: number
+		has_internal_marks?: boolean
 	}>()
+
+	// Sort exam registrations to prioritize those with existing internal_marks
+	// This ensures when there are duplicates, we use the one that already has marks linked
+	examRegistrations?.sort((a: any, b: any) => {
+		const aHasMarks = a.internal_marks && a.internal_marks.length > 0
+		const bHasMarks = b.internal_marks && b.internal_marks.length > 0
+		// Sort those with marks first (return -1 to put 'a' first if it has marks)
+		if (aHasMarks && !bHasMarks) return -1
+		if (!aHasMarks && bHasMarks) return 1
+		return 0
+	})
 
 	examRegistrations?.forEach((er: any) => {
 		const regNo = er.stu_register_no?.toLowerCase()?.trim()
@@ -776,6 +818,21 @@ async function handleBulkUpload(supabase: any, body: any) {
 
 		if (regNo && courseCode && instId && courseIdFromOffering) {
 			const key = `${instId}|${regNo}|${courseCode}`
+
+			// IMPORTANT: Only set if key doesn't exist OR if this registration has internal_marks
+			// This ensures we prefer registrations that already have marks linked
+			const hasInternalMarks = er.internal_marks && er.internal_marks.length > 0
+			const existingEntry = examRegMap.get(key)
+
+			// Skip if we already have an entry (since sorted, first entry is preferred)
+			if (existingEntry) {
+				// Log duplicate for debugging
+				if (hasInternalMarks) {
+					console.log(`DEBUG: Duplicate exam_registration found for key ${key}, keeping existing entry`)
+				}
+				return
+			}
+
 			// Get course info from courseMap for internal_max_mark
 			const courseInfo = courseMap.get(`${instId}|${courseCode}`)
 			examRegMap.set(key, {
@@ -789,7 +846,8 @@ async function handleBulkUpload(supabase: any, body: any) {
 				program_code: er.program_code || null,
 				examination_session_id: er.examination_session_id,
 				institutions_id: instId,
-				internal_max_mark: courseInfo?.internal_max_mark || 100
+				internal_max_mark: courseInfo?.internal_max_mark || 100,
+				has_internal_marks: hasInternalMarks
 			})
 		}
 	})
@@ -830,6 +888,9 @@ async function handleBulkUpload(supabase: any, body: any) {
 	console.log('=== DEBUG: Lookup Maps ===')
 	console.log('examRegMap size:', examRegMap.size)
 	console.log('examRegMap keys (first 10):', Array.from(examRegMap.keys()).slice(0, 10))
+	// Count how many have existing internal_marks
+	const withMarksCount = Array.from(examRegMap.values()).filter(v => v.has_internal_marks).length
+	console.log('examRegMap entries with existing internal_marks:', withMarksCount)
 	console.log('validRegisterNosByInst sizes:', Array.from(validRegisterNosByInst.entries()).map(([k, v]) => `${institutionIdToCode.get(k)}: ${v.size}`))
 	console.log('validCourseCodesByInst sizes:', Array.from(validCourseCodesByInst.entries()).map(([k, v]) => `${institutionIdToCode.get(k)}: ${v.size}`))
 
@@ -890,6 +951,10 @@ async function handleBulkUpload(supabase: any, body: any) {
 			console.log('Raw Excel data:', { institution_code: row.institution_code, register_no: row.register_no, course_code: row.course_code })
 			console.log('Normalized for lookup:', { rowInstCode, rowInstId, registerNo, courseCode, lookupKey })
 			console.log('Found examReg:', examReg ? 'YES' : 'NO')
+			if (examReg) {
+				console.log('examReg has existing internal_marks:', examReg.has_internal_marks)
+				console.log('examReg.exam_registration_id:', examReg.exam_registration_id)
+			}
 			console.log('validRegisterNos size:', validRegisterNos.size)
 			console.log('validRegisterNos.has(registerNo):', validRegisterNos.has(registerNo))
 			console.log('validCourseCodes size:', validCourseCodes.size)
@@ -987,16 +1052,49 @@ async function handleBulkUpload(supabase: any, body: any) {
 		}
 
 		try {
-			// Check if record exists - use course_offering_id from examReg for accurate lookup
-			// The unique constraint is on (institutions_id, exam_registration_id, course_offering_id)
-			// and (student_id, course_offering_id, examination_session_id)
-			const { data: existing } = await supabase
-				.from('internal_marks')
-				.select('id')
-				.eq('student_id', examReg.student_id)
-				.eq('course_offering_id', examReg.course_offering_id)
-				.eq('examination_session_id', examReg.examination_session_id)
-				.maybeSingle()
+			// Check if record exists for this exam_registration_id
+			// Since we prioritize exam_registrations that already have internal_marks linked (via sort),
+			// this will find the existing record if there is one
+			// For reappear/backlog students: there's only ONE internal_marks entry per student/course,
+			// linked to the FIRST registration (original exam, not reappear)
+			let existing: { id: string } | null = null
+
+			// If this examReg already has internal_marks linked, look it up directly
+			if (examReg.has_internal_marks) {
+				const { data } = await supabase
+					.from('internal_marks')
+					.select('id')
+					.eq('exam_registration_id', examReg.exam_registration_id)
+					.maybeSingle()
+				existing = data
+			}
+
+			// Fallback: Also check by student_id + course_id (in case the exam_registration lookup didn't work)
+			if (!existing) {
+				const { data } = await supabase
+					.from('internal_marks')
+					.select('id')
+					.eq('student_id', examReg.student_id)
+					.eq('course_id', examReg.course_id)
+					.maybeSingle()
+				existing = data
+			}
+
+			// SKIP if marks already exist - prevent accidental re-upload/overwrite
+			if (existing) {
+				console.log('=== DEBUG: Skipping existing record ===')
+				console.log('Record ID:', existing.id)
+				console.log('Student:', row.register_no, 'Course:', row.course_code)
+				results.skipped++
+				results.validation_errors.push({
+					row: rowNumber,
+					register_no: row.register_no || 'N/A',
+					course_code: row.course_code || 'N/A',
+					institution_code: row.institution_code || 'N/A',
+					errors: ['Mark already added for this student and course. Skipped to prevent duplicate entry.']
+				})
+				continue
+			}
 
 			// Build marks data object with exam registration info
 			// Only use program_id if it exists in local programs table to avoid FK violation
@@ -1033,22 +1131,8 @@ async function handleBulkUpload(supabase: any, body: any) {
 					(test1Mark || 0) + (test2Mark || 0) + (test3Mark || 0)
 			}
 
-			if (existing) {
-				// Update existing
-				const { data: updatedData, error: updateError } = await supabase
-					.from('internal_marks')
-					.update(marksDataObj)
-					.eq('id', existing.id)
-					.select('id')
-					.single()
-
-				if (updateError) {
-					console.error('Update error for row', rowNumber, ':', updateError)
-					throw updateError
-				}
-				console.log('Updated record:', existing.id, 'for student:', examReg.student_id)
-				results.successful++
-			} else {
+			// Only insert new records (no update - marks already exist check is above)
+			{
 				// Insert new - use institution from examReg (based on row's institution_code)
 				const insertData: any = {
 					institutions_id: examReg.institutions_id,
@@ -1100,7 +1184,7 @@ async function handleBulkUpload(supabase: any, body: any) {
 	let finalStatus = 'Completed'
 	if (results.failed === marks_data.length) {
 		finalStatus = 'Failed'
-	} else if (results.failed > 0) {
+	} else if (results.failed > 0 || results.skipped > 0) {
 		finalStatus = 'Partial'
 	}
 

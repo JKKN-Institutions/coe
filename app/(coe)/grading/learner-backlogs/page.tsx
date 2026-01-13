@@ -19,6 +19,7 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/component
 import { Progress } from "@/components/ui/progress"
 import { useToast } from "@/hooks/common/use-toast"
 import { useInstitutionFilter } from "@/hooks/use-institution-filter"
+import { useMyJKKNInstitutionFilter, type ProgramOption } from "@/hooks/use-myjkkn-institution-filter"
 import Link from "next/link"
 import {
 	AlertTriangle,
@@ -117,6 +118,7 @@ interface DropdownOption {
 	id: string
 	code: string
 	name: string
+	myjkkn_institution_ids?: string[]
 }
 
 // =====================================================
@@ -155,15 +157,19 @@ export default function LearnerArrearsPage() {
 		institutionId
 	} = useInstitutionFilter()
 
+	// MyJKKN hook for fetching programs
+	const { fetchPrograms: fetchMyJKKNPrograms } = useMyJKKNInstitutionFilter()
+
 	// Selection state
 	const [selectedInstitution, setSelectedInstitution] = useState("")
 	const [selectedProgram, setSelectedProgram] = useState("")
+	const [selectedProgramCode, setSelectedProgramCode] = useState("") // Store program code for API
 	const [selectedStatus, setSelectedStatus] = useState<'all' | 'pending' | 'cleared'>('pending')
 	const [selectedPriority, setSelectedPriority] = useState<string>("")
 
 	// Dropdown data
 	const [institutions, setInstitutions] = useState<DropdownOption[]>([])
-	const [programs, setPrograms] = useState<DropdownOption[]>([])
+	const [programs, setPrograms] = useState<ProgramOption[]>([])
 
 	// Results state
 	const [loading, setLoading] = useState(false)
@@ -193,18 +199,33 @@ export default function LearnerArrearsPage() {
 		}
 	}, [isReady, mustSelectInstitution, institutions, getInstitutionIdForCreate, selectedInstitution])
 
-	// Fetch programs when institution changes
+	// Fetch programs when institution changes (also depend on institutions for correct lookup)
 	useEffect(() => {
-		if (selectedInstitution) {
-			fetchPrograms(selectedInstitution)
+		if (selectedInstitution && institutions.length > 0) {
+			// Get myjkkn_institution_ids from the selected institution
+			const institution = institutions.find(i => i.id === selectedInstitution)
+			const myjkknIds = institution?.myjkkn_institution_ids || []
+
+			// Fetch programs from MyJKKN API
+			fetchMyJKKNPrograms(myjkknIds).then(programsData => {
+				// Sort programs by program_order if available
+				const sortedPrograms = programsData.sort((a, b) =>
+					(a.program_order || 999) - (b.program_order || 999)
+				)
+				setPrograms(sortedPrograms)
+			}).catch(e => {
+				console.error('Failed to fetch programs:', e)
+				setPrograms([])
+			})
 		} else {
 			setPrograms([])
 		}
 		setSelectedProgram("")
+		setSelectedProgramCode("")
 		setBacklogs([])
 		setLearnerSummaries([])
 		setStatistics(null)
-	}, [selectedInstitution])
+	}, [selectedInstitution, institutions, fetchMyJKKNPrograms])
 
 	const fetchInstitutions = async () => {
 		try {
@@ -215,27 +236,12 @@ export default function LearnerArrearsPage() {
 				setInstitutions(data.map((i: any) => ({
 					id: i.id,
 					code: i.institution_code,
-					name: i.name
+					name: i.name,
+					myjkkn_institution_ids: i.myjkkn_institution_ids || []
 				})))
 			}
 		} catch (e) {
 			console.error('Failed to fetch institutions:', e)
-		}
-	}
-
-	const fetchPrograms = async (institutionId: string) => {
-		try {
-			const res = await fetch(`/api/grading/final-marks?action=programs&institutionId=${institutionId}`)
-			if (res.ok) {
-				const data = await res.json()
-				setPrograms(data.map((p: any) => ({
-					id: p.id,
-					code: p.program_code,
-					name: p.program_name
-				})))
-			}
-		} catch (e) {
-			console.error('Failed to fetch programs:', e)
 		}
 	}
 
@@ -263,6 +269,10 @@ export default function LearnerArrearsPage() {
 
 			if (selectedProgram) {
 				params.append('programId', selectedProgram)
+				// Also send program_code for filtering since MyJKKN uses codes
+				if (selectedProgramCode) {
+					params.append('programCode', selectedProgramCode)
+				}
 			}
 			if (selectedPriority) {
 				params.append('priority', selectedPriority)
@@ -472,7 +482,21 @@ export default function LearnerArrearsPage() {
 								)}
 								<div className="space-y-2">
 									<Label>Program</Label>
-									<Select value={selectedProgram || "all"} onValueChange={(v) => setSelectedProgram(v === "all" ? "" : v)} disabled={mustSelectInstitution && !selectedInstitution}>
+									<Select
+										value={selectedProgram || "all"}
+										onValueChange={(v) => {
+											if (v === "all") {
+												setSelectedProgram("")
+												setSelectedProgramCode("")
+											} else {
+												setSelectedProgram(v)
+												// Store the program_code for API calls
+												const prog = programs.find(p => p.id === v)
+												setSelectedProgramCode(prog?.program_code || "")
+											}
+										}}
+										disabled={mustSelectInstitution && !selectedInstitution}
+									>
 										<SelectTrigger>
 											<SelectValue placeholder="All programs" />
 										</SelectTrigger>
@@ -480,7 +504,7 @@ export default function LearnerArrearsPage() {
 											<SelectItem value="all">All Programs</SelectItem>
 											{programs.map(p => (
 												<SelectItem key={p.id} value={p.id}>
-													{p.code} - {p.name}
+													{p.program_code} - {p.program_name}
 												</SelectItem>
 											))}
 										</SelectContent>

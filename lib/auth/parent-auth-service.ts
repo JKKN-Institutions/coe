@@ -57,8 +57,9 @@ class ParentAuthService {
 		user?: ParentAppUser,
 		expiresIn?: number // Token expiry in seconds from parent app
 	): Promise<ParentAppUser | null> {
-		// Calculate cookie expiry in days from seconds (default 1 hour = ~0.04 days)
-		const accessTokenExpiryDays = expiresIn ? expiresIn / (24 * 60 * 60) : 1 / 24 // Default 1 hour
+		// Extended session: use 7 days for access token cookie to allow longer work sessions
+		// The actual token validity is still controlled by the parent app, but we keep the cookie longer
+		const accessTokenExpiryDays = 7 // Extended to 7 days for longer work sessions
 		const refreshTokenExpiryDays = 30 // Refresh token typically lasts longer
 
 		// Store tokens in cookies with actual expiry

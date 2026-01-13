@@ -173,6 +173,10 @@ export async function POST(request: Request) {
 			return handleBulkUpload(supabase, body)
 		} else if (action === 'bulk-delete') {
 			return handleBulkDelete(supabase, body)
+		} else if (action === 'prepare-batch-upload') {
+			return handlePrepareBatchUpload(supabase, body)
+		} else if (action === 'process-batch') {
+			return handleProcessBatch(supabase, body)
 		} else {
 			return NextResponse.json({ error: 'Invalid action' }, { status: 400 })
 		}
@@ -638,6 +642,415 @@ async function handleBulkDelete(supabase: any, body: any) {
 			error: `Unexpected error: ${err.message || 'Unknown error'}`
 		}, { status: 500 })
 	}
+}
+
+// Prepare batch upload - fetches lookup data once and returns it for client-side use
+async function handlePrepareBatchUpload(supabase: any, body: any) {
+	const { institution_codes } = body
+
+	if (!institution_codes || !Array.isArray(institution_codes) || institution_codes.length === 0) {
+		return NextResponse.json({
+			error: 'Missing required fields: institution_codes array is required'
+		}, { status: 400 })
+	}
+
+	// Step 1: Fetch all institutions for code-to-id mapping
+	const { data: allInstitutions } = await supabase
+		.from('institutions')
+		.select('id, institution_code')
+		.eq('is_active', true)
+
+	const institutionCodeToId = new Map<string, string>(
+		allInstitutions?.map((i: any) => [i.institution_code?.toUpperCase(), i.id]) || []
+	)
+
+	// Validate all institution codes exist
+	const invalidInstCodes: string[] = []
+	const uniqueInstCodes = new Set<string>(
+		institution_codes.map((code: string) => code.toUpperCase().trim()).filter(Boolean)
+	)
+
+	uniqueInstCodes.forEach(code => {
+		if (!institutionCodeToId.has(code)) {
+			invalidInstCodes.push(code)
+		}
+	})
+
+	if (invalidInstCodes.length > 0) {
+		return NextResponse.json({
+			error: `Invalid institution code(s): ${invalidInstCodes.join(', ')}. Please check the Institution Code column in your Excel file.`
+		}, { status: 400 })
+	}
+
+	// Get institution IDs
+	const institutionIdsToFetch: string[] = []
+	uniqueInstCodes.forEach(code => {
+		const id = institutionCodeToId.get(code)
+		if (id) institutionIdsToFetch.push(id)
+	})
+
+	// Fetch examination sessions for all relevant institutions
+	let examSessions: any[] = []
+	for (const instId of institutionIdsToFetch) {
+		const { data: instSessions } = await supabase
+			.from('examination_sessions')
+			.select('id, session_code, institutions_id')
+			.eq('institutions_id', instId)
+
+		if (instSessions) {
+			examSessions = examSessions.concat(instSessions)
+		}
+	}
+
+	// Build session map
+	const sessionLookup: Record<string, { id: string; session_code: string; institutions_id: string }> = {}
+	examSessions?.forEach((s: any) => {
+		const key = `${s.institutions_id}|${s.session_code?.toLowerCase()?.trim()}`
+		sessionLookup[key] = s
+	})
+
+	// Fetch exam registrations with student details
+	let examRegistrations: any[] = []
+	const regPageSize = 1000
+
+	for (const instId of institutionIdsToFetch) {
+		let regPage = 0
+		let regHasMore = true
+
+		while (regHasMore) {
+			const { data: regData, error: regError } = await supabase
+				.from('exam_registrations')
+				.select(`
+					id,
+					stu_register_no,
+					student_id,
+					student_name,
+					institutions_id,
+					examination_session_id,
+					course_offering_id,
+					program_code,
+					is_regular,
+					attempt_number,
+					examination_sessions!inner (
+						id,
+						session_code
+					),
+					course_offerings!inner (
+						id,
+						course_id,
+						program_id,
+						courses!inner (
+							id,
+							course_code
+						)
+					)
+				`)
+				.eq('institutions_id', instId)
+				.not('stu_register_no', 'is', null)
+				.range(regPage * regPageSize, (regPage + 1) * regPageSize - 1)
+
+			if (regError) {
+				console.error('Error fetching exam registrations page:', regPage, 'for institution:', instId, regError)
+				break
+			}
+
+			if (regData && regData.length > 0) {
+				examRegistrations = examRegistrations.concat(regData)
+				regPage++
+				regHasMore = regData.length === regPageSize
+			} else {
+				regHasMore = false
+			}
+		}
+	}
+
+	// Build registration lookup
+	const registerLookup: Record<string, {
+		exam_registration_id: string
+		student_id: string
+		student_name: string
+		register_number: string
+		course_id: string
+		course_code: string
+		course_offering_id: string
+		program_id: string
+		program_code: string
+		examination_session_id: string
+		institutions_id: string
+		is_regular: boolean
+		attempt_number: number
+	}> = {}
+
+	examRegistrations?.forEach((reg: any) => {
+		const registerNo = reg.stu_register_no?.toLowerCase()?.trim()
+		const courseCode = reg.course_offerings?.courses?.course_code?.toLowerCase()?.trim()
+		const sessionCode = reg.examination_sessions?.session_code?.toLowerCase()?.trim()
+		const courseId = reg.course_offerings?.courses?.id
+		const examRegId = reg.id
+		const instId = reg.institutions_id
+
+		if (registerNo && courseCode && sessionCode && courseId && examRegId && instId) {
+			const key = `${instId}|${registerNo}|${courseCode}|${sessionCode}`
+			registerLookup[key] = {
+				exam_registration_id: examRegId,
+				student_id: reg.student_id,
+				student_name: reg.student_name,
+				register_number: reg.stu_register_no,
+				course_id: courseId,
+				course_code: reg.course_offerings.courses.course_code,
+				course_offering_id: reg.course_offerings.id,
+				program_id: reg.course_offerings.program_id,
+				program_code: reg.program_code || '',
+				examination_session_id: reg.examination_session_id,
+				institutions_id: instId,
+				is_regular: reg.is_regular ?? true,
+				attempt_number: reg.attempt_number ?? 1
+			}
+		}
+	})
+
+	// Fetch existing attendance records
+	let existingAttendance: any[] = []
+	const attPageSize = 1000
+
+	for (const instId of institutionIdsToFetch) {
+		let attPage = 0
+		let attHasMore = true
+
+		while (attHasMore) {
+			const { data: attData, error: attError } = await supabase
+				.from('exam_attendance')
+				.select('id, institutions_id, exam_registration_id')
+				.eq('institutions_id', instId)
+				.range(attPage * attPageSize, (attPage + 1) * attPageSize - 1)
+
+			if (attError) {
+				console.error('Error fetching existing attendance page:', attPage, 'for institution:', instId, attError)
+				break
+			}
+
+			if (attData && attData.length > 0) {
+				existingAttendance = existingAttendance.concat(attData)
+				attPage++
+				attHasMore = attData.length === attPageSize
+			} else {
+				attHasMore = false
+			}
+		}
+	}
+
+	// Build existing attendance lookup
+	const existingAttendanceLookup: Record<string, boolean> = {}
+	existingAttendance?.forEach((a: any) => {
+		existingAttendanceLookup[`${a.institutions_id}|${a.exam_registration_id}`] = true
+	})
+
+	// Convert institutionCodeToId map to object for JSON
+	const institutionMapping: Record<string, string> = {}
+	institutionCodeToId.forEach((id, code) => {
+		institutionMapping[code] = id
+	})
+
+	return NextResponse.json({
+		success: true,
+		institutionMapping,
+		sessionLookup,
+		registerLookup,
+		existingAttendanceLookup,
+		stats: {
+			institutions: institutionIdsToFetch.length,
+			sessions: examSessions.length,
+			registrations: examRegistrations.length,
+			existingAttendance: existingAttendance.length
+		}
+	})
+}
+
+// Process a single batch of attendance records
+async function handleProcessBatch(supabase: any, body: any) {
+	const {
+		batch_data,
+		uploaded_by,
+		institutionMapping,
+		sessionLookup,
+		registerLookup,
+		existingAttendanceLookup,
+		batch_start_index
+	} = body
+
+	if (!batch_data || !Array.isArray(batch_data) || batch_data.length === 0) {
+		return NextResponse.json({
+			error: 'Missing required fields: batch_data array is required'
+		}, { status: 400 })
+	}
+
+	const results = {
+		successful: 0,
+		failed: 0,
+		skipped: 0,
+		errors: [] as any[],
+		validation_errors: [] as any[],
+		newExistingKeys: [] as string[] // Track newly added for duplicate prevention in subsequent batches
+	}
+
+	// Process each row in the batch
+	for (let i = 0; i < batch_data.length; i++) {
+		const row = batch_data[i]
+		const rowNumber = (batch_start_index || 0) + i + 2 // +2 for Excel header row
+		const rowErrors: string[] = []
+
+		// Get institution_id from row's institution_code
+		const rowInstCode = String(row.institution_code || '').toUpperCase().trim()
+		const rowInstId = institutionMapping[rowInstCode]
+
+		if (!rowInstId) {
+			rowErrors.push(`Invalid institution code "${row.institution_code}"`)
+			results.failed++
+			results.validation_errors.push({
+				row: rowNumber,
+				register_number: row.register_number || 'N/A',
+				course_code: row.course_code || 'N/A',
+				errors: rowErrors,
+				original_data: row
+			})
+			continue
+		}
+
+		// Lookup registration
+		const registerNo = String(row.register_number || '').toLowerCase().trim()
+		const courseCode = String(row.course_code || '').toLowerCase().trim()
+		const sessionCode = String(row.session_code || '').toLowerCase().trim()
+		const lookupKey = `${rowInstId}|${registerNo}|${courseCode}|${sessionCode}`
+		const displayIdentifier = row.register_number || 'N/A'
+
+		const regInfo = registerLookup[lookupKey]
+
+		if (!regInfo) {
+			const sessionKey = `${rowInstId}|${sessionCode}`
+			if (!sessionLookup[sessionKey]) {
+				rowErrors.push(`Session with code "${row.session_code}" not found for institution "${row.institution_code}"`)
+			} else {
+				rowErrors.push(`No exam registration found for register number "${row.register_number}" in course "${row.course_code}" for session "${row.session_code}"`)
+			}
+			results.failed++
+			results.validation_errors.push({
+				row: rowNumber,
+				register_number: displayIdentifier,
+				course_code: row.course_code || 'N/A',
+				errors: rowErrors,
+				original_data: row
+			})
+			continue
+		}
+
+		// Check for duplicate
+		const existingKey = `${regInfo.institutions_id}|${regInfo.exam_registration_id}`
+		if (existingAttendanceLookup[existingKey]) {
+			results.skipped++
+			results.validation_errors.push({
+				row: rowNumber,
+				register_number: displayIdentifier,
+				course_code: row.course_code || 'N/A',
+				errors: ['Attendance already exists for this registration. Skipped to prevent duplicate.'],
+				original_data: row
+			})
+			continue
+		}
+
+		// Parse attendance status
+		const attendanceStatusRaw = String(row.attendance_status || 'Present').trim()
+		let attendanceStatus = 'Present'
+		if (['absent', 'ab', 'a', 'no', 'n', '0', 'false'].includes(attendanceStatusRaw.toLowerCase())) {
+			attendanceStatus = 'Absent'
+		}
+
+		// Parse entry time
+		let entryTime: string | null = null
+		if (row.entry_time) {
+			const timeStr = String(row.entry_time).trim()
+			if (/^\d{1,2}:\d{2}(:\d{2})?$/.test(timeStr)) {
+				entryTime = timeStr
+			} else if (!isNaN(parseFloat(timeStr))) {
+				const totalSeconds = Math.round(parseFloat(timeStr) * 24 * 60 * 60)
+				const hours = Math.floor(totalSeconds / 3600)
+				const minutes = Math.floor((totalSeconds % 3600) / 60)
+				const seconds = totalSeconds % 60
+				entryTime = `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`
+			}
+		}
+
+		// Parse identity verified
+		const identityVerifiedRaw = String(row.identity_verified || '').toUpperCase().trim()
+		const identityVerified = ['TRUE', 'YES', '1', 'Y'].includes(identityVerifiedRaw)
+
+		// Parse remarks
+		const remarks = String(row.remarks || '').trim() || null
+
+		try {
+			// Insert attendance record
+			const insertData: any = {
+				institutions_id: regInfo.institutions_id,
+				exam_registration_id: regInfo.exam_registration_id,
+				student_id: regInfo.student_id,
+				examination_session_id: regInfo.examination_session_id,
+				course_id: regInfo.course_id,
+				program_id: regInfo.program_id,
+				program_code: regInfo.program_code,
+				attendance_status: attendanceStatus,
+				entry_time: entryTime,
+				identity_verified: identityVerified,
+				remarks: remarks,
+				is_regular: regInfo.is_regular,
+				attempt_number: regInfo.attempt_number,
+				status: true,
+				created_by: uploaded_by
+			}
+
+			const { error: insertError } = await supabase
+				.from('exam_attendance')
+				.insert(insertData)
+
+			if (insertError) {
+				throw insertError
+			}
+
+			// Track for duplicate prevention
+			results.newExistingKeys.push(existingKey)
+			results.successful++
+		} catch (error: any) {
+			results.failed++
+			let errorMessage = error.message || 'Database error'
+			if (error.code === '23505') {
+				errorMessage = 'Duplicate entry - attendance already exists for this registration'
+				results.failed--
+				results.skipped++
+			} else if (error.code === '23503') {
+				if (error.message?.includes('exam_registration_id')) {
+					errorMessage = 'Exam registration not found in system'
+				} else if (error.message?.includes('course_id')) {
+					errorMessage = 'Course not found in system'
+				} else {
+					errorMessage = `Foreign key constraint violation: ${error.detail || error.message}`
+				}
+			}
+			results.errors.push({
+				row: rowNumber,
+				register_number: displayIdentifier,
+				course_code: row.course_code || 'N/A',
+				errors: [errorMessage],
+				original_data: row
+			})
+		}
+	}
+
+	return NextResponse.json({
+		successful: results.successful,
+		failed: results.failed,
+		skipped: results.skipped,
+		errors: results.errors,
+		validation_errors: results.validation_errors,
+		newExistingKeys: results.newExistingKeys
+	})
 }
 
 export async function DELETE(request: Request) {

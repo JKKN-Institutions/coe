@@ -289,6 +289,7 @@ export interface StudentResultRow {
 export interface GenerateFinalMarksPayload {
 	institutions_id: string
 	program_id: string
+	program_code?: string // Optional: If provided, use directly instead of DB lookup
 	examination_session_id: string
 	course_ids: string[]
 	regulation_id: string
@@ -393,6 +394,7 @@ export interface InstitutionOption {
 	id: string
 	institution_code: string
 	name: string
+	myjkkn_institution_ids?: string[] | null
 }
 
 /**

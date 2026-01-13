@@ -96,7 +96,8 @@ interface UseExternalMarksBulkReturn {
 	uploadMarks: (
 		validRows: ImportPreviewRow[],
 		userId: string | undefined,
-		lookupMode?: LookupMode
+		lookupMode?: LookupMode,
+		onProgress?: (current: number, total: number) => void
 	) => Promise<{ success: boolean; result?: any; error?: string }>
 	deleteSelected: () => Promise<{ success: boolean; result?: any; error?: string }>
 }
@@ -423,7 +424,8 @@ export function useExternalMarksBulk(): UseExternalMarksBulkReturn {
 	const uploadMarks = useCallback(async (
 		validRows: ImportPreviewRow[],
 		userId: string | undefined,
-		lookupMode: LookupMode = 'dummy_number'
+		lookupMode: LookupMode = 'dummy_number',
+		onProgress?: (current: number, total: number) => void
 	) => {
 		console.log('=== useExternalMarksBulk.uploadMarks called ===')
 		console.log('validRows count:', validRows.length)
@@ -461,7 +463,7 @@ export function useExternalMarksBulk(): UseExternalMarksBulkReturn {
 				file_name: 'bulk_upload.xlsx',
 				file_type: 'XLSX',
 				uploaded_by: userId
-			})
+			}, onProgress)
 
 			console.log('bulkUploadMarks returned:', result)
 

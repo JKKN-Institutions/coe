@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect, useMemo } from "react"
+import { useState, useEffect, useMemo, useRef } from "react"
 import XLSX from "@/lib/utils/excel-compat"
 import { AppSidebar } from "@/components/layout/app-sidebar"
 import { AppHeader } from "@/components/layout/app-header"
@@ -17,6 +17,8 @@ import { Label } from "@/components/ui/label"
 import { Checkbox } from "@/components/ui/checkbox"
 import { useToast } from "@/hooks/common/use-toast"
 import { useInstitutionFilter } from "@/hooks/use-institution-filter"
+import { useInstitution } from "@/context/institution-context"
+import { useMyJKKNInstitutionFilter } from "@/hooks/use-myjkkn-institution-filter"
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog"
 import Link from "next/link"
 import {
@@ -39,7 +41,8 @@ import {
 	TrendingUp,
 	AlertTriangle,
 	RefreshCw,
-	SkipForward
+	SkipForward,
+	X
 } from "lucide-react"
 import type { StudentResultRow, InstitutionOption, ProgramData, ExamSessionData, CourseOfferingData } from "@/types/final-marks"
 
@@ -74,6 +77,52 @@ const StepIndicator = ({ currentStep, steps }: { currentStep: number; steps: str
 	)
 }
 
+// Progress overlay component - blocks UI during operations
+const ProgressOverlay = ({
+	isVisible,
+	title,
+	description,
+	onCancel
+}: {
+	isVisible: boolean
+	title: string
+	description: string
+	onCancel?: () => void
+}) => {
+	if (!isVisible) return null
+
+	return (
+		<div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
+			<div className="bg-background border rounded-lg shadow-xl p-6 max-w-md w-full mx-4">
+				<div className="flex flex-col items-center text-center space-y-4">
+					<div className="relative">
+						<div className="h-16 w-16 rounded-full border-4 border-primary/30 border-t-primary animate-spin" />
+						<Calculator className="h-6 w-6 text-primary absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2" />
+					</div>
+					<div>
+						<h3 className="text-lg font-semibold">{title}</h3>
+						<p className="text-sm text-muted-foreground mt-1">{description}</p>
+					</div>
+					<p className="text-xs text-muted-foreground">
+						Please wait. Do not close this window or navigate away.
+					</p>
+					{onCancel && (
+						<Button
+							variant="outline"
+							size="sm"
+							onClick={onCancel}
+							className="mt-2"
+						>
+							<X className="h-4 w-4 mr-1" />
+							Cancel
+						</Button>
+					)}
+				</div>
+			</div>
+		</div>
+	)
+}
+
 export default function GenerateFinalMarksPage() {
 	const { toast } = useToast()
 	const steps = ['Select Program', 'Select Courses', 'Generate Results', 'Save & Export']
@@ -89,14 +138,27 @@ export default function GenerateFinalMarksPage() {
 		institutionId
 	} = useInstitutionFilter()
 
+	// Institution context for accessing available institutions with myjkkn_institution_ids
+	const { availableInstitutions } = useInstitution()
+
+	// MyJKKN institution filter hook for fetching programs from MyJKKN API
+	const { fetchPrograms: fetchMyJKKNPrograms } = useMyJKKNInstitutionFilter()
+
 	// Step state
 	const [currentStep, setCurrentStep] = useState(0)
 
 	// Dropdown data
 	const [institutions, setInstitutions] = useState<InstitutionOption[]>([])
 	const [programs, setPrograms] = useState<ProgramData[]>([])
+	const [programsLoading, setProgramsLoading] = useState(false)
 	const [sessions, setSessions] = useState<ExamSessionData[]>([])
 	const [courseOfferings, setCourseOfferings] = useState<CourseOfferingData[]>([])
+
+	// Use ref for institutions to avoid dependency cycle in useEffect
+	const institutionsRef = useRef(institutions)
+	useEffect(() => {
+		institutionsRef.current = institutions
+	}, [institutions])
 
 	// Selection state
 	const [selectedInstitution, setSelectedInstitution] = useState("")
@@ -150,10 +212,16 @@ export default function GenerateFinalMarksPage() {
 	}, [isReady, mustSelectInstitution, institutions, getInstitutionIdForCreate, selectedInstitution])
 
 	// Fetch sessions and programs when institution changes
+	// Note: Programs need institutions to be loaded to get myjkkn_institution_ids
+	// Using institutionsRef to avoid dependency cycle - only run when selectedInstitution changes
 	useEffect(() => {
-		if (selectedInstitution) {
+		const currentInstitutions = institutionsRef.current
+		if (selectedInstitution && currentInstitutions.length > 0) {
 			fetchSessions(selectedInstitution)
 			fetchPrograms(selectedInstitution)
+		} else if (selectedInstitution && currentInstitutions.length === 0) {
+			// Institution selected but institutions not loaded yet - just fetch sessions
+			fetchSessions(selectedInstitution)
 		} else {
 			setSessions([])
 			setPrograms([])
@@ -162,6 +230,7 @@ export default function GenerateFinalMarksPage() {
 		setSelectedProgram("")
 		setSelectedCourses([])
 		setResults([])
+		// eslint-disable-next-line react-hooks/exhaustive-deps
 	}, [selectedInstitution])
 
 	// Fetch course offerings when program and session change
@@ -188,6 +257,19 @@ export default function GenerateFinalMarksPage() {
 
 	const fetchInstitutions = async () => {
 		try {
+			// Use institutions from context if available (for super_admin or single institution)
+			if (availableInstitutions.length > 0) {
+				const mapped = availableInstitutions.map(inst => ({
+					id: inst.id,
+					institution_code: inst.institution_code,
+					name: inst.institution_name,
+					myjkkn_institution_ids: (inst as any).myjkkn_institution_ids || []
+				}))
+				setInstitutions(mapped)
+				return
+			}
+
+			// Fallback to API fetch
 			const url = appendToUrl('/api/grading/final-marks?action=institutions')
 			const res = await fetch(url)
 			if (res.ok) {
@@ -195,7 +277,8 @@ export default function GenerateFinalMarksPage() {
 				setInstitutions(data.map((i: any) => ({
 					id: i.id,
 					institution_code: i.institution_code,
-					name: i.name
+					name: i.name,
+					myjkkn_institution_ids: i.myjkkn_institution_ids || []
 				})))
 			}
 		} catch (e) {
@@ -220,22 +303,74 @@ export default function GenerateFinalMarksPage() {
 		}
 	}
 
+	// Fetch programs from MyJKKN API using myjkkn_institution_ids
 	const fetchPrograms = async (institutionId: string) => {
 		try {
-			const res = await fetch(`/api/grading/final-marks?action=programs&institutionId=${institutionId}`)
-			if (res.ok) {
-				const data = await res.json()
-				setPrograms(data)
+			setProgramsLoading(true)
+			setPrograms([])
+
+			// Get the institution with its myjkkn_institution_ids from ref to avoid dependency cycle
+			const currentInstitutions = institutionsRef.current
+			const institution = currentInstitutions.find(i => i.id === institutionId)
+			const myjkknIds = institution?.myjkkn_institution_ids || []
+
+			if (myjkknIds.length === 0) {
+				console.warn('[GenerateFinalMarks] No MyJKKN institution IDs found for institution:', institutionId)
+				// Programs must come from MyJKKN API - no local fallback
+				// The institution must have myjkkn_institution_ids configured
+				setPrograms([])
+				return
 			}
+
+			// Fetch programs from MyJKKN API using the hook
+			console.log('[GenerateFinalMarks] Fetching programs from MyJKKN for institution IDs:', myjkknIds)
+			const progs = await fetchMyJKKNPrograms(myjkknIds)
+
+			// Transform MyJKKN programs to ProgramData format and sort by program_code
+			// NOTE: MyJKKN uses program_id as CODE field (e.g., "BCA"), not UUID
+			// We use the MyJKKN UUID (id) as the program ID for consistency with course_offerings
+			const transformedPrograms: ProgramData[] = progs.map(p => ({
+				id: p.id, // MyJKKN UUID
+				program_code: p.program_code, // Code like "BCA"
+				program_name: p.program_name,
+				institutions_id: institutionId,
+				// Infer grade system from program name/code
+				grade_system_code: inferGradeSystemFromProgram(p.program_code, p.program_name)
+			})).sort((a, b) => a.program_code.localeCompare(b.program_code))
+
+			console.log('[GenerateFinalMarks] Fetched', transformedPrograms.length, 'programs from MyJKKN')
+			setPrograms(transformedPrograms)
 		} catch (e) {
 			console.error('Failed to fetch programs:', e)
+			setPrograms([])
+		} finally {
+			setProgramsLoading(false)
 		}
+	}
+
+	// Helper function to infer UG/PG grade system from program code/name
+	const inferGradeSystemFromProgram = (programCode?: string, programName?: string): 'UG' | 'PG' => {
+		const code = (programCode || '').toUpperCase()
+		const name = (programName || '').toUpperCase()
+		// PG patterns: M.A., M.Sc., MBA, MCA, M.Com, M.Phil, Ph.D, etc.
+		const pgPatterns = ['M.', 'MA', 'MSC', 'MBA', 'MCA', 'MCOM', 'MPHIL', 'PHD', 'PH.D', 'MASTER', 'POST']
+		for (const pattern of pgPatterns) {
+			if (code.includes(pattern) || name.includes(pattern)) {
+				return 'PG'
+			}
+		}
+		return 'UG'
 	}
 
 	const fetchCourseOfferings = async (programId: string, sessionId: string) => {
 		try {
 			setLoading(true)
-			const res = await fetch(`/api/grading/final-marks?action=course-offerings&institutionId=${selectedInstitution}&programId=${programId}&sessionId=${sessionId}`)
+			// Get program_code from programs state (MyJKKN data)
+			const program = programs.find(p => p.id === programId)
+			const programCode = program?.program_code || ''
+
+			// Pass both programId (MyJKKN UUID) and programCode for filtering
+			const res = await fetch(`/api/grading/final-marks?action=course-offerings&institutionId=${selectedInstitution}&programId=${programId}&programCode=${encodeURIComponent(programCode)}&sessionId=${sessionId}`)
 			if (res.ok) {
 				const data = await res.json()
 				setCourseOfferings(data)
@@ -284,9 +419,14 @@ export default function GenerateFinalMarksPage() {
 			setGenerating(true)
 			setResults([])
 
+			// Get program_code from programs state (MyJKKN data)
+			const program = programs.find(p => p.id === selectedProgram)
+			const programCode = program?.program_code || ''
+
 			const payload = {
 				institutions_id: selectedInstitution,
 				program_id: selectedProgram,
+				program_code: programCode, // Include program_code for filtering
 				examination_session_id: selectedSession,
 				course_ids: selectedCourses,
 				regulation_id: regulationId,
@@ -353,9 +493,14 @@ export default function GenerateFinalMarksPage() {
 		try {
 			setSaving(true)
 
+			// Get program_code from programs state (MyJKKN data)
+			const program = programs.find(p => p.id === selectedProgram)
+			const programCode = program?.program_code || ''
+
 			const payload = {
 				institutions_id: selectedInstitution,
 				program_id: selectedProgram,
+				program_code: programCode, // Include program_code for filtering
 				examination_session_id: selectedSession,
 				course_ids: selectedCourses,
 				regulation_id: regulationId,
@@ -593,9 +738,16 @@ export default function GenerateFinalMarksPage() {
 									</div>
 									<div className="space-y-2">
 										<Label>Program *</Label>
-										<Select value={selectedProgram} onValueChange={setSelectedProgram} disabled={mustSelectInstitution && !selectedInstitution}>
+										<Select value={selectedProgram} onValueChange={setSelectedProgram} disabled={(mustSelectInstitution && !selectedInstitution) || programsLoading}>
 											<SelectTrigger>
-												<SelectValue placeholder="Select program" />
+												{programsLoading ? (
+													<span className="flex items-center gap-2 text-muted-foreground">
+														<Loader2 className="h-4 w-4 animate-spin" />
+														Loading programs...
+													</span>
+												) : (
+													<SelectValue placeholder="Select program" />
+												)}
 											</SelectTrigger>
 											<SelectContent>
 												{programs.map(p => (
@@ -748,7 +900,7 @@ export default function GenerateFinalMarksPage() {
 												)}
 											</div>
 											<div className="flex gap-2">
-												<Button variant="outline" onClick={() => setCurrentStep(0)}>
+												<Button variant="outline" onClick={() => setCurrentStep(0)} disabled={generating}>
 													<ChevronLeft className="h-4 w-4 mr-1" />
 													Back
 												</Button>
@@ -995,7 +1147,7 @@ export default function GenerateFinalMarksPage() {
 
 									{/* Actions */}
 									<div className="flex items-center justify-between pt-4 border-t">
-										<Button variant="outline" onClick={() => setCurrentStep(1)}>
+										<Button variant="outline" onClick={() => setCurrentStep(1)} disabled={saving || generating}>
 											<ChevronLeft className="h-4 w-4 mr-1" />
 											Back to Courses
 										</Button>
@@ -1003,11 +1155,11 @@ export default function GenerateFinalMarksPage() {
 											<Button variant="outline" onClick={() => {
 												setResults([])
 												handleGenerate()
-											}}>
+											}} disabled={saving || generating}>
 												<RefreshCw className="h-4 w-4 mr-1" />
 												Regenerate
 											</Button>
-											<Button onClick={() => setConfirmDialogOpen(true)} disabled={results.length === 0 || isSaved || saving}>
+											<Button onClick={() => setConfirmDialogOpen(true)} disabled={results.length === 0 || isSaved || saving || generating}>
 												{saving ? (
 													<>
 														<Loader2 className="h-4 w-4 mr-1 animate-spin" />
@@ -1099,6 +1251,16 @@ export default function GenerateFinalMarksPage() {
 			{/* Confirmation Dialog */}
 			<AlertDialog open={confirmDialogOpen} onOpenChange={(open) => !saving && setConfirmDialogOpen(open)}>
 				<AlertDialogContent>
+					{/* Close button - only show when not saving */}
+					{!saving && (
+						<button
+							onClick={() => setConfirmDialogOpen(false)}
+							className="absolute right-4 top-4 rounded-sm opacity-70 ring-offset-background transition-opacity hover:opacity-100 focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:pointer-events-none"
+						>
+							<X className="h-4 w-4" />
+							<span className="sr-only">Close</span>
+						</button>
+					)}
 					<AlertDialogHeader>
 						<AlertDialogTitle>Save Final Marks to Database?</AlertDialogTitle>
 						<AlertDialogDescription>
@@ -1124,6 +1286,18 @@ export default function GenerateFinalMarksPage() {
 					</AlertDialogFooter>
 				</AlertDialogContent>
 			</AlertDialog>
+
+			{/* Progress Overlay - blocks UI during generate/save operations */}
+			<ProgressOverlay
+				isVisible={generating}
+				title="Generating Final Marks"
+				description={`Calculating results for ${selectedCourses.length} course(s)...`}
+			/>
+			<ProgressOverlay
+				isVisible={saving}
+				title="Saving to Database"
+				description={`Saving ${results.length} final marks records...`}
+			/>
 		</SidebarProvider>
 	)
 }
