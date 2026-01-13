@@ -614,12 +614,9 @@ export async function GET(req: NextRequest) {
 							)
 						)
 					),
-					exam_registrations!inner (
+					exam_registrations (
 						stu_register_no,
-						students!inner (
-							first_name,
-							last_name
-						)
+						student_name
 					)
 				`)
 				.eq('student_id', studentId)
@@ -871,12 +868,9 @@ export async function GET(req: NextRequest) {
 							)
 						)
 					),
-					exam_registrations!inner (
+					exam_registrations (
 						stu_register_no,
-						students!inner (
-							first_name,
-							last_name
-						)
+						student_name
 					)
 				`)
 				.eq('institutions_id', institutionId)
@@ -933,7 +927,7 @@ export async function GET(req: NextRequest) {
 				if (!studentMap[studentId]) {
 					studentMap[studentId] = {
 						student_id: studentId,
-						student_name: [fm.exam_registrations?.students?.first_name, fm.exam_registrations?.students?.last_name].filter(Boolean).join(' ') || '',
+						student_name: fm.exam_registrations?.student_name || '',
 						register_no: fm.exam_registrations?.stu_register_no || '',
 						courses: [],
 						credits: [],
@@ -1256,6 +1250,7 @@ export async function POST(req: NextRequest) {
 
 			// Fetch all final marks with course and student info for calculation
 			// Include external marks to calculate is_pass dynamically (same as preview)
+			// Using LEFT JOINs to ensure records are returned even if some relations are missing
 			let finalMarksQuery = supabase
 				.from('final_marks')
 				.select(`
@@ -1265,6 +1260,7 @@ export async function POST(req: NextRequest) {
 					institutions_id,
 					program_id,
 					examination_session_id,
+					exam_registration_id,
 					grade_points,
 					internal_marks_obtained,
 					internal_marks_maximum,
@@ -1274,12 +1270,16 @@ export async function POST(req: NextRequest) {
 					total_marks_maximum,
 					percentage,
 					is_pass,
-					courses!inner (
+					courses (
 						credit
 					),
-					exam_registrations!inner (
+					exam_registrations (
 						id,
-						stu_register_no
+						stu_register_no,
+						student_name
+					),
+					programs (
+						program_code
 					)
 				`)
 				.eq('examination_session_id', sessionId)
@@ -1364,12 +1364,14 @@ export async function POST(req: NextRequest) {
 				program_id: string
 				examination_session_id: string
 				register_no: string
+				program_code: string
 				marks: typeof finalMarksData
 			}> = {}
 
 			finalMarksData.forEach((fm: any) => {
 				const studentId = fm.student_id
 				const registerNo = fm.exam_registrations?.stu_register_no || ''
+				const programCode = fm.programs?.program_code || ''
 
 				if (!studentMarksMap[studentId]) {
 					studentMarksMap[studentId] = {
@@ -1378,6 +1380,7 @@ export async function POST(req: NextRequest) {
 						program_id: fm.program_id,
 						examination_session_id: fm.examination_session_id,
 						register_no: registerNo,
+						program_code: programCode,
 						marks: []
 					}
 				}
@@ -1393,7 +1396,7 @@ export async function POST(req: NextRequest) {
 						id,
 						grade_points,
 						is_pass,
-						courses!inner (
+						courses (
 							credit
 						)
 					`)
@@ -1429,7 +1432,7 @@ export async function POST(req: NextRequest) {
 			const results: { studentId: string; semester: number; semesterResultId: string | null; error?: string }[] = []
 
 			Object.values(studentMarksMap).forEach((studentData) => {
-				const { student_id, institutions_id, program_id, examination_session_id, register_no, marks } = studentData
+				const { student_id, institutions_id, program_id, examination_session_id, register_no, program_code, marks } = studentData
 
 				// Get semester_number from students.semester_id -> semesters.semester_number
 				const currentSemester = studentSemesterMap[register_no] || 1
@@ -1483,6 +1486,8 @@ export async function POST(req: NextRequest) {
 					student_id,
 					examination_session_id,
 					program_id,
+					program_code,
+					register_number: register_no,
 					semester: currentSemester, // Use student's current semester from students table
 					total_credits_registered: totalCreditsRegistered,
 					total_credits_earned: totalCreditsEarned,

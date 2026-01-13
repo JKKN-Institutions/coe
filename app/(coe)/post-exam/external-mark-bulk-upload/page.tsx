@@ -173,13 +173,13 @@ export default function ExternalMarkBulkUploadPage() {
 			sheetName = 'Register Number Template'
 		} else {
 			// Dummy Number mode template (default) - includes Institution Code for multi-institution support
+			// Note: Program Code is auto-populated from exam_registration, not required in template
 			templateData = [
 				{
 					'Institution Code *': 'CAS',
 					'Dummy Number *': 'D001',
 					'Course Code *': 'CS101',
 					'Session Code': 'APR2024',
-					'Program Code': 'BCA',
 					'Total Marks Obtained *': 75,
 					'Marks Out Of *': 100,
 					'Remarks': 'Good performance'
@@ -189,7 +189,6 @@ export default function ExternalMarkBulkUploadPage() {
 					'Dummy Number *': 'D002',
 					'Course Code *': 'CS101',
 					'Session Code': 'APR2024',
-					'Program Code': 'BCA',
 					'Total Marks Obtained *': 82,
 					'Marks Out Of *': 100,
 					'Remarks': 'Excellent'
@@ -201,7 +200,6 @@ export default function ExternalMarkBulkUploadPage() {
 				{ 'Column Name': 'Dummy Number *', 'Required': 'Yes', 'Description': 'Student dummy number from exam registration', 'Example': 'D001' },
 				{ 'Column Name': 'Course Code *', 'Required': 'Yes', 'Description': 'Course code from courses table', 'Example': 'CS101' },
 				{ 'Column Name': 'Session Code', 'Required': 'No', 'Description': 'Examination session code', 'Example': 'APR2024' },
-				{ 'Column Name': 'Program Code', 'Required': 'No', 'Description': 'Program code from programs table', 'Example': 'BCA' },
 				{ 'Column Name': 'Total Marks Obtained *', 'Required': 'Yes', 'Description': 'External marks obtained', 'Example': '75' },
 				{ 'Column Name': 'Marks Out Of *', 'Required': 'Yes', 'Description': 'Maximum marks for the course', 'Example': '100' },
 				{ 'Column Name': 'Remarks', 'Required': 'No', 'Description': 'Any additional remarks', 'Example': 'Good performance' }
@@ -228,7 +226,6 @@ export default function ExternalMarkBulkUploadPage() {
 				{ wch: 20 }, // Dummy Number
 				{ wch: 15 }, // Course Code
 				{ wch: 15 }, // Session Code
-				{ wch: 15 }, // Program Code
 				{ wch: 25 }, // Total Marks Obtained
 				{ wch: 18 }, // Marks Out Of
 				{ wch: 30 }  // Remarks

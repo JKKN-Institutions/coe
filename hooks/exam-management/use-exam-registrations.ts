@@ -103,10 +103,19 @@ export function useExamRegistrations(programId?: string) {
 		return allExaminationSessions.filter(s => s.institutions_id === selectedInstitutionId)
 	}, [allExaminationSessions, selectedInstitutionId])
 
+	// Track selected examination session for course offering filtering
+	const [selectedExaminationSessionId, setSelectedExaminationSessionId] = useState<string>('')
+
 	const filteredCourseOfferings = useMemo(() => {
 		if (!selectedInstitutionId) return []
-		return allCourseOfferings.filter(c => c.institutions_id === selectedInstitutionId)
-	}, [allCourseOfferings, selectedInstitutionId])
+		// Filter by institution first
+		let filtered = allCourseOfferings.filter(c => c.institutions_id === selectedInstitutionId)
+		// Then filter by examination session if selected (follows hierarchy: Institution → Exam Session → Course Offering)
+		if (selectedExaminationSessionId) {
+			filtered = filtered.filter(c => c.examination_session_id === selectedExaminationSessionId)
+		}
+		return filtered
+	}, [allCourseOfferings, selectedInstitutionId, selectedExaminationSessionId])
 
 	// Fetch exam registrations with institution and program filter
 	const fetchExamRegistrations = useCallback(async () => {
@@ -285,6 +294,8 @@ export function useExamRegistrations(programId?: string) {
 		// Dropdown control
 		selectedInstitutionId,
 		setSelectedInstitutionId,
+		selectedExaminationSessionId,
+		setSelectedExaminationSessionId,
 		loadDropdownData,
 		// Institution filter values (for page use)
 		isReady,

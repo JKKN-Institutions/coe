@@ -55,6 +55,7 @@ export interface Institution {
 	id: string
 	name: string
 	institution_code: string
+	myjkkn_institution_ids?: string[]
 }
 
 export interface ExamSession {
@@ -67,6 +68,7 @@ export interface Program {
 	id: string
 	program_code: string
 	program_name: string
+	program_order?: number
 }
 
 export interface Course {

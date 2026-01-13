@@ -51,7 +51,7 @@ export async function GET(request: Request) {
 			case 'institutions': {
 				const { data, error } = await supabase
 					.from('institutions')
-					.select('id, name, institution_code')
+					.select('id, name, institution_code, myjkkn_institution_ids')
 					.eq('is_active', true)
 					.order('name')
 
@@ -478,6 +478,7 @@ async function handleBulkUpload(supabase: any, body: any) {
 						institutions_id,
 						examination_session_id,
 						course_offering_id,
+						program_code,
 						course_offerings!inner (
 							id,
 							course_id,
@@ -540,11 +541,12 @@ async function handleBulkUpload(supabase: any, body: any) {
 	}
 
 	// Build attendance map: exam_registration_id -> attendance_status ('Present' or 'Absent')
-	const attendanceMap = new Map<string, { is_absent: boolean; attendance_status: string }>()
+	// Note: If no attendance record exists, attendance_status will be null (not defaulted)
+	const attendanceMap = new Map<string, { is_absent: boolean; attendance_status: string | null }>()
 	allAttendanceData.forEach((att: any) => {
 		attendanceMap.set(att.exam_registration_id, {
 			is_absent: att.attendance_status === 'Absent',
-			attendance_status: att.attendance_status || 'Present'
+			attendance_status: att.attendance_status || null
 		})
 	})
 
@@ -585,6 +587,10 @@ async function handleBulkUpload(supabase: any, body: any) {
 		examSessions?.map((s: any) => [`${s.institutions_id}|${s.session_code?.toLowerCase()?.trim()}`, s.id]) || []
 	)
 
+	// Note: Programs come from MyJKKN API, not local DB
+	// We use program_id from course_offerings which is already available in exam_registrations
+	// No need to fetch programs separately - this avoids performance lag from API calls
+
 	// For register_number mode, fetch exam_registrations with stu_register_no for all relevant institutions
 	let examRegistrations: any[] = []
 	if (lookup_mode === 'register_number') {
@@ -605,6 +611,7 @@ async function handleBulkUpload(supabase: any, body: any) {
 						institutions_id,
 						examination_session_id,
 						course_offering_id,
+						program_code,
 						examination_sessions!inner (
 							id,
 							session_code
@@ -655,11 +662,12 @@ async function handleBulkUpload(supabase: any, body: any) {
 		course_code: string
 		course_offering_id: string
 		program_id: string
+		program_code: string | null
 		examination_session_id: string
 		institutions_id: string
 		external_max_mark: number
 		is_absent: boolean
-		attendance_status: string
+		attendance_status: string | null // null means no attendance record exists
 	}>()
 
 	dummyNumbers?.forEach((dn: any) => {
@@ -682,11 +690,12 @@ async function handleBulkUpload(supabase: any, body: any) {
 				course_code: dn.exam_registrations.course_offerings.courses.course_code,
 				course_offering_id: dn.exam_registrations.course_offerings.id,
 				program_id: dn.exam_registrations.course_offerings.program_id,
+				program_code: dn.exam_registrations.program_code || null,
 				examination_session_id: dn.exam_registrations.examination_session_id,
 				institutions_id: instId,
 				external_max_mark: dn.exam_registrations.course_offerings.courses.external_max_mark || 100,
 				is_absent: attendance?.is_absent || false,
-				attendance_status: attendance?.attendance_status || 'Present'
+				attendance_status: attendance?.attendance_status || null // null means no attendance record
 			})
 		}
 	})
@@ -701,11 +710,12 @@ async function handleBulkUpload(supabase: any, body: any) {
 		course_code: string
 		course_offering_id: string
 		program_id: string
+		program_code: string | null
 		examination_session_id: string
 		institutions_id: string
 		external_max_mark: number
 		is_absent: boolean
-		attendance_status: string
+		attendance_status: string | null // null means no attendance record exists
 	}>()
 
 	// Also need to find the student_dummy_number for register_number mode
@@ -739,11 +749,12 @@ async function handleBulkUpload(supabase: any, body: any) {
 					course_code: reg.course_offerings.courses.course_code,
 					course_offering_id: reg.course_offerings.id,
 					program_id: reg.course_offerings.program_id,
+					program_code: reg.program_code || null,
 					examination_session_id: reg.examination_session_id,
 					institutions_id: instId,
 					external_max_mark: reg.course_offerings.courses.external_max_mark || 100,
 					is_absent: attendance?.is_absent || false,
-					attendance_status: attendance?.attendance_status || 'Present'
+					attendance_status: attendance?.attendance_status || null // null means no attendance record
 				})
 			}
 		})
@@ -842,6 +853,7 @@ async function handleBulkUpload(supabase: any, body: any) {
 				course_code: regInfo.course_code,
 				course_offering_id: regInfo.course_offering_id,
 				program_id: regInfo.program_id,
+				program_code: regInfo.program_code, // From exam_registrations.program_code
 				examination_session_id: regInfo.examination_session_id,
 				institutions_id: regInfo.institutions_id,
 				external_max_mark: regInfo.external_max_mark,
@@ -888,9 +900,21 @@ async function handleBulkUpload(supabase: any, body: any) {
 			}
 		}
 
-		// ATTENDANCE VALIDATION - Critical requirement
-		if (studentInfo.is_absent === true) {
-			rowErrors.push('Student is marked as absent. Marks cannot be entered for absent students.')
+		// ATTENDANCE VALIDATION - Only allow marks for students with attendance_status = 'Present'
+		// If no attendance record exists (null), block the upload
+		if (studentInfo.attendance_status === null) {
+			rowErrors.push('No attendance record found. Attendance must be marked before entering marks.')
+			results.failed++
+			results.validation_errors.push({
+				row: rowNumber,
+				dummy_number: displayIdentifier,
+				course_code: row.subject_code || row.course_code || 'N/A',
+				errors: rowErrors
+			})
+			continue
+		}
+		if (studentInfo.attendance_status !== 'Present') {
+			rowErrors.push(`Student attendance status is "${studentInfo.attendance_status}". Marks can only be entered for students marked as Present.`)
 			results.failed++
 			results.validation_errors.push({
 				row: rowNumber,
@@ -975,12 +999,14 @@ async function handleBulkUpload(supabase: any, body: any) {
 
 			// Insert new record only - use institution_id from the row's student info
 			// student_dummy_number_id can be null for Register Number mode
+			// program_id from course_offerings, program_code from exam_registrations
 			const insertData: any = {
 				institutions_id: studentInfo.institutions_id,
 				examination_session_id: studentInfo.examination_session_id,
 				exam_registration_id: studentInfo.exam_registration_id,
-				student_dummy_number_id: studentInfo.student_dummy_id || null, // Can be null for register number mode
-				program_id: studentInfo.program_id,
+				student_dummy_number_id: studentInfo.student_dummy_id || null,
+				program_id: studentInfo.program_id || null, // From course_offerings.program_id
+				program_code: studentInfo.program_code || null, // From exam_registrations.program_code
 				course_id: studentInfo.course_id,
 				dummy_number: studentInfo.dummy_number,
 				source: 'Bulk Upload',

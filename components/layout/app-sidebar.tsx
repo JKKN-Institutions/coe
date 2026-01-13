@@ -248,6 +248,7 @@ const data = {
 			items: [
 				{ title: "Attendance Report", url: "/exam-management/reports/attendance", icon: PieChart },
 				{ title: "Course Count Report", url: "/exam-management/reports/course-count", icon: Calculator },
+				{ title: "Marksheet Distribution", url: "/reports/marksheet-distribution", icon: FileText },
 			],
 		},
 		{

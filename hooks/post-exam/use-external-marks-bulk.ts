@@ -23,6 +23,7 @@ import {
 	bulkDeleteMarks
 } from '@/services/post-exam/external-marks-bulk-service'
 import { useInstitutionFilter } from '@/hooks/use-institution-filter'
+import { useMyJKKNInstitutionFilter, ProgramOption } from '@/hooks/use-myjkkn-institution-filter'
 
 interface UseExternalMarksBulkReturn {
 	// Data
@@ -110,6 +111,9 @@ export function useExternalMarksBulk(): UseExternalMarksBulkReturn {
 		getInstitutionIdForCreate
 	} = useInstitutionFilter()
 
+	// Use MyJKKN API for programs
+	const { fetchPrograms: fetchMyJKKNPrograms } = useMyJKKNInstitutionFilter()
+
 	// Data State
 	const [items, setItems] = useState<ExternalMark[]>([])
 	const [institutions, setInstitutions] = useState<Institution[]>([])
@@ -168,18 +172,18 @@ export function useExternalMarksBulk(): UseExternalMarksBulkReturn {
 
 	// Fetch programs and courses based on institution context
 	useEffect(() => {
-		if (isReady) {
+		if (isReady && institutions.length > 0) {
 			const instId = getInstitutionIdForCreate()
 			if (instId) {
-				fetchPrograms(instId)
+				fetchProgramsFromMyJKKN(instId)
 				fetchCourses(instId)
 			} else if (mustSelectInstitution) {
 				// super_admin with "All Institutions" - fetch all
-				fetchAllPrograms()
+				fetchAllProgramsFromMyJKKN()
 				fetchAllCourses()
 			}
 		}
-	}, [isReady, mustSelectInstitution, getInstitutionIdForCreate])
+	}, [isReady, mustSelectInstitution, getInstitutionIdForCreate, institutions])
 
 	// Fetch marks when ready or filters change
 	useEffect(() => {
@@ -212,27 +216,61 @@ export function useExternalMarksBulk(): UseExternalMarksBulkReturn {
 		}
 	}
 
-	const fetchPrograms = async (instId: string) => {
+	// Fetch programs from MyJKKN API using institution's myjkkn_institution_ids
+	const fetchProgramsFromMyJKKN = async (instId: string) => {
 		try {
-			const res = await fetch(`/api/post-exam/external-marks-bulk?action=programs&institutionId=${instId}`)
-			if (res.ok) {
-				const data = await res.json()
-				setPrograms(data)
+			// Find institution to get myjkkn_institution_ids
+			const institution = institutions.find(i => i.id === instId)
+			const myjkknIds = institution?.myjkkn_institution_ids || []
+
+			if (myjkknIds.length === 0) {
+				console.warn('No myjkkn_institution_ids found for institution:', instId)
+				setPrograms([])
+				return
 			}
+
+			// Fetch from MyJKKN API
+			const programOptions = await fetchMyJKKNPrograms(myjkknIds)
+
+			// Map ProgramOption to Program type expected by the component
+			const mappedPrograms: Program[] = programOptions.map(p => ({
+				id: p.id,
+				program_code: p.program_code,
+				program_name: p.program_name,
+				program_order: p.program_order
+			}))
+
+			// Sort by program_order
+			mappedPrograms.sort((a, b) => (a.program_order || 999) - (b.program_order || 999))
+
+			setPrograms(mappedPrograms)
 		} catch (error) {
-			console.error('Failed to fetch programs:', error)
+			console.error('Failed to fetch programs from MyJKKN:', error)
+			setPrograms([])
 		}
 	}
 
-	const fetchAllPrograms = async () => {
+	// Fetch all programs from MyJKKN API (for super_admin with "All Institutions")
+	const fetchAllProgramsFromMyJKKN = async () => {
 		try {
-			const res = await fetch('/api/post-exam/external-marks-bulk?action=all-programs')
-			if (res.ok) {
-				const data = await res.json()
-				setPrograms(data)
-			}
+			// Fetch from MyJKKN API without institution filter (will get all programs)
+			const programOptions = await fetchMyJKKNPrograms()
+
+			// Map ProgramOption to Program type expected by the component
+			const mappedPrograms: Program[] = programOptions.map(p => ({
+				id: p.id,
+				program_code: p.program_code,
+				program_name: p.program_name,
+				program_order: p.program_order
+			}))
+
+			// Sort by program_order
+			mappedPrograms.sort((a, b) => (a.program_order || 999) - (b.program_order || 999))
+
+			setPrograms(mappedPrograms)
 		} catch (error) {
-			console.error('Failed to fetch all programs:', error)
+			console.error('Failed to fetch all programs from MyJKKN:', error)
+			setPrograms([])
 		}
 	}
 

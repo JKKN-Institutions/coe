@@ -238,50 +238,53 @@ function SearchableSelect({ options, value, onValueChange, placeholder, disabled
 				</Button>
 			</PopoverTrigger>
 			<PopoverContent className="w-[400px] p-0" align="start">
-				<Command>
+				<Command shouldFilter={false}>
 					<CommandInput
 						placeholder={`Search ${placeholder.toLowerCase()}...`}
 						value={searchQuery}
 						onValueChange={setSearchQuery}
 					/>
-					<CommandList>
-						<CommandEmpty>No results found.</CommandEmpty>
-						<CommandGroup className="max-h-[300px] overflow-auto">
-							{filteredOptions.map(option => (
-								<CommandItem
-									key={option.id}
-									value={option.id}
-									onSelect={() => {
-										onValueChange(option.id)
-										setOpen(false)
-										setSearchQuery("")
-									}}
-									className="cursor-pointer"
-								>
-									<Check
-										className={cn(
-											"mr-2 h-4 w-4",
-											value === option.id ? "opacity-100" : "opacity-0"
-										)}
-									/>
-									<div className="flex flex-col">
-										<span className="font-medium">{option.code}</span>
-										<span className="text-xs text-muted-foreground line-clamp-2">{option.name}</span>
-									</div>
-									{option.type && (
-										<Badge
-											variant="outline"
+					<CommandList className="max-h-[300px]">
+						{filteredOptions.length === 0 ? (
+							<div className="py-6 text-center text-sm text-muted-foreground">No results found.</div>
+						) : (
+							<CommandGroup>
+								{filteredOptions.map(option => (
+									<CommandItem
+										key={option.id}
+										value={option.id}
+										onSelect={() => {
+											onValueChange(option.id)
+											setOpen(false)
+											setSearchQuery("")
+										}}
+										className="cursor-pointer"
+									>
+										<Check
 											className={cn(
-												"ml-auto text-[10px]",
-												option.type === 'UG' ? "border-blue-500 text-blue-600" : "border-purple-500 text-purple-600"
+												"mr-2 h-4 w-4",
+												value === option.id ? "opacity-100" : "opacity-0"
 											)}
-										>
-											{option.type}
-										</Badge>
-									)}
-								</CommandItem>
-							))}
-						</CommandGroup>
+										/>
+										<div className="flex flex-col">
+											<span className="font-medium">{option.code}</span>
+											<span className="text-xs text-muted-foreground line-clamp-2">{option.name}</span>
+										</div>
+										{option.type && (
+											<Badge
+												variant="outline"
+												className={cn(
+													"ml-auto text-[10px]",
+													option.type === 'UG' ? "border-blue-500 text-blue-600" : "border-purple-500 text-purple-600"
+												)}
+											>
+												{option.type}
+											</Badge>
+										)}
+									</CommandItem>
+								))}
+							</CommandGroup>
+						)}
 					</CommandList>
 				</Command>
 			</PopoverContent>
@@ -382,7 +385,7 @@ function MultiSelectProgram({ options, selectedIds, onSelectionChange, placehold
 				</Button>
 			</PopoverTrigger>
 			<PopoverContent className="w-[450px] p-0" align="start">
-				<Command>
+				<div className="flex flex-col">
 					<div className="flex items-center border-b px-3">
 						<Search className="mr-2 h-4 w-4 shrink-0 opacity-50" />
 						<input
@@ -407,49 +410,52 @@ function MultiSelectProgram({ options, selectedIds, onSelectionChange, placehold
 							</Badge>
 						</div>
 					)}
-					<CommandList>
-						<CommandEmpty>No programs found.</CommandEmpty>
-						<CommandGroup className="max-h-[300px] overflow-auto p-2">
-							{filteredOptions.map(option => {
-								const isDisabled = isOptionDisabled(option)
-								const isSelected = selectedIds.includes(option.id)
-								return (
-									<div
-										key={option.id}
-										onClick={() => !isDisabled && toggleSelection(option.id)}
-										className={cn(
-											"flex items-center gap-2 px-2 py-2 rounded-md cursor-pointer",
-											isSelected && "bg-blue-50 dark:bg-blue-900/20",
-											isDisabled && "opacity-40 cursor-not-allowed",
-											!isDisabled && !isSelected && "hover:bg-muted"
-										)}
-									>
-										<Checkbox
-											checked={isSelected}
-											disabled={isDisabled}
-											className="pointer-events-none"
-										/>
-										<div className="flex-1 min-w-0">
-											<div className="flex items-center gap-2">
-												<span className="font-medium text-sm">{option.code}</span>
-												<Badge
-													variant="outline"
-													className={cn(
-														"text-[10px]",
-														option.type === 'UG' ? "border-blue-500 text-blue-600" : "border-purple-500 text-purple-600"
-													)}
-												>
-													{option.type}
-												</Badge>
+					<div className="max-h-[300px] overflow-y-auto overflow-x-hidden">
+						{filteredOptions.length === 0 ? (
+							<div className="py-6 text-center text-sm text-muted-foreground">No programs found.</div>
+						) : (
+							<div className="p-2">
+								{filteredOptions.map(option => {
+									const isDisabled = isOptionDisabled(option)
+									const isSelected = selectedIds.includes(option.id)
+									return (
+										<div
+											key={option.id}
+											onClick={() => !isDisabled && toggleSelection(option.id)}
+											className={cn(
+												"flex items-center gap-2 px-2 py-2 rounded-md cursor-pointer",
+												isSelected && "bg-blue-50 dark:bg-blue-900/20",
+												isDisabled && "opacity-40 cursor-not-allowed",
+												!isDisabled && !isSelected && "hover:bg-muted"
+											)}
+										>
+											<Checkbox
+												checked={isSelected}
+												disabled={isDisabled}
+												className="pointer-events-none"
+											/>
+											<div className="flex-1 min-w-0">
+												<div className="flex items-center gap-2">
+													<span className="font-medium text-sm">{option.code}</span>
+													<Badge
+														variant="outline"
+														className={cn(
+															"text-[10px]",
+															option.type === 'UG' ? "border-blue-500 text-blue-600" : "border-purple-500 text-purple-600"
+														)}
+													>
+														{option.type}
+													</Badge>
+												</div>
+												<span className="text-xs text-muted-foreground line-clamp-1">{option.name}</span>
 											</div>
-											<span className="text-xs text-muted-foreground line-clamp-1">{option.name}</span>
 										</div>
-									</div>
-								)
-							})}
-						</CommandGroup>
-					</CommandList>
-				</Command>
+									)
+								})}
+							</div>
+						)}
+					</div>
+				</div>
 			</PopoverContent>
 		</Popover>
 	)
@@ -843,31 +849,64 @@ export default function SemesterResultsPage() {
 		setStoredCurrentPage(1)
 
 		try {
-			const params = new URLSearchParams({
-				action: 'stored-results',
-				institutionId: selectedInstitution,
-				sessionId: selectedSession,
-				programId: selectedPrograms[0]
-			})
+			// Fetch results for ALL selected programs
+			const allResults: StoredSemesterResult[] = []
 
-			if (selectedSemesters.length === 1) {
-				params.append('semester', String(selectedSemesters[0]))
+			for (const programId of selectedPrograms) {
+				const params = new URLSearchParams({
+					action: 'stored-results',
+					institutionId: selectedInstitution,
+					sessionId: selectedSession,
+					programId: programId
+				})
+
+				if (selectedSemesters.length === 1) {
+					params.append('semester', String(selectedSemesters[0]))
+				}
+
+				const res = await fetch(`/api/grading/semester-results?${params.toString()}`)
+				if (!res.ok) {
+					const errorData = await res.json()
+					throw new Error(errorData.error || 'Failed to fetch stored results')
+				}
+
+				const data = await res.json()
+				if (data.results && data.results.length > 0) {
+					allResults.push(...data.results)
+				}
 			}
 
-			const res = await fetch(`/api/grading/semester-results?${params.toString()}`)
-			if (!res.ok) {
-				const errorData = await res.json()
-				throw new Error(errorData.error || 'Failed to fetch stored results')
+			// Sort combined results by register_number
+			allResults.sort((a, b) => (a.register_number || '').localeCompare(b.register_number || ''))
+
+			// Recalculate summary for combined results
+			const combinedSummary = {
+				total_learners: allResults.length,
+				passed: allResults.filter(r => r.result_status === 'Pass').length,
+				failed: allResults.filter(r => r.result_status === 'Fail').length,
+				pending: allResults.filter(r => r.result_status === 'Pending').length,
+				incomplete: allResults.filter(r => r.result_status === 'Incomplete').length,
+				published: allResults.filter(r => r.is_published).length,
+				unpublished: allResults.filter(r => !r.is_published).length,
+				locked: allResults.filter(r => r.is_locked).length,
+				with_backlogs: allResults.filter(r => r.total_backlogs > 0).length,
+				distinction_count: allResults.filter(r => r.is_distinction).length,
+				first_class_count: allResults.filter(r => r.is_first_class).length,
+				average_sgpa: allResults.length > 0
+					? Math.round(allResults.reduce((sum, r) => sum + (r.sgpa || 0), 0) / allResults.length * 100) / 100
+					: 0,
+				average_cgpa: allResults.length > 0
+					? Math.round(allResults.reduce((sum, r) => sum + (r.cgpa || 0), 0) / allResults.length * 100) / 100
+					: 0
 			}
 
-			const data = await res.json()
-			setStoredResults(data.results || [])
-			setStoredSummary(data.summary || null)
-			setResultsExist((data.results?.length || 0) > 0)
+			setStoredResults(allResults)
+			setStoredSummary(combinedSummary)
+			setResultsExist(allResults.length > 0)
 
 			toast({
 				title: 'Stored Results Loaded',
-				description: `Found ${data.results?.length || 0} semester result records.`,
+				description: `Found ${allResults.length} semester result records across ${selectedPrograms.length} program(s).`,
 				className: 'bg-green-50 border-green-200 text-green-800'
 			})
 		} catch (e) {

@@ -58,6 +58,8 @@ export default function ExamRegistrationsPage() {
 		// Dropdown control
 		selectedInstitutionId,
 		setSelectedInstitutionId,
+		selectedExaminationSessionId,
+		setSelectedExaminationSessionId,
 		// Institution filter values
 		isReady,
 		mustSelectInstitution,
@@ -146,10 +148,11 @@ export default function ExamRegistrationsPage() {
 			approved_by: "",
 			approved_date: "",
 		})
-		// Also set the selectedInstitutionId for dropdown filtering
+		// Also set the dropdown control state for proper filtering
 		if (autoInstitutionId) {
 			setSelectedInstitutionId(autoInstitutionId)
 		}
+		setSelectedExaminationSessionId('')
 		setErrors({})
 		setEditing(null)
 	}
@@ -225,6 +228,9 @@ export default function ExamRegistrationsPage() {
 			approved_by: row.approved_by || "",
 			approved_date: row.approved_date ? new Date(row.approved_date).toISOString().split('T')[0] : "",
 		})
+		// Set dropdown control state for proper filtering (Institution → Exam Session → Course Offering)
+		setSelectedInstitutionId(row.institutions_id)
+		setSelectedExaminationSessionId(row.examination_session_id)
 		setSheetOpen(true)
 	}
 
@@ -1747,6 +1753,7 @@ export default function ExamRegistrationsPage() {
 											onValueChange={(id) => {
 												setFormData(prev => ({ ...prev, institutions_id: id, student_id: '', examination_session_id: '', course_offering_id: '' }))
 												setSelectedInstitutionId(id)
+												setSelectedExaminationSessionId('')
 											}}
 										>
 											<SelectTrigger className={`h-10 ${errors.institutions_id ? 'border-destructive' : ''}`}>
@@ -1808,7 +1815,8 @@ export default function ExamRegistrationsPage() {
 									<Select
 										value={formData.examination_session_id}
 										onValueChange={(id) => {
-											setFormData(prev => ({ ...prev, examination_session_id: id }))
+											setFormData(prev => ({ ...prev, examination_session_id: id, course_offering_id: '' }))
+											setSelectedExaminationSessionId(id)
 										}}
 										disabled={!formData.institutions_id}
 									>
@@ -1837,10 +1845,10 @@ export default function ExamRegistrationsPage() {
 										onValueChange={(id) => {
 											setFormData(prev => ({ ...prev, course_offering_id: id }))
 										}}
-										disabled={!formData.institutions_id}
+										disabled={!formData.examination_session_id}
 									>
-										<SelectTrigger className={`h-10 ${errors.course_offering_id ? 'border-destructive' : ''} ${!formData.institutions_id ? 'bg-muted cursor-not-allowed' : ''}`}>
-											<SelectValue placeholder={!formData.institutions_id ? "Select Institution First" : filteredCourseOfferings.length === 0 ? "No Courses Available" : "Select Course Offering"} />
+										<SelectTrigger className={`h-10 ${errors.course_offering_id ? 'border-destructive' : ''} ${!formData.examination_session_id ? 'bg-muted cursor-not-allowed' : ''}`}>
+											<SelectValue placeholder={!formData.examination_session_id ? "Select Exam Session First" : filteredCourseOfferings.length === 0 ? "No Courses Available" : "Select Course Offering"} />
 										</SelectTrigger>
 										<SelectContent>
 											{filteredCourseOfferings.map(course => (
@@ -1851,7 +1859,7 @@ export default function ExamRegistrationsPage() {
 										</SelectContent>
 									</Select>
 									{errors.course_offering_id && <p className="text-xs text-destructive">{errors.course_offering_id}</p>}
-									{!formData.institutions_id && <p className="text-xs text-muted-foreground">Please select an institution first</p>}
+									{!formData.examination_session_id && <p className="text-xs text-muted-foreground">Please select an examination session first</p>}
 								</div>
 
 								{/* Learner Register Number */}
