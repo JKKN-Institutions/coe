@@ -79,34 +79,31 @@ export async function GET(request: NextRequest) {
 				return NextResponse.json([])
 			}
 
-			// Fetch programs from MyJKKN API for each institution ID
+			// Fetch programs from internal MyJKKN API route for each institution ID
 			const allPrograms: any[] = []
 			const seenCodes = new Set<string>()
+			const baseUrl = request.nextUrl.origin
 
 			for (const myjkknInstId of myjkknIds) {
 				try {
-					const myjkknUrl = `${process.env.MYJKKN_API_URL || 'https://jkkn.ai'}/api/programs?institution_id=${myjkknInstId}&is_active=true&limit=1000`
-					console.log('Fetching from MyJKKN:', myjkknUrl)
+					const myjkknUrl = `${baseUrl}/api/myjkkn/programs?institution_id=${myjkknInstId}&is_active=true&limit=1000`
+					console.log('Fetching from internal MyJKKN route:', myjkknUrl)
 
-					const res = await fetch(myjkknUrl, {
-						headers: {
-							'Authorization': `Bearer ${process.env.MYJKKN_API_KEY || ''}`,
-							'Content-Type': 'application/json'
-						}
-					})
+					const res = await fetch(myjkknUrl)
 
 					if (res.ok) {
 						const response = await res.json()
 						const data = response.data || response || []
 
-						console.log('MyJKKN programs response for', myjkknInstId, ':', data.length, 'programs')
+						console.log('MyJKKN programs response for', myjkknInstId, ':', Array.isArray(data) ? data.length : 0, 'programs')
 
-						// Client-side filter and deduplicate by program_code
+						// Client-side filter by institution_id and deduplicate by program_code
 						if (Array.isArray(data)) {
 							for (const p of data) {
 								// MyJKKN uses program_id as CODE field (e.g., "BCA"), NOT UUID
 								const programCode = p?.program_id || p?.program_code
-								if (programCode && p.is_active !== false && !seenCodes.has(programCode)) {
+								// Filter by institution_id since MyJKKN may not filter server-side
+								if (programCode && p.is_active !== false && p.institution_id === myjkknInstId && !seenCodes.has(programCode)) {
 									seenCodes.add(programCode)
 									allPrograms.push({
 										id: p.id, // UUID from MyJKKN

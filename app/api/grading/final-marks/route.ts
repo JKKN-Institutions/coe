@@ -802,14 +802,14 @@ export async function POST(request: NextRequest) {
 				}
 			}
 
-			// Get marks configuration - prioritize course_mapping values over generic course values
-			// course_mapping has program/semester specific pass marks
-			const internalMax = Number(courseMapping?.internal_max_mark || course.internal_max_mark) || 0
-			const internalPassMark = Number(courseMapping?.internal_pass_mark || course.internal_pass_mark) || 0
-			const externalMax = Number(courseMapping?.external_max_mark || course.external_max_mark) || 0
-			const externalPassMark = Number(courseMapping?.external_pass_mark || course.external_pass_mark) || 0
-			const totalMax = Number(courseMapping?.total_max_mark || course.total_max_mark) || 0
-			const totalPassMark = Number(courseMapping?.total_pass_mark || course.total_pass_mark) || 0
+			// Get marks configuration - ALWAYS use courses table values
+			// courses table has the correct max marks for each course type (theory/practical)
+			const internalMax = Number(course.internal_max_mark) || 0
+			const internalPassMark = Number(course.internal_pass_mark) || 0
+			const externalMax = Number(course.external_max_mark) || 0
+			const externalPassMark = Number(course.external_pass_mark) || 0
+			const totalMax = Number(course.total_max_mark) || 0
+			const totalPassMark = Number(course.total_pass_mark) || 0
 
 			// Get marks obtained (cap at max values)
 			let internalMarksObtained = Number(internalMark?.total_internal_marks) || 0
