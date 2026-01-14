@@ -126,11 +126,14 @@ export function generateGalleyReportPDF(data: GalleyReportData): string {
 	const pageHeight = doc.internal.pageSize.getHeight()
 	const margin = 5
 
-	// Get all courses sorted by course_order
+	// Get all courses sorted by course_order from course_mapping
 	const allCourses = [...data.courseAnalysis].sort((a, b) => {
-		const orderA = a.course.course_order || 0
-		const orderB = b.course.course_order || 0
-		return orderA - orderB
+		// Use 999 as fallback so courses without course_order appear at the end
+		const orderA = a.course.course_order ?? 999
+		const orderB = b.course.course_order ?? 999
+		if (orderA !== orderB) return orderA - orderB
+		// Secondary sort by course_code if course_order is the same
+		return (a.course.course_code || '').localeCompare(b.course.course_code || '')
 	})
 
 	// Sort students:
@@ -302,11 +305,14 @@ export function generateGalleyReportPDF(data: GalleyReportData): string {
 		const body: RowInput[] = []
 
 		sortedStudents.forEach((student, studentIndex) => {
-			// Sort student's courses by course_order
+			// Sort student's courses by course_order from course_mapping
 			const studentCourses = [...student.courses].sort((a, b) => {
-				const orderA = a.course.course_order || 0
-				const orderB = b.course.course_order || 0
-				return orderA - orderB
+				// Use 999 as fallback so courses without course_order appear at the end
+				const orderA = a.course.course_order ?? 999
+				const orderB = b.course.course_order ?? 999
+				if (orderA !== orderB) return orderA - orderB
+				// Secondary sort by course_code if course_order is the same
+				return (a.course.course_code || '').localeCompare(b.course.course_code || '')
 			})
 
 			// Create rows for this student

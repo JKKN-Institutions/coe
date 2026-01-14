@@ -1219,7 +1219,7 @@ export async function GET(req: NextRequest) {
 				cleared_backlogs: backlogsList.filter((b: any) => b.is_cleared).length,
 				critical_count: backlogsList.filter((b: any) => !b.is_cleared && b.priority_level === 'Critical').length,
 				high_priority_count: backlogsList.filter((b: any) => !b.is_cleared && b.priority_level === 'High').length,
-				students_with_backlogs: Object.keys(studentBacklogSummary).filter(
+				learners_with_arrears: Object.keys(studentBacklogSummary).filter(
 					id => studentBacklogSummary[id].pending_backlogs > 0
 				).length,
 				failure_reasons: {

@@ -80,6 +80,7 @@ interface CourseData {
 		total_max_mark: number
 		course_category: string
 		course_type: string
+		course_order?: number
 	}
 	internal_marks: number
 	internal_max: number
@@ -128,6 +129,7 @@ interface CourseAnalysis {
 		external_max_mark: number
 		total_max_mark: number
 		course_category: string
+		course_order?: number
 	}
 	registered: number
 	appeared: number
@@ -313,14 +315,18 @@ export default function GalleyReportPage() {
 			setSelectedSemester("")
 			setSemesters([])
 			setReportData(null)
-			fetchSemesters(selectedInstitutionId, selectedSessionId, selectedProgramId)
+			// Use program_code for filtering (not program_id)
+			const program = programs.find(p => p.id === selectedProgramId)
+			const programCode = program?.program_code || selectedProgramId
+			fetchSemesters(selectedInstitutionId, selectedSessionId, programCode)
 		}
 	}, [selectedProgramId])
 
-	const fetchSemesters = async (institutionId: string, sessionId: string, programId: string) => {
+	const fetchSemesters = async (institutionId: string, sessionId: string, programCode: string) => {
 		try {
 			setLoadingSemesters(true)
-			const res = await fetch(`/api/grading/galley-report?type=semesters&institution_id=${institutionId}&session_id=${sessionId}&program_id=${programId}`)
+			// Use program_code for %value% pattern filtering
+			const res = await fetch(`/api/grading/galley-report?type=semesters&institution_id=${institutionId}&session_id=${sessionId}&program_id=${programCode}`)
 			if (res.ok) {
 				const data = await res.json()
 				setSemesters(data)
@@ -345,8 +351,11 @@ export default function GalleyReportPage() {
 
 		try {
 			setLoadingReport(true)
+			// Use program_code for %value% pattern filtering
+			const program = programs.find(p => p.id === selectedProgramId)
+			const programCode = program?.program_code || selectedProgramId
 			const res = await fetch(
-				`/api/grading/galley-report?institution_id=${selectedInstitutionId}&session_id=${selectedSessionId}&program_id=${selectedProgramId}&semester=${selectedSemester}`
+				`/api/grading/galley-report?institution_id=${selectedInstitutionId}&session_id=${selectedSessionId}&program_id=${programCode}&semester=${selectedSemester}`
 			)
 
 			if (!res.ok) {
@@ -530,7 +539,11 @@ export default function GalleyReportPage() {
 											</Button>
 										</PopoverTrigger>
 										<PopoverContent className="w-[400px] p-0" align="start">
-											<Command>
+											<Command filter={(value, search) => {
+												// %value% pattern - contains match (case-insensitive)
+												if (value.toLowerCase().includes(search.toLowerCase())) return 1
+												return 0
+											}}>
 												<CommandInput placeholder="Search institution..." className="h-8 text-xs" />
 												<CommandList>
 													<CommandEmpty className="text-xs py-2">No institution found.</CommandEmpty>
@@ -578,7 +591,11 @@ export default function GalleyReportPage() {
 											</Button>
 										</PopoverTrigger>
 										<PopoverContent className="w-[350px] p-0" align="start">
-											<Command>
+											<Command filter={(value, search) => {
+												// %value% pattern - contains match (case-insensitive)
+												if (value.toLowerCase().includes(search.toLowerCase())) return 1
+												return 0
+											}}>
 												<CommandInput placeholder="Search session..." className="h-8 text-xs" />
 												<CommandList>
 													<CommandEmpty className="text-xs py-2">No session found.</CommandEmpty>
@@ -626,7 +643,11 @@ export default function GalleyReportPage() {
 											</Button>
 										</PopoverTrigger>
 										<PopoverContent className="w-[400px] p-0" align="start">
-											<Command>
+											<Command filter={(value, search) => {
+												// %value% pattern - contains match (case-insensitive)
+												if (value.toLowerCase().includes(search.toLowerCase())) return 1
+												return 0
+											}}>
 												<CommandInput placeholder="Search program..." className="h-8 text-xs" />
 												<CommandList>
 													<CommandEmpty className="text-xs py-2">No program found.</CommandEmpty>

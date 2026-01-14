@@ -130,25 +130,175 @@ export async function GET(request: NextRequest) {
 		}
 
 		// Dropdown: Get semesters for a program in a session
-		// Note: programId can be either MyJKKN UUID or program_code - we filter by both
+		// Note: programId can be either MyJKKN UUID or program_code - we filter using exact match first, then ilike
 		if (type === 'semesters') {
 			if (!institutionId || !sessionId || !programId) {
 				return NextResponse.json({ error: 'institution_id, session_id, and program_id are required' }, { status: 400 })
 			}
 
-			// Get unique semesters from semester_results
-			const { data, error } = await supabase
-				.from('semester_results')
-				.select('semester')
+			console.log('Fetching semesters for:', { institutionId, sessionId, programId })
+
+			let semesterSet = new Set<number>()
+
+			// Strategy 1: Try course_offerings with EXACT match on program_code first
+			const { data: coExactData, error: coExactError } = await supabase
+				.from('course_offerings')
+				.select('semester, program_code')
 				.eq('institutions_id', institutionId)
 				.eq('examination_session_id', sessionId)
-				.or(`program_id.eq.${programId},program_code.eq.${programId}`)
+				.eq('program_code', programId)
 				.eq('is_active', true)
 
-			if (error) throw error
+			if (!coExactError && coExactData && coExactData.length > 0) {
+				console.log('Found semesters from course_offerings (exact match):', coExactData.length)
+				coExactData.forEach((item: any) => {
+					if (item.semester && typeof item.semester === 'number') {
+						semesterSet.add(item.semester)
+					}
+				})
+			}
 
-			// Get unique semesters
-			const semesterSet = new Set<number>(data?.map(item => item.semester) || [])
+			// Strategy 2: Try course_offerings with ilike pattern if exact match failed
+			if (semesterSet.size === 0) {
+				console.log('No exact match, trying ilike pattern on course_offerings...')
+				const { data: coIlikeData, error: coIlikeError } = await supabase
+					.from('course_offerings')
+					.select('semester, program_code')
+					.eq('institutions_id', institutionId)
+					.eq('examination_session_id', sessionId)
+					.ilike('program_code', `%${programId}%`)
+					.eq('is_active', true)
+
+				if (!coIlikeError && coIlikeData && coIlikeData.length > 0) {
+					console.log('Found semesters from course_offerings (ilike):', coIlikeData.length)
+					coIlikeData.forEach((item: any) => {
+						if (item.semester && typeof item.semester === 'number') {
+							semesterSet.add(item.semester)
+						}
+					})
+				}
+			}
+
+			// Strategy 3: Try final_marks with exact match on program_code
+			if (semesterSet.size === 0) {
+				console.log('No semesters from course_offerings, trying final_marks (exact)...')
+				const { data: fmExactData, error: fmExactError } = await supabase
+					.from('final_marks')
+					.select(`
+						id,
+						program_code,
+						course_offerings:course_offering_id (
+							semester
+						)
+					`)
+					.eq('institutions_id', institutionId)
+					.eq('examination_session_id', sessionId)
+					.eq('program_code', programId)
+					.eq('is_active', true)
+
+				if (!fmExactError && fmExactData && fmExactData.length > 0) {
+					console.log('Found semesters from final_marks (exact):', fmExactData.length)
+					fmExactData.forEach((item: any) => {
+						const semester = item.course_offerings?.semester
+						if (semester && typeof semester === 'number') {
+							semesterSet.add(semester)
+						}
+					})
+				}
+			}
+
+			// Strategy 4: Try final_marks with ilike pattern
+			if (semesterSet.size === 0) {
+				console.log('No semesters from final_marks exact, trying ilike...')
+				const { data: fmIlikeData, error: fmIlikeError } = await supabase
+					.from('final_marks')
+					.select(`
+						id,
+						program_code,
+						course_offerings:course_offering_id (
+							semester
+						)
+					`)
+					.eq('institutions_id', institutionId)
+					.eq('examination_session_id', sessionId)
+					.ilike('program_code', `%${programId}%`)
+					.eq('is_active', true)
+
+				if (!fmIlikeError && fmIlikeData && fmIlikeData.length > 0) {
+					console.log('Found semesters from final_marks (ilike):', fmIlikeData.length)
+					fmIlikeData.forEach((item: any) => {
+						const semester = item.course_offerings?.semester
+						if (semester && typeof semester === 'number') {
+							semesterSet.add(semester)
+						}
+					})
+				}
+			}
+
+			// Strategy 5: Try semester_results with exact match
+			if (semesterSet.size === 0) {
+				console.log('No semesters from final_marks, trying semester_results (exact)...')
+				const { data: srExactData, error: srExactError } = await supabase
+					.from('semester_results')
+					.select('semester, program_code')
+					.eq('institutions_id', institutionId)
+					.eq('examination_session_id', sessionId)
+					.eq('program_code', programId)
+					.eq('is_active', true)
+
+				if (!srExactError && srExactData && srExactData.length > 0) {
+					console.log('Found semesters from semester_results (exact):', srExactData.length)
+					srExactData.forEach((item: any) => {
+						if (item.semester && typeof item.semester === 'number') {
+							semesterSet.add(item.semester)
+						}
+					})
+				}
+			}
+
+			// Strategy 6: Try semester_results with ilike
+			if (semesterSet.size === 0) {
+				console.log('No semesters from semester_results exact, trying ilike...')
+				const { data: srIlikeData, error: srIlikeError } = await supabase
+					.from('semester_results')
+					.select('semester, program_code')
+					.eq('institutions_id', institutionId)
+					.eq('examination_session_id', sessionId)
+					.ilike('program_code', `%${programId}%`)
+					.eq('is_active', true)
+
+				if (!srIlikeError && srIlikeData && srIlikeData.length > 0) {
+					console.log('Found semesters from semester_results (ilike):', srIlikeData.length)
+					srIlikeData.forEach((item: any) => {
+						if (item.semester && typeof item.semester === 'number') {
+							semesterSet.add(item.semester)
+						}
+					})
+				}
+			}
+
+			// Strategy 7: If still no semesters, try course_offerings without session filter
+			if (semesterSet.size === 0) {
+				console.log('No semesters found, trying course_offerings without session filter...')
+				const { data: allCoData, error: allCoError } = await supabase
+					.from('course_offerings')
+					.select('semester, program_code')
+					.eq('institutions_id', institutionId)
+					.eq('program_code', programId)
+					.eq('is_active', true)
+
+				if (!allCoError && allCoData && allCoData.length > 0) {
+					allCoData.forEach((item: any) => {
+						if (item.semester && typeof item.semester === 'number') {
+							semesterSet.add(item.semester)
+						}
+					})
+					console.log('Semesters from course_offerings (no session filter):', Array.from(semesterSet))
+				}
+			}
+
+			console.log('Unique semesters found:', Array.from(semesterSet))
+
 			const uniqueSemesters = Array.from(semesterSet)
 				.sort((a, b) => a - b)
 				.map(sem => ({ semester: sem, label: `Semester ${sem}` }))
@@ -199,18 +349,38 @@ export async function GET(request: NextRequest) {
 		} : null
 
 		// Fetch program details from final_marks (programs are from MyJKKN API, no local table)
-		// programId could be either the MyJKKN UUID or program_code
-		const { data: programData, error: progError } = await supabase
+		// Try exact match first, then ilike for %value% pattern
+		let programData = null
+
+		// First try exact match
+		const { data: progExactData, error: progExactError } = await supabase
 			.from('final_marks')
 			.select('program_id, program_code')
 			.eq('institutions_id', institutionId)
 			.eq('examination_session_id', sessionId)
-			.or(`program_id.eq.${programId},program_code.eq.${programId}`)
+			.eq('program_code', programId)
 			.eq('is_active', true)
 			.limit(1)
 			.single()
 
-		if (progError && progError.code !== 'PGRST116') throw progError // PGRST116 = no rows
+		if (!progExactError && progExactData) {
+			programData = progExactData
+		} else {
+			// Fallback to ilike pattern
+			const { data: progIlikeData, error: progIlikeError } = await supabase
+				.from('final_marks')
+				.select('program_id, program_code')
+				.eq('institutions_id', institutionId)
+				.eq('examination_session_id', sessionId)
+				.ilike('program_code', `%${programId}%`)
+				.eq('is_active', true)
+				.limit(1)
+				.single()
+
+			if (!progIlikeError && progIlikeData) {
+				programData = progIlikeData
+			}
+		}
 
 		// Construct program object from final_marks data
 		const program = programData ? {
@@ -223,48 +393,71 @@ export async function GET(request: NextRequest) {
 
 		// Fetch final marks with direct query and joins
 		// Note: We use exam_registrations for student info since users table FK is not in schema cache
-		// Note: programId can be either MyJKKN UUID or program_code - we filter by both
-		const { data: finalMarksRaw, error: marksError } = await supabase
-			.from('final_marks')
-			.select(`
+		// Try exact match first on program_code, then ilike for %value% pattern
+		const finalMarksSelect = `
+			id,
+			internal_marks_obtained,
+			internal_marks_maximum,
+			external_marks_obtained,
+			external_marks_maximum,
+			total_marks_obtained,
+			total_marks_maximum,
+			percentage,
+			letter_grade,
+			grade_points,
+			is_pass,
+			pass_status,
+			result_status,
+			student_id,
+			course_id,
+			course_offering_id,
+			exam_registrations:exam_registration_id (
 				id,
-				internal_marks_obtained,
-				internal_marks_maximum,
-				external_marks_obtained,
-				external_marks_maximum,
-				total_marks_obtained,
-				total_marks_maximum,
-				percentage,
-				letter_grade,
-				grade_points,
-				is_pass,
-				pass_status,
-				result_status,
-				student_id,
-				course_id,
-				course_offering_id,
-				exam_registrations:exam_registration_id (
-					id,
-					stu_register_no,
-					student_name
-				),
-				courses:course_id (
-					id,
-					course_code,
-					course_name,
-					credit
-				),
-				course_offerings:course_offering_id (
-					semester,
-					course_id
-				)
-			`)
+				stu_register_no,
+				student_name
+			),
+			courses:course_id (
+				id,
+				course_code,
+				course_name,
+				credit
+			),
+			course_offerings:course_offering_id (
+				semester,
+				course_id
+			)
+		`
+
+		// Try exact match first
+		let finalMarksRaw = null
+		const { data: fmExact, error: fmExactError } = await supabase
+			.from('final_marks')
+			.select(finalMarksSelect)
 			.eq('institutions_id', institutionId)
 			.eq('examination_session_id', sessionId)
-			.or(`program_id.eq.${programId},program_code.eq.${programId}`)
+			.eq('program_code', programId)
 			.eq('is_active', true)
 
-		if (marksError) throw marksError
+		console.log('Searching final_marks with:', { institutionId, sessionId, programId })
+
+		if (!fmExactError && fmExact && fmExact.length > 0) {
+			finalMarksRaw = fmExact
+			console.log('Found final_marks with exact program_code match:', fmExact.length)
+		} else {
+			console.log('Exact match failed, error:', fmExactError, 'data length:', fmExact?.length || 0)
+			// Fallback to ilike pattern
+			const { data: fmIlike, error: fmIlikeError } = await supabase
+				.from('final_marks')
+				.select(finalMarksSelect)
+				.eq('institutions_id', institutionId)
+				.eq('examination_session_id', sessionId)
+				.ilike('program_code', `%${programId}%`)
+				.eq('is_active', true)
+
+			if (fmIlikeError) throw fmIlikeError
+			finalMarksRaw = fmIlike
+			console.log('Found final_marks with ilike program_code match:', fmIlike?.length || 0)
+		}
 
 		// Get unique course_mapping IDs (course_offerings.course_id references course_mapping.id)
 		const courseMappingIds = [...new Set(
@@ -273,23 +466,41 @@ export async function GET(request: NextRequest) {
 				.filter(Boolean)
 		)]
 
-		// Fetch course_order from course_mapping table
+		console.log('Course mapping IDs from course_offerings:', courseMappingIds)
+
+		// Fetch course_order from course_mapping table with course_code for debugging
 		let courseMappingMap = new Map<string, number>()
 		if (courseMappingIds.length > 0) {
 			const { data: courseMappings, error: cmError } = await supabase
 				.from('course_mapping')
-				.select('id, course_order')
+				.select('id, course_order, course_id, courses:course_id(course_code)')
 				.in('id', courseMappingIds)
 
 			if (!cmError && courseMappings) {
+				console.log('Course mapping data with course_order:', courseMappings.map((cm: any) => ({
+					id: cm.id,
+					course_code: cm.courses?.course_code,
+					course_order: cm.course_order
+				})))
 				courseMappings.forEach((cm: any) => {
-					courseMappingMap.set(cm.id, cm.course_order || 999)
+					// Use ?? to handle null/undefined, preserve 0 as valid order
+					courseMappingMap.set(cm.id, cm.course_order ?? 999)
 				})
+			} else if (cmError) {
+				console.error('Error fetching course_mapping:', cmError)
 			}
 		}
 
 		// Filter by semester (from course_offerings) and transform data
 		const semesterNum = parseInt(semester)
+		console.log('Filtering by semester:', semesterNum)
+		console.log('finalMarksRaw count:', finalMarksRaw?.length || 0)
+		console.log('Sample finalMarksRaw course_offerings:', finalMarksRaw?.slice(0, 3).map((m: any) => ({
+			course_offerings_semester: m.course_offerings?.semester,
+			course_offerings_course_id: m.course_offerings?.course_id,
+			course_code: m.courses?.course_code
+		})))
+
 		const filteredMarks = (finalMarksRaw || [])
 			.filter((mark: any) => mark.course_offerings?.semester === semesterNum)
 			.map((mark: any) => {
@@ -299,7 +510,7 @@ export async function GET(request: NextRequest) {
 
 				// Get course_order from course_mapping via course_offerings.course_id
 				const courseMappingId = mark.course_offerings?.course_id
-				const courseOrder = courseMappingId ? courseMappingMap.get(courseMappingId) : null
+				const courseOrder = courseMappingId ? (courseMappingMap.get(courseMappingId) ?? 999) : 999
 
 				return {
 					id: mark.id,
@@ -339,31 +550,53 @@ export async function GET(request: NextRequest) {
 			})
 
 		// Fetch semester results for the students (no need for students join - we get it from final_marks)
-		// Note: programId can be either MyJKKN UUID or program_code - we filter by both
-		const { data: semesterResults, error: semResultsError } = await supabase
+		// Try exact match first on program_code, then ilike for %value% pattern
+		const semesterResultsSelect = `
+			id,
+			student_id,
+			semester,
+			sgpa,
+			cgpa,
+			percentage,
+			total_credits_registered,
+			total_credits_earned,
+			result_status,
+			result_class,
+			is_distinction,
+			is_first_class,
+			total_backlogs
+		`
+
+		let semesterResults = null
+
+		// Try exact match first
+		const { data: srExact, error: srExactError } = await supabase
 			.from('semester_results')
-			.select(`
-				id,
-				student_id,
-				semester,
-				sgpa,
-				cgpa,
-				percentage,
-				total_credits_registered,
-				total_credits_earned,
-				result_status,
-				result_class,
-				is_distinction,
-				is_first_class,
-				total_backlogs
-			`)
+			.select(semesterResultsSelect)
 			.eq('institutions_id', institutionId)
 			.eq('examination_session_id', sessionId)
-			.or(`program_id.eq.${programId},program_code.eq.${programId}`)
+			.eq('program_code', programId)
 			.eq('semester', parseInt(semester))
 			.eq('is_active', true)
 
-		if (semResultsError) throw semResultsError
+		if (!srExactError && srExact && srExact.length > 0) {
+			semesterResults = srExact
+			console.log('Found semester_results with exact program_code match:', srExact.length)
+		} else {
+			// Fallback to ilike pattern
+			const { data: srIlike, error: srIlikeError } = await supabase
+				.from('semester_results')
+				.select(semesterResultsSelect)
+				.eq('institutions_id', institutionId)
+				.eq('examination_session_id', sessionId)
+				.ilike('program_code', `%${programId}%`)
+				.eq('semester', parseInt(semester))
+				.eq('is_active', true)
+
+			if (srIlikeError) console.error('Error fetching semester_results:', srIlikeError)
+			semesterResults = srIlike
+			console.log('Found semester_results with ilike program_code match:', srIlike?.length || 0)
+		}
 
 		// Group marks by student
 		const studentMarksMap = new Map()
@@ -397,8 +630,19 @@ export async function GET(request: NextRequest) {
 		// Merge with semester results
 		const students = Array.from(studentMarksMap.values()).map((studentData: any) => {
 			const semResult = semesterResults?.find((sr: any) => sr.student_id === studentData.student.id)
+
+			// Sort courses by course_order from course_mapping
+			const sortedCourses = [...studentData.courses].sort((a: any, b: any) => {
+				const orderA = a.course?.course_order ?? 999
+				const orderB = b.course?.course_order ?? 999
+				if (orderA !== orderB) return orderA - orderB
+				// Secondary sort by course_code if course_order is the same
+				return (a.course?.course_code || '').localeCompare(b.course?.course_code || '')
+			})
+
 			return {
 				...studentData,
+				courses: sortedCourses,
 				semester_result: semResult ? {
 					sgpa: semResult.sgpa,
 					cgpa: semResult.cgpa,
@@ -479,7 +723,20 @@ export async function GET(request: NextRequest) {
 			pass_percentage: courseData.appeared > 0
 				? ((courseData.passed / courseData.appeared) * 100).toFixed(2)
 				: '0.00'
-		})).sort((a, b) => a.course.course_code.localeCompare(b.course.course_code))
+		})).sort((a, b) => {
+			// Sort by course_order from course_mapping (ascending), fallback to 999 if not set
+			const orderA = a.course.course_order ?? 999
+			const orderB = b.course.course_order ?? 999
+			if (orderA !== orderB) return orderA - orderB
+			// Secondary sort by course_code if course_order is the same
+			return (a.course.course_code || '').localeCompare(b.course.course_code || '')
+		})
+
+		// Log final course order for debugging
+		console.log('Course analysis sorted by course_order:', courseAnalysis.map((ca: any) => ({
+			course_code: ca.course.course_code,
+			course_order: ca.course.course_order
+		})))
 
 		// Calculate overall statistics
 		const totalStudents = students.length
