@@ -7,6 +7,45 @@ import type {
 } from '@/types/final-marks'
 
 /**
+ * Helper function to detect program type (UG/PG) from program code
+ * This must match the database function get_program_type_from_code()
+ * @param programCode - The program code (e.g., "BCA", "MSC", "24PCHC02")
+ * @returns 'PG' for postgraduate programs, 'UG' for undergraduate
+ */
+function getProgramTypeFromCode(programCode?: string): 'UG' | 'PG' {
+	if (!programCode) return 'UG'
+
+	const upperCode = programCode.toUpperCase()
+
+	// Check for common PG program prefixes
+	// MSC, MBA, MCA, MA, MCom, MSW, MPhil, PhD, etc.
+	const pgPrefixes = ['MSC', 'M.SC', 'M SC', 'MBA', 'MCA', 'MA', 'M.A', 'MCOM', 'M.COM', 'M COM', 'MSW', 'MPHIL', 'PHD', 'PH.D', 'MASTER', 'POST', 'PG']
+	for (const prefix of pgPrefixes) {
+		if (upperCode.startsWith(prefix)) {
+			return 'PG'
+		}
+	}
+
+	// Check for year-prefixed PG codes like "24PCHC02" where P after digits indicates PG
+	// Pattern: 2 digits + P + letters = PG program
+	const yearPrefixPgPattern = /^[0-9]{2}P[A-Z]/
+	if (yearPrefixPgPattern.test(upperCode)) {
+		return 'PG'
+	}
+
+	// Check for short PG program codes like "PCH" (P + 2-3 letters)
+	// These are typically PG program abbreviations where P = Postgraduate
+	// PCH = PG Chemistry, PMT = PG Mathematics, PCS = PG Computer Science, etc.
+	const shortPgPattern = /^P[A-Z]{2,3}$/
+	if (shortPgPattern.test(upperCode)) {
+		return 'PG'
+	}
+
+	// Default to UG for all other patterns
+	return 'UG'
+}
+
+/**
  * GET /api/grading/final-marks
  * Fetch data for the final marks generation page
  * Actions: institutions, sessions, programs (DEPRECATED), courses, course-offerings, grades, final-marks
@@ -402,6 +441,15 @@ export async function POST(request: NextRequest) {
 		}
 
 		// =========================================================
+		// PROGRAM TYPE DETECTION: Detect UG/PG from program code
+		// If grade_system_code is not provided, auto-detect from program_code
+		// This ensures PG programs use 50% pass mark, UG use 40%
+		// =========================================================
+		const detectedProgramType = getProgramTypeFromCode(programCode)
+		const effectiveGradeSystemCode = grade_system_code || detectedProgramType
+		console.log(`[Final Marks] Program ${programCode}: Detected type=${detectedProgramType}, Provided=${grade_system_code}, Using=${effectiveGradeSystemCode}`)
+
+		// =========================================================
 		// BUSINESS RULE: Check if results already exist
 		// Generation is ONLY allowed when NO records exist for the course
 		// Once results are saved, regeneration is blocked regardless of status
@@ -457,8 +505,9 @@ export async function POST(request: NextRequest) {
 		if (regulation_id) {
 			gradesQuery = gradesQuery.eq('regulation_id', regulation_id)
 		}
-		if (grade_system_code) {
-			gradesQuery = gradesQuery.eq('grade_system_code', grade_system_code)
+		// Use effectiveGradeSystemCode (auto-detected from program_code if not provided)
+		if (effectiveGradeSystemCode) {
+			gradesQuery = gradesQuery.eq('grade_system_code', effectiveGradeSystemCode)
 		}
 
 		const { data: grades, error: gradesError } = await gradesQuery.order('min_mark', { ascending: false })
@@ -805,11 +854,24 @@ export async function POST(request: NextRequest) {
 			// Get marks configuration - ALWAYS use courses table values
 			// courses table has the correct max marks for each course type (theory/practical)
 			const internalMax = Number(course.internal_max_mark) || 0
-			const internalPassMark = Number(course.internal_pass_mark) || 0
 			const externalMax = Number(course.external_max_mark) || 0
-			const externalPassMark = Number(course.external_pass_mark) || 0
 			const totalMax = Number(course.total_max_mark) || 0
-			const totalPassMark = Number(course.total_pass_mark) || 0
+
+			// =========================================================
+			// PASS MARKS: Use course-specific values from course_mapping first,
+			// then fallback to courses table values
+			// Pass marks are configured per course in course_mapping/courses table
+			// =========================================================
+			// Priority: course_mapping pass marks > courses table pass marks
+			const internalPassMark = Number(courseMapping.internal_pass_mark) > 0
+				? Number(courseMapping.internal_pass_mark)
+				: Number(course.internal_pass_mark) || 0
+			const externalPassMark = Number(courseMapping.external_pass_mark) > 0
+				? Number(courseMapping.external_pass_mark)
+				: Number(course.external_pass_mark) || 0
+			const totalPassMark = Number(courseMapping.total_pass_mark) > 0
+				? Number(courseMapping.total_pass_mark)
+				: Number(course.total_pass_mark) || 0
 
 			// Get marks obtained (cap at max values)
 			let internalMarksObtained = Number(internalMark?.total_internal_marks) || 0

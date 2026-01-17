@@ -349,16 +349,34 @@ export default function GenerateFinalMarksPage() {
 	}
 
 	// Helper function to infer UG/PG grade system from program code/name
+	// This must match the database function get_program_type_from_code()
 	const inferGradeSystemFromProgram = (programCode?: string, programName?: string): 'UG' | 'PG' => {
 		const code = (programCode || '').toUpperCase()
 		const name = (programName || '').toUpperCase()
+
 		// PG patterns: M.A., M.Sc., MBA, MCA, M.Com, M.Phil, Ph.D, etc.
-		const pgPatterns = ['M.', 'MA', 'MSC', 'MBA', 'MCA', 'MCOM', 'MPHIL', 'PHD', 'PH.D', 'MASTER', 'POST']
-		for (const pattern of pgPatterns) {
-			if (code.includes(pattern) || name.includes(pattern)) {
+		const pgPrefixes = ['MSC', 'M.SC', 'M SC', 'MBA', 'MCA', 'MA', 'M.A', 'MCOM', 'M.COM', 'M COM', 'MSW', 'MPHIL', 'PHD', 'PH.D', 'MASTER', 'POST', 'PG']
+		for (const prefix of pgPrefixes) {
+			if (code.startsWith(prefix) || name.startsWith(prefix)) {
 				return 'PG'
 			}
 		}
+
+		// Check for year-prefixed PG codes like "24PCHC02" where P after digits indicates PG
+		// Pattern: 2 digits + P + letters = PG program
+		const yearPrefixPgPattern = /^[0-9]{2}P[A-Z]/
+		if (yearPrefixPgPattern.test(code)) {
+			return 'PG'
+		}
+
+		// Check for short PG program codes like "PCH" (P + 2-3 letters)
+		// These are typically PG program abbreviations where P = Postgraduate
+		// PCH = PG Chemistry, PMT = PG Mathematics, PCS = PG Computer Science, etc.
+		const shortPgPattern = /^P[A-Z]{2,3}$/
+		if (shortPgPattern.test(code)) {
+			return 'PG'
+		}
+
 		return 'UG'
 	}
 
