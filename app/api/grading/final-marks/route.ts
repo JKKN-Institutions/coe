@@ -934,6 +934,13 @@ export async function POST(request: NextRequest) {
 			} else {
 				// PASSED: Find grade by percentage range
 				gradeEntry = grades.find((g: any) => percentage >= g.min_mark && percentage <= g.max_mark)
+
+				// CRITICAL FIX: If grade found is 'U' (fail grade), student actually failed
+				// This can happen when percentage is below the pass threshold in grade_system
+				if (gradeEntry?.grade === 'U' || gradeEntry?.grades?.result_status === 'REAPPEAR') {
+					isPass = false
+					failReason = failReason || 'TOTAL'
+				}
 			}
 
 			// Determine letter grade based on attendance and pass status
