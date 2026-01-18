@@ -314,6 +314,8 @@ export interface GenerateFinalMarksResponse {
 		withheld: number
 		distinction: number
 		first_class: number
+		skipped_no_attendance?: number
+		skipped_missing_marks?: number
 	}
 	saved_count?: number
 	errors?: Array<{
@@ -322,6 +324,12 @@ export interface GenerateFinalMarksResponse {
 		register_no: string
 		course_code: string
 		error: string
+	}>
+	skipped_records?: Array<{
+		student_name: string
+		register_no: string
+		course_code: string
+		reason: string
 	}>
 }
 

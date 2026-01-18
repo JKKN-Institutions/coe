@@ -617,6 +617,7 @@ export async function GET(req: NextRequest) {
 			}
 
 			// Fetch with grade values from database (populated by trigger from grade_system table)
+			// Use left joins (no !inner) so courses with missing relations are still included
 			let query = supabase
 				.from('final_marks')
 				.select(`
@@ -636,14 +637,14 @@ export async function GET(req: NextRequest) {
 					grade_description,
 					is_pass,
 					pass_status,
-					course_offerings!inner (
+					course_offerings (
 						semester,
 						course_id,
-						course_mapping!inner (
+						course_mapping (
 							course_id,
 							course_order,
 							semester_code,
-							courses!inner (
+							courses (
 								course_code,
 								course_name,
 								credit,
@@ -653,6 +654,12 @@ export async function GET(req: NextRequest) {
 								total_pass_mark
 							)
 						)
+					),
+					courses (
+						course_code,
+						course_name,
+						credit,
+						course_part_master
 					),
 					exam_registrations (
 						stu_register_no,
@@ -696,14 +703,18 @@ export async function GET(req: NextRequest) {
 				const finalLetterGrade = fm.letter_grade ?? 'U'
 				const finalGradeDescription = fm.grade_description ?? 'Re-Appear'
 
-				const credits = fm.course_offerings?.course_mapping?.courses?.credit || 0
+				// Use credits/course info from course_offerings->course_mapping->courses chain
+				// Fallback to direct courses relation if course_offerings chain is missing
+				const credits = fm.course_offerings?.course_mapping?.courses?.credit || fm.courses?.credit || 0
 				const semesterCode = fm.course_offerings?.course_mapping?.semester_code || ''
-				const coursePart = fm.course_offerings?.course_mapping?.courses?.course_part_master || 'Part III'
+				const coursePart = fm.course_offerings?.course_mapping?.courses?.course_part_master || fm.courses?.course_part_master || 'Part III'
+				const courseCode = fm.course_offerings?.course_mapping?.courses?.course_code || fm.courses?.course_code || ''
+				const courseName = fm.course_offerings?.course_mapping?.courses?.course_name || fm.courses?.course_name || ''
 
 				return {
 					course_id: fm.course_id,
-					course_code: fm.course_offerings?.course_mapping?.courses?.course_code || '',
-					course_name: fm.course_offerings?.course_mapping?.courses?.course_name || '',
+					course_code: courseCode,
+					course_name: courseName,
 					course_part: coursePart,
 					course_order: fm.course_offerings?.course_mapping?.course_order || 0,
 					credits: credits,
@@ -778,6 +789,7 @@ export async function GET(req: NextRequest) {
 
 			// Fetch ALL final marks for the student across ALL exam sessions
 			// CGPA is calculated using all subjects, not grouped by semester
+			// Use left joins so courses with missing relations are still included
 			let query = supabase
 				.from('final_marks')
 				.select(`
@@ -786,12 +798,12 @@ export async function GET(req: NextRequest) {
 					percentage,
 					grade_points,
 					is_pass,
-					courses!inner (
+					courses (
 						credit,
 						course_code,
 						course_name
 					),
-					examination_sessions!inner (
+					examination_sessions (
 						session_code,
 						session_name
 					)
@@ -815,8 +827,11 @@ export async function GET(req: NextRequest) {
 			const coursesList: any[] = []
 
 			data?.forEach((fm: any) => {
+				// Use credits from courses relation
 				const credit = fm.courses?.credit || 0
 				const gradePoint = fm.grade_points || 0
+				const courseCode = fm.courses?.course_code || ''
+				const courseName = fm.courses?.course_name || ''
 
 				totalCredits += credit
 				totalCreditPoints += credit * gradePoint
@@ -828,15 +843,15 @@ export async function GET(req: NextRequest) {
 				}
 
 				coursesList.push({
-					course_code: fm.courses?.course_code,
-					course_name: fm.courses?.course_name,
+					course_code: courseCode,
+					course_name: courseName,
 					credit: credit,
 					grade_point: gradePoint,
 					credit_points: credit * gradePoint,
 					percentage: fm.percentage,
 					is_pass: fm.is_pass,
-					session_code: fm.examination_sessions?.session_code,
-					session_name: fm.examination_sessions?.session_name
+					session_code: fm.examination_sessions?.session_code || '',
+					session_name: fm.examination_sessions?.session_name || ''
 				})
 			})
 
@@ -901,12 +916,12 @@ export async function GET(req: NextRequest) {
 					grade_description,
 					is_pass,
 					pass_status,
-					course_offerings!inner (
+					course_offerings (
 						semester,
-						course_mapping!inner (
+						course_mapping (
 							course_order,
 							semester_code,
-							courses!inner (
+							courses (
 								course_code,
 								course_name,
 								credit,
@@ -916,6 +931,12 @@ export async function GET(req: NextRequest) {
 								total_pass_mark
 							)
 						)
+					),
+					courses (
+						course_code,
+						course_name,
+						credit,
+						course_part_master
 					),
 					exam_registrations (
 						stu_register_no,
@@ -960,7 +981,7 @@ export async function GET(req: NextRequest) {
 					? (fm.internal_marks_obtained / fm.internal_marks_maximum) * 100
 					: 0
 
-				// Get course-specific pass marks from courses table
+				// Get course-specific pass marks from courses table (with fallback to final_marks direct fields)
 				const coursePassMarks: CoursePassMarks = {
 					internal_pass_mark: fm.course_offerings?.course_mapping?.courses?.internal_pass_mark ?? 0,
 					external_pass_mark: fm.course_offerings?.course_mapping?.courses?.external_pass_mark ?? 0,
@@ -976,9 +997,13 @@ export async function GET(req: NextRequest) {
 				const finalLetterGrade = fm.letter_grade ?? 'U'
 				const finalGradeDescription = fm.grade_description ?? 'Re-Appear'
 
-				const credits = fm.course_offerings?.course_mapping?.courses?.credit || 0
+				// Use credits/course info from course_offerings->course_mapping->courses chain
+				// Fallback to direct courses relation if course_offerings chain is missing
+				const credits = fm.course_offerings?.course_mapping?.courses?.credit || fm.courses?.credit || 0
 				const semesterCode = fm.course_offerings?.course_mapping?.semester_code || ''
-				const coursePart = fm.course_offerings?.course_mapping?.courses?.course_part_master || 'Part III'
+				const coursePart = fm.course_offerings?.course_mapping?.courses?.course_part_master || fm.courses?.course_part_master || 'Part III'
+				const courseCode = fm.course_offerings?.course_mapping?.courses?.course_code || fm.courses?.course_code || ''
+				const courseName = fm.course_offerings?.course_mapping?.courses?.course_name || fm.courses?.course_name || ''
 
 				if (!studentMap[studentId]) {
 					studentMap[studentId] = {
@@ -993,8 +1018,8 @@ export async function GET(req: NextRequest) {
 
 				studentMap[studentId].courses.push({
 					course_id: fm.course_id,
-					course_code: fm.course_offerings?.course_mapping?.courses?.course_code || '',
-					course_name: fm.course_offerings?.course_mapping?.courses?.course_name || '',
+					course_code: courseCode,
+					course_name: courseName,
 					course_part: coursePart,
 					course_order: fm.course_offerings?.course_mapping?.course_order || 0,
 					credits: credits,

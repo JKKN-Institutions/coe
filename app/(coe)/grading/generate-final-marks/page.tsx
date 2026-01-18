@@ -187,6 +187,10 @@ export default function GenerateFinalMarksPage() {
 	const [generating, setGenerating] = useState(false)
 	const [saving, setSaving] = useState(false)
 	const [isSaved, setIsSaved] = useState(false)
+	const [savedCount, setSavedCount] = useState(0)
+	const [errorCount, setErrorCount] = useState(0)
+	const [saveErrors, setSaveErrors] = useState<Array<{ student_name: string; register_no: string; course_code: string; error: string }>>([])
+	const [skippedRecords, setSkippedRecords] = useState<Array<{ student_name: string; register_no: string; course_code: string; reason: string }>>([])
 	const [searchTerm, setSearchTerm] = useState("")
 	const [sortColumn, setSortColumn] = useState<string | null>(null)
 	const [sortDirection, setSortDirection] = useState<"asc" | "desc">("asc")
@@ -469,6 +473,7 @@ export default function GenerateFinalMarksPage() {
 				passed: 0, failed: 0, absent: 0, reappear: 0, withheld: 0, distinction: 0, first_class: 0,
 				skipped_no_attendance: 0, skipped_missing_marks: 0
 			})
+			setSkippedRecords(data.skipped_records || [])
 			setIsSaved(false)
 
 			// Build description with skipped info if any
@@ -539,12 +544,25 @@ export default function GenerateFinalMarksPage() {
 
 			const data = await res.json()
 			setIsSaved(true)
+			setSavedCount(data.saved_count || 0)
+			setErrorCount(data.errors?.length || 0)
+			setSaveErrors(data.errors || [])
 
-			toast({
-				title: '✅ Saved Successfully',
-				description: `Saved ${data.saved_count} final marks records to the database.`,
-				className: 'bg-green-50 border-green-200 text-green-800'
-			})
+			// Check if there were any errors during save
+			if (data.errors && data.errors.length > 0) {
+				console.error('Save errors:', data.errors)
+				toast({
+					title: '⚠️ Partial Save',
+					description: `Saved ${data.saved_count} of ${results.length} records. ${data.errors.length} records failed to save.`,
+					variant: 'destructive'
+				})
+			} else {
+				toast({
+					title: '✅ Saved Successfully',
+					description: `Saved ${data.saved_count} final marks records to the database.`,
+					className: 'bg-green-50 border-green-200 text-green-800'
+				})
+			}
 
 			// Move to final step
 			setCurrentStep(3)
@@ -1044,6 +1062,26 @@ export default function GenerateFinalMarksPage() {
 												</p>
 											</div>
 										</div>
+										{/* Skipped Records Details */}
+										{skippedRecords.length > 0 && (
+											<div className="mt-3 pt-3 border-t border-amber-200 dark:border-amber-700">
+												<p className="text-xs font-medium text-amber-700 dark:text-amber-300 mb-2">Skipped Records Details:</p>
+												<div className="max-h-32 overflow-y-auto space-y-1">
+													{skippedRecords.map((record, idx) => (
+														<div key={idx} className="text-xs bg-white dark:bg-gray-800 rounded px-2 py-1 flex justify-between items-center">
+															<span>
+																<span className="font-medium">{record.register_no}</span>
+																<span className="text-gray-500 mx-1">-</span>
+																<span>{record.student_name}</span>
+																<span className="text-gray-400 mx-1">|</span>
+																<span className="text-gray-600 dark:text-gray-400">{record.course_code}</span>
+															</span>
+															<span className="text-amber-600 dark:text-amber-400 ml-2">{record.reason}</span>
+														</div>
+													))}
+												</div>
+											</div>
+										)}
 									</CardContent>
 								</Card>
 							)}
@@ -1212,15 +1250,50 @@ export default function GenerateFinalMarksPage() {
 								</div>
 							</CardHeader>
 							<CardContent className="space-y-6">
-								<div className="bg-green-50 dark:bg-green-900/10 border border-green-200 dark:border-green-800 rounded-lg p-6 text-center">
-									<CheckCircle2 className="h-16 w-16 mx-auto text-green-500 mb-4" />
-									<h3 className="text-xl font-bold text-green-700 dark:text-green-300 mb-2">
-										Final Marks Saved Successfully!
+								{/* Summary Stats */}
+								<div className={`${errorCount > 0 ? 'bg-amber-50 dark:bg-amber-900/10 border-amber-200 dark:border-amber-800' : 'bg-green-50 dark:bg-green-900/10 border-green-200 dark:border-green-800'} border rounded-lg p-6 text-center`}>
+									<CheckCircle2 className={`h-16 w-16 mx-auto ${errorCount > 0 ? 'text-amber-500' : 'text-green-500'} mb-4`} />
+									<h3 className={`text-xl font-bold ${errorCount > 0 ? 'text-amber-700 dark:text-amber-300' : 'text-green-700 dark:text-green-300'} mb-2`}>
+										{errorCount > 0 ? 'Final Marks Partially Saved' : 'Final Marks Saved Successfully!'}
 									</h3>
-									<p className="text-sm text-green-600 dark:text-green-400">
-										{results.length} records have been saved to the database.
-									</p>
+									<div className="flex flex-wrap justify-center gap-4 mt-4">
+										<div className="bg-white dark:bg-gray-800 rounded-lg px-4 py-2 shadow-sm">
+											<div className="text-2xl font-bold text-gray-900 dark:text-gray-100">{results.length}</div>
+											<div className="text-xs text-gray-500">Total Generated</div>
+										</div>
+										<div className="bg-white dark:bg-gray-800 rounded-lg px-4 py-2 shadow-sm">
+											<div className="text-2xl font-bold text-green-600">{savedCount}</div>
+											<div className="text-xs text-gray-500">Saved</div>
+										</div>
+										{errorCount > 0 && (
+											<div className="bg-white dark:bg-gray-800 rounded-lg px-4 py-2 shadow-sm">
+												<div className="text-2xl font-bold text-red-600">{errorCount}</div>
+												<div className="text-xs text-gray-500">Failed</div>
+											</div>
+										)}
+									</div>
 								</div>
+
+								{/* Error Details */}
+								{saveErrors.length > 0 && (
+									<div className="bg-red-50 dark:bg-red-900/10 border border-red-200 dark:border-red-800 rounded-lg p-4">
+										<h4 className="font-semibold text-red-700 dark:text-red-300 mb-3 flex items-center gap-2">
+											<X className="h-4 w-4" />
+											Failed Records ({saveErrors.length})
+										</h4>
+										<div className="max-h-48 overflow-y-auto space-y-2">
+											{saveErrors.map((err, idx) => (
+												<div key={idx} className="text-sm bg-white dark:bg-gray-800 rounded p-2 border border-red-100 dark:border-red-800">
+													<span className="font-medium">{err.student_name}</span>
+													<span className="text-gray-500 mx-1">({err.register_no})</span>
+													<span className="text-gray-400">-</span>
+													<span className="text-gray-600 dark:text-gray-400 ml-1">{err.course_code}</span>
+													<div className="text-xs text-red-600 dark:text-red-400 mt-1">{err.error}</div>
+												</div>
+											))}
+										</div>
+									</div>
+								)}
 
 								<div className="grid grid-cols-1 md:grid-cols-2 gap-4">
 									<Card className="p-4">
@@ -1246,6 +1319,9 @@ export default function GenerateFinalMarksPage() {
 												setSelectedCourses([])
 												setResults([])
 												setIsSaved(false)
+												setSavedCount(0)
+												setErrorCount(0)
+												setSaveErrors([])
 											}}>
 												<RefreshCw className="h-4 w-4 mr-2" />
 												Generate for Another Program
