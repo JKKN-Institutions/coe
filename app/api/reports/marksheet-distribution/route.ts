@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { fetchMyJKKNLearnerProfiles, fetchMyJKKNPrograms } from '@/lib/myjkkn-api'
+import { getSupabaseServer } from '@/lib/supabase-server'
 
 export async function GET(request: NextRequest) {
 	try {
@@ -41,10 +42,45 @@ export async function GET(request: NextRequest) {
 			myjkknInstitutionIds
 		})
 
+		// IMPORTANT: For Arts programs (CAS), we need to lookup the program_id from the CAS institution
+		// specifically because Arts has both SF (self-financed) and Aided institutions, but the
+		// program_code (like "UEN") is defined in CAS. We then use that program_id to filter learners
+		// from ANY institution (SF or Aided).
+		//
+		// Strategy: Always lookup program_id from CAS institution (institution_code = 'cas')
+		// for the given program_code, then use that to filter learners.
+
+		const supabase = getSupabaseServer()
+
+		// Get CAS institution's myjkkn_institution_ids for program lookup
+		const { data: casInstitution, error: casError } = await supabase
+			.from('institutions')
+			.select('id, institution_code, myjkkn_institution_ids')
+			.ilike('institution_code', 'cas')
+			.single()
+
+		let casMyjkknIds: string[] = []
+		if (!casError && casInstitution?.myjkkn_institution_ids) {
+			casMyjkknIds = casInstitution.myjkkn_institution_ids
+			console.log(`[Marksheet Distribution API] Found CAS institution with myjkkn_ids:`, casMyjkknIds)
+		} else {
+			console.log(`[Marksheet Distribution API] CAS institution not found or has no myjkkn_ids, using provided myjkkn_institution_ids`)
+		}
+
 		// First, lookup the program IDs for this program_code from MyJKKN
 		// MyJKKN learners have program_id (UUID) not program_code
+		// IMPORTANT: We need to collect program_ids from BOTH:
+		// 1. CAS institution (canonical lookup for the program_code)
+		// 2. The selected institution (for matching learners from SF/Aided)
+		// This is because SF and Aided institutions may have different UUIDs for the same program_code
 		const programIds: string[] = []
-		for (const myjkknInstId of myjkknInstitutionIds) {
+
+		// Combine all institution IDs to lookup from (CAS + selected institution)
+		const allLookupMyjkknIds = [...new Set([...casMyjkknIds, ...myjkknInstitutionIds])]
+
+		console.log(`[Marksheet Distribution API] Looking up program IDs from institutions:`, allLookupMyjkknIds)
+
+		for (const myjkknInstId of allLookupMyjkknIds) {
 			try {
 				const programsResponse = await fetchMyJKKNPrograms({
 					institution_id: myjkknInstId,
@@ -62,7 +98,7 @@ export async function GET(request: NextRequest) {
 			}
 		}
 
-		console.log(`[Marksheet Distribution API] Found program IDs for ${programCode}:`, programIds)
+		console.log(`[Marksheet Distribution API] Found program IDs for ${programCode} (from CAS + selected institution):`, programIds)
 
 		// Fetch learners from MyJKKN API filtered by institution and program
 		let allLearners: any[] = []
@@ -122,11 +158,18 @@ export async function GET(request: NextRequest) {
 				}
 			}
 
-			// Filter by program_id if we have the lookup
-			if (programIds.length > 0 && learner.program_id) {
-				if (!programIds.includes(learner.program_id)) {
+			// Filter by program - STRICT: must match either program_id OR program_code
+			const hasMatchingProgramId = programIds.length > 0 && learner.program_id && programIds.includes(learner.program_id)
+			const hasMatchingProgramCode = learner.program_code && learner.program_code === programCode
+
+			// If we have program_ids from lookup, require a match
+			if (programIds.length > 0) {
+				if (!hasMatchingProgramId && !hasMatchingProgramCode) {
 					return false
 				}
+			} else if (learner.program_code && learner.program_code !== programCode) {
+				// Fallback: if no program_ids lookup, filter by program_code if available
+				return false
 			}
 
 			// Filter by semester number

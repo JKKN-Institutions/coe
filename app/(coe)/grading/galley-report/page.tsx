@@ -10,7 +10,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button"
 import { Label } from "@/components/ui/label"
 import { Badge } from "@/components/ui/badge"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+// Select components removed - using Popover for all multi-select dropdowns
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
@@ -40,6 +40,7 @@ import {
 import { cn } from "@/lib/utils"
 import Link from "next/link"
 import { generateGalleyReportPDF } from "@/lib/utils/generate-galley-report-pdf"
+import { useInstitutionFilter } from "@/hooks/use-institution-filter"
 
 interface Institution {
 	id: string
@@ -202,6 +203,13 @@ const GRADE_COLORS: Record<string, string> = {
 export default function GalleyReportPage() {
 	const { toast } = useToast()
 
+	// Global institution filter
+	const {
+		institutionId: globalInstitutionId,
+		isReady: isInstitutionReady,
+		mustSelectInstitution
+	} = useInstitutionFilter()
+
 	// Dropdown data
 	const [institutions, setInstitutions] = useState<Institution[]>([])
 	const [sessions, setSessions] = useState<ExaminationSession[]>([])
@@ -229,11 +237,20 @@ export default function GalleyReportPage() {
 	const [institutionOpen, setInstitutionOpen] = useState(false)
 	const [sessionOpen, setSessionOpen] = useState(false)
 	const [programOpen, setProgramOpen] = useState(false)
+	const [semesterOpen, setSemesterOpen] = useState(false)
 
-	// Load institutions on mount
+	// Load institutions on mount (only if super_admin with "All Institutions" selected)
 	useEffect(() => {
-		fetchInstitutions()
-	}, [])
+		if (isInstitutionReady) {
+			if (mustSelectInstitution) {
+				// Super admin with "All Institutions" - fetch all institutions for dropdown
+				fetchInstitutions()
+			} else if (globalInstitutionId) {
+				// Specific institution selected from global filter - use it directly
+				setSelectedInstitutionId(globalInstitutionId)
+			}
+		}
+	}, [isInstitutionReady, mustSelectInstitution, globalInstitutionId])
 
 	const fetchInstitutions = async () => {
 		try {
@@ -313,19 +330,18 @@ export default function GalleyReportPage() {
 	useEffect(() => {
 		if (selectedProgramId && selectedSessionId && selectedInstitutionId) {
 			setSelectedSemester("")
-			setSemesters([])
 			setReportData(null)
-			// Use program_code for filtering (not program_id)
-			const program = programs.find(p => p.id === selectedProgramId)
-			const programCode = program?.program_code || selectedProgramId
-			fetchSemesters(selectedInstitutionId, selectedSessionId, programCode)
+			fetchSemesters(selectedInstitutionId, selectedSessionId, selectedProgramId)
+		} else {
+			setSemesters([])
 		}
 	}, [selectedProgramId])
 
-	const fetchSemesters = async (institutionId: string, sessionId: string, programCode: string) => {
+	const fetchSemesters = async (institutionId: string, sessionId: string, programId: string) => {
 		try {
 			setLoadingSemesters(true)
-			// Use program_code for %value% pattern filtering
+			const program = programs.find(p => p.id === programId)
+			const programCode = program?.program_code || programId
 			const res = await fetch(`/api/grading/galley-report?type=semesters&institution_id=${institutionId}&session_id=${sessionId}&program_id=${programCode}`)
 			if (res.ok) {
 				const data = await res.json()
@@ -338,12 +354,12 @@ export default function GalleyReportPage() {
 		}
 	}
 
-	// Generate Report
+	// Generate Report for selected program and semester
 	const handleGenerateReport = async () => {
 		if (!selectedInstitutionId || !selectedSessionId || !selectedProgramId || !selectedSemester) {
 			toast({
 				title: "Missing Information",
-				description: "Please select all required filters.",
+				description: "Please select institution, session, program, and semester.",
 				variant: "destructive"
 			})
 			return
@@ -351,26 +367,39 @@ export default function GalleyReportPage() {
 
 		try {
 			setLoadingReport(true)
-			// Use program_code for %value% pattern filtering
 			const program = programs.find(p => p.id === selectedProgramId)
 			const programCode = program?.program_code || selectedProgramId
+
 			const res = await fetch(
 				`/api/grading/galley-report?institution_id=${selectedInstitutionId}&session_id=${selectedSessionId}&program_id=${programCode}&semester=${selectedSemester}`
 			)
 
-			if (!res.ok) {
+			if (res.ok) {
+				const data = await res.json()
+				if (data.students?.length > 0 || data.courseAnalysis?.length > 0) {
+					setReportData(data)
+					toast({
+						title: "Report Generated",
+						description: `Generated report with ${data.students?.length || 0} learners and ${data.courseAnalysis?.length || 0} courses.`,
+						className: "bg-green-50 border-green-200 text-green-800"
+					})
+				} else {
+					toast({
+						title: "No Data Found",
+						description: "No report data found for the selected filters.",
+						variant: "destructive"
+					})
+					setReportData(null)
+				}
+			} else {
 				const errorData = await res.json()
-				throw new Error(errorData.error || 'Failed to generate report')
+				toast({
+					title: "Generation Failed",
+					description: errorData.error || 'Failed to generate report',
+					variant: "destructive"
+				})
+				setReportData(null)
 			}
-
-			const data = await res.json()
-			setReportData(data)
-
-			toast({
-				title: "Report Generated",
-				description: `Found ${data.students.length} learners and ${data.courseAnalysis.length} courses.`,
-				className: "bg-green-50 border-green-200 text-green-800"
-			})
 		} catch (error) {
 			console.error('Error generating report:', error)
 			toast({
@@ -383,7 +412,7 @@ export default function GalleyReportPage() {
 		}
 	}
 
-	// Download PDF
+	// Download current PDF
 	const handleDownloadPDF = async () => {
 		if (!reportData) return
 
@@ -391,32 +420,7 @@ export default function GalleyReportPage() {
 			setGeneratingPDF(true)
 
 			// Load logos
-			let logoBase64 = ''
-			let rightLogoBase64 = ''
-
-			try {
-				const logoResponse = await fetch('/jkkn_logo.png')
-				if (logoResponse.ok) {
-					const blob = await logoResponse.blob()
-					logoBase64 = await new Promise<string>((resolve) => {
-						const reader = new FileReader()
-						reader.onloadend = () => resolve(reader.result as string)
-						reader.readAsDataURL(blob)
-					})
-				}
-
-				const rightLogoResponse = await fetch('/jkkncas_logo.png')
-				if (rightLogoResponse.ok) {
-					const blob = await rightLogoResponse.blob()
-					rightLogoBase64 = await new Promise<string>((resolve) => {
-						const reader = new FileReader()
-						reader.onloadend = () => resolve(reader.result as string)
-						reader.readAsDataURL(blob)
-					})
-				}
-			} catch (e) {
-				console.warn('Logo not loaded:', e)
-			}
+			const { logoBase64, rightLogoBase64 } = await loadLogos()
 
 			const fileName = generateGalleyReportPDF({
 				...reportData,
@@ -439,6 +443,38 @@ export default function GalleyReportPage() {
 		} finally {
 			setGeneratingPDF(false)
 		}
+	}
+
+	// Helper to load logos
+	const loadLogos = async () => {
+		let logoBase64 = ''
+		let rightLogoBase64 = ''
+
+		try {
+			const logoResponse = await fetch('/jkkn_logo.png')
+			if (logoResponse.ok) {
+				const blob = await logoResponse.blob()
+				logoBase64 = await new Promise<string>((resolve) => {
+					const reader = new FileReader()
+					reader.onloadend = () => resolve(reader.result as string)
+					reader.readAsDataURL(blob)
+				})
+			}
+
+			const rightLogoResponse = await fetch('/jkkncas_logo.png')
+			if (rightLogoResponse.ok) {
+				const blob = await rightLogoResponse.blob()
+				rightLogoBase64 = await new Promise<string>((resolve) => {
+					const reader = new FileReader()
+					reader.onloadend = () => resolve(reader.result as string)
+					reader.readAsDataURL(blob)
+				})
+			}
+		} catch (e) {
+			console.warn('Logo not loaded:', e)
+		}
+
+		return { logoBase64, rightLogoBase64 }
 	}
 
 	// Chart data for grade distribution
@@ -516,58 +552,63 @@ export default function GalleyReportPage() {
 							<CardDescription className="text-xs">Select filters to generate the galley report</CardDescription>
 						</CardHeader>
 						<CardContent className="space-y-4">
-							<div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-								{/* Institution */}
-								<div className="space-y-2">
-									<Label className="text-xs font-medium">
-										Institution <span className="text-red-500">*</span>
-									</Label>
-									<Popover open={institutionOpen} onOpenChange={setInstitutionOpen}>
-										<PopoverTrigger asChild>
-											<Button
-												variant="outline"
-												role="combobox"
-												className="h-9 w-full justify-between text-xs"
-												disabled={loadingInstitutions}
-											>
-												<span className="truncate">
-													{selectedInstitutionId
-														? `${selectedInstitution?.institution_code} - ${selectedInstitution?.institution_name}`
-														: "Select institution"}
-												</span>
-												<ChevronsUpDown className="h-3 w-3 opacity-50" />
-											</Button>
-										</PopoverTrigger>
-										<PopoverContent className="w-[400px] p-0" align="start">
-											<Command filter={(value, search) => {
-												// %value% pattern - contains match (case-insensitive)
-												if (value.toLowerCase().includes(search.toLowerCase())) return 1
-												return 0
-											}}>
-												<CommandInput placeholder="Search institution..." className="h-8 text-xs" />
-												<CommandList>
-													<CommandEmpty className="text-xs py-2">No institution found.</CommandEmpty>
-													<CommandGroup>
-														{institutions.map((inst) => (
-															<CommandItem
-																key={inst.id}
-																value={`${inst.institution_code} ${inst.institution_name}`}
-																onSelect={() => {
-																	setSelectedInstitutionId(inst.id)
-																	setInstitutionOpen(false)
-																}}
-																className="text-xs"
-															>
-																<Check className={cn("mr-2 h-3 w-3", selectedInstitutionId === inst.id ? "opacity-100" : "opacity-0")} />
-																{inst.institution_code} - {inst.institution_name}
-															</CommandItem>
-														))}
-													</CommandGroup>
-												</CommandList>
-											</Command>
-										</PopoverContent>
-									</Popover>
-								</div>
+							<div className={cn(
+								"grid grid-cols-1 gap-4",
+								mustSelectInstitution ? "md:grid-cols-2 lg:grid-cols-4" : "md:grid-cols-3"
+							)}>
+								{/* Institution - only show when super_admin with "All Institutions" selected */}
+								{mustSelectInstitution && (
+									<div className="space-y-2">
+										<Label className="text-xs font-medium">
+											Institution <span className="text-red-500">*</span>
+										</Label>
+										<Popover open={institutionOpen} onOpenChange={setInstitutionOpen}>
+											<PopoverTrigger asChild>
+												<Button
+													variant="outline"
+													role="combobox"
+													className="h-9 w-full justify-between text-xs"
+													disabled={loadingInstitutions}
+												>
+													<span className="truncate">
+														{selectedInstitutionId
+															? `${selectedInstitution?.institution_code} - ${selectedInstitution?.institution_name}`
+															: "Select institution"}
+													</span>
+													<ChevronsUpDown className="h-3 w-3 opacity-50" />
+												</Button>
+											</PopoverTrigger>
+											<PopoverContent className="w-[400px] p-0" align="start">
+												<Command filter={(value, search) => {
+													// %value% pattern - contains match (case-insensitive)
+													if (value.toLowerCase().includes(search.toLowerCase())) return 1
+													return 0
+												}}>
+													<CommandInput placeholder="Search institution..." className="h-8 text-xs" />
+													<CommandList>
+														<CommandEmpty className="text-xs py-2">No institution found.</CommandEmpty>
+														<CommandGroup>
+															{institutions.map((inst) => (
+																<CommandItem
+																	key={inst.id}
+																	value={`${inst.institution_code} ${inst.institution_name}`}
+																	onSelect={() => {
+																		setSelectedInstitutionId(inst.id)
+																		setInstitutionOpen(false)
+																	}}
+																	className="text-xs"
+																>
+																	<Check className={cn("mr-2 h-3 w-3", selectedInstitutionId === inst.id ? "opacity-100" : "opacity-0")} />
+																	{inst.institution_code} - {inst.institution_name}
+																</CommandItem>
+															))}
+														</CommandGroup>
+													</CommandList>
+												</Command>
+											</PopoverContent>
+										</Popover>
+									</div>
+								)}
 
 								{/* Examination Session */}
 								<div className="space-y-2">
@@ -644,7 +685,6 @@ export default function GalleyReportPage() {
 										</PopoverTrigger>
 										<PopoverContent className="w-[400px] p-0" align="start">
 											<Command filter={(value, search) => {
-												// %value% pattern - contains match (case-insensitive)
 												if (value.toLowerCase().includes(search.toLowerCase())) return 1
 												return 0
 											}}>
@@ -678,27 +718,49 @@ export default function GalleyReportPage() {
 									<Label className="text-xs font-medium">
 										Semester <span className="text-red-500">*</span>
 									</Label>
-									<Select
-										value={selectedSemester}
-										onValueChange={setSelectedSemester}
-										disabled={!selectedProgramId || loadingSemesters}
-									>
-										<SelectTrigger className="h-9 text-xs">
-											<SelectValue placeholder="Select semester" />
-										</SelectTrigger>
-										<SelectContent>
-											{semesters.map((sem) => (
-												<SelectItem key={sem.semester} value={sem.semester.toString()} className="text-xs">
-													{sem.label}
-												</SelectItem>
-											))}
-										</SelectContent>
-									</Select>
+									<Popover open={semesterOpen} onOpenChange={setSemesterOpen}>
+										<PopoverTrigger asChild>
+											<Button
+												variant="outline"
+												role="combobox"
+												className="h-9 w-full justify-between text-xs"
+												disabled={!selectedProgramId || loadingSemesters}
+											>
+												<span className="truncate">
+													{selectedSemester
+														? `Semester ${selectedSemester}`
+														: "Select semester"}
+												</span>
+												<ChevronsUpDown className="h-3 w-3 opacity-50" />
+											</Button>
+										</PopoverTrigger>
+										<PopoverContent className="w-[200px] p-0" align="start">
+											<Command>
+												<CommandList>
+													<CommandGroup>
+														{semesters.map((sem) => (
+															<CommandItem
+																key={sem.semester}
+																onSelect={() => {
+																	setSelectedSemester(sem.semester.toString())
+																	setSemesterOpen(false)
+																}}
+																className="text-xs"
+															>
+																<Check className={cn("mr-2 h-3 w-3", selectedSemester === sem.semester.toString() ? "opacity-100" : "opacity-0")} />
+																{sem.label}
+															</CommandItem>
+														))}
+													</CommandGroup>
+												</CommandList>
+											</Command>
+										</PopoverContent>
+									</Popover>
 								</div>
 							</div>
 
 							{/* Action Buttons */}
-							<div className="flex gap-2 pt-2">
+							<div className="flex flex-wrap gap-2 pt-2">
 								<Button
 									onClick={handleGenerateReport}
 									disabled={!selectedInstitutionId || !selectedSessionId || !selectedProgramId || !selectedSemester || loadingReport}
@@ -707,7 +769,7 @@ export default function GalleyReportPage() {
 									{loadingReport ? (
 										<>
 											<Loader2 className="mr-2 h-4 w-4 animate-spin" />
-											Generating...
+											Generating Report...
 										</>
 									) : (
 										<>

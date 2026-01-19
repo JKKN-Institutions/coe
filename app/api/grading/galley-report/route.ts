@@ -313,6 +313,38 @@ export async function GET(request: NextRequest) {
 			}, { status: 400 })
 		}
 
+		// DEBUG: Check if final_marks has ANY data at all for this institution
+		const { data: debugAny, error: debugAnyError } = await supabase
+			.from('final_marks')
+			.select('id, program_code, examination_session_id, institutions_id')
+			.eq('institutions_id', institutionId)
+			.eq('is_active', true)
+			.limit(5)
+
+		console.log('=== GALLEY REPORT DEBUG ===')
+		console.log('Request params:', { institutionId, sessionId, programId, semester })
+
+		if (debugAnyError) {
+			console.log('DEBUG: Error checking final_marks:', debugAnyError.message)
+		} else if (!debugAny || debugAny.length === 0) {
+			console.log('DEBUG: NO DATA in final_marks for institution:', institutionId)
+			console.log('DEBUG: You need to calculate/import final marks first!')
+		} else {
+			console.log('DEBUG: Found', debugAny.length, 'records in final_marks for this institution')
+			const uniqueSessions = [...new Set(debugAny.map(d => d.examination_session_id))]
+			const uniquePrograms = [...new Set(debugAny.map(d => d.program_code))]
+			console.log('DEBUG: Available examination_session_ids:', uniqueSessions)
+			console.log('DEBUG: Available program_codes:', uniquePrograms)
+			console.log('DEBUG: Expected sessionId:', sessionId)
+			console.log('DEBUG: Expected programId:', programId)
+
+			// Check if the session matches
+			if (!uniqueSessions.includes(sessionId)) {
+				console.log('DEBUG: WARNING - sessionId NOT FOUND in final_marks!')
+			}
+		}
+		console.log('=== END DEBUG ===')
+
 		// Fetch institution details (only basic fields needed for header)
 		const { data: institutionRaw, error: instError } = await supabase
 			.from('institutions')
@@ -440,6 +472,42 @@ export async function GET(request: NextRequest) {
 
 		console.log('Searching final_marks with:', { institutionId, sessionId, programId })
 
+		// DEBUG: Check what program_codes exist for this institution and session
+		const { data: debugData, error: debugError } = await supabase
+			.from('final_marks')
+			.select('program_code, institutions_id, examination_session_id')
+			.eq('institutions_id', institutionId)
+			.eq('examination_session_id', sessionId)
+			.eq('is_active', true)
+			.limit(20)
+
+		if (debugError) {
+			console.log('DEBUG query error:', debugError)
+		} else {
+			const uniquePrograms = [...new Set((debugData || []).map((d: any) => d.program_code))]
+			console.log('DEBUG: Available program_codes in final_marks for this institution/session:', uniquePrograms)
+			console.log('DEBUG: Looking for programId:', programId, '| Type:', typeof programId)
+		}
+
+		// DEBUG: Check if any data exists for this institution (without session filter)
+		if (!debugData || debugData.length === 0) {
+			const { data: debugNoSession, error: debugNoSessionError } = await supabase
+				.from('final_marks')
+				.select('program_code, examination_session_id, institutions_id')
+				.eq('institutions_id', institutionId)
+				.eq('is_active', true)
+				.limit(20)
+
+			if (!debugNoSessionError && debugNoSession) {
+				const uniqueSessions = [...new Set((debugNoSession || []).map((d: any) => d.examination_session_id))]
+				const uniqueProgsNoSession = [...new Set((debugNoSession || []).map((d: any) => d.program_code))]
+				console.log('DEBUG (no session filter): Found', debugNoSession.length, 'records')
+				console.log('DEBUG: Available sessions:', uniqueSessions)
+				console.log('DEBUG: Available program_codes:', uniqueProgsNoSession)
+				console.log('DEBUG: Expected sessionId:', sessionId)
+			}
+		}
+
 		if (!fmExactError && fmExact && fmExact.length > 0) {
 			finalMarksRaw = fmExact
 			console.log('Found final_marks with exact program_code match:', fmExact.length)
@@ -459,33 +527,45 @@ export async function GET(request: NextRequest) {
 			console.log('Found final_marks with ilike program_code match:', fmIlike?.length || 0)
 		}
 
-		// Get unique course_mapping IDs (course_offerings.course_id references course_mapping.id)
-		const courseMappingIds = [...new Set(
+		// Get unique course IDs from final_marks (these reference courses.id)
+		const courseIds = [...new Set(
 			(finalMarksRaw || [])
-				.map((m: any) => m.course_offerings?.course_id)
+				.map((m: any) => m.course_id)
 				.filter(Boolean)
 		)]
 
-		console.log('Course mapping IDs from course_offerings:', courseMappingIds)
+		console.log('Course IDs from final_marks:', courseIds)
 
-		// Fetch course_order from course_mapping table with course_code for debugging
+		// Fetch course_order from course_mapping table using course_id, program_code, and semester
+		// course_mapping.course_id references courses.id
 		let courseMappingMap = new Map<string, number>()
-		if (courseMappingIds.length > 0) {
+		if (courseIds.length > 0) {
+			// Build semester_code - could be "1", "SEM1", etc.
+			const semesterCodes = [semester, `SEM${semester}`, `Sem${semester}`, `sem${semester}`]
+
 			const { data: courseMappings, error: cmError } = await supabase
 				.from('course_mapping')
-				.select('id, course_order, course_id, courses:course_id(course_code)')
-				.in('id', courseMappingIds)
+				.select('id, course_id, course_order, program_code, semester_code, courses:course_id(course_code)')
+				.in('course_id', courseIds)
+				.eq('program_code', programId)
+				.eq('is_active', true)
 
 			if (!cmError && courseMappings) {
 				console.log('Course mapping data with course_order:', courseMappings.map((cm: any) => ({
-					id: cm.id,
+					course_id: cm.course_id,
 					course_code: cm.courses?.course_code,
-					course_order: cm.course_order
+					course_order: cm.course_order,
+					program_code: cm.program_code,
+					semester_code: cm.semester_code
 				})))
+
+				// Map by course_id (courses.id) -> course_order
 				courseMappings.forEach((cm: any) => {
 					// Use ?? to handle null/undefined, preserve 0 as valid order
-					courseMappingMap.set(cm.id, cm.course_order ?? 999)
+					courseMappingMap.set(cm.course_id, cm.course_order ?? 999)
 				})
+
+				console.log('courseMappingMap entries:', Array.from(courseMappingMap.entries()))
 			} else if (cmError) {
 				console.error('Error fetching course_mapping:', cmError)
 			}
@@ -501,16 +581,19 @@ export async function GET(request: NextRequest) {
 			course_code: m.courses?.course_code
 		})))
 
-		const filteredMarks = (finalMarksRaw || [])
+		const filteredMarksRaw = (finalMarksRaw || [])
 			.filter((mark: any) => mark.course_offerings?.semester === semesterNum)
-			.map((mark: any) => {
+
+		console.log('filteredMarks count after semester filter:', filteredMarksRaw.length)
+
+		const filteredMarks = filteredMarksRaw.map((mark: any) => {
 				// Get student name from exam_registrations
 				const studentName = mark.exam_registrations?.student_name || ''
 				const nameParts = studentName.split(' ')
 
-				// Get course_order from course_mapping via course_offerings.course_id
-				const courseMappingId = mark.course_offerings?.course_id
-				const courseOrder = courseMappingId ? (courseMappingMap.get(courseMappingId) ?? 999) : 999
+				// Get course_order from course_mapping using course_id (courses.id)
+				const courseId = mark.course_id
+				const courseOrder = courseId ? (courseMappingMap.get(courseId) ?? 999) : 999
 
 				return {
 					id: mark.id,

@@ -138,8 +138,8 @@ export async function GET(request: NextRequest) {
 					courses:course_id (
 						id,
 						course_code,
-						course_title,
-						credits
+						course_name,
+						credit
 					)
 				`)
 				.in('id', courseMappingIds)
@@ -159,9 +159,9 @@ export async function GET(request: NextRequest) {
 					courseMap.set(course.id, {
 						id: course.id,
 						course_code: course.course_code || mapping.course_code,
-						course_title: course.course_title,
+						course_title: course.course_name, // DB uses course_name, API returns course_title
 						course_order: mapping.course_order || 999,
-						credits: course.credits
+						credits: course.credit // DB uses credit (singular)
 					})
 				}
 			}
@@ -245,6 +245,8 @@ async function getCourseOfferReport(
 	page: number,
 	limit: number
 ) {
+	// course_offerings.course_id -> course_mapping.id -> course_mapping.course_id -> courses
+	// faculty_id -> faculty_coe
 	let query = supabase
 		.from('course_offerings')
 		.select(`
@@ -253,14 +255,16 @@ async function getCourseOfferReport(
 			enrolled_count,
 			is_active,
 			program_code,
-			courses:course_id (
+			course_mapping:course_id (
 				course_code,
-				course_title,
 				course_order,
-				course_category,
-				credits
+				courses:course_id (
+					course_name,
+					course_category,
+					credit
+				)
 			),
-			faculty:faculty_id (
+			faculty_coe:faculty_id (
 				faculty_name
 			)
 		`)
@@ -277,19 +281,20 @@ async function getCourseOfferReport(
 
 	// Transform and sort data
 	// Note: program_code is stored directly in course_offerings (programs from MyJKKN API)
+	// Relationship chain: course_offerings.course_id -> course_mapping -> courses
 	const rows: CourseOfferReportRow[] = (data || []).map((item: any) => ({
 		program_code: item.program_code || '',
 		program_name: item.program_code || '', // program_name not available without MyJKKN lookup
 		program_order: 999, // Default order since not in local table
 		semester: item.semester,
 		semester_order: item.semester,
-		course_code: item.courses?.course_code || '',
-		course_title: item.courses?.course_title || '',
-		course_order: item.courses?.course_order || 999,
-		course_category: item.courses?.course_category || '',
-		credits: item.courses?.credits || 0,
+		course_code: item.course_mapping?.course_code || '',
+		course_title: item.course_mapping?.courses?.course_name || '', // DB uses course_name
+		course_order: item.course_mapping?.course_order || 999,
+		course_category: item.course_mapping?.courses?.course_category || '',
+		credits: item.course_mapping?.courses?.credit || 0, // DB uses credit (singular)
 		enrolled_count: item.enrolled_count || 0,
-		faculty_name: item.faculty?.faculty_name || '',
+		faculty_name: item.faculty_coe?.faculty_name || '',
 		is_active: item.is_active
 	}))
 
@@ -359,7 +364,7 @@ async function getExamRegistrationReport(
 				courses:course_id (
 					id,
 					course_code,
-					course_title,
+					course_name,
 					course_order
 				)
 			)
@@ -381,7 +386,7 @@ async function getExamRegistrationReport(
 		semester: item.course_offerings?.semester || 0,
 		semester_order: item.course_offerings?.semester || 0,
 		course_code: item.course_offerings?.courses?.course_code || '',
-		course_title: item.course_offerings?.courses?.course_title || '',
+		course_title: item.course_offerings?.courses?.course_name || '', // DB uses course_name
 		course_order: item.course_offerings?.courses?.course_order || 999,
 		registration_date: item.registration_date,
 		registration_status: item.registration_status || 'Pending',
@@ -466,7 +471,7 @@ async function getFeePaidReport(
 				courses:course_id (
 					id,
 					course_code,
-					course_title,
+					course_name,
 					course_order
 				)
 			)
@@ -488,7 +493,7 @@ async function getFeePaidReport(
 		semester: item.course_offerings?.semester || 0,
 		semester_order: item.course_offerings?.semester || 0,
 		course_code: item.course_offerings?.courses?.course_code || '',
-		course_title: item.course_offerings?.courses?.course_title || '',
+		course_title: item.course_offerings?.courses?.course_name || '', // DB uses course_name
 		course_order: item.course_offerings?.courses?.course_order || 999,
 		fee_amount: item.fee_amount || 0,
 		payment_date: item.payment_date,
@@ -587,7 +592,7 @@ async function getInternalMarksReport(
 			courses:course_id (
 				id,
 				course_code,
-				course_title,
+				course_name,
 				course_order
 			)
 		`)
@@ -620,7 +625,7 @@ async function getInternalMarksReport(
 			semester: 0, // Will be determined from course mapping
 			semester_order: 0,
 			course_code: item.courses?.course_code || '',
-			course_title: item.courses?.course_title || '',
+			course_title: item.courses?.course_name || '', // DB uses course_name
 			course_order: item.courses?.course_order || 999,
 			internal_marks: internalMarks,
 			internal_max: internalMax,
@@ -737,7 +742,7 @@ async function getExternalMarksReport(
 			courses:course_id (
 				id,
 				course_code,
-				course_title,
+				course_name,
 				course_order
 			)
 		`)
@@ -770,7 +775,7 @@ async function getExternalMarksReport(
 			semester: 0,
 			semester_order: 0,
 			course_code: item.courses?.course_code || '',
-			course_title: item.courses?.course_title || '',
+			course_title: item.courses?.course_name || '', // DB uses course_name
 			course_order: item.courses?.course_order || 999,
 			external_marks: externalMarks,
 			external_max: externalMax,
@@ -893,7 +898,7 @@ async function getFinalResultReport(
 			courses:course_id (
 				id,
 				course_code,
-				course_title,
+				course_name,
 				course_order
 			),
 			course_offerings:course_offering_id (
@@ -920,7 +925,7 @@ async function getFinalResultReport(
 		semester: item.course_offerings?.semester || 0,
 		semester_order: item.course_offerings?.semester || 0,
 		course_code: item.courses?.course_code || '',
-		course_title: item.courses?.course_title || '',
+		course_title: item.courses?.course_name || '', // DB uses course_name
 		course_order: item.courses?.course_order || 999,
 		credits: item.credit || 0,
 		internal_marks: item.internal_marks_obtained || 0,
@@ -1177,7 +1182,7 @@ async function getArrearReport(
 			courses:course_id (
 				id,
 				course_code,
-				course_title,
+				course_name,
 				course_order,
 				credits
 			),
@@ -1210,7 +1215,7 @@ async function getArrearReport(
 		original_semester: item.course_offerings?.semester || 0,
 		semester_order: item.course_offerings?.semester || 0,
 		course_code: item.courses?.course_code || '',
-		course_title: item.courses?.course_title || '',
+		course_title: item.courses?.course_name || '', // DB uses course_name
 		course_order: item.courses?.course_order || 999,
 		credits: item.courses?.credits || 0,
 		original_internal_marks: item.original_internal_marks,
@@ -1324,7 +1329,7 @@ async function getMissingDataReport(
 				courses:course_id (
 					id,
 					course_code,
-					course_title,
+					course_name,
 					course_order
 				)
 			)
@@ -1411,7 +1416,7 @@ async function getMissingDataReport(
 				semester: (reg.course_offerings as any)?.semester || 0,
 				semester_order: (reg.course_offerings as any)?.semester || 0,
 				course_code: (reg.course_offerings as any)?.courses?.course_code || '',
-				course_title: (reg.course_offerings as any)?.courses?.course_title || '',
+				course_title: (reg.course_offerings as any)?.courses?.course_name || '', // DB uses course_name
 				course_order: (reg.course_offerings as any)?.courses?.course_order || 999,
 				missing_type: missingType,
 				has_internal: hasInternal,
