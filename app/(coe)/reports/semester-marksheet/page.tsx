@@ -19,6 +19,7 @@ import { Loader2, FileText, Check, ChevronsUpDown, GraduationCap, Calendar, Chev
 import { cn } from "@/lib/utils"
 import Link from "next/link"
 import { useInstitutionFilter } from "@/hooks/use-institution-filter"
+import { useMyJKKNInstitutionFilter } from "@/hooks/use-myjkkn-institution-filter"
 import { generateSemesterMarksheetPDF, downloadSemesterMarksheetPDF, downloadMergedMarksheetPDF, type StudentMarksheetData } from "@/lib/utils/generate-semester-marksheet-pdf"
 
 // =====================================================
@@ -29,6 +30,7 @@ interface Institution {
 	id: string
 	institution_code: string
 	institution_name: string
+	myjkkn_institution_ids?: string[] | null
 }
 
 interface Program {
@@ -138,6 +140,9 @@ export default function SemesterMarksheetPage() {
 		shouldFilter,
 		institutionId: contextInstitutionId
 	} = useInstitutionFilter()
+
+	// MyJKKN data fetching hook
+	const { fetchPrograms: fetchMyJKKNPrograms } = useMyJKKNInstitutionFilter()
 
 	// Dropdown data
 	const [institutions, setInstitutions] = useState<Institution[]>([])
@@ -252,7 +257,7 @@ export default function SemesterMarksheetPage() {
 
 	// Session -> Programs
 	useEffect(() => {
-		if (selectedInstitutionId && selectedSessionId) {
+		if (selectedInstitutionId && selectedSessionId && institutions.length > 0) {
 			setSelectedProgramCode("")
 			setSelectedSemester("")
 			setSelectedStudentId("")
@@ -262,22 +267,39 @@ export default function SemesterMarksheetPage() {
 			setMarksheetData(null)
 			fetchPrograms(selectedInstitutionId, selectedSessionId)
 		}
-	}, [selectedSessionId])
+	}, [selectedSessionId, institutions])
 
 	const fetchPrograms = async (institutionId: string, sessionId: string) => {
 		try {
 			setLoadingPrograms(true)
-			console.log('[Semester Marksheet] Fetching programs for institutionId:', institutionId, 'sessionId:', sessionId)
-			const res = await fetch(`/api/reports/semester-marksheet?action=programs&institutionId=${institutionId}&sessionId=${sessionId}`)
-			if (res.ok) {
-				const data = await res.json()
-				console.log('[Semester Marksheet] Programs received:', data.programs?.length || 0)
-				setPrograms(data.programs || [])
-			} else {
-				console.error('[Semester Marksheet] Programs fetch failed:', res.status)
+			setPrograms([])
+
+			// Get the institution with its myjkkn_institution_ids
+			const institution = institutions.find(i => i.id === institutionId)
+			const myjkknIds = institution?.myjkkn_institution_ids || []
+
+			console.log('[Semester Marksheet] Fetching programs for institution:', institution?.institution_code, 'myjkknIds:', myjkknIds)
+
+			if (myjkknIds.length === 0) {
+				console.warn('[Semester Marksheet] No MyJKKN institution IDs found for institution:', institutionId)
+				setPrograms([])
+				return
 			}
+
+			// Fetch programs from MyJKKN API using the hook
+			const progs = await fetchMyJKKNPrograms(myjkknIds)
+			console.log('[Semester Marksheet] Programs from MyJKKN:', progs.length)
+
+			// Map to our Program interface
+			const mappedPrograms: Program[] = progs.map((p: any) => ({
+				program_code: p.program_code,
+				program_name: p.program_name
+			}))
+
+			setPrograms(mappedPrograms)
 		} catch (error) {
 			console.error('Error fetching programs:', error)
+			setPrograms([])
 		} finally {
 			setLoadingPrograms(false)
 		}

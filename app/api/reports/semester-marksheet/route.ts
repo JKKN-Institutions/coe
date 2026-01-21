@@ -186,6 +186,26 @@ export async function GET(req: NextRequest) {
 						dateOfBirth = `${String(dob.getDate()).padStart(2, '0')}-${String(dob.getMonth() + 1).padStart(2, '0')}-${dob.getFullYear()}`
 					}
 				}
+
+				// Fallback: Try fetching from MyJKKN API if not found locally
+				if (!dateOfBirth) {
+					try {
+						const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'
+						const myjkknRes = await fetch(`${baseUrl}/api/myjkkn/learner-profiles?register_number=${registerNo}&limit=1`)
+						if (myjkknRes.ok) {
+							const myjkknData = await myjkknRes.json()
+							const profiles = myjkknData.data || myjkknData || []
+							if (profiles.length > 0 && profiles[0].date_of_birth) {
+								const dob = new Date(profiles[0].date_of_birth)
+								if (!isNaN(dob.getTime())) {
+									dateOfBirth = `${String(dob.getDate()).padStart(2, '0')}-${String(dob.getMonth() + 1).padStart(2, '0')}-${dob.getFullYear()}`
+								}
+							}
+						}
+					} catch (myjkknError) {
+						console.warn('[Semester Marksheet] Failed to fetch DOB from MyJKKN:', myjkknError)
+					}
+				}
 			}
 
 			// Get semester result for GPA summary
@@ -523,6 +543,33 @@ export async function GET(req: NextRequest) {
 						}
 					}
 				})
+
+				// Fallback: Fetch missing DOBs from MyJKKN API
+				const missingDobRegNumbers = registerNumbers.filter(rn => !dobMap[rn])
+				if (missingDobRegNumbers.length > 0) {
+					try {
+						const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'
+						// Fetch in batches of 50 to avoid URL length limits
+						for (let i = 0; i < missingDobRegNumbers.length; i += 50) {
+							const batch = missingDobRegNumbers.slice(i, i + 50)
+							for (const regNo of batch) {
+								const myjkknRes = await fetch(`${baseUrl}/api/myjkkn/learner-profiles?register_number=${regNo}&limit=1`)
+								if (myjkknRes.ok) {
+									const myjkknData = await myjkknRes.json()
+									const profiles = myjkknData.data || myjkknData || []
+									if (profiles.length > 0 && profiles[0].date_of_birth) {
+										const dob = new Date(profiles[0].date_of_birth)
+										if (!isNaN(dob.getTime())) {
+											dobMap[regNo] = `${String(dob.getDate()).padStart(2, '0')}-${String(dob.getMonth() + 1).padStart(2, '0')}-${dob.getFullYear()}`
+										}
+									}
+								}
+							}
+						}
+					} catch (myjkknError) {
+						console.warn('[Semester Marksheet] Failed to fetch DOBs from MyJKKN:', myjkknError)
+					}
+				}
 			}
 
 			// Process each student's data into marksheet format

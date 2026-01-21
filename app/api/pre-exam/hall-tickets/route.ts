@@ -357,6 +357,36 @@ export async function GET(request: NextRequest) {
 			}
 
 			console.log(`[HallTickets] Total profiles mapped: ${learnerProfileMap.size} of ${registerNumbers.length}`)
+
+			// Fallback: Fetch missing DOBs from MyJKKN API
+			const stillMissingDob = registerNumbers.filter(rn => {
+				const profile = learnerProfileMap.get(rn.toUpperCase())
+				return !profile?.date_of_birth
+			})
+
+			if (stillMissingDob.length > 0) {
+				console.log(`[HallTickets] Attempting MyJKKN API fallback for ${stillMissingDob.length} students missing DOB`)
+				try {
+					const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'
+					for (const regNo of stillMissingDob) {
+						const myjkknRes = await fetch(`${baseUrl}/api/myjkkn/learner-profiles?register_number=${regNo}&limit=1`)
+						if (myjkknRes.ok) {
+							const myjkknData = await myjkknRes.json()
+							const profiles = myjkknData.data || myjkknData || []
+							if (profiles.length > 0 && profiles[0].date_of_birth) {
+								const existing = learnerProfileMap.get(regNo.toUpperCase()) || { date_of_birth: null, student_photo_url: null }
+								learnerProfileMap.set(regNo.toUpperCase(), {
+									...existing,
+									date_of_birth: profiles[0].date_of_birth
+								})
+								console.log(`[HallTickets] Got DOB from MyJKKN for ${regNo}: ${profiles[0].date_of_birth}`)
+							}
+						}
+					}
+				} catch (myjkknError) {
+					console.warn('[HallTickets] Failed to fetch DOBs from MyJKKN:', myjkknError)
+				}
+			}
 		}
 
 		// Convert map to array and sort
