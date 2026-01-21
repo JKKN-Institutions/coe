@@ -154,9 +154,6 @@ export function generateGalleyReportPDF(data: GalleyReportData): string {
 		return (a.student.register_number || '').localeCompare(b.student.register_number || '')
 	})
 
-	// Calculate number of rows needed per student
-	const rowsPerStudent = Math.ceil(allCourses.length / COURSES_PER_ROW)
-
 	// Helper function to add header
 	const addHeader = (sessionName: string = '') => {
 		let currentY = margin
@@ -212,8 +209,11 @@ export function generateGalleyReportPDF(data: GalleyReportData): string {
 		const programText = `PROGRAM: ${data.program?.program_code || ''} - ${data.program?.program_name || ''}`
 		doc.text(programText, margin, currentY)
 
-		const semesterText = `SEMESTER: ${toRoman(data.semester)}`
-		doc.text(semesterText, pageWidth / 2, currentY, { align: 'center' })
+		// SEMESTER/YEAR in center (1&2 = I-Year, 3&4 = II-Year, 5&6 = III-Year, 7&8 = IV-Year)
+		const yearNum = Math.ceil(data.semester / 2)
+		const yearRoman = toRoman(yearNum)
+		const semesterYearText = `SEMESTER/YEAR: ${toRoman(data.semester)}/ ${yearRoman}-Year`
+		doc.text(semesterYearText, pageWidth / 2, currentY, { align: 'center' })
 
 		const batchText = `BATCH: ${data.batch}`
 		doc.text(batchText, pageWidth - margin, currentY, { align: 'right' })
@@ -236,6 +236,13 @@ export function generateGalleyReportPDF(data: GalleyReportData): string {
 			}
 		}
 		return result
+	}
+
+	// Add footer to current page (Page number in center)
+	const addPageFooter = (pageNum: number) => {
+		doc.setFont('times', 'normal')
+		doc.setFontSize(8)
+		doc.text(`Page ${pageNum}`, pageWidth / 2, pageHeight - 5, { align: 'center' })
 	}
 
 	let pageNumber = 1
@@ -298,6 +305,8 @@ export function generateGalleyReportPDF(data: GalleyReportData): string {
 	}
 
 	// Build table body with multi-row per student format
+	// Option B: Show only student's actual courses compacted (no blanks for missing courses)
+	// Each student gets only the rows needed for their actual courses
 	const buildTableBody = (): RowInput[] => {
 		const body: RowInput[] = []
 
@@ -312,89 +321,78 @@ export function generateGalleyReportPDF(data: GalleyReportData): string {
 				return (a.course.course_code || '').localeCompare(b.course.course_code || '')
 			})
 
-			// Create rows for this student
-			for (let rowIdx = 0; rowIdx < rowsPerStudent; rowIdx++) {
+			// Calculate rows needed for THIS student based on their actual course count
+			// Student with 6 courses needs 2 rows, student with 7 courses needs 3 rows
+			const rowsForThisStudent = Math.max(1, Math.ceil(studentCourses.length / COURSES_PER_ROW))
+
+			// Create rows for this student based on their actual courses
+			for (let rowIdx = 0; rowIdx < rowsForThisStudent; rowIdx++) {
 				const row: (string | number | CellDef)[] = []
 
 				// S.No, REG NO, NAME - only on first row, span multiple rows
 				if (rowIdx === 0) {
 					row.push({
 						content: studentIndex + 1,
-						rowSpan: rowsPerStudent,
+						rowSpan: rowsForThisStudent,
 						styles: { halign: 'center', valign: 'middle', fontSize: 8 }
 					})
 					row.push({
 						content: student.student.register_number || '',
-						rowSpan: rowsPerStudent,
+						rowSpan: rowsForThisStudent,
 						styles: { halign: 'center', valign: 'middle', fontSize: 8 }
 					})
 					row.push({
 						content: `${student.student.first_name} ${student.student.last_name || ''}`.trim(),
-						rowSpan: rowsPerStudent,
+						rowSpan: rowsForThisStudent,
 						styles: { halign: 'left', valign: 'middle', fontSize: 8 }
 					})
 				}
 
 				// Add courses for this row (COURSES_PER_ROW courses per row)
+				// Use student's actual courses compacted (no blanks)
 				for (let colIdx = 0; colIdx < COURSES_PER_ROW; colIdx++) {
 					const courseIndex = rowIdx * COURSES_PER_ROW + colIdx
-					const courseAnalysis = allCourses[courseIndex]
+					const courseMarks = studentCourses[courseIndex]
 
-					if (courseAnalysis) {
-						// Find student's marks for this course - try matching by ID first, then by course_code
-						const courseMarks = studentCourses.find(c =>
-							c.course.id === courseAnalysis.course.id ||
-							c.course.course_code === courseAnalysis.course.course_code
-						)
+					if (courseMarks) {
+						const courseCode = courseMarks.course.course_code || ''
+						// Convert marks to string, handling 0 as valid value (only null/undefined becomes '-')
+						const int = (courseMarks.internal_marks === 0 || courseMarks.internal_marks) ? String(courseMarks.internal_marks) : '-'
+						const ext = (courseMarks.external_marks === 0 || courseMarks.external_marks) ? String(courseMarks.external_marks) : '-'
+						const tot = (courseMarks.total_marks === 0 || courseMarks.total_marks) ? String(courseMarks.total_marks) : '-'
 
-						if (courseMarks) {
-							const courseCode = courseMarks.course.course_code || courseAnalysis.course.course_code
-							// Convert marks to string, handling 0 as valid value (only null/undefined becomes '-')
-							const int = (courseMarks.internal_marks === 0 || courseMarks.internal_marks) ? String(courseMarks.internal_marks) : '-'
-							const ext = (courseMarks.external_marks === 0 || courseMarks.external_marks) ? String(courseMarks.external_marks) : '-'
-							const tot = (courseMarks.total_marks === 0 || courseMarks.total_marks) ? String(courseMarks.total_marks) : '-'
+						// Determine if student is absent
+						const isAbsent = courseMarks.pass_status === 'Absent' ||
+							courseMarks.pass_status === 'AAA' ||
+							courseMarks.letter_grade === 'AAA' ||
+							(courseMarks.external_marks === null && courseMarks.internal_marks !== null) ||
+							(courseMarks.external_marks === 0 && courseMarks.internal_marks !== null && courseMarks.internal_marks > 0 && courseMarks.total_marks === 0)
 
-							// Determine if student is absent
-							const isAbsent = courseMarks.pass_status === 'Absent' ||
-								courseMarks.pass_status === 'AAA' ||
-								courseMarks.letter_grade === 'AAA' ||
-								(courseMarks.external_marks === null && courseMarks.internal_marks !== null) ||
-								(courseMarks.external_marks === 0 && courseMarks.internal_marks !== null && courseMarks.internal_marks > 0 && courseMarks.total_marks === 0)
-
-							// Determine result status: P for Pass, RA for Fail/Reappear, A for Absent
-							let res: string
-							if (isAbsent) {
-								res = 'A'
-							} else if (courseMarks.pass_status === 'Pass' || courseMarks.is_pass) {
-								res = 'P'  // Pass
-							} else if (courseMarks.pass_status === 'Reappear' || courseMarks.pass_status === 'RA' ||
-								courseMarks.pass_status === 'Fail' || courseMarks.letter_grade === 'U' ||
-								courseMarks.letter_grade === 'RA' || !courseMarks.is_pass) {
-								res = 'RA' // Reappear (for fail)
-							} else {
-								res = 'P'  // Default to Pass
-							}
-
-							// Letter grade from database (O, A+, A, B+, B, C, RA, AAA)
-							const gp = courseMarks.letter_grade ?? '-'
-
-							row.push(courseCode)
-							row.push(int)
-							row.push(ext)
-							row.push(tot)
-							row.push(res)
-							row.push(gp)
+						// Determine result status: P for Pass, RA for Fail/Reappear, A for Absent
+						let res: string
+						if (isAbsent) {
+							res = 'A'
+						} else if (courseMarks.pass_status === 'Pass' || courseMarks.is_pass) {
+							res = 'P'  // Pass
+						} else if (courseMarks.pass_status === 'Reappear' || courseMarks.pass_status === 'RA' ||
+							courseMarks.pass_status === 'Fail' || courseMarks.letter_grade === 'U' ||
+							courseMarks.letter_grade === 'RA' || !courseMarks.is_pass) {
+							res = 'RA' // Reappear (for fail)
 						} else {
-							// Student doesn't have this course - leave cells empty
-							row.push('')
-							row.push('')
-							row.push('')
-							row.push('')
-							row.push('')
-							row.push('')
+							res = 'P'  // Default to Pass
 						}
+
+						// Letter grade from database (O, A+, A, B+, B, C, RA, AAA)
+						const gp = courseMarks.letter_grade ?? '-'
+
+						row.push(courseCode)
+						row.push(int)
+						row.push(ext)
+						row.push(tot)
+						row.push(res)
+						row.push(gp)
 					} else {
-						// No more courses - fill with empty cells
+						// No more courses for this student - fill with empty cells
 						row.push('')
 						row.push('')
 						row.push('')
@@ -466,11 +464,10 @@ export function generateGalleyReportPDF(data: GalleyReportData): string {
 		columnStyles: buildColumnStyles(),
 		margin: { left: margin, right: margin },
 		tableWidth: 'auto',
-		didDrawPage: () => {
-			// Add page number at bottom
-			doc.setFont('times', 'normal')
-			doc.setFontSize(8)
-			doc.text(`Page ${pageNumber}`, pageWidth / 2, pageHeight - 5, { align: 'center' })
+		didDrawPage: (data) => {
+			// data.pageNumber gives the current page number (1-based)
+			addPageFooter(data.pageNumber)
+			pageNumber = data.pageNumber  // Keep track for later use
 		}
 	})
 
@@ -533,6 +530,7 @@ export function generateGalleyReportPDF(data: GalleyReportData): string {
 	// Check if we need a new page
 	const remainingSpace = pageHeight - startY - 40
 	if (remainingSpace < 50) {
+		addPageFooter(pageNumber)  // Add footer to current page before adding new page
 		doc.addPage()
 		pageNumber++
 		startY = margin + 10
@@ -585,19 +583,22 @@ export function generateGalleyReportPDF(data: GalleyReportData): string {
 	// =========================================
 	// Check if we need a new page for signature (need ~25mm space)
 	if (pageHeight - startY < 25) {
+		addPageFooter(pageNumber)  // Add footer to current page before adding new page
 		doc.addPage()
 		pageNumber++
 		startY = 30
 	}
 
-
-	
 	// Right signature - CONTROLLER OF EXAMINATIONS (positioned after table)
 	const rightSignX = pageWidth - margin - 50
 
 	doc.setFont('times', 'bold')
 	doc.setFontSize(9)
 	doc.text('CONTROLLER OF EXAMINATIONS', rightSignX, startY, { align: 'center' })
+
+	// Add footer to the last page
+	addPageFooter(pageNumber)
+
 	// Save PDF
 	const programCode = data.program?.program_code || 'PROGRAM'
 	const semester = data.semester || ''
