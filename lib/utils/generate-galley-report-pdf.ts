@@ -489,7 +489,8 @@ export function generateGalleyReportPDF(data: GalleyReportData): string {
 	// COURSE ANALYSIS TABLE
 	// =========================================
 	const courseAnalysisHeaders = [
-		'TITLE OF THE COURSE',
+		'COURSE CODE',
+		'NAME OF THE COURSE',
 		'INT MAX MARKS',
 		'EXT MAX MARKS',
 		'TOTAL MARKS',
@@ -514,15 +515,16 @@ export function generateGalleyReportPDF(data: GalleyReportData): string {
 		}
 
 		return [
+			ca.course.course_code,
 			ca.course.course_name,
 			ca.course.internal_max_mark || '-',
 			ca.course.external_max_mark || '-',
 			ca.course.total_max_mark,
 			ca.registered,
 			ca.appeared,
-			{ content: ca.absent, styles: { textColor: ca.absent > 0 ? [255, 140, 0] : [0, 0, 0] } },
-			{ content: ca.passed, styles: { textColor: [0, 128, 0] } },
-			{ content: ca.reappear, styles: { textColor: ca.reappear > 0 ? [200, 0, 0] : [0, 0, 0] } },
+			{ content: ca.absent, styles: { textColor: ca.absent > 0 ? [180, 90, 0] : [0, 0, 0], fontStyle: ca.absent > 0 ? 'bold' : 'normal' } },
+			{ content: ca.passed, styles: { textColor: [0, 100, 0], fontStyle: 'bold' } },
+			{ content: ca.reappear, styles: { textColor: ca.reappear > 0 ? [180, 0, 0] : [0, 0, 0], fontStyle: ca.reappear > 0 ? 'bold' : 'normal' } },
 			passPercentCell
 		]
 	})
@@ -560,16 +562,17 @@ export function generateGalleyReportPDF(data: GalleyReportData): string {
 			fontSize: 9
 		},
 		columnStyles: {
-			0: { cellWidth: 80, halign: 'left' },  // Course name - wider
-			1: { cellWidth: 22 },
-			2: { cellWidth: 22 },
-			3: { cellWidth: 22 },
-			4: { cellWidth: 28 },
-			5: { cellWidth: 28 },
-			6: { cellWidth: 28 },
-			7: { cellWidth: 28 },
-			8: { cellWidth: 28 },
-			9: { cellWidth: 18 }
+			0: { cellWidth: 30, halign: 'center' },  // Course code
+			1: { cellWidth: 70, halign: 'left' },    // Course name
+			2: { cellWidth: 20 },  // INT MAX
+			3: { cellWidth: 20 },  // EXT MAX
+			4: { cellWidth: 20 },  // TOTAL
+			5: { cellWidth: 26 },  // REGISTERED
+			6: { cellWidth: 26 },  // APPEARED
+			7: { cellWidth: 26 },  // ABSENT
+			8: { cellWidth: 26 },  // PASSED
+			9: { cellWidth: 26 },  // RE-APPEAR
+			10: { cellWidth: 18 }  // PASS %
 		},
 		margin: { left: margin, right: margin }
 	})
@@ -590,24 +593,12 @@ export function generateGalleyReportPDF(data: GalleyReportData): string {
 	// Signature lines
 	doc.setLineWidth(0.3)
 
-	// Left signature - CONTROLLER OF EXAMINATIONS
-	const leftSignX = margin + 40
-	doc.line(leftSignX - 30, startY, leftSignX + 40, startY)
-	doc.setFont('times', 'bold')
-	doc.setFontSize(8)
-	doc.text('CONTROLLER OF', leftSignX, startY + 4, { align: 'center' })
-	doc.text('EXAMINATIONS', leftSignX, startY + 8, { align: 'center' })
-
-	// Center signature - UNIVERSITY NOMINEE
-	const centerSignX = pageWidth / 2
-	doc.line(centerSignX - 35, startY, centerSignX + 35, startY)
-	doc.text('UNIVERSITY NOMINEE', centerSignX, startY + 6, { align: 'center' })
-
-	// Right signature - CHAIRPERSON/PRINCIPAL
+	// Right signature - CONTROLLER OF EXAMINATIONS
 	const rightSignX = pageWidth - margin - 50
-	doc.line(rightSignX - 30, startY, rightSignX + 40, startY)
-	doc.text('CHAIRPERSON/PRINCIPAL', rightSignX, startY + 6, { align: 'center' })
-
+	
+	doc.setFont('times', 'bold')
+	doc.setFontSize(9)
+	doc.text('CONTROLLER OF EXAMINATIONS', rightSignX, startY + 6, { align: 'center' })
 	// Save PDF
 	const programCode = data.program?.program_code || 'PROGRAM'
 	const semester = data.semester || ''

@@ -4,9 +4,10 @@
  * GET  /api/pre-exam/hall-tickets?institution_code=XXX&examination_session_id=YYY&program_id=ZZZ&semester_ids=1,2
  *
  * Fetches hall ticket data for students:
- * - Joins students, exam_registrations, exam_timetables, course_offerings, course_mapping
+ * - Uses exam_registrations as the primary source (stu_register_no, student_name from MyJKKN imports)
+ * - Joins with exam_timetables, course_offerings, course_mapping
  * - Returns data structured for PDF generation
- * - Groups subjects by student
+ * - Groups subjects by student (keyed by stu_register_no)
  */
 
 import { NextResponse, NextRequest } from 'next/server'
@@ -28,7 +29,9 @@ export async function GET(request: NextRequest) {
 		const examination_session_id = searchParams.get('examination_session_id')
 
 		// Optional filters
-		const program_id = searchParams.get('program_id')
+		// Note: program_id (MyJKKN UUID) is not used - use program_code instead
+		// Programs are from MyJKKN API, not a local table
+		const program_code = searchParams.get('program_code') // Program code like "BCA", "MCA"
 		const semester_ids = searchParams.get('semester_ids') // comma-separated
 		const student_ids = searchParams.get('student_ids') // comma-separated
 
@@ -123,8 +126,20 @@ export async function GET(request: NextRequest) {
 			.single()
 
 		// Build query for exam registrations with all related data
-		// Note: We fetch student and semester info (with semester_group for year-wise grouping)
-		// Also include course_order for sorting subjects within each semester
+		// Note: Student data (stu_register_no, student_name) is stored directly in exam_registrations
+		// from MyJKKN imports, so we don't join to the students table
+		// Note: programs table doesn't exist locally - programs are from MyJKKN API
+		// Note: exam_timetables FK goes FROM exam_timetables TO course_offerings,
+		//       so we fetch timetables separately instead of embedding in course_offerings
+		// Schema relationship:
+		// exam_registrations → course_offerings (via course_offering_id)
+		// course_offerings.course_id → course_mapping.id (FK to course_mapping, NOT courses)
+		// course_mapping.course_id → courses.id
+		// course_mapping has course_order for sorting
+		// Actual schema relationships:
+		// course_offerings.course_id → courses.id (direct FK via course_offerings_course_id_fkey1)
+		// course_offerings.course_mapping_id → course_mapping.id (for course_order)
+		// course_mapping.course_id → courses.id
 		let registrationsQuery = supabase
 			.from('exam_registrations')
 			.select(`
@@ -134,42 +149,24 @@ export async function GET(request: NextRequest) {
 				stu_register_no,
 				student_name,
 				registration_status,
-				students!inner(
-					id,
-					first_name,
-					last_name,
-					date_of_birth,
-					roll_number,
-					student_photo_url,
-					program_id,
-					semester_id,
-					semesters(id, semester_code, semester_name, display_order, semester_group, semester_type)
-				),
+				program_code,
 				course_offerings(
 					id,
 					course_id,
-					program_id,
+					course_mapping_id,
+					program_code,
 					semester,
-					course_order,
-					course_mapping:course_id(id, course_code, course_title),
-					programs(id, program_code, program_name),
-					exam_timetables(
-						id,
-						exam_date,
-						session,
-						exam_time,
-						duration_minutes,
-						is_published
-					)
+					courses(id, course_code, course_name),
+					course_mapping(id, course_order)
 				)
 			`)
 			.eq('examination_session_id', examination_session_id)
 			.eq('institutions_id', institution.id)
 			.eq('registration_status', 'Approved')
 
-		// Apply program filter on students table
-		if (program_id) {
-			registrationsQuery = registrationsQuery.eq('students.program_id', program_id)
+		// Apply program filter using program_code
+		if (program_code) {
+			registrationsQuery = registrationsQuery.eq('program_code', program_code)
 		}
 
 		// Execute query
@@ -183,72 +180,199 @@ export async function GET(request: NextRequest) {
 			} as HallTicketApiResponse, { status: 500 })
 		}
 
+		// Collect all course_codes to fetch timetables by course_code
+		// exam_timetables.course_id -> courses.id, so we need to match by course_code
+		const courseCodes = new Set<string>()
+		for (const reg of registrations || []) {
+			const courseOffering = reg.course_offerings as any
+			const courseCode = courseOffering?.courses?.course_code
+			if (courseCode) {
+				courseCodes.add(courseCode)
+			}
+		}
+
+		// Fetch exam timetables by course_code (via courses join) for this exam session
+		// exam_timetables has course_id -> courses.id, so we join to get course_code
+		let timetablesByCourseCode = new Map<string, any>()
+		if (courseCodes.size > 0) {
+			const { data: timetables, error: ttError } = await supabase
+				.from('exam_timetables')
+				.select(`
+					id,
+					course_id,
+					exam_date,
+					session,
+					exam_time,
+					duration_minutes,
+					is_published,
+					courses(id, course_code)
+				`)
+				.eq('examination_session_id', examination_session_id)
+
+			if (ttError) {
+				console.error('Error fetching exam timetables:', ttError)
+				// Continue without timetables - they will show "To Be Announced"
+			} else {
+				// Map timetables by course_code for quick lookup
+				for (const tt of timetables || []) {
+					const courseCode = (tt.courses as any)?.course_code
+					if (courseCode && courseCodes.has(courseCode)) {
+						timetablesByCourseCode.set(courseCode, tt)
+					}
+				}
+			}
+		}
+
 		// Parse semester numbers if provided (expecting numbers like 1, 2, 3)
 		const semesterNumbersList = semester_ids ? semester_ids.split(',').map(s => parseInt(s.trim(), 10)).filter(n => !isNaN(n)) : []
 		const studentIdsList = student_ids ? student_ids.split(',').map(s => s.trim()) : []
 
-		// Group registrations by student
+		// Group registrations by student (using stu_register_no as the key since student data is in exam_registrations)
 		const studentMap = new Map<string, {
-			student: any,
+			stu_register_no: string,
+			student_name: string,
 			subjects: HallTicketSubject[],
 			programName: string
 		}>()
 
 		for (const reg of registrations || []) {
-			if (!reg.students || !reg.course_offerings) continue
+			if (!reg.stu_register_no || !reg.course_offerings) continue
 
-			const student = reg.students
-			const courseOffering = reg.course_offerings
+			const courseOffering = reg.course_offerings as any
 
-			// Filter by semester number if specified (using display_order from semesters table)
+			// Filter by semester number if specified (using semester from course_offerings)
 			if (semesterNumbersList.length > 0) {
-				const studentSemesterNumber = student.semesters?.display_order
-				if (studentSemesterNumber && !semesterNumbersList.includes(studentSemesterNumber)) {
+				const semesterNumber = courseOffering.semester
+				if (semesterNumber && !semesterNumbersList.includes(semesterNumber)) {
 					continue
 				}
 			}
 
-			// Filter by student IDs if specified
-			if (studentIdsList.length > 0 && !studentIdsList.includes(student.id)) {
+			// Filter by student IDs if specified (using stu_register_no)
+			if (studentIdsList.length > 0 && !studentIdsList.includes(reg.stu_register_no)) {
 				continue
 			}
 
-			const studentKey = student.id
+			const studentKey = reg.stu_register_no
 
 			if (!studentMap.has(studentKey)) {
 				studentMap.set(studentKey, {
-					student: student,
+					stu_register_no: reg.stu_register_no,
+					student_name: reg.student_name || '',
 					subjects: [],
-					programName: courseOffering.programs?.program_name || 'N/A'
+					programName: reg.program_code || 'N/A'
 				})
 			}
 
-			// Get exam timetable for this course offering
-			const timetables = courseOffering.exam_timetables || []
+			// Direct access: course_offerings.courses (via course_id FK)
+			// course_order from: course_offerings.course_mapping (via course_mapping_id FK)
+			const course = courseOffering.courses
 			const courseMapping = courseOffering.course_mapping
+			const courseCode = course?.course_code
 
-			// Find the timetable entry (there should be one per course)
-			const timetable = timetables.length > 0 ? timetables[0] : null
+			// Get exam timetable by course_code (matches exam date correctly)
+			const timetable = courseCode ? timetablesByCourseCode.get(courseCode) : null
 
 			// Create subject entry with course_order for sorting
 			const subject: HallTicketSubject = {
 				serial_number: 0, // Will be assigned later
-				subject_code: courseMapping?.course_code || 'N/A',
-				subject_name: courseMapping?.course_title || 'To Be Announced',
+				subject_code: courseCode || 'N/A',
+				subject_name: course?.course_name || 'To Be Announced',
 				exam_date: timetable?.exam_date || 'To Be Announced',
 				exam_time: timetable ? formatExamTime(timetable.session, timetable.exam_time) : 'To Be Announced',
-				semester: student.semesters?.semester_name || (student.semesters?.display_order ? `Semester ${student.semesters.display_order}` : `Semester ${courseOffering.semester}`),
-				course_order: courseOffering.course_order || 999 // Include course_order for sorting
+				semester: `Semester ${courseOffering.semester || 1}`,
+				course_order: courseMapping?.course_order || 999 // course_order is in course_mapping
 			}
 
 			studentMap.get(studentKey)!.subjects.push(subject)
+		}
+
+		// Fetch learner profiles from local database to get date_of_birth and student_photo_url
+		// learners_profiles table is a fallback/mirror of MyJKKN /api-management/learners/profiles endpoint
+		const registerNumbers = Array.from(studentMap.keys())
+		const learnerProfileMap = new Map<string, { date_of_birth: string | null; student_photo_url: string | null }>()
+
+		if (registerNumbers.length > 0) {
+			console.log(`[HallTickets] Fetching learner profiles for ${registerNumbers.length} students...`)
+			console.log(`[HallTickets] Register numbers to lookup:`, registerNumbers.slice(0, 5), '...')
+
+			// Normalize register numbers to uppercase for consistent matching
+			const normalizedRegNumbers = registerNumbers.map(rn => rn.toUpperCase())
+
+			// Fetch from local learners_profiles table (mirrors MyJKKN data)
+			// Register number is stored in register_number column
+			// First try exact match with normalized (uppercase) register numbers
+			const { data: learnerProfiles, error: lpError } = await supabase
+				.from('learners_profiles')
+				.select('register_number, date_of_birth, student_photo_url')
+				.in('register_number', normalizedRegNumbers)
+
+			if (lpError) {
+				console.warn('[HallTickets] Could not fetch learner profiles from local DB:', lpError.message)
+			} else if (learnerProfiles && learnerProfiles.length > 0) {
+				console.log(`[HallTickets] Found ${learnerProfiles.length} learner profiles (exact match)`)
+				for (const profile of learnerProfiles) {
+					if (profile.register_number) {
+						// Store with uppercase key for consistent lookup
+						learnerProfileMap.set(profile.register_number.toUpperCase(), {
+							date_of_birth: profile.date_of_birth,
+							student_photo_url: profile.student_photo_url
+						})
+						// Log if DOB or photo is missing
+						if (!profile.date_of_birth) {
+							console.log(`[HallTickets] Missing DOB for ${profile.register_number}`)
+						}
+						if (!profile.student_photo_url) {
+							console.log(`[HallTickets] Missing photo for ${profile.register_number}`)
+						}
+					}
+				}
+			} else {
+				console.log('[HallTickets] No learner profiles found in local DB (exact match)')
+			}
+
+			// Check for missing profiles and try case-insensitive lookup
+			const missingRegNumbers = registerNumbers.filter(rn => !learnerProfileMap.has(rn.toUpperCase()))
+			if (missingRegNumbers.length > 0) {
+				console.log(`[HallTickets] ${missingRegNumbers.length} students missing from learners_profiles:`, missingRegNumbers.slice(0, 5))
+
+				// Try case-insensitive lookup for missing ones using ilike
+				for (const regNum of missingRegNumbers) {
+					const { data: profile } = await supabase
+						.from('learners_profiles')
+						.select('register_number, date_of_birth, student_photo_url')
+						.ilike('register_number', regNum)
+						.limit(1)
+						.single()
+
+					if (profile && profile.register_number) {
+						console.log(`[HallTickets] Found case-insensitive match: "${profile.register_number}" for "${regNum}"`)
+						// Map using uppercase key for consistent lookup
+						learnerProfileMap.set(regNum.toUpperCase(), {
+							date_of_birth: profile.date_of_birth,
+							student_photo_url: profile.student_photo_url
+						})
+					}
+				}
+			}
+
+			console.log(`[HallTickets] Total profiles mapped: ${learnerProfileMap.size} of ${registerNumbers.length}`)
 		}
 
 		// Convert map to array and sort
 		const students: HallTicketStudent[] = []
 
 		for (const [, value] of studentMap) {
-			const { student, subjects, programName } = value
+			const { stu_register_no, student_name, subjects, programName } = value
+			// Lookup using uppercase key for consistent matching
+			const learnerProfile = learnerProfileMap.get(stu_register_no.toUpperCase())
+
+			// Debug: Log profile lookup result
+			if (learnerProfile) {
+				console.log(`[HallTickets] Profile found for ${stu_register_no}: DOB=${learnerProfile.date_of_birth}, Photo=${learnerProfile.student_photo_url ? 'YES' : 'NO'}`)
+			} else {
+				console.log(`[HallTickets] No profile in map for ${stu_register_no}`)
+			}
 
 			// Sort subjects by semester (descending - higher semester first: 3, 2, 1)
 			// then by course_order (ascending) within same semester
@@ -282,16 +406,43 @@ export async function GET(request: NextRequest) {
 				s.serial_number = i + 1
 			})
 
-			// Format student data with semester_group for year-wise PDF grouping
+			// Format student data (student info comes from exam_registrations, enriched with learners_profiles)
+			// Format date_of_birth to DD/MM/YYYY if available
+			let formattedDob = ''
+			if (learnerProfile?.date_of_birth) {
+				try {
+					const dobValue = learnerProfile.date_of_birth
+					let dob: Date | null = null
+
+					// Check if it's an Excel serial date (numeric string like "38339")
+					if (/^\d+$/.test(dobValue)) {
+						// Excel serial date: days since 1900-01-01 (with Excel's leap year bug)
+						// Excel incorrectly considers 1900 as a leap year, so we subtract 2 days
+						const excelEpoch = new Date(1899, 11, 30) // Dec 30, 1899
+						const serialNumber = parseInt(dobValue, 10)
+						dob = new Date(excelEpoch.getTime() + serialNumber * 24 * 60 * 60 * 1000)
+					} else {
+						// Try standard date parsing
+						dob = new Date(dobValue)
+					}
+
+					if (dob && !isNaN(dob.getTime())) {
+						formattedDob = `${String(dob.getDate()).padStart(2, '0')}-${String(dob.getMonth() + 1).padStart(2, '0')}-${dob.getFullYear()}`
+					}
+				} catch {
+					formattedDob = learnerProfile.date_of_birth // Use as-is if parsing fails
+				}
+			}
+
 			const hallTicketStudent: HallTicketStudent = {
-				register_number: student.roll_number || 'N/A',
-				student_name: `${student.first_name || ''} ${student.last_name || ''}`.trim(),
-				date_of_birth: formatDate(student.date_of_birth),
+				register_number: stu_register_no,
+				student_name: student_name,
+				date_of_birth: formattedDob,
 				program: programName,
 				emis: '', // Add EMIS if available in your schema
-				student_photo_url: student.student_photo_url || undefined,
+				student_photo_url: learnerProfile?.student_photo_url || undefined,
 				subjects: subjects,
-				semester_group: student.semesters?.semester_group || student.semesters?.semester_type // For year-wise grouping
+				semester_group: undefined // Not available without students table join
 			}
 
 			students.push(hallTicketStudent)
@@ -351,6 +502,7 @@ export async function GET(request: NextRequest) {
 
 /**
  * Format exam time based on session (FN/AN)
+ * Returns time in readable format: "10.00 A.M. to 01.00 P.M."
  */
 function formatExamTime(session: string, examTime?: string): string {
 	if (!session) return 'To Be Announced'
@@ -358,31 +510,10 @@ function formatExamTime(session: string, examTime?: string): string {
 	const sessionUpper = session.toUpperCase()
 
 	if (sessionUpper === 'FN' || sessionUpper.includes('FORENOON')) {
-		return examTime || '10:00 to 13:00FN'
+		return '10.00 A.M. to 01.00 P.M.'
 	} else if (sessionUpper === 'AN' || sessionUpper.includes('AFTERNOON')) {
-		return examTime || '14:00 to 17:00AN'
+		return '02.00 P.M. to 05.00 P.M.'
 	}
 
 	return examTime || session
-}
-
-/**
- * Format date to DD-MMM-YYYY format
- */
-function formatDate(dateStr: string | null): string {
-	if (!dateStr) return 'N/A'
-
-	try {
-		const date = new Date(dateStr)
-		if (isNaN(date.getTime())) return dateStr
-
-		const day = date.getDate().toString().padStart(2, '0')
-		const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
-		const month = months[date.getMonth()]
-		const year = date.getFullYear()
-
-		return `${day}-${month}-${year}`
-	} catch {
-		return dateStr
-	}
 }

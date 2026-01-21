@@ -1,5 +1,4 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { fetchMyJKKNLearnerProfiles, fetchMyJKKNPrograms } from '@/lib/myjkkn-api'
 import { getSupabaseServer } from '@/lib/supabase-server'
 
 export async function GET(request: NextRequest) {
@@ -8,7 +7,6 @@ export async function GET(request: NextRequest) {
 		const institutionId = searchParams.get('institution_id')
 		const programCode = searchParams.get('program_code')
 		const semesterCode = searchParams.get('semester_code')
-		const myjkknInstitutionIdsParam = searchParams.get('myjkkn_institution_ids')
 
 		// Validate required parameters
 		if (!institutionId) {
@@ -21,76 +19,69 @@ export async function GET(request: NextRequest) {
 			return NextResponse.json({ error: 'semester_code is required' }, { status: 400 })
 		}
 
-		// Parse myjkkn_institution_ids
-		const myjkknInstitutionIds = myjkknInstitutionIdsParam
-			? myjkknInstitutionIdsParam.split(',').filter(Boolean)
-			: []
-
-		// Extract semester number from semester_code for filtering
-		// Semester code format might be like "UEN-1", "BCA-2", etc.
-		let targetSemesterNumber: number | null = null
-		const semCodeMatch = semesterCode.match(/-(\d+)$/)
-		if (semCodeMatch) {
-			targetSemesterNumber = parseInt(semCodeMatch[1], 10)
-		}
+		const supabase = getSupabaseServer()
 
 		console.log('[Marksheet Distribution API] Fetching learners:', {
 			institutionId,
 			programCode,
-			semesterCode,
-			targetSemesterNumber,
-			myjkknInstitutionIds
+			semesterCode
 		})
 
-		// IMPORTANT: For Arts programs (CAS), we need to lookup the program_id from the CAS institution
-		// specifically because Arts has both SF (self-financed) and Aided institutions, but the
-		// program_code (like "UEN") is defined in CAS. We then use that program_id to filter learners
-		// from ANY institution (SF or Aided).
-		//
-		// Strategy: Always lookup program_id from CAS institution (institution_code = 'cas')
-		// for the given program_code, then use that to filter learners.
-
-		const supabase = getSupabaseServer()
-
-		// Get CAS institution's myjkkn_institution_ids for program lookup
-		const { data: casInstitution, error: casError } = await supabase
+		// Get the selected institution details
+		const { data: institution, error: instError } = await supabase
 			.from('institutions')
 			.select('id, institution_code, myjkkn_institution_ids')
-			.ilike('institution_code', 'cas')
+			.eq('id', institutionId)
 			.single()
 
-		let casMyjkknIds: string[] = []
-		if (!casError && casInstitution?.myjkkn_institution_ids) {
-			casMyjkknIds = casInstitution.myjkkn_institution_ids
-			console.log(`[Marksheet Distribution API] Found CAS institution with myjkkn_ids:`, casMyjkknIds)
-		} else {
-			console.log(`[Marksheet Distribution API] CAS institution not found or has no myjkkn_ids, using provided myjkkn_institution_ids`)
+		if (instError || !institution) {
+			console.error('[Marksheet Distribution API] Institution not found:', instError)
+			return NextResponse.json({ error: 'Institution not found' }, { status: 404 })
 		}
 
-		// First, lookup the program IDs for this program_code from MyJKKN
-		// MyJKKN learners have program_id (UUID) not program_code
-		// IMPORTANT: We need to collect program_ids from BOTH:
-		// 1. CAS institution (canonical lookup for the program_code)
-		// 2. The selected institution (for matching learners from SF/Aided)
-		// This is because SF and Aided institutions may have different UUIDs for the same program_code
+		console.log('[Marksheet Distribution API] Institution:', institution)
+
+		// Get myjkkn_institution_ids - for CAS this includes both Aided and Self
+		const myjkknInstitutionIds: string[] = institution.myjkkn_institution_ids || []
+
+		if (myjkknInstitutionIds.length === 0) {
+			console.log('[Marksheet Distribution API] No myjkkn_institution_ids found')
+			return NextResponse.json({
+				learners: [],
+				metadata: { total: 0, institution_id: institutionId, program_code: programCode, semester_code: semesterCode }
+			})
+		}
+
+		console.log('[Marksheet Distribution API] Using MyJKKN institution IDs:', myjkknInstitutionIds)
+
+		// Get program UUIDs from MyJKKN API for the given program_code
+		// learners_profiles.program_id stores MyJKKN program UUIDs
 		const programIds: string[] = []
 
-		// Combine all institution IDs to lookup from (CAS + selected institution)
-		const allLookupMyjkknIds = [...new Set([...casMyjkknIds, ...myjkknInstitutionIds])]
-
-		console.log(`[Marksheet Distribution API] Looking up program IDs from institutions:`, allLookupMyjkknIds)
-
-		for (const myjkknInstId of allLookupMyjkknIds) {
+		for (const myjkknInstId of myjkknInstitutionIds) {
 			try {
-				const programsResponse = await fetchMyJKKNPrograms({
-					institution_id: myjkknInstId,
-					program_code: programCode,
-					limit: 100,
+				// Use the internal proxy endpoint
+				const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'
+				const params = new URLSearchParams({
+					limit: '100',
+					is_active: 'true',
+					institution_id: myjkknInstId
 				})
-				const programs = programsResponse.data || []
+
+				const res = await fetch(`${baseUrl}/api/myjkkn/programs?${params.toString()}`)
+
+				if (!res.ok) {
+					console.error(`[Marksheet Distribution API] HTTP error ${res.status} for inst ${myjkknInstId}`)
+					continue
+				}
+
+				const response = await res.json()
+				const programs = response.data || response || []
+				// Filter by program_code client-side
 				for (const prog of programs) {
-					if (prog.id && !programIds.includes(prog.id)) {
+					if (prog.program_code === programCode && prog.id && !programIds.includes(prog.id)) {
 						programIds.push(prog.id)
+						console.log(`[Marksheet Distribution API] Found program ${prog.program_code} with ID ${prog.id}`)
 					}
 				}
 			} catch (error) {
@@ -98,125 +89,124 @@ export async function GET(request: NextRequest) {
 			}
 		}
 
-		console.log(`[Marksheet Distribution API] Found program IDs for ${programCode} (from CAS + selected institution):`, programIds)
+		console.log('[Marksheet Distribution API] Program IDs found:', programIds)
 
-		// Fetch learners from MyJKKN API filtered by institution and program
-		let allLearners: any[] = []
-
-		if (myjkknInstitutionIds.length > 0) {
-			// Fetch for each myjkkn_institution_id
-			for (const myjkknInstId of myjkknInstitutionIds) {
-				try {
-					// Try fetching with program_code first
-					const response = await fetchMyJKKNLearnerProfiles({
-						institution_id: myjkknInstId,
-						program_code: programCode,
-						current_semester: targetSemesterNumber || undefined,
-						limit: 1000,
-					})
-
-					const learners = response.data || []
-					allLearners = allLearners.concat(learners)
-
-					console.log(`[Marksheet Distribution API] Fetched ${learners.length} learners for myjkkn_inst_id: ${myjkknInstId}`)
-				} catch (error) {
-					console.error(`[Marksheet Distribution API] Error fetching for myjkkn_inst_id ${myjkknInstId}:`, error)
-				}
-			}
-		} else {
-			// Fallback: fetch by program_code only
-			const response = await fetchMyJKKNLearnerProfiles({
-				program_code: programCode,
-				current_semester: targetSemesterNumber || undefined,
-				limit: 1000,
-			})
-			allLearners = response.data || []
-		}
-
-		console.log(`[Marksheet Distribution API] Total learners fetched: ${allLearners.length}`)
-
-		// Log sample learner to debug field names
-		if (allLearners.length > 0) {
-			console.log(`[Marksheet Distribution API] Sample learner fields:`, Object.keys(allLearners[0]))
-			console.log(`[Marksheet Distribution API] Sample learner:`, {
-				institution_id: allLearners[0].institution_id,
-				program_code: allLearners[0].program_code,
-				program_id: allLearners[0].program_id,
-				current_semester: allLearners[0].current_semester,
-				semester_code: allLearners[0].semester_code
+		if (programIds.length === 0) {
+			console.log('[Marksheet Distribution API] No programs found for code:', programCode)
+			return NextResponse.json({
+				learners: [],
+				metadata: { total: 0, institution_id: institutionId, program_code: programCode, semester_code: semesterCode }
 			})
 		}
 
-		// Client-side filtering by institution_id, program_id, and semester
-		// MyJKKN API may not filter properly, so we filter client-side
-		const filteredLearners = allLearners.filter((learner: any) => {
-			// Filter by institution_id
-			if (myjkknInstitutionIds.length > 0) {
-				const learnerInstId = learner.institution_id
-				if (learnerInstId && !myjkknInstitutionIds.includes(learnerInstId)) {
-					return false
+		// Extract semester number from semester_code (e.g., "UEN-1" -> 1)
+		let targetSemesterNumber: number | null = null
+		const semCodeMatch = semesterCode.match(/-(\d+)$/)
+		if (semCodeMatch) {
+			targetSemesterNumber = parseInt(semCodeMatch[1], 10)
+		}
+
+		console.log('[Marksheet Distribution API] Target semester number:', targetSemesterNumber)
+
+		// Get semester UUIDs from MyJKKN API
+		// We need to find semesters that match the semester_code or semester_number
+		const semesterIds: string[] = []
+
+		for (const myjkknInstId of myjkknInstitutionIds) {
+			try {
+				// Use the internal proxy endpoint
+				const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'
+				const params = new URLSearchParams({
+					limit: '100',
+					is_active: 'true',
+					institution_id: myjkknInstId,
+					program_code: programCode
+				})
+
+				const res = await fetch(`${baseUrl}/api/myjkkn/semesters?${params.toString()}`)
+
+				if (!res.ok) {
+					console.error(`[Marksheet Distribution API] HTTP error ${res.status} for semesters for inst ${myjkknInstId}`)
+					continue
 				}
-			}
 
-			// Filter by program - STRICT: must match either program_id OR program_code
-			const hasMatchingProgramId = programIds.length > 0 && learner.program_id && programIds.includes(learner.program_id)
-			const hasMatchingProgramCode = learner.program_code && learner.program_code === programCode
+				const response = await res.json()
+				const semesters = response.data || response || []
+				for (const sem of semesters) {
+					// Match by semester_code or semester_number
+					const semesterMatches =
+						sem.semester_code === semesterCode ||
+						(targetSemesterNumber !== null && sem.semester_number === targetSemesterNumber)
 
-			// If we have program_ids from lookup, require a match
-			if (programIds.length > 0) {
-				if (!hasMatchingProgramId && !hasMatchingProgramCode) {
-					return false
-				}
-			} else if (learner.program_code && learner.program_code !== programCode) {
-				// Fallback: if no program_ids lookup, filter by program_code if available
-				return false
-			}
-
-			// Filter by semester number
-			if (targetSemesterNumber !== null) {
-				const learnerSemester = learner.current_semester || learner.semester_number || learner.semester
-				if (learnerSemester !== undefined && learnerSemester !== null) {
-					// Convert to number for comparison
-					const learnerSemNum = typeof learnerSemester === 'string'
-						? parseInt(learnerSemester, 10)
-						: learnerSemester
-					if (learnerSemNum !== targetSemesterNumber) {
-						return false
+					if (semesterMatches && sem.id && !semesterIds.includes(sem.id)) {
+						semesterIds.push(sem.id)
+						console.log(`[Marksheet Distribution API] Found semester ${sem.semester_code} with ID ${sem.id}`)
 					}
 				}
-			}
-
-			return true
-		})
-
-		console.log(`[Marksheet Distribution API] Filtered learners: ${filteredLearners.length} (by institution: ${myjkknInstitutionIds.length > 0}, by program: ${programIds.length > 0}, by semester: ${targetSemesterNumber})`)
-
-		// Deduplicate by registration number or roll number
-		const uniqueLearners = new Map<string, any>()
-		for (const learner of filteredLearners) {
-			const key = learner.register_number || learner.roll_number || learner.id
-			if (key && !uniqueLearners.has(key)) {
-				uniqueLearners.set(key, learner)
+			} catch (error) {
+				console.error(`[Marksheet Distribution API] Error fetching semesters for inst ${myjkknInstId}:`, error)
 			}
 		}
 
-		// Convert to array and sort by register_number/roll_number
-		const learnerList = Array.from(uniqueLearners.values()).sort((a, b) => {
-			const regA = a.register_number || a.roll_number || ''
-			const regB = b.register_number || b.roll_number || ''
-			return regA.localeCompare(regB)
-		})
+		console.log('[Marksheet Distribution API] Semester IDs found:', semesterIds)
+
+		// Fetch learners from local learners_profiles table
+		// Filter by institution_id (MyJKKN IDs), program_id, and semester_id
+		let query = supabase
+			.from('learners_profiles')
+			.select(`
+				id,
+				register_number,
+				roll_number,
+				first_name,
+				last_name,
+				date_of_birth,
+				college_email,
+				student_email,
+				student_mobile,
+				institution_id,
+				program_id,
+				semester_id
+			`)
+			.in('institution_id', myjkknInstitutionIds)
+			.in('program_id', programIds)
+			.eq('lifecycle_status', 'active')
+			.order('register_number', { ascending: true })
+
+		// Only filter by semester_id if we found matching semesters
+		if (semesterIds.length > 0) {
+			query = query.in('semester_id', semesterIds)
+		}
+
+		const { data: learners, error: learnersError } = await query
+
+		if (learnersError) {
+			console.error('[Marksheet Distribution API] Error fetching learners:', learnersError)
+			return NextResponse.json({ error: 'Failed to fetch learners' }, { status: 500 })
+		}
+
+		console.log('[Marksheet Distribution API] Learners fetched:', learners?.length || 0)
+
+		// Debug: Log first few learners to verify program/semester IDs
+		if (learners && learners.length > 0) {
+			console.log('[Marksheet Distribution API] Sample learners:', learners.slice(0, 3).map(l => ({
+				register_number: l.register_number,
+				institution_id: l.institution_id,
+				program_id: l.program_id,
+				semester_id: l.semester_id
+			})))
+		}
 
 		// Format learner data for the PDF
-		const formattedLearners = learnerList.map((learner: any) => ({
+		const formattedLearners = (learners || []).map((learner: any) => ({
 			register_number: learner.register_number || learner.roll_number || '-',
 			learner_name: formatLearnerName(learner),
-			dob: formatDOB(learner.dob || learner.date_of_birth),
-			email: learner.college_email || learner.student_email || learner.email || '-',
-			phone: learner.student_mobile || learner.phone || '-',
+			dob: formatDOB(learner.date_of_birth),
+			email: learner.college_email || learner.student_email || '-',
+			phone: learner.student_mobile || '-',
 		}))
 
-		console.log(`[Marksheet Distribution API] Returning ${formattedLearners.length} learners`)
+		console.log('[Marksheet Distribution API] Returning', formattedLearners.length, 'learners')
 
 		return NextResponse.json({
 			learners: formattedLearners,
@@ -224,8 +214,7 @@ export async function GET(request: NextRequest) {
 				total: formattedLearners.length,
 				institution_id: institutionId,
 				program_code: programCode,
-				semester_code: semesterCode,
-				semester_number: targetSemesterNumber
+				semester_code: semesterCode
 			}
 		})
 
@@ -243,16 +232,11 @@ function formatLearnerName(learner: any): string {
 	const parts: string[] = []
 
 	if (learner.first_name) parts.push(learner.first_name)
-	if (learner.middle_name) parts.push(learner.middle_name)
 	if (learner.last_name) parts.push(learner.last_name)
 
 	if (parts.length > 0) {
 		return parts.join(' ').toUpperCase()
 	}
-
-	// Fallback to full name field
-	if (learner.full_name) return learner.full_name.toUpperCase()
-	if (learner.name) return learner.name.toUpperCase()
 
 	return '-'
 }

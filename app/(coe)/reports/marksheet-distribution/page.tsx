@@ -17,13 +17,12 @@ import { cn } from "@/lib/utils"
 import Link from "next/link"
 import { generateMarksheetDistributionPDF } from "@/lib/utils/generate-marksheet-distribution-pdf"
 import { useInstitutionFilter } from "@/hooks/use-institution-filter"
-import { useMyJKKNInstitutionFilter } from "@/hooks/use-myjkkn-institution-filter"
 
 interface Institution {
 	id: string
 	institution_code: string
 	institution_name: string
-	myjkkn_institution_ids?: string[]
+	counselling_code?: string
 }
 
 interface Program {
@@ -37,15 +36,7 @@ interface Semester {
 	id: string
 	semester_code: string
 	semester_name: string
-	semester_number?: number
-	program_id?: string
-}
-
-interface SemesterGroup {
-	semester_id: string
-	semester_code: string
-	semester_name: string
-	semester_number: number
+	semester_order?: number
 	program_id?: string
 }
 
@@ -61,14 +52,10 @@ export default function MarksheetDistributionPage() {
 		institutionId: contextInstitutionId
 	} = useInstitutionFilter()
 
-	// MyJKKN API hook for fetching programs
-	const { fetchPrograms: fetchProgramsFromMyJKKN } = useMyJKKNInstitutionFilter()
-
 	// Dropdown data
 	const [institutions, setInstitutions] = useState<Institution[]>([])
 	const [programs, setPrograms] = useState<Program[]>([])
-	const [allSemesters, setAllSemesters] = useState<SemesterGroup[]>([]) // All semesters for institution
-	const [semesterGroups, setSemesterGroups] = useState<SemesterGroup[]>([]) // Filtered by program
+	const [semesters, setSemesters] = useState<Semester[]>([])
 
 	// Selected values
 	const [selectedInstitutionId, setSelectedInstitutionId] = useState<string>("")
@@ -118,37 +105,37 @@ export default function MarksheetDistributionPage() {
 		}
 	}, [appendToUrl, shouldFilter, mustSelectInstitution, contextInstitutionId])
 
-	// Institution -> Programs & All Semesters (fetch both when institution changes)
+	// Institution -> Programs (fetch from local DB)
 	useEffect(() => {
 		if (selectedInstitutionId) {
 			setSelectedProgramCode("")
 			setSelectedSemesterCode("")
 			setPrograms([])
-			setAllSemesters([])
-			setSemesterGroups([])
-			fetchProgramsAndSemesters(selectedInstitutionId)
+			setSemesters([])
+			fetchPrograms(selectedInstitutionId)
 		} else {
 			setPrograms([])
-			setAllSemesters([])
-			setSemesterGroups([])
+			setSemesters([])
 		}
 	}, [selectedInstitutionId])
 
-	const fetchProgramsAndSemesters = async (institutionId: string) => {
+	const fetchPrograms = async (institutionId: string) => {
 		try {
 			setLoadingPrograms(true)
-			setLoadingSemesters(true)
 
+			// Get institution to check if it's CAS (Arts)
 			const institution = institutions.find(inst => inst.id === institutionId)
-			const myjkknIds = institution?.myjkkn_institution_ids || []
 
-			console.log('[MarksheetDistribution] Fetching programs & semesters for institution:', institutionId, 'myjkknIds:', myjkknIds)
+			console.log('[MarksheetDistribution] Fetching programs for institution:', institutionId, institution?.counselling_code)
 
-			// Fetch programs
-			const programData = await fetchProgramsFromMyJKKN(myjkknIds)
+			// Fetch programs from local database API
+			const res = await fetch(`/api/reports/marksheet-distribution/programs?institution_id=${institutionId}`)
+			if (!res.ok) {
+				throw new Error('Failed to fetch programs')
+			}
 
-			// Sort by program_order then by program_code
-			const sortedPrograms = programData.sort((a, b) => {
+			const data = await res.json()
+			const sortedPrograms = (data.programs || []).sort((a: Program, b: Program) => {
 				const orderA = a.program_order ?? 999
 				const orderB = b.program_order ?? 999
 				if (orderA !== orderB) return orderA - orderB
@@ -157,126 +144,60 @@ export default function MarksheetDistributionPage() {
 
 			console.log('[MarksheetDistribution] Programs fetched:', sortedPrograms.length)
 			setPrograms(sortedPrograms)
-			setLoadingPrograms(false)
-
-			// Fetch ALL semesters for the institution (not filtered by program)
-			let allSemesterData: any[] = []
-
-			for (const myjkknInstId of myjkknIds) {
-				const res = await fetch(`/api/myjkkn/semesters?institution_id=${myjkknInstId}&limit=1000`)
-				if (res.ok) {
-					const response = await res.json()
-					const data = response.data || response || []
-					allSemesterData = allSemesterData.concat(data)
-				}
-			}
-
-			// If no myjkkn IDs, try fetching all semesters
-			if (myjkknIds.length === 0) {
-				const res = await fetch(`/api/myjkkn/semesters?limit=1000`)
-				if (res.ok) {
-					const response = await res.json()
-					allSemesterData = response.data || response || []
-				}
-			}
-
-			console.log('[MarksheetDistribution] All semesters from MyJKKN:', allSemesterData.length)
-
-			// Process and store all semesters with program_id info
-			const processedSemesters: SemesterGroup[] = []
-			const seenCodes = new Set<string>()
-
-			for (const sem of allSemesterData) {
-				const semCode = sem.semester_code || ''
-				let semName = sem.semester_name || sem.name || ''
-				const programId = sem.program_id || ''
-
-				// Extract semester number from semester_code (e.g., "UEN-1" -> 1)
-				let semNumber = sem.semester_number || 0
-				if (!semNumber && semCode) {
-					const codeMatch = semCode.match(/-(\d+)$/)
-					if (codeMatch) {
-						semNumber = parseInt(codeMatch[1], 10)
-					}
-				}
-
-				// If semester_name is generic like "2 Year", generate proper name from semester_number
-				if (semName.match(/^\d+\s*Year$/i) || !semName || semName === semCode) {
-					if (semNumber) {
-						const romanNumerals = ['I', 'II', 'III', 'IV', 'V', 'VI', 'VII', 'VIII', 'IX', 'X']
-						semName = `SEMESTER ${romanNumerals[semNumber - 1] || semNumber}`
-					}
-				}
-
-				// Store with unique key (semCode + programId)
-				const uniqueKey = `${semCode}-${programId}`
-				if (semCode && !seenCodes.has(uniqueKey)) {
-					seenCodes.add(uniqueKey)
-					processedSemesters.push({
-						semester_id: sem.id,
-						semester_code: semCode,
-						semester_name: semName,
-						semester_number: semNumber,
-						program_id: programId
-					} as SemesterGroup & { program_id?: string })
-				}
-			}
-
-			console.log('[MarksheetDistribution] Processed semesters:', processedSemesters.length)
-			setAllSemesters(processedSemesters)
 
 		} catch (error) {
-			console.error('Error fetching programs/semesters:', error)
+			console.error('Error fetching programs:', error)
+			toast({
+				title: "Error",
+				description: "Failed to fetch programs",
+				variant: "destructive"
+			})
 		} finally {
 			setLoadingPrograms(false)
-			setLoadingSemesters(false)
 		}
 	}
 
-	// Program -> Filter semesters from allSemesters
+	// Program -> Semesters (fetch from local DB)
 	useEffect(() => {
-		if (selectedProgramCode && allSemesters.length > 0) {
+		if (selectedProgramCode && selectedInstitutionId) {
 			setSelectedSemesterCode("")
-			filterSemestersByProgram(selectedProgramCode)
+			setSemesters([])
+			fetchSemesters(selectedInstitutionId, selectedProgramCode)
 		} else {
-			setSemesterGroups([])
+			setSemesters([])
 		}
-	}, [selectedProgramCode, allSemesters])
+	}, [selectedProgramCode, selectedInstitutionId])
 
-	// Filter semesters by program from the pre-fetched allSemesters
-	const filterSemestersByProgram = (programCode: string) => {
-		// Find the program to get its ID
-		const selectedProgram = programs.find(p => p.program_code === programCode)
-		const programId = selectedProgram?.id || ''
+	const fetchSemesters = async (institutionId: string, programCode: string) => {
+		try {
+			setLoadingSemesters(true)
 
-		console.log('[MarksheetDistribution] Filtering semesters for program:', programCode, 'programId:', programId)
+			console.log('[MarksheetDistribution] Fetching semesters for:', institutionId, programCode)
 
-		// Filter semesters that match this program_id
-		const filtered = allSemesters.filter(sem => {
-			// Match by program_id if available
-			if (programId && sem.program_id) {
-				return sem.program_id === programId
+			// Fetch semesters from local database API
+			const res = await fetch(`/api/reports/marksheet-distribution/semesters?institution_id=${institutionId}&program_code=${programCode}`)
+			if (!res.ok) {
+				throw new Error('Failed to fetch semesters')
 			}
-			// Fallback: match by semester_code prefix if it contains program code
-			if (sem.semester_code && programCode) {
-				return sem.semester_code.toUpperCase().startsWith(programCode.toUpperCase())
-			}
-			return false
-		})
 
-		// Deduplicate by semester_code
-		const semesterMap = new Map<string, SemesterGroup>()
-		for (const sem of filtered) {
-			if (!semesterMap.has(sem.semester_code)) {
-				semesterMap.set(sem.semester_code, sem)
-			}
+			const data = await res.json()
+			const sortedSemesters = (data.semesters || []).sort((a: Semester, b: Semester) => {
+				return (a.semester_order ?? 999) - (b.semester_order ?? 999)
+			})
+
+			console.log('[MarksheetDistribution] Semesters fetched:', sortedSemesters.length)
+			setSemesters(sortedSemesters)
+
+		} catch (error) {
+			console.error('Error fetching semesters:', error)
+			toast({
+				title: "Error",
+				description: "Failed to fetch semesters",
+				variant: "destructive"
+			})
+		} finally {
+			setLoadingSemesters(false)
 		}
-
-		// Convert to array and sort by semester number
-		const groups = Array.from(semesterMap.values()).sort((a, b) => a.semester_number - b.semester_number)
-
-		console.log('[MarksheetDistribution] Filtered semesters:', groups)
-		setSemesterGroups(groups)
 	}
 
 	// Generate PDF Report
@@ -295,7 +216,7 @@ export default function MarksheetDistributionPage() {
 
 			const institution = institutions.find(i => i.id === selectedInstitutionId)
 			const program = programs.find(p => p.program_code === selectedProgramCode)
-			const semester = semesterGroups.find(s => s.semester_code === selectedSemesterCode)
+			const semester = semesters.find(s => s.semester_code === selectedSemesterCode)
 
 			if (!institution || !program || !semester) {
 				throw new Error('Unable to find selected filter details')
@@ -307,11 +228,6 @@ export default function MarksheetDistributionPage() {
 				program_code: selectedProgramCode,
 				semester_code: selectedSemesterCode
 			})
-
-			// Add myjkkn_institution_ids for API filtering
-			if (institution.myjkkn_institution_ids && institution.myjkkn_institution_ids.length > 0) {
-				params.append('myjkkn_institution_ids', institution.myjkkn_institution_ids.join(','))
-			}
 
 			// Fetch learner data
 			const response = await fetch(`/api/reports/marksheet-distribution?${params.toString()}`)
@@ -396,7 +312,7 @@ export default function MarksheetDistributionPage() {
 	// Get display values
 	const selectedInstitution = institutions.find(i => i.id === selectedInstitutionId)
 	const selectedProgram = programs.find(p => p.program_code === selectedProgramCode)
-	const selectedSemester = semesterGroups.find(s => s.semester_code === selectedSemesterCode)
+	const selectedSemester = semesters.find(s => s.semester_code === selectedSemesterCode)
 
 	return (
 		<SidebarProvider>
@@ -596,7 +512,7 @@ export default function MarksheetDistributionPage() {
 												<span className="truncate flex items-center gap-1">
 													<Calendar className="h-3 w-3 flex-shrink-0" />
 													{selectedSemesterCode
-														? semesterGroups.find(s => s.semester_code === selectedSemesterCode)?.semester_name
+														? semesters.find(s => s.semester_code === selectedSemesterCode)?.semester_name
 														: "Select semester"}
 												</span>
 												<div className="flex items-center gap-1 flex-shrink-0">
@@ -620,7 +536,7 @@ export default function MarksheetDistributionPage() {
 												<CommandList>
 													<CommandEmpty className="text-xs py-2">No semester found.</CommandEmpty>
 													<CommandGroup>
-														{semesterGroups.map((sem) => (
+														{semesters.map((sem) => (
 															<CommandItem
 																key={sem.semester_code}
 																value={`${sem.semester_code} ${sem.semester_name}`}

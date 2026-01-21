@@ -430,8 +430,12 @@ export default function HallTicketsPage() {
 			params.append('institution_code', selectedInstitutionCode)
 			params.append('examination_session_id', selectedSessionId)
 
+			// Pass program_code instead of program_id (programs are from MyJKKN API, not local table)
 			if (selectedProgramId) {
-				params.append('program_id', selectedProgramId)
+				const selectedProgram = programs.find(p => p.id === selectedProgramId)
+				if (selectedProgram?.program_code) {
+					params.append('program_code', selectedProgram.program_code)
+				}
 			}
 
 			// Pass semester IDs (or display_order numbers for fallback semesters)
@@ -489,29 +493,80 @@ export default function HallTicketsPage() {
 
 			setPreviewData(data)
 
-			// Fetch logo images as base64
+			// Fetch logo images as base64 (with fallback to local logos)
 			let logoImage: string | undefined
 			let rightLogoImage: string | undefined
 
-			if (data.institution.logo_url) {
-				try {
-					const logoRes = await fetch(data.institution.logo_url)
+			// Default fallback logo URLs (local public folder)
+			// Left: JKKN text logo, Right: Emblem/seal
+			const defaultLogoUrl = '/jkkn_logo.png'
+			const defaultSecondaryLogoUrl = '/jkkncas_logo.png'
+
+			// Try to load primary logo (from DB or fallback)
+			const logoUrl = data.institution.logo_url || defaultLogoUrl
+			try {
+				const logoRes = await fetch(logoUrl)
+				if (logoRes.ok) {
 					const logoBlob = await logoRes.blob()
 					logoImage = await blobToBase64(logoBlob)
-				} catch (e) {
-					console.warn('Failed to load logo:', e)
 				}
+			} catch (e) {
+				console.warn('Failed to load logo:', e)
 			}
 
-			if (data.institution.secondary_logo_url) {
-				try {
-					const rightLogoRes = await fetch(data.institution.secondary_logo_url)
+			// Try to load secondary logo (from DB or fallback)
+			const secondaryLogoUrl = data.institution.secondary_logo_url || defaultSecondaryLogoUrl
+			try {
+				const rightLogoRes = await fetch(secondaryLogoUrl)
+				if (rightLogoRes.ok) {
 					const rightLogoBlob = await rightLogoRes.blob()
 					rightLogoImage = await blobToBase64(rightLogoBlob)
-				} catch (e) {
-					console.warn('Failed to load secondary logo:', e)
 				}
+			} catch (e) {
+				console.warn('Failed to load secondary logo:', e)
 			}
+
+			// Convert Google Drive URL to direct download URL
+			const convertGoogleDriveUrl = (url: string): string => {
+				if (!url) return url
+				// Match Google Drive file URLs
+				// Format: https://drive.google.com/file/d/FILE_ID/view?...
+				const driveMatch = url.match(/drive\.google\.com\/file\/d\/([^/]+)/)
+				if (driveMatch) {
+					const fileId = driveMatch[1]
+					return `https://drive.google.com/uc?export=view&id=${fileId}`
+				}
+				// Format: https://drive.google.com/open?id=FILE_ID
+				const openMatch = url.match(/drive\.google\.com\/open\?id=([^&]+)/)
+				if (openMatch) {
+					return `https://drive.google.com/uc?export=view&id=${openMatch[1]}`
+				}
+				return url
+			}
+
+			// Fetch student photos as base64 (parallel fetch for performance)
+			const studentsWithPhotos = await Promise.all(
+				data.students.map(async (student) => {
+					if (!student.student_photo_url) {
+						return student
+					}
+					try {
+						const photoUrl = convertGoogleDriveUrl(student.student_photo_url)
+						const photoRes = await fetch(photoUrl)
+						if (photoRes.ok) {
+							const photoBlob = await photoRes.blob()
+							const photoBase64 = await blobToBase64(photoBlob)
+							return { ...student, student_photo_url: photoBase64 }
+						}
+					} catch (e) {
+						console.warn(`Failed to load photo for ${student.register_number}:`, e)
+					}
+					return student
+				})
+			)
+
+			// Update data with students that have base64 photos
+			data.students = studentsWithPhotos
 
 			// Create PDF settings
 			const settings: HallTicketPdfSettings = {

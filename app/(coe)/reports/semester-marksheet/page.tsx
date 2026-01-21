@@ -1,0 +1,1097 @@
+"use client"
+
+import { useState, useEffect, useCallback } from "react"
+import { AppSidebar } from "@/components/layout/app-sidebar"
+import { AppHeader } from "@/components/layout/app-header"
+import { AppFooter } from "@/components/layout/app-footer"
+import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar"
+import { Breadcrumb, BreadcrumbItem, BreadcrumbLink, BreadcrumbList, BreadcrumbPage, BreadcrumbSeparator } from "@/components/ui/breadcrumb"
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { Button } from "@/components/ui/button"
+import { Label } from "@/components/ui/label"
+import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command"
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
+import { Badge } from "@/components/ui/badge"
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
+import { useToast } from "@/hooks/common/use-toast"
+import { Loader2, FileText, Check, ChevronsUpDown, GraduationCap, Calendar, ChevronDown, ChevronRight, Download, Printer, Eye, Users, FileDown } from "lucide-react"
+import { cn } from "@/lib/utils"
+import Link from "next/link"
+import { useInstitutionFilter } from "@/hooks/use-institution-filter"
+import { generateSemesterMarksheetPDF, downloadSemesterMarksheetPDF, downloadMergedMarksheetPDF, type StudentMarksheetData } from "@/lib/utils/generate-semester-marksheet-pdf"
+
+// =====================================================
+// TYPE DEFINITIONS
+// =====================================================
+
+interface Institution {
+	id: string
+	institution_code: string
+	institution_name: string
+}
+
+interface Program {
+	program_code: string
+	program_name: string
+}
+
+interface ExamSession {
+	id: string
+	session_code: string
+	session_name: string
+}
+
+interface Student {
+	id: string
+	registerNo: string
+	name: string
+}
+
+interface CourseResult {
+	courseCode: string
+	courseName: string
+	part: string
+	partDescription?: string
+	semester: number
+	semesterCode?: string
+	courseOrder: number
+	credits: number
+	eseMax: number
+	ciaMax: number
+	totalMax: number
+	eseMarks: number
+	ciaMarks: number
+	totalMarks: number
+	percentage: number
+	gradePoint: number
+	letterGrade: string
+	creditPoints: number
+	isPassing: boolean
+	result: string
+}
+
+interface PartBreakdown {
+	partName: string
+	partDescription: string
+	courses: CourseResult[]
+	totalCredits: number
+	totalCreditPoints: number
+	partGPA: number
+	creditsEarned: number
+}
+
+interface MarksheetData {
+	student: {
+		id: string
+		name: string
+		registerNo: string
+		dateOfBirth?: string
+	}
+	semester: number
+	session: {
+		id: string
+		name: string
+		monthYear: string
+	}
+	program: {
+		code: string
+		name: string
+	}
+	courses: CourseResult[]
+	partBreakdown: PartBreakdown[]
+	summary: {
+		totalCourses: number
+		totalCredits: number
+		creditsEarned: number
+		totalCreditPoints: number
+		semesterGPA: number
+		cgpa?: number
+		passedCount: number
+		failedCount: number
+		overallResult: string
+		folio?: string
+	}
+}
+
+// Part colors for UI
+const PART_COLORS: Record<string, string> = {
+	'Part I': 'bg-blue-500',
+	'Part II': 'bg-green-500',
+	'Part III': 'bg-purple-500',
+	'Part IV': 'bg-orange-500',
+	'Part V': 'bg-pink-500'
+}
+
+// =====================================================
+// MAIN COMPONENT
+// =====================================================
+
+export default function SemesterMarksheetPage() {
+	const { toast } = useToast()
+
+	// Institution filter hook
+	const {
+		isReady,
+		appendToUrl,
+		mustSelectInstitution,
+		shouldFilter,
+		institutionId: contextInstitutionId
+	} = useInstitutionFilter()
+
+	// Dropdown data
+	const [institutions, setInstitutions] = useState<Institution[]>([])
+	const [programs, setPrograms] = useState<Program[]>([])
+	const [sessions, setSessions] = useState<ExamSession[]>([])
+	const [semesters, setSemesters] = useState<number[]>([])
+	const [students, setStudents] = useState<Student[]>([])
+
+	// Selected values
+	const [selectedInstitutionId, setSelectedInstitutionId] = useState<string>("")
+	const [selectedProgramCode, setSelectedProgramCode] = useState<string>("")
+	const [selectedSessionId, setSelectedSessionId] = useState<string>("")
+	const [selectedSemester, setSelectedSemester] = useState<string>("")
+	const [selectedStudentId, setSelectedStudentId] = useState<string>("")
+
+	// Loading states
+	const [loadingInstitutions, setLoadingInstitutions] = useState(false)
+	const [loadingPrograms, setLoadingPrograms] = useState(false)
+	const [loadingSessions, setLoadingSessions] = useState(false)
+	const [loadingSemesters, setLoadingSemesters] = useState(false)
+	const [loadingStudents, setLoadingStudents] = useState(false)
+	const [loadingMarksheet, setLoadingMarksheet] = useState(false)
+	const [generatingPDF, setGeneratingPDF] = useState(false)
+	const [generatingBatchPDF, setGeneratingBatchPDF] = useState(false)
+
+	// Popover open states
+	const [institutionOpen, setInstitutionOpen] = useState(false)
+	const [programOpen, setProgramOpen] = useState(false)
+	const [sessionOpen, setSessionOpen] = useState(false)
+	const [semesterOpen, setSemesterOpen] = useState(false)
+	const [studentOpen, setStudentOpen] = useState(false)
+
+	// Marksheet data
+	const [marksheetData, setMarksheetData] = useState<MarksheetData | null>(null)
+
+	// Collapsible states for parts
+	const [openParts, setOpenParts] = useState<Record<string, boolean>>({})
+
+	// =====================================================
+	// DATA FETCHING
+	// =====================================================
+
+	// Load institutions when context is ready
+	useEffect(() => {
+		if (isReady) {
+			fetchInstitutions()
+		}
+	}, [isReady])
+
+	const fetchInstitutions = useCallback(async () => {
+		try {
+			setLoadingInstitutions(true)
+			const url = appendToUrl('/api/exam-management/exam-attendance/dropdowns?type=institutions')
+			const res = await fetch(url)
+			if (res.ok) {
+				const data = await res.json()
+				setInstitutions(data)
+
+				// Auto-select logic
+				if (data.length === 1) {
+					setSelectedInstitutionId(data[0].id)
+				} else if (shouldFilter && contextInstitutionId) {
+					setSelectedInstitutionId(contextInstitutionId)
+				} else if (!mustSelectInstitution && contextInstitutionId) {
+					setSelectedInstitutionId(contextInstitutionId)
+				}
+			}
+		} catch (error) {
+			console.error('Error fetching institutions:', error)
+		} finally {
+			setLoadingInstitutions(false)
+		}
+	}, [appendToUrl, shouldFilter, mustSelectInstitution, contextInstitutionId])
+
+	const fetchSessions = async () => {
+		try {
+			setLoadingSessions(true)
+			const res = await fetch('/api/exam-management/examination-sessions')
+			if (res.ok) {
+				const data = await res.json()
+				setSessions(data)
+			}
+		} catch (error) {
+			console.error('Error fetching sessions:', error)
+		} finally {
+			setLoadingSessions(false)
+		}
+	}
+
+	// Institution -> Sessions
+	useEffect(() => {
+		if (selectedInstitutionId) {
+			setSelectedSessionId("")
+			setSelectedProgramCode("")
+			setSelectedSemester("")
+			setSelectedStudentId("")
+			setSessions([])
+			setPrograms([])
+			setSemesters([])
+			setStudents([])
+			setMarksheetData(null)
+			fetchSessions()
+		}
+	}, [selectedInstitutionId])
+
+	// Session -> Programs
+	useEffect(() => {
+		if (selectedInstitutionId && selectedSessionId) {
+			setSelectedProgramCode("")
+			setSelectedSemester("")
+			setSelectedStudentId("")
+			setPrograms([])
+			setSemesters([])
+			setStudents([])
+			setMarksheetData(null)
+			fetchPrograms(selectedInstitutionId, selectedSessionId)
+		}
+	}, [selectedSessionId])
+
+	const fetchPrograms = async (institutionId: string, sessionId: string) => {
+		try {
+			setLoadingPrograms(true)
+			const res = await fetch(`/api/reports/semester-marksheet?action=programs&institutionId=${institutionId}&sessionId=${sessionId}`)
+			if (res.ok) {
+				const data = await res.json()
+				setPrograms(data.programs || [])
+			}
+		} catch (error) {
+			console.error('Error fetching programs:', error)
+		} finally {
+			setLoadingPrograms(false)
+		}
+	}
+
+	// Program -> Semesters
+	useEffect(() => {
+		if (selectedInstitutionId && selectedSessionId && selectedProgramCode) {
+			setSelectedSemester("")
+			setSelectedStudentId("")
+			setSemesters([])
+			setStudents([])
+			setMarksheetData(null)
+			fetchSemesters(selectedInstitutionId, selectedProgramCode, selectedSessionId)
+		}
+	}, [selectedProgramCode])
+
+	const fetchSemesters = async (institutionId: string, programCode: string, sessionId: string) => {
+		try {
+			setLoadingSemesters(true)
+			const res = await fetch(`/api/reports/semester-marksheet?action=semesters&institutionId=${institutionId}&programCode=${programCode}&sessionId=${sessionId}`)
+			if (res.ok) {
+				const data = await res.json()
+				setSemesters(data.semesters || [])
+			}
+		} catch (error) {
+			console.error('Error fetching semesters:', error)
+		} finally {
+			setLoadingSemesters(false)
+		}
+	}
+
+	// Semester -> Students
+	useEffect(() => {
+		if (selectedInstitutionId && selectedSessionId && selectedProgramCode && selectedSemester) {
+			setSelectedStudentId("")
+			setStudents([])
+			setMarksheetData(null)
+			fetchStudents()
+		}
+	}, [selectedSemester])
+
+	const fetchStudents = async () => {
+		if (!selectedInstitutionId || !selectedSessionId || !selectedProgramCode || !selectedSemester) return
+
+		try {
+			setLoadingStudents(true)
+			const url = `/api/reports/semester-marksheet?action=students&institutionId=${selectedInstitutionId}&sessionId=${selectedSessionId}&programCode=${selectedProgramCode}&semester=${selectedSemester}`
+
+			const res = await fetch(url)
+			if (res.ok) {
+				const data = await res.json()
+				setStudents(data.students || [])
+			}
+		} catch (error) {
+			console.error('Error fetching students:', error)
+		} finally {
+			setLoadingStudents(false)
+		}
+	}
+
+	// Load marksheet when student selected (optional - for individual view)
+	useEffect(() => {
+		if (selectedStudentId && selectedSessionId) {
+			fetchMarksheet()
+		} else {
+			setMarksheetData(null)
+		}
+	}, [selectedStudentId])
+
+	const fetchMarksheet = async () => {
+		if (!selectedStudentId || !selectedSessionId) return
+
+		try {
+			setLoadingMarksheet(true)
+			let url = `/api/reports/semester-marksheet?action=student-marksheet&studentId=${selectedStudentId}&sessionId=${selectedSessionId}`
+			if (selectedSemester) url += `&semester=${selectedSemester}`
+
+			const res = await fetch(url)
+			if (res.ok) {
+				const data = await res.json()
+				setMarksheetData(data)
+
+				// Open all parts by default
+				const parts: Record<string, boolean> = {}
+				data.partBreakdown?.forEach((p: PartBreakdown) => {
+					parts[p.partName] = true
+				})
+				setOpenParts(parts)
+			} else {
+				const error = await res.json()
+				toast({
+					title: '❌ Error',
+					description: error.error || 'Failed to load marksheet',
+					variant: 'destructive'
+				})
+			}
+		} catch (error) {
+			console.error('Error fetching marksheet:', error)
+			toast({
+				title: '❌ Error',
+				description: 'Failed to load marksheet',
+				variant: 'destructive'
+			})
+		} finally {
+			setLoadingMarksheet(false)
+		}
+	}
+
+	// =====================================================
+	// PDF GENERATION
+	// =====================================================
+
+	const handleDownloadPDF = async () => {
+		if (!marksheetData) return
+
+		try {
+			setGeneratingPDF(true)
+
+			const selectedInstitution = institutions.find(i => i.id === selectedInstitutionId)
+			const selectedSession = sessions.find(s => s.id === selectedSessionId)
+
+			// Prepare data for PDF
+			const pdfData: StudentMarksheetData = {
+				student: marksheetData.student,
+				semester: marksheetData.semester,
+				session: {
+					id: selectedSessionId,
+					name: selectedSession?.session_name || '',
+					monthYear: marksheetData.session?.monthYear || ''
+				},
+				program: marksheetData.program,
+				institution: selectedInstitution ? {
+					name: selectedInstitution.institution_name,
+					code: selectedInstitution.institution_code
+				} : undefined,
+				courses: marksheetData.courses,
+				partBreakdown: marksheetData.partBreakdown,
+				summary: marksheetData.summary,
+				generatedDate: new Date().toLocaleDateString('en-IN', {
+					day: '2-digit',
+					month: '2-digit',
+					year: 'numeric'
+				})
+			}
+
+			// Download PDF directly
+			downloadSemesterMarksheetPDF(
+				pdfData,
+				`Marksheet_${marksheetData.student.registerNo}_Sem${marksheetData.semester}.pdf`
+			)
+
+			toast({
+				title: '✅ PDF Downloaded',
+				description: 'Marksheet PDF has been downloaded',
+				className: 'bg-green-50 border-green-200 text-green-800'
+			})
+		} catch (error) {
+			console.error('Error generating PDF:', error)
+			toast({
+				title: '❌ Error',
+				description: 'Failed to generate PDF',
+				variant: 'destructive'
+			})
+		} finally {
+			setGeneratingPDF(false)
+		}
+	}
+
+	const handlePreviewPDF = async () => {
+		if (!marksheetData) return
+
+		try {
+			setGeneratingPDF(true)
+
+			const selectedInstitution = institutions.find(i => i.id === selectedInstitutionId)
+			const selectedSession = sessions.find(s => s.id === selectedSessionId)
+
+			// Prepare data for PDF
+			const pdfData: StudentMarksheetData = {
+				student: marksheetData.student,
+				semester: marksheetData.semester,
+				session: {
+					id: selectedSessionId,
+					name: selectedSession?.session_name || '',
+					monthYear: marksheetData.session?.monthYear || ''
+				},
+				program: marksheetData.program,
+				institution: selectedInstitution ? {
+					name: selectedInstitution.institution_name,
+					code: selectedInstitution.institution_code
+				} : undefined,
+				courses: marksheetData.courses,
+				partBreakdown: marksheetData.partBreakdown,
+				summary: marksheetData.summary,
+				generatedDate: new Date().toLocaleDateString('en-IN', {
+					day: '2-digit',
+					month: '2-digit',
+					year: 'numeric'
+				})
+			}
+
+			// Generate PDF data URI
+			const pdfDataUri = generateSemesterMarksheetPDF(pdfData)
+
+			// Open in new tab using window.open with data URI
+			window.open(pdfDataUri, '_blank')
+
+			toast({
+				title: '✅ PDF Generated',
+				description: 'Marksheet PDF opened in new tab',
+				className: 'bg-green-50 border-green-200 text-green-800'
+			})
+		} catch (error) {
+			console.error('Error generating PDF:', error)
+			toast({
+				title: '❌ Error',
+				description: 'Failed to generate PDF',
+				variant: 'destructive'
+			})
+		} finally {
+			setGeneratingPDF(false)
+		}
+	}
+
+	// Batch download for all learners in selected semester
+	const handleBatchDownload = async () => {
+		if (!selectedInstitutionId || !selectedSessionId || !selectedProgramCode || !selectedSemester) {
+			toast({
+				title: '❌ Missing Filters',
+				description: 'Please select institution, session, program, and semester',
+				variant: 'destructive'
+			})
+			return
+		}
+
+		if (students.length === 0) {
+			toast({
+				title: '❌ No Learners',
+				description: 'No learners found for the selected filters',
+				variant: 'destructive'
+			})
+			return
+		}
+
+		try {
+			setGeneratingBatchPDF(true)
+
+			const selectedInstitution = institutions.find(i => i.id === selectedInstitutionId)
+			const selectedSession = sessions.find(s => s.id === selectedSessionId)
+
+			// Fetch batch marksheet data
+			const url = `/api/reports/semester-marksheet?action=batch-marksheet&institutionId=${selectedInstitutionId}&sessionId=${selectedSessionId}&programCode=${selectedProgramCode}&semester=${selectedSemester}`
+			const res = await fetch(url)
+
+			if (!res.ok) {
+				const error = await res.json()
+				throw new Error(error.error || 'Failed to fetch batch data')
+			}
+
+			const batchData = await res.json()
+			const marksheets = batchData.marksheets || []
+
+			if (marksheets.length === 0) {
+				toast({
+					title: '❌ No Data',
+					description: 'No marksheet data available for the selected filters',
+					variant: 'destructive'
+				})
+				return
+			}
+
+			// Prepare all student data for merged PDF
+			const allStudentData: StudentMarksheetData[] = marksheets.map((data: any) => ({
+				student: data.student,
+				semester: data.semester,
+				session: {
+					id: selectedSessionId,
+					name: selectedSession?.session_name || '',
+					monthYear: data.session?.monthYear || ''
+				},
+				program: data.program,
+				institution: selectedInstitution ? {
+					name: selectedInstitution.institution_name,
+					code: selectedInstitution.institution_code
+				} : undefined,
+				courses: data.courses,
+				partBreakdown: data.partBreakdown,
+				summary: data.summary,
+				generatedDate: new Date().toLocaleDateString('en-IN', {
+					day: '2-digit',
+					month: '2-digit',
+					year: 'numeric'
+				})
+			}))
+
+			// Download single merged PDF with all marksheets
+			downloadMergedMarksheetPDF(
+				allStudentData,
+				`Marksheets_${selectedProgramCode}_Sem${selectedSemester}_${marksheets.length}students.pdf`
+			)
+
+			toast({
+				title: '✅ Download Complete',
+				description: `Downloaded merged PDF with ${marksheets.length} marksheets`,
+				className: 'bg-green-50 border-green-200 text-green-800'
+			})
+		} catch (error) {
+			console.error('Error in batch download:', error)
+			toast({
+				title: '❌ Error',
+				description: error instanceof Error ? error.message : 'Failed to generate batch PDFs',
+				variant: 'destructive'
+			})
+		} finally {
+			setGeneratingBatchPDF(false)
+		}
+	}
+
+	// =====================================================
+	// RENDER HELPERS
+	// =====================================================
+
+	const toRoman = (num: number): string => {
+		const romanNumerals: [number, string][] = [
+			[10, 'X'], [9, 'IX'], [5, 'V'], [4, 'IV'], [1, 'I']
+		]
+		let result = ''
+		for (const [value, symbol] of romanNumerals) {
+			while (num >= value) {
+				result += symbol
+				num -= value
+			}
+		}
+		return result
+	}
+
+	// =====================================================
+	// RENDER
+	// =====================================================
+
+	return (
+		<SidebarProvider>
+			<AppSidebar />
+			<SidebarInset>
+				<AppHeader>
+					<Breadcrumb>
+						<BreadcrumbList>
+							<BreadcrumbItem>
+								<BreadcrumbLink asChild>
+									<Link href="/dashboard">Dashboard</Link>
+								</BreadcrumbLink>
+							</BreadcrumbItem>
+							<BreadcrumbSeparator />
+							<BreadcrumbItem>
+								<BreadcrumbLink asChild>
+									<Link href="#">Reports</Link>
+								</BreadcrumbLink>
+							</BreadcrumbItem>
+							<BreadcrumbSeparator />
+							<BreadcrumbItem>
+								<BreadcrumbPage>Semester Marksheet</BreadcrumbPage>
+							</BreadcrumbItem>
+						</BreadcrumbList>
+					</Breadcrumb>
+				</AppHeader>
+
+				<div className="flex flex-1 flex-col gap-4 p-4 pt-0">
+					{/* Filter Card */}
+					<Card>
+						<CardHeader className="pb-4">
+							<CardTitle className="flex items-center gap-2">
+								<FileText className="h-5 w-5" />
+								Semester Marksheet Generator
+							</CardTitle>
+							<CardDescription>
+								Generate individual student marksheets with course-wise grades and GPA
+							</CardDescription>
+						</CardHeader>
+						<CardContent>
+							<div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
+								{/* Institution Select */}
+								{(mustSelectInstitution || !shouldFilter) && (
+									<div className="space-y-2">
+										<Label>Institution</Label>
+										<Popover open={institutionOpen} onOpenChange={setInstitutionOpen}>
+											<PopoverTrigger asChild>
+												<Button
+													variant="outline"
+													role="combobox"
+													className="w-full justify-between"
+													disabled={loadingInstitutions}
+												>
+													{selectedInstitutionId
+														? institutions.find(i => i.id === selectedInstitutionId)?.institution_code
+														: "Select institution"}
+													<ChevronsUpDown className="ml-2 h-4 w-4 opacity-50" />
+												</Button>
+											</PopoverTrigger>
+											<PopoverContent className="w-[300px] p-0">
+												<Command>
+													<CommandInput placeholder="Search institution..." />
+													<CommandList>
+														<CommandEmpty>No institution found.</CommandEmpty>
+														<CommandGroup>
+															{institutions.map(inst => (
+																<CommandItem
+																	key={inst.id}
+																	value={inst.id}
+																	onSelect={() => {
+																		setSelectedInstitutionId(inst.id)
+																		setInstitutionOpen(false)
+																	}}
+																>
+																	<Check className={cn("mr-2 h-4 w-4", selectedInstitutionId === inst.id ? "opacity-100" : "opacity-0")} />
+																	{inst.institution_code} - {inst.institution_name}
+																</CommandItem>
+															))}
+														</CommandGroup>
+													</CommandList>
+												</Command>
+											</PopoverContent>
+										</Popover>
+									</div>
+								)}
+
+								{/* Session Select */}
+								<div className="space-y-2">
+									<Label>Exam Session</Label>
+									<Popover open={sessionOpen} onOpenChange={setSessionOpen}>
+										<PopoverTrigger asChild>
+											<Button
+												variant="outline"
+												role="combobox"
+												className="w-full justify-between"
+												disabled={!selectedInstitutionId || loadingSessions}
+											>
+												{selectedSessionId
+													? sessions.find(s => s.id === selectedSessionId)?.session_name
+													: "Select session"}
+												<ChevronsUpDown className="ml-2 h-4 w-4 opacity-50" />
+											</Button>
+										</PopoverTrigger>
+										<PopoverContent className="w-[300px] p-0">
+											<Command>
+												<CommandInput placeholder="Search session..." />
+												<CommandList>
+													<CommandEmpty>No session found.</CommandEmpty>
+													<CommandGroup>
+														{sessions.map(sess => (
+															<CommandItem
+																key={sess.id}
+																value={sess.id}
+																onSelect={() => {
+																	setSelectedSessionId(sess.id)
+																	setSessionOpen(false)
+																}}
+															>
+																<Check className={cn("mr-2 h-4 w-4", selectedSessionId === sess.id ? "opacity-100" : "opacity-0")} />
+																{sess.session_name}
+															</CommandItem>
+														))}
+													</CommandGroup>
+												</CommandList>
+											</Command>
+										</PopoverContent>
+									</Popover>
+								</div>
+
+								{/* Program Select */}
+								<div className="space-y-2">
+									<Label>Program</Label>
+									<Popover open={programOpen} onOpenChange={setProgramOpen}>
+										<PopoverTrigger asChild>
+											<Button
+												variant="outline"
+												role="combobox"
+												className="w-full justify-between text-left"
+												disabled={!selectedSessionId || loadingPrograms}
+											>
+												<span className="truncate">
+													{selectedProgramCode
+														? `${selectedProgramCode} - ${programs.find(p => p.program_code === selectedProgramCode)?.program_name || ''}`
+														: "Select program"}
+												</span>
+												<ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+											</Button>
+										</PopoverTrigger>
+										<PopoverContent className="w-[400px] p-0">
+											<Command>
+												<CommandInput placeholder="Search program..." />
+												<CommandList>
+													<CommandEmpty>No program found.</CommandEmpty>
+													<CommandGroup>
+														{programs.map(prog => (
+															<CommandItem
+																key={prog.program_code}
+																value={`${prog.program_code} ${prog.program_name}`}
+																onSelect={() => {
+																	setSelectedProgramCode(prog.program_code)
+																	setProgramOpen(false)
+																}}
+															>
+																<Check className={cn("mr-2 h-4 w-4 shrink-0", selectedProgramCode === prog.program_code ? "opacity-100" : "opacity-0")} />
+																<span>{prog.program_code} - {prog.program_name}</span>
+															</CommandItem>
+														))}
+													</CommandGroup>
+												</CommandList>
+											</Command>
+										</PopoverContent>
+									</Popover>
+								</div>
+
+								{/* Semester Select */}
+								<div className="space-y-2">
+									<Label>Semester</Label>
+									<Popover open={semesterOpen} onOpenChange={setSemesterOpen}>
+										<PopoverTrigger asChild>
+											<Button
+												variant="outline"
+												role="combobox"
+												className="w-full justify-between"
+												disabled={!selectedProgramCode || loadingSemesters}
+											>
+												{selectedSemester ? `Semester ${toRoman(parseInt(selectedSemester))}` : "Select semester"}
+												<ChevronsUpDown className="ml-2 h-4 w-4 opacity-50" />
+											</Button>
+										</PopoverTrigger>
+										<PopoverContent className="w-[200px] p-0">
+											<Command>
+												<CommandList>
+													<CommandEmpty>No semester found.</CommandEmpty>
+													<CommandGroup>
+														{semesters.map(sem => (
+															<CommandItem
+																key={sem}
+																value={sem.toString()}
+																onSelect={() => {
+																	setSelectedSemester(sem.toString())
+																	setSemesterOpen(false)
+																}}
+															>
+																<Check className={cn("mr-2 h-4 w-4", selectedSemester === sem.toString() ? "opacity-100" : "opacity-0")} />
+																Semester {toRoman(sem)}
+															</CommandItem>
+														))}
+													</CommandGroup>
+												</CommandList>
+											</Command>
+										</PopoverContent>
+									</Popover>
+								</div>
+
+								{/* Student Select (Optional) */}
+								<div className="space-y-2">
+									<Label>Learner <span className="text-xs text-muted-foreground">(Optional)</span></Label>
+									<Popover open={studentOpen} onOpenChange={setStudentOpen}>
+										<PopoverTrigger asChild>
+											<Button
+												variant="outline"
+												role="combobox"
+												className="w-full justify-between"
+												disabled={!selectedSemester || loadingStudents}
+											>
+												{selectedStudentId
+													? students.find(s => s.id === selectedStudentId)?.registerNo
+													: "All learners"}
+												<ChevronsUpDown className="ml-2 h-4 w-4 opacity-50" />
+											</Button>
+										</PopoverTrigger>
+										<PopoverContent className="w-[300px] p-0">
+											<Command>
+												<CommandInput placeholder="Search by register no..." />
+												<CommandList>
+													<CommandEmpty>No learner found.</CommandEmpty>
+													<CommandGroup>
+														<CommandItem
+															value=""
+															onSelect={() => {
+																setSelectedStudentId("")
+																setStudentOpen(false)
+															}}
+														>
+															<Check className={cn("mr-2 h-4 w-4", selectedStudentId === "" ? "opacity-100" : "opacity-0")} />
+															<div className="flex items-center gap-2">
+																<Users className="h-4 w-4" />
+																<span>All learners</span>
+															</div>
+														</CommandItem>
+														{students.map(student => (
+															<CommandItem
+																key={student.id}
+																value={student.id}
+																onSelect={() => {
+																	setSelectedStudentId(student.id)
+																	setStudentOpen(false)
+																}}
+															>
+																<Check className={cn("mr-2 h-4 w-4", selectedStudentId === student.id ? "opacity-100" : "opacity-0")} />
+																<div className="flex flex-col">
+																	<span className="font-medium">{student.registerNo}</span>
+																	<span className="text-xs text-muted-foreground">{student.name}</span>
+																</div>
+															</CommandItem>
+														))}
+													</CommandGroup>
+												</CommandList>
+											</Command>
+										</PopoverContent>
+									</Popover>
+								</div>
+							</div>
+
+							{/* Batch Download Section */}
+							{selectedSemester && !selectedStudentId && students.length > 0 && (
+								<div className="mt-4 p-4 bg-muted/50 rounded-lg border">
+									<div className="flex items-center justify-between">
+										<div className="flex items-center gap-3">
+											<Users className="h-5 w-5 text-muted-foreground" />
+											<div>
+												<p className="font-medium">{students.length} Learners Found</p>
+												<p className="text-sm text-muted-foreground">Download all marksheets in a single merged PDF</p>
+											</div>
+										</div>
+										<Button onClick={handleBatchDownload} disabled={generatingBatchPDF}>
+											{generatingBatchPDF ? (
+												<>
+													<Loader2 className="h-4 w-4 mr-2 animate-spin" />
+													Generating PDF...
+												</>
+											) : (
+												<>
+													<FileDown className="h-4 w-4 mr-2" />
+													Download Merged PDF
+												</>
+											)}
+										</Button>
+									</div>
+								</div>
+							)}
+						</CardContent>
+					</Card>
+
+					{/* Marksheet Display */}
+					{loadingMarksheet ? (
+						<Card>
+							<CardContent className="flex items-center justify-center py-20">
+								<Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+								<span className="ml-2 text-muted-foreground">Loading marksheet...</span>
+							</CardContent>
+						</Card>
+					) : marksheetData ? (
+						<Card>
+							<CardHeader className="pb-4">
+								<div className="flex items-start justify-between">
+									<div>
+										<CardTitle className="text-xl flex items-center gap-2">
+											<GraduationCap className="h-5 w-5" />
+											{marksheetData.student.registerNo}
+										</CardTitle>
+										<CardDescription className="text-base mt-1">
+											{marksheetData.student.name}
+										</CardDescription>
+									</div>
+									<div className="flex items-center gap-2">
+										<Badge variant="outline">{marksheetData.summary.totalCourses} Courses</Badge>
+										<Badge variant="outline">{marksheetData.summary.totalCredits} Credits</Badge>
+										<Badge variant={marksheetData.summary.failedCount === 0 ? "default" : "destructive"}>
+											{marksheetData.summary.overallResult === 'PASS' ? 'Passed' : 'RA'}
+										</Badge>
+										<Badge className="bg-yellow-500 text-black">
+											GPA: {marksheetData.summary.semesterGPA.toFixed(2)}
+										</Badge>
+									</div>
+								</div>
+							</CardHeader>
+
+							<CardContent className="space-y-4">
+								{/* Part-wise Course Tables */}
+								{marksheetData.partBreakdown.map((part) => (
+									<Collapsible
+										key={part.partName}
+										open={openParts[part.partName]}
+										onOpenChange={(open) => setOpenParts(prev => ({ ...prev, [part.partName]: open }))}
+									>
+										<CollapsibleTrigger asChild>
+											<div className={cn(
+												"flex items-center justify-between p-3 rounded-t-lg cursor-pointer text-white",
+												PART_COLORS[part.partName] || 'bg-gray-500'
+											)}>
+												<div className="flex items-center gap-2">
+													{openParts[part.partName] ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
+													<span className="font-semibold">{part.partName}</span>
+													<span className="text-sm opacity-90">({part.partDescription})</span>
+												</div>
+												<div className="flex items-center gap-4 text-sm">
+													<span>{part.totalCredits} Credits</span>
+													<span>GPA: {part.partGPA.toFixed(2)}</span>
+												</div>
+											</div>
+										</CollapsibleTrigger>
+										<CollapsibleContent>
+											<div className="border border-t-0 rounded-b-lg overflow-hidden">
+												<Table>
+													<TableHeader>
+														<TableRow className="bg-muted/50">
+															<TableHead className="w-[300px]">Course</TableHead>
+															<TableHead className="text-center w-[60px]">Cr</TableHead>
+															<TableHead className="text-center w-[80px]">Int</TableHead>
+															<TableHead className="text-center w-[80px]">Ext</TableHead>
+															<TableHead className="text-center w-[80px]">Total</TableHead>
+															<TableHead className="text-center w-[60px]">%</TableHead>
+															<TableHead className="text-center w-[60px]">Grade</TableHead>
+															<TableHead className="text-center w-[60px]">GP</TableHead>
+															<TableHead className="text-center w-[60px]">CP</TableHead>
+															<TableHead className="text-center w-[80px]">Status</TableHead>
+														</TableRow>
+													</TableHeader>
+													<TableBody>
+														{part.courses.map((course, idx) => (
+															<TableRow key={idx}>
+																<TableCell className="font-medium">
+																	<span className="text-xs text-muted-foreground">{course.courseCode}</span>
+																	{' - '}
+																	{course.courseName}
+																</TableCell>
+																<TableCell className="text-center">{course.credits}</TableCell>
+																<TableCell className="text-center">{course.ciaMarks}/{course.ciaMax}</TableCell>
+																<TableCell className="text-center">{course.eseMarks}/{course.eseMax}</TableCell>
+																<TableCell className="text-center font-medium">{course.totalMarks}/{course.totalMax}</TableCell>
+																<TableCell className="text-center">{course.percentage.toFixed(1)}</TableCell>
+																<TableCell className="text-center">
+																	<Badge variant="outline">{course.letterGrade}</Badge>
+																</TableCell>
+																<TableCell className="text-center">{course.gradePoint.toFixed(1)}</TableCell>
+																<TableCell className="text-center">{course.creditPoints.toFixed(1)}</TableCell>
+																<TableCell className="text-center">
+																	<Badge variant={course.isPassing ? "default" : "destructive"} className={course.isPassing ? "bg-green-600" : ""}>
+																		{course.result}
+																	</Badge>
+																</TableCell>
+															</TableRow>
+														))}
+													</TableBody>
+												</Table>
+											</div>
+										</CollapsibleContent>
+									</Collapsible>
+								))}
+
+								{/* Part Summary Table */}
+								<div className="mt-6">
+									<h3 className="font-semibold mb-3">(IN THE CURRENT SEMESTER)</h3>
+									<Table>
+										<TableHeader>
+											<TableRow>
+												<TableHead className="text-center">PART</TableHead>
+												<TableHead className="text-center">CREDITS EARNED</TableHead>
+												<TableHead className="text-center">GPA</TableHead>
+											</TableRow>
+										</TableHeader>
+										<TableBody>
+											{marksheetData.partBreakdown.filter(p => p.courses.length > 0).map((part) => (
+												<TableRow key={part.partName}>
+													<TableCell className="text-center">{part.partName.replace('Part ', '')}</TableCell>
+													<TableCell className="text-center">{part.creditsEarned}</TableCell>
+													<TableCell className="text-center">{part.partGPA.toFixed(2)}</TableCell>
+												</TableRow>
+											))}
+										</TableBody>
+									</Table>
+								</div>
+
+								{/* Footer Note */}
+								<div className="text-xs text-muted-foreground mt-4 p-3 bg-muted/50 rounded-lg">
+									Passing Minimum is 40% of Maximum (in ESE and Total separately) P: Pass, RA: Re-Appear, AAA: Absent, ESE: End Semester Examination, CIA: Continuous Internal Assessment, GPA: Grade Points Average, ***Not Secured Passing Minimum.
+								</div>
+
+								{/* Action Buttons */}
+								<div className="flex gap-3 mt-6">
+									<Button onClick={handlePreviewPDF} disabled={generatingPDF} variant="outline">
+										{generatingPDF ? (
+											<Loader2 className="h-4 w-4 mr-2 animate-spin" />
+										) : (
+											<Eye className="h-4 w-4 mr-2" />
+										)}
+										Preview PDF
+									</Button>
+									<Button onClick={handleDownloadPDF} disabled={generatingPDF}>
+										{generatingPDF ? (
+											<Loader2 className="h-4 w-4 mr-2 animate-spin" />
+										) : (
+											<Download className="h-4 w-4 mr-2" />
+										)}
+										Download PDF
+									</Button>
+									<Button variant="outline" onClick={() => window.print()}>
+										<Printer className="h-4 w-4 mr-2" />
+										Print
+									</Button>
+								</div>
+							</CardContent>
+						</Card>
+					) : selectedSemester && !selectedStudentId && students.length > 0 ? (
+						<Card>
+							<CardContent className="flex flex-col items-center justify-center py-20 text-muted-foreground">
+								<Users className="h-16 w-16 mb-4 opacity-20" />
+								<p className="text-lg font-medium">Ready to Download Marksheets</p>
+								<p className="text-sm">Select a specific learner for preview, or use "Download All Marksheets" above</p>
+							</CardContent>
+						</Card>
+					) : (
+						<Card>
+							<CardContent className="flex flex-col items-center justify-center py-20 text-muted-foreground">
+								<FileText className="h-16 w-16 mb-4 opacity-20" />
+								<p className="text-lg font-medium">Select filters to view marksheet</p>
+								<p className="text-sm">Choose institution, session, program, and semester</p>
+							</CardContent>
+						</Card>
+					)}
+				</div>
+
+				<AppFooter />
+			</SidebarInset>
+		</SidebarProvider>
+	)
+}

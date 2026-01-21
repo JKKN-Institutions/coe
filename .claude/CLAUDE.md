@@ -221,9 +221,249 @@ Reference: `app/(coe)/master/degrees/page.tsx`
 </Sheet>
 ```
 
+## API Route Patterns
+
+### GET Route Structure
+
+```typescript
+export async function GET(request: Request) {
+  const { searchParams } = new URL(request.url)
+  const institutionCode = searchParams.get('institution_code')
+  const institutionsId = searchParams.get('institutions_id')
+  const search = searchParams.get('search')
+
+  let query = supabase.from('entity').select('*')
+
+  // Institution filtering
+  if (institutionCode) {
+    query = query.eq('institution_code', institutionCode)
+  } else if (institutionsId) {
+    query = query.eq('institutions_id', institutionsId)
+  }
+
+  // Search filter (multi-field)
+  if (search) {
+    query = query.or(`code.ilike.%${search}%,name.ilike.%${search}%`)
+  }
+
+  // Override default 1000-row limit
+  const { data, error } = await query.range(0, 9999)
+
+  if (error) {
+    console.error('Fetch error:', error)
+    return NextResponse.json({ error: 'Failed to fetch' }, { status: 500 })
+  }
+
+  return NextResponse.json(data || [])
+}
+```
+
+### POST Route Structure
+
+```typescript
+export async function POST(request: Request) {
+  const body = await request.json()
+
+  // 1. Required field validation
+  if (!body.code?.trim()) {
+    return NextResponse.json({ error: 'Code is required' }, { status: 400 })
+  }
+
+  // 2. FK Auto-Mapping (code → UUID)
+  let institutions_id = body.institutions_id
+  let institution_code = body.institution_code
+
+  if (institution_code && !institutions_id) {
+    const { data: inst } = await supabase
+      .from('institutions')
+      .select('id')
+      .eq('institution_code', institution_code)
+      .maybeSingle()
+    if (!inst) {
+      return NextResponse.json({ error: `Institution "${institution_code}" not found` }, { status: 400 })
+    }
+    institutions_id = inst.id
+  }
+
+  // 3. Insert with both ID and code
+  const { data, error } = await supabase
+    .from('entity')
+    .insert({
+      institutions_id,
+      institution_code,
+      code: body.code.trim(),
+      name: body.name?.trim() || null,
+    })
+    .select()
+    .single()
+
+  // 4. Error handling
+  if (error) {
+    if (error.code === '23505') return NextResponse.json({ error: 'Already exists' }, { status: 400 })
+    if (error.code === '23503') return NextResponse.json({ error: 'Invalid reference' }, { status: 400 })
+    return NextResponse.json({ error: 'Failed to create' }, { status: 500 })
+  }
+
+  return NextResponse.json(data, { status: 201 })
+}
+```
+
+### PUT Route Structure
+
+```typescript
+export async function PUT(request: Request) {
+  const body = await request.json()
+  const { id, ...updateData } = body
+
+  if (!id) {
+    return NextResponse.json({ error: 'ID is required' }, { status: 400 })
+  }
+
+  // Don't allow changing institution after creation
+  delete updateData.institutions_id
+  delete updateData.institution_code
+
+  const { data, error } = await supabase
+    .from('entity')
+    .update(updateData)
+    .eq('id', id)
+    .select()
+    .single()
+
+  if (error) {
+    return NextResponse.json({ error: 'Failed to update' }, { status: 500 })
+  }
+
+  return NextResponse.json(data)
+}
+```
+
+### DELETE Route Structure
+
+```typescript
+export async function DELETE(request: Request) {
+  const { searchParams } = new URL(request.url)
+  const id = searchParams.get('id')
+
+  if (!id) {
+    return NextResponse.json({ error: 'ID is required' }, { status: 400 })
+  }
+
+  const { error } = await supabase.from('entity').delete().eq('id', id)
+
+  if (error) {
+    if (error.code === '23503') {
+      return NextResponse.json({ error: 'Cannot delete - has related records' }, { status: 400 })
+    }
+    return NextResponse.json({ error: 'Failed to delete' }, { status: 500 })
+  }
+
+  return NextResponse.json({ success: true })
+}
+```
+
+### Complex Query Patterns
+
+**Nested Relationships:**
+```typescript
+const { data } = await supabase
+  .from('exam_registrations')
+  .select(`
+    id,
+    student_id,
+    course_offerings(
+      id,
+      course_mapping:course_id(
+        courses:course_id(id, course_code, course_name)
+      )
+    )
+  `)
+  .eq('examination_session_id', sessionId)
+```
+
+**Separate Bulk Fetch (for one-to-many):**
+```typescript
+// 1. Get primary data
+const { data: registrations } = await supabase.from('exam_registrations').select('*')
+
+// 2. Extract IDs for related data
+const courseOfferingIds = [...new Set(registrations.map(r => r.course_offering_id))]
+
+// 3. Bulk fetch related data
+const { data: timetables } = await supabase
+  .from('exam_timetables')
+  .select('*')
+  .in('course_offering_id', courseOfferingIds)
+
+// 4. Create lookup map
+const timetablesMap = new Map(timetables.map(tt => [tt.course_offering_id, tt]))
+```
+
+### MyJKKN API Route Pattern
+
+```typescript
+export async function GET(request: Request) {
+  const { searchParams } = new URL(request.url)
+  const institutionId = searchParams.get('institutions_id')
+
+  // Get myjkkn_institution_ids from COE institution
+  const { data: institution } = await supabase
+    .from('institutions')
+    .select('myjkkn_institution_ids')
+    .eq('id', institutionId)
+    .single()
+
+  const myjkknIds = institution?.myjkkn_institution_ids || []
+
+  // Fetch from MyJKKN for each institution ID
+  const allPrograms: any[] = []
+  const seenCodes = new Set<string>()
+
+  for (const myjkknInstId of myjkknIds) {
+    const response = await fetch(`${MYJKKN_API}/programs?institution_id=${myjkknInstId}`)
+    const data = await response.json()
+    const programs = data.data || data || []
+
+    // Client-side filter + deduplicate by CODE
+    for (const p of programs) {
+      const code = p.program_id || p.program_code
+      if (code && p.institution_id === myjkknInstId && !seenCodes.has(code)) {
+        seenCodes.add(code)
+        allPrograms.push(p)
+      }
+    }
+  }
+
+  return NextResponse.json(allPrograms)
+}
+```
+
+### Response Formats
+
+```typescript
+// Simple array
+return NextResponse.json(data || [])
+
+// With metadata
+return NextResponse.json({
+  data: formattedData,
+  total: formattedData.length,
+  metadata: { institution_id: institutionId }
+})
+
+// Success with details
+return NextResponse.json({
+  success: true,
+  data: hallTicketData,
+  student_count: students.length
+})
+```
+
 ## Important Notes
 
 - **Race Conditions:** Use atomic updates with conditional checks (`.is('used_at', null)`)
 - **RLS Bypass:** Service role key bypasses RLS - use in server API routes only
 - **Session Handling:** Middleware validates sessions and handles inactive users
 - **MyJKKN Responses:** Always handle both `response.data` and direct array: `const data = response.data || response || []`
+- **Row Limits:** Use `.range(0, 9999)` to override Supabase's default 1000-row limit
+- **Institution in Updates:** Never allow changing `institutions_id` after record creation
