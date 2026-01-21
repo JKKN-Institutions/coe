@@ -86,17 +86,18 @@ export async function GET(request: NextRequest) {
 			}
 		}
 
-		// Deduplicate by program_code
+		// Deduplicate by program_code (MyJKKN uses program_id as the CODE field, not UUID!)
 		// Programs with same code exist in both Aided and Self institutions
 		const programMap = new Map<string, any>()
 		for (const prog of allPrograms) {
-			const code = prog.program_code
+			// MyJKKN returns program_id as the CODE (e.g., "UEN"), not as a UUID
+			const code = prog.program_id || prog.program_code
 			if (code && !programMap.has(code)) {
 				programMap.set(code, {
 					id: prog.id,
 					program_code: code,
-					program_name: prog.program_name,
-					program_order: 999, // Default order
+					program_name: prog.program_name || prog.name || code,
+					program_order: prog.program_order ?? 999,
 					total_semesters: prog.total_semesters || 6
 				})
 			}

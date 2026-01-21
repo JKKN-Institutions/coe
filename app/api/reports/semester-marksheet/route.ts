@@ -163,9 +163,12 @@ export async function GET(req: NextRequest) {
 				return NextResponse.json({ error: 'No marks found for the student' }, { status: 404 })
 			}
 
-			// Get student details
-			const studentName = finalMarks[0]?.exam_registrations?.student_name || ''
-			const registerNo = finalMarks[0]?.exam_registrations?.stu_register_no || ''
+			// Get student details - exam_registrations may be array or single object
+			const examReg = Array.isArray(finalMarks[0]?.exam_registrations)
+				? finalMarks[0]?.exam_registrations[0]
+				: finalMarks[0]?.exam_registrations
+			const studentName = examReg?.student_name || ''
+			const registerNo = examReg?.stu_register_no || ''
 
 			// Fetch date of birth from learners_profiles using register number
 			let dateOfBirth: string | null = null
@@ -633,32 +636,76 @@ export async function GET(req: NextRequest) {
 			const institutionId = searchParams.get('institutionId')
 			const sessionId = searchParams.get('sessionId')
 
+			console.log('[Semester Marksheet API - Programs] institutionId:', institutionId, 'sessionId:', sessionId)
+
 			if (!institutionId) {
 				return NextResponse.json({ error: 'institutionId is required' }, { status: 400 })
 			}
 
-			// Fetch programs from semester_results table (only programs with actual results)
-			let query = supabase
-				.from('semester_results')
-				.select('program_code, program_name')
-				.eq('institutions_id', institutionId)
-				.eq('is_active', true)
+			// Get institution's myjkkn_institution_ids for MyJKKN API call
+			const { data: institution, error: instError } = await supabase
+				.from('institutions')
+				.select('id, institution_code, myjkkn_institution_ids')
+				.eq('id', institutionId)
+				.single()
 
-			if (sessionId) {
-				query = query.eq('examination_session_id', sessionId)
+			if (instError || !institution) {
+				console.error('[Semester Marksheet API] Institution not found:', instError)
+				return NextResponse.json({ error: 'Institution not found' }, { status: 404 })
 			}
 
-			const { data, error } = await query
+			console.log('[Semester Marksheet API - Programs] Institution found:', institution.institution_code, 'myjkkn_ids:', institution.myjkkn_institution_ids)
 
-			if (error) throw error
+			const myjkknInstitutionIds: string[] = institution.myjkkn_institution_ids || []
 
-			// Deduplicate by program_code and extract code + name
-			const programMap = new Map<string, string>()
-			data?.forEach(d => {
-				if (d.program_code && !programMap.has(d.program_code)) {
-					programMap.set(d.program_code, d.program_name || d.program_code)
+			if (myjkknInstitutionIds.length === 0) {
+				console.log('[Semester Marksheet API] No myjkkn_institution_ids found - returning empty')
+				return NextResponse.json({ programs: [] })
+			}
+
+			// Fetch programs from MyJKKN API for each institution ID
+			const allPrograms: any[] = []
+			const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'
+
+			for (const myjkknInstId of myjkknInstitutionIds) {
+				try {
+					const params = new URLSearchParams({
+						limit: '100',
+						is_active: 'true',
+						institution_id: myjkknInstId
+					})
+
+					const res = await fetch(`${baseUrl}/api/myjkkn/programs?${params.toString()}`)
+
+					if (!res.ok) {
+						console.error(`[Semester Marksheet API] HTTP error ${res.status} for inst ${myjkknInstId}`)
+						continue
+					}
+
+					const response = await res.json()
+					const programs = response.data || response || []
+
+					// Client-side filter by institution_id
+					const filteredPrograms = Array.isArray(programs)
+						? programs.filter((p: any) => p.institution_id === myjkknInstId && p.is_active !== false)
+						: []
+
+					allPrograms.push(...filteredPrograms)
+				} catch (error) {
+					console.error(`[Semester Marksheet API] Error fetching programs for inst ${myjkknInstId}:`, error)
 				}
-			})
+			}
+
+			// Deduplicate by program_code (MyJKKN uses program_id as the CODE field, not UUID!)
+			// Per myjkkn-coe-dev-rules: use program_id || program_code for the code field
+			const programMap = new Map<string, string>()
+			for (const prog of allPrograms) {
+				// MyJKKN returns program_id as the CODE (e.g., "UEN"), not as a UUID
+				const code = prog.program_id || prog.program_code
+				if (code && !programMap.has(code)) {
+					programMap.set(code, prog.program_name || prog.name || code)
+				}
+			}
 
 			// Convert to array and sort by program code
 			const programs = Array.from(programMap.entries())
@@ -667,6 +714,8 @@ export async function GET(req: NextRequest) {
 					program_name: name
 				}))
 				.sort((a, b) => a.program_code.localeCompare(b.program_code))
+
+			console.log('[Semester Marksheet API - Programs] Returning', programs.length, 'programs:', programs.map(p => p.program_code))
 
 			return NextResponse.json({ programs })
 		}

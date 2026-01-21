@@ -815,7 +815,7 @@ export default function GalleyReportPage() {
 										</div>
 										<div>
 											<CardTitle className="text-lg font-heading">
-												{reportData.program?.degrees?.degree_name || ''} {reportData.program?.program_name}
+												{reportData.program?.program_name}
 											</CardTitle>
 											<CardDescription>
 												{reportData.session?.session_name} | Semester {reportData.semester} | Batch {reportData.batch}

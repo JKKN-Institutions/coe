@@ -61,7 +61,11 @@ export async function GET(request: NextRequest) {
 				const response = await res.json()
 				const programs = response.data || response || []
 				// Filter by program_code client-side
-				const matchingProgram = programs.find((p: any) => p.program_code === programCode)
+				// MyJKKN returns program_id as the CODE (e.g., "UEN"), not as a UUID
+				const matchingProgram = programs.find((p: any) => {
+					const code = p.program_id || p.program_code
+					return code === programCode
+				})
 				if (matchingProgram) {
 					totalSemesters = matchingProgram.total_semesters || 6
 					console.log(`[Marksheet Distribution Semesters API] Found program ${programCode} with ${totalSemesters} semesters`)

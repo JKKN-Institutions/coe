@@ -78,10 +78,12 @@ export async function GET(request: NextRequest) {
 				const response = await res.json()
 				const programs = response.data || response || []
 				// Filter by program_code client-side
+				// MyJKKN returns program_id as the CODE (e.g., "UEN"), not as a UUID
 				for (const prog of programs) {
-					if (prog.program_code === programCode && prog.id && !programIds.includes(prog.id)) {
+					const code = prog.program_id || prog.program_code
+					if (code === programCode && prog.id && !programIds.includes(prog.id)) {
 						programIds.push(prog.id)
-						console.log(`[Marksheet Distribution API] Found program ${prog.program_code} with ID ${prog.id}`)
+						console.log(`[Marksheet Distribution API] Found program ${code} with ID ${prog.id}`)
 					}
 				}
 			} catch (error) {

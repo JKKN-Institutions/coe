@@ -380,48 +380,51 @@ export async function GET(request: NextRequest) {
 			end_date: sessionRaw.exam_end_date
 		} : null
 
-		// Fetch program details from final_marks (programs are from MyJKKN API, no local table)
-		// Try exact match first, then ilike for %value% pattern
-		let programData = null
-
-		// First try exact match
-		const { data: progExactData, error: progExactError } = await supabase
-			.from('final_marks')
-			.select('program_id, program_code')
-			.eq('institutions_id', institutionId)
-			.eq('examination_session_id', sessionId)
-			.eq('program_code', programId)
-			.eq('is_active', true)
-			.limit(1)
+		// Fetch program details from MyJKKN API using program_code
+		// Get myjkkn_institution_ids from institution
+		const { data: instForProgram, error: instForProgramError } = await supabase
+			.from('institutions')
+			.select('myjkkn_institution_ids')
+			.eq('id', institutionId)
 			.single()
 
-		if (!progExactError && progExactData) {
-			programData = progExactData
-		} else {
-			// Fallback to ilike pattern
-			const { data: progIlikeData, error: progIlikeError } = await supabase
-				.from('final_marks')
-				.select('program_id, program_code')
-				.eq('institutions_id', institutionId)
-				.eq('examination_session_id', sessionId)
-				.ilike('program_code', `%${programId}%`)
-				.eq('is_active', true)
-				.limit(1)
-				.single()
+		const myjkknIds = instForProgram?.myjkkn_institution_ids || []
+		const baseUrl = request.nextUrl.origin
 
-			if (!progIlikeError && progIlikeData) {
-				programData = progIlikeData
+		// Fetch program name from MyJKKN API
+		let programName = programId // Default to program_code if not found
+		let programDegree = null
+
+		for (const myjkknInstId of myjkknIds) {
+			try {
+				const programsRes = await fetch(`${baseUrl}/api/myjkkn/programs?institution_id=${myjkknInstId}&is_active=true&limit=1000`)
+				if (programsRes.ok) {
+					const programsResponse = await programsRes.json()
+					const programsData = programsResponse.data || programsResponse || []
+					if (Array.isArray(programsData)) {
+						// Find program by program_code (MyJKKN uses program_id as CODE)
+						const matchedProgram = programsData.find((p: any) =>
+							(p.program_id === programId || p.program_code === programId) && p.institution_id === myjkknInstId
+						)
+						if (matchedProgram) {
+							programName = matchedProgram.program_name || matchedProgram.name || programId
+							break
+						}
+					}
+				}
+			} catch (e) {
+				console.error('Error fetching program from MyJKKN:', e)
 			}
 		}
 
-		// Construct program object from final_marks data
-		const program = programData ? {
-			id: programData.program_id || programData.program_code,
-			program_code: programData.program_code,
-			program_name: programData.program_code, // program_name not available locally
-			display_name: programData.program_code,
-			degrees: null // degree info not available without programs table
-		} : null
+		// Construct program object
+		const program = {
+			id: programId,
+			program_code: programId,
+			program_name: programName,
+			display_name: programName,
+			degrees: programDegree
+		}
 
 		// Fetch final marks with direct query and joins
 		// Note: We use exam_registrations for student info since users table FK is not in schema cache
@@ -856,12 +859,76 @@ export async function GET(request: NextRequest) {
 
 		const highestScorer = studentTotalMarks[0] || null
 
+		// Fetch batch from MyJKKN learner-profiles API -> batch_id -> MyJKKN batches API
+		let batchName = ''
+		if (students.length > 0) {
+			const firstStudentRegNo = students[0]?.student?.register_number
+			console.log('Looking up batch for student:', firstStudentRegNo)
+			if (firstStudentRegNo) {
+				try {
+					// Step 1: Get batch_id from MyJKKN learner-profiles API
+					const learnerRes = await fetch(`${baseUrl}/api/myjkkn/learner-profiles?search=${encodeURIComponent(firstStudentRegNo)}&limit=10`)
+					if (learnerRes.ok) {
+						const learnerResponse = await learnerRes.json()
+						const learners = learnerResponse.data || learnerResponse || []
+						console.log('MyJKKN learner profiles found:', Array.isArray(learners) ? learners.length : 0)
+
+						if (Array.isArray(learners) && learners.length > 0) {
+							const matchedLearner = learners.find((l: any) =>
+								l.register_number === firstStudentRegNo || l.roll_number === firstStudentRegNo
+							) || learners[0]
+
+							const batchId = matchedLearner.batch_id
+							console.log('MyJKKN learner batch_id:', batchId)
+							console.log('MyJKKN learner batch_name (enriched):', matchedLearner.batch_name)
+
+							// The enriched API response already has batch_name, but it might be from wrong institution
+							// Get batch_name directly from MyJKKN batches table using the specific batch_id
+							if (batchId) {
+								const batchRes = await fetch(`${baseUrl}/api/myjkkn/batches?limit=1000`)
+								if (batchRes.ok) {
+									const batchResponse = await batchRes.json()
+									const batches = batchResponse.data || batchResponse || []
+									console.log('MyJKKN batches found:', Array.isArray(batches) ? batches.length : 0)
+
+									if (Array.isArray(batches) && batches.length > 0) {
+										const matchedBatch = batches.find((b: any) => b.id === batchId)
+										if (matchedBatch) {
+											console.log('Matched batch object:', JSON.stringify(matchedBatch))
+											batchName = matchedBatch.batch_name || matchedBatch.name || matchedBatch.batch_code || ''
+											console.log('Fetched batch_name from MyJKKN batches API:', batchName)
+										} else {
+											console.log('No batch found in MyJKKN with id:', batchId)
+											// Log all batch IDs to see what's available
+											console.log('Available batch IDs:', batches.slice(0, 5).map((b: any) => ({ id: b.id, name: b.batch_name })))
+										}
+									}
+								}
+							} else {
+								console.log('No batch_id found in MyJKKN learner profile')
+							}
+						}
+					} else {
+						console.log('MyJKKN learner-profiles API failed:', learnerRes.status)
+					}
+				} catch (e) {
+					console.error('Error fetching batch from MyJKKN:', e)
+				}
+			}
+		}
+
+		// Fallback to calculated batch if not found
+		if (!batchName && session?.start_date) {
+			const startYear = new Date(session.start_date).getFullYear()
+			batchName = `${startYear}-${startYear + 3}`
+		}
+
 		const response = {
 			institution,
 			session,
 			program,
 			semester: parseInt(semester),
-			batch: session?.session_code ? `${new Date(session.start_date).getFullYear()}-${new Date(session.start_date).getFullYear() + 3}` : '',
+			batch: batchName,
 			students,
 			courseAnalysis,
 			statistics: {

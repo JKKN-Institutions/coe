@@ -17,12 +17,15 @@ import { cn } from "@/lib/utils"
 import Link from "next/link"
 import { generateMarksheetDistributionPDF } from "@/lib/utils/generate-marksheet-distribution-pdf"
 import { useInstitutionFilter } from "@/hooks/use-institution-filter"
+import { useMyJKKNInstitutionFilter } from "@/hooks/use-myjkkn-institution-filter"
 
 interface Institution {
 	id: string
 	institution_code: string
 	institution_name: string
+	name?: string
 	counselling_code?: string
+	myjkkn_institution_ids?: string[] | null
 }
 
 interface Program {
@@ -51,6 +54,9 @@ export default function MarksheetDistributionPage() {
 		shouldFilter,
 		institutionId: contextInstitutionId
 	} = useInstitutionFilter()
+
+	// MyJKKN data fetching hook
+	const { fetchPrograms: fetchMyJKKNPrograms } = useMyJKKNInstitutionFilter()
 
 	// Dropdown data
 	const [institutions, setInstitutions] = useState<Institution[]>([])
@@ -83,15 +89,21 @@ export default function MarksheetDistributionPage() {
 	const fetchInstitutions = useCallback(async () => {
 		try {
 			setLoadingInstitutions(true)
-			const url = appendToUrl('/api/exam-management/exam-attendance/dropdowns?type=institutions')
+			// Use /api/master/institutions to get myjkkn_institution_ids (same as hall-tickets)
+			const url = appendToUrl('/api/master/institutions')
 			const res = await fetch(url)
 			if (res.ok) {
 				const data = await res.json()
-				setInstitutions(data)
+				// Map to include both 'name' and 'institution_name' for compatibility
+				const mappedData = data.map((inst: any) => ({
+					...inst,
+					institution_name: inst.name || inst.institution_name
+				}))
+				setInstitutions(mappedData)
 
 				// Auto-select logic
-				if (data.length === 1) {
-					setSelectedInstitutionId(data[0].id)
+				if (mappedData.length === 1) {
+					setSelectedInstitutionId(mappedData[0].id)
 				} else if (shouldFilter && contextInstitutionId) {
 					setSelectedInstitutionId(contextInstitutionId)
 				} else if (!mustSelectInstitution && contextInstitutionId) {
@@ -122,20 +134,34 @@ export default function MarksheetDistributionPage() {
 	const fetchPrograms = async (institutionId: string) => {
 		try {
 			setLoadingPrograms(true)
+			setPrograms([])
 
-			// Get institution to check if it's CAS (Arts)
+			// Get institution with its myjkkn_institution_ids (same pattern as hall-tickets)
 			const institution = institutions.find(inst => inst.id === institutionId)
+			const myjkknIds = institution?.myjkkn_institution_ids || []
 
-			console.log('[MarksheetDistribution] Fetching programs for institution:', institutionId, institution?.counselling_code)
+			console.log('[MarksheetDistribution] Fetching programs for institution:', institutionId, 'myjkknIds:', myjkknIds)
 
-			// Fetch programs from local database API
-			const res = await fetch(`/api/reports/marksheet-distribution/programs?institution_id=${institutionId}`)
-			if (!res.ok) {
-				throw new Error('Failed to fetch programs')
+			if (myjkknIds.length === 0) {
+				console.warn('[MarksheetDistribution] No MyJKKN institution IDs found for institution:', institutionId)
+				setPrograms([])
+				return
 			}
 
-			const data = await res.json()
-			const sortedPrograms = (data.programs || []).sort((a: Program, b: Program) => {
+			// Fetch programs from MyJKKN API using the hook (same as hall-tickets)
+			const progs = await fetchMyJKKNPrograms(myjkknIds)
+			console.log('[MarksheetDistribution] Programs from MyJKKN:', progs.length, progs)
+
+			// Map to our Program interface
+			const mappedPrograms: Program[] = progs.map((p: any) => ({
+				id: p.id,
+				program_code: p.program_code || p.program_id,
+				program_name: p.program_name || p.name,
+				program_order: p.program_order ?? 999
+			}))
+
+			// Sort by program_order then by program_code
+			const sortedPrograms = mappedPrograms.sort((a, b) => {
 				const orderA = a.program_order ?? 999
 				const orderB = b.program_order ?? 999
 				if (orderA !== orderB) return orderA - orderB
@@ -146,12 +172,8 @@ export default function MarksheetDistributionPage() {
 			setPrograms(sortedPrograms)
 
 		} catch (error) {
-			console.error('Error fetching programs:', error)
-			toast({
-				title: "Error",
-				description: "Failed to fetch programs",
-				variant: "destructive"
-			})
+			console.error('[MarksheetDistribution] Error fetching programs:', error)
+			setPrograms([])
 		} finally {
 			setLoadingPrograms(false)
 		}

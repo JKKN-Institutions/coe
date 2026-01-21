@@ -201,7 +201,7 @@ export function generateGalleyReportPDF(data: GalleyReportData): string {
 		// ========== EXAMINATION TITLE ==========
 		doc.setFont('times', 'bold')
 		doc.setFontSize(12)
-		const title = sessionName ? `END SEMESTER EXAMINATIONS - ${sessionName.toUpperCase()}` : 'END SEMESTER EXAMINATIONS'
+		const title = sessionName ? `END SEMESTER EXAMINATION REPORTS - ${sessionName.toUpperCase()}` : 'END SEMESTER EXAMINATIONS'
 		doc.text(title, pageWidth / 2, currentY, { align: 'center' })
 
 		currentY += 6
@@ -209,14 +209,11 @@ export function generateGalleyReportPDF(data: GalleyReportData): string {
 		// ========== PROGRAM INFO LINE ==========
 		doc.setFont('times', 'bold')
 		doc.setFontSize(11)
-		const programText = `PROGRAMME & BRANCH: ${data.program?.degrees?.degree_name || ''} ${data.program?.program_name || ''}`
+		const programText = `PROGRAM: ${data.program?.program_code || ''} - ${data.program?.program_name || ''}`
 		doc.text(programText, margin, currentY)
 
-		const programCode = `PROGRAMME CODE: ${data.program?.program_code || ''}`
-		doc.text(programCode, pageWidth / 2, currentY)
-
 		const semesterText = `SEMESTER: ${toRoman(data.semester)}`
-		doc.text(semesterText, pageWidth - margin - 70, currentY)
+		doc.text(semesterText, pageWidth / 2, currentY, { align: 'center' })
 
 		const batchText = `BATCH: ${data.batch}`
 		doc.text(batchText, pageWidth - margin, currentY, { align: 'right' })
@@ -344,14 +341,18 @@ export function generateGalleyReportPDF(data: GalleyReportData): string {
 					const courseAnalysis = allCourses[courseIndex]
 
 					if (courseAnalysis) {
-						// Find student's marks for this course
-						const courseMarks = studentCourses.find(c => c.course.id === courseAnalysis.course.id)
+						// Find student's marks for this course - try matching by ID first, then by course_code
+						const courseMarks = studentCourses.find(c =>
+							c.course.id === courseAnalysis.course.id ||
+							c.course.course_code === courseAnalysis.course.course_code
+						)
 
 						if (courseMarks) {
 							const courseCode = courseMarks.course.course_code || courseAnalysis.course.course_code
-							const int = courseMarks.internal_marks ?? '-'
-							const ext = courseMarks.external_marks ?? '-'
-							const tot = courseMarks.total_marks ?? '-'
+							// Convert marks to string, handling 0 as valid value (only null/undefined becomes '-')
+							const int = (courseMarks.internal_marks === 0 || courseMarks.internal_marks) ? String(courseMarks.internal_marks) : '-'
+							const ext = (courseMarks.external_marks === 0 || courseMarks.external_marks) ? String(courseMarks.external_marks) : '-'
+							const tot = (courseMarks.total_marks === 0 || courseMarks.total_marks) ? String(courseMarks.total_marks) : '-'
 
 							// Determine if student is absent
 							const isAbsent = courseMarks.pass_status === 'Absent' ||
@@ -577,28 +578,24 @@ export function generateGalleyReportPDF(data: GalleyReportData): string {
 		margin: { left: margin, right: margin }
 	})
 
-	startY = (doc as any).lastAutoTable.finalY + 15
+	startY = (doc as any).lastAutoTable.finalY + 35
 
 	// =========================================
-	// SIGNATURE SECTION
+	// SIGNATURE SECTION (right after table with signature space)
 	// =========================================
-	if (pageHeight - startY < 30) {
+	// Check if we need a new page for signature (need ~25mm space)
+	if (pageHeight - startY < 25) {
 		doc.addPage()
 		pageNumber++
-		startY = pageHeight - 40
-	} else {
-		startY = pageHeight - 30
+		startY = 30
 	}
 
-	// Signature lines
-	doc.setLineWidth(0.3)
-
-	// Right signature - CONTROLLER OF EXAMINATIONS
+	// Right signature - CONTROLLER OF EXAMINATIONS (positioned after table)
 	const rightSignX = pageWidth - margin - 50
-	
+
 	doc.setFont('times', 'bold')
 	doc.setFontSize(9)
-	doc.text('CONTROLLER OF EXAMINATIONS', rightSignX, startY + 6, { align: 'center' })
+	doc.text('CONTROLLER OF EXAMINATIONS', rightSignX, startY, { align: 'center' })
 	// Save PDF
 	const programCode = data.program?.program_code || 'PROGRAM'
 	const semester = data.semester || ''

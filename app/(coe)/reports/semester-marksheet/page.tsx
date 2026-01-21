@@ -187,6 +187,13 @@ export default function SemesterMarksheetPage() {
 		}
 	}, [isReady])
 
+	// Auto-select institution from context when available (for non-super_admin users)
+	useEffect(() => {
+		if (isReady && contextInstitutionId && !selectedInstitutionId) {
+			setSelectedInstitutionId(contextInstitutionId)
+		}
+	}, [isReady, contextInstitutionId, selectedInstitutionId])
+
 	const fetchInstitutions = useCallback(async () => {
 		try {
 			setLoadingInstitutions(true)
@@ -260,10 +267,14 @@ export default function SemesterMarksheetPage() {
 	const fetchPrograms = async (institutionId: string, sessionId: string) => {
 		try {
 			setLoadingPrograms(true)
+			console.log('[Semester Marksheet] Fetching programs for institutionId:', institutionId, 'sessionId:', sessionId)
 			const res = await fetch(`/api/reports/semester-marksheet?action=programs&institutionId=${institutionId}&sessionId=${sessionId}`)
 			if (res.ok) {
 				const data = await res.json()
+				console.log('[Semester Marksheet] Programs received:', data.programs?.length || 0)
 				setPrograms(data.programs || [])
+			} else {
+				console.error('[Semester Marksheet] Programs fetch failed:', res.status)
 			}
 		} catch (error) {
 			console.error('Error fetching programs:', error)
