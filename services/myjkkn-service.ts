@@ -392,6 +392,11 @@ export async function fetchAllMyJKKNBatches(
 	return response.data
 }
 
+export async function fetchMyJKKNBatchById(id: string): Promise<MyJKKNBatch> {
+	const response = await fetchFromMyJKKN<{ data: MyJKKNBatch }>(`/api-management/academic/batches/${id}`)
+	return response.data
+}
+
 // =====================================================
 // LEARNER PROFILES
 // =====================================================

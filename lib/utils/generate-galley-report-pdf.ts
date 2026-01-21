@@ -590,6 +590,8 @@ export function generateGalleyReportPDF(data: GalleyReportData): string {
 		startY = 30
 	}
 
+
+	
 	// Right signature - CONTROLLER OF EXAMINATIONS (positioned after table)
 	const rightSignX = pageWidth - margin - 50
 

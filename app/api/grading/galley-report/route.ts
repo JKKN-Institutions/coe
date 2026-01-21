@@ -859,60 +859,61 @@ export async function GET(request: NextRequest) {
 
 		const highestScorer = studentTotalMarks[0] || null
 
-		// Fetch batch from MyJKKN learner-profiles API -> batch_id -> MyJKKN batches API
+		// Fetch batch from MyJKKN: first get batch_id from learner profile, then fetch batch by ID directly
 		let batchName = ''
 		if (students.length > 0) {
 			const firstStudentRegNo = students[0]?.student?.register_number
-			console.log('Looking up batch for student:', firstStudentRegNo)
+			console.log('[Galley Report] Looking up batch for student:', firstStudentRegNo)
 			if (firstStudentRegNo) {
 				try {
-					// Step 1: Get batch_id from MyJKKN learner-profiles API
+					// Step 1: Get learner profile to get batch_id
 					const learnerRes = await fetch(`${baseUrl}/api/myjkkn/learner-profiles?search=${encodeURIComponent(firstStudentRegNo)}&limit=10`)
 					if (learnerRes.ok) {
 						const learnerResponse = await learnerRes.json()
 						const learners = learnerResponse.data || learnerResponse || []
-						console.log('MyJKKN learner profiles found:', Array.isArray(learners) ? learners.length : 0)
+						console.log('[Galley Report] MyJKKN learner profiles found:', Array.isArray(learners) ? learners.length : 0)
 
 						if (Array.isArray(learners) && learners.length > 0) {
+							// Find exact match by register_number
 							const matchedLearner = learners.find((l: any) =>
 								l.register_number === firstStudentRegNo || l.roll_number === firstStudentRegNo
 							) || learners[0]
 
 							const batchId = matchedLearner.batch_id
-							console.log('MyJKKN learner batch_id:', batchId)
-							console.log('MyJKKN learner batch_name (enriched):', matchedLearner.batch_name)
+							console.log('[Galley Report] Matched learner batch_id:', batchId)
 
-							// The enriched API response already has batch_name, but it might be from wrong institution
-							// Get batch_name directly from MyJKKN batches table using the specific batch_id
+							// Step 2: Fetch batch directly by ID from MyJKKN batches API
 							if (batchId) {
-								const batchRes = await fetch(`${baseUrl}/api/myjkkn/batches?limit=1000`)
-								if (batchRes.ok) {
-									const batchResponse = await batchRes.json()
-									const batches = batchResponse.data || batchResponse || []
-									console.log('MyJKKN batches found:', Array.isArray(batches) ? batches.length : 0)
-
-									if (Array.isArray(batches) && batches.length > 0) {
-										const matchedBatch = batches.find((b: any) => b.id === batchId)
-										if (matchedBatch) {
-											console.log('Matched batch object:', JSON.stringify(matchedBatch))
-											batchName = matchedBatch.batch_name || matchedBatch.name || matchedBatch.batch_code || ''
-											console.log('Fetched batch_name from MyJKKN batches API:', batchName)
-										} else {
-											console.log('No batch found in MyJKKN with id:', batchId)
-											// Log all batch IDs to see what's available
-											console.log('Available batch IDs:', batches.slice(0, 5).map((b: any) => ({ id: b.id, name: b.batch_name })))
-										}
+								try {
+									const batchByIdRes = await fetch(`${baseUrl}/api/myjkkn/batches/${batchId}`)
+									if (batchByIdRes.ok) {
+										const batchData = await batchByIdRes.json()
+										batchName = batchData.batch_name || ''
+										console.log('[Galley Report] Fetched batch directly by ID:', {
+											id: batchData.id,
+											batch_name: batchData.batch_name,
+											batch_code: batchData.batch_code
+										})
+									} else {
+										console.log('[Galley Report] Batch by ID API failed, status:', batchByIdRes.status)
+										// Fallback to enriched batch_name
+										batchName = matchedLearner.batch_name || ''
 									}
+								} catch (batchError) {
+									console.error('[Galley Report] Error fetching batch by ID:', batchError)
+									// Fallback to enriched batch_name
+									batchName = matchedLearner.batch_name || ''
 								}
 							} else {
-								console.log('No batch_id found in MyJKKN learner profile')
+								// No batch_id, use enriched batch_name if available
+								batchName = matchedLearner.batch_name || ''
 							}
 						}
 					} else {
-						console.log('MyJKKN learner-profiles API failed:', learnerRes.status)
+						console.log('[Galley Report] MyJKKN learner-profiles API failed:', learnerRes.status)
 					}
 				} catch (e) {
-					console.error('Error fetching batch from MyJKKN:', e)
+					console.error('[Galley Report] Error fetching batch from MyJKKN:', e)
 				}
 			}
 		}

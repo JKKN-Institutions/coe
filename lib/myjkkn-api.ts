@@ -63,6 +63,7 @@ export {
 	// Batches
 	fetchMyJKKNBatches,
 	fetchAllMyJKKNBatches,
+	fetchMyJKKNBatchById,
 	// Students
 	fetchMyJKKNStudents,
 	fetchAllMyJKKNStudents,
