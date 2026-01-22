@@ -334,17 +334,17 @@ export function generateGalleyReportPDF(data: GalleyReportData): string {
 					row.push({
 						content: studentIndex + 1,
 						rowSpan: rowsForThisStudent,
-						styles: { halign: 'center', valign: 'middle', fontSize: 8 }
+						styles: { halign: 'center', valign: 'middle', fontSize: 10 }
 					})
 					row.push({
 						content: student.student.register_number || '',
 						rowSpan: rowsForThisStudent,
-						styles: { halign: 'center', valign: 'middle', fontSize: 8 }
+						styles: { halign: 'center', valign: 'middle', fontSize: 10 }
 					})
 					row.push({
 						content: `${student.student.first_name} ${student.student.last_name || ''}`.trim(),
 						rowSpan: rowsForThisStudent,
-						styles: { halign: 'left', valign: 'middle', fontSize: 8 }
+						styles: { halign: 'left', valign: 'middle', fontSize: 10}
 					})
 				}
 
@@ -444,7 +444,7 @@ export function generateGalleyReportPDF(data: GalleyReportData): string {
 		theme: 'grid',
 		styles: {
 			font: 'times',
-			fontSize: 8,
+			fontSize: 10,
 			cellPadding: 1.5,
 			lineColor: [0, 0, 0],
 			lineWidth: 0.2,
@@ -454,12 +454,12 @@ export function generateGalleyReportPDF(data: GalleyReportData): string {
 		},
 		headStyles: {
 			fontStyle: 'bold',
-			fontSize: 8,
+			fontSize: 10,
 			fillColor: [230, 230, 230],
 			textColor: [0, 0, 0]
 		},
 		bodyStyles: {
-			fontSize: 8
+			fontSize: 10
 		},
 		columnStyles: buildColumnStyles(),
 		margin: { left: margin, right: margin },
@@ -477,7 +477,7 @@ export function generateGalleyReportPDF(data: GalleyReportData): string {
 	// LEGEND
 	// =========================================
 	doc.setFont('times', 'normal')
-	doc.setFontSize(6)
+	doc.setFontSize(10)
 	const legendText = 'INTERNAL; TOT - TOTAL; RES - RESULT; P - PASS; RA - REAPPEAR; NA - NOT APPLICABLE; AAA - ABSENT; # - NO MARKS; LG - LETTER GRADE; GP - GRADE POINTS'
 	doc.text(legendText, margin, startY)
 
@@ -543,7 +543,7 @@ export function generateGalleyReportPDF(data: GalleyReportData): string {
 		theme: 'grid',
 		styles: {
 			font: 'times',
-			fontSize: 9,
+			fontSize: 10,
 			cellPadding: 2,
 			lineColor: [0, 0, 0],
 			lineWidth: 0.2,
@@ -553,12 +553,12 @@ export function generateGalleyReportPDF(data: GalleyReportData): string {
 			fillColor: [230, 230, 230],
 			textColor: [0, 0, 0],
 			fontStyle: 'bold',
-			fontSize: 8,
+			fontSize: 10,
 			halign: 'center'
 		},
 		bodyStyles: {
 			halign: 'center',
-			fontSize: 9
+			fontSize: 10
 		},
 		columnStyles: {
 			0: { cellWidth: 30, halign: 'center' },  // Course code
@@ -593,7 +593,7 @@ export function generateGalleyReportPDF(data: GalleyReportData): string {
 	const rightSignX = pageWidth - margin - 50
 
 	doc.setFont('times', 'bold')
-	doc.setFontSize(9)
+	doc.setFontSize(10)
 	doc.text('CONTROLLER OF EXAMINATIONS', rightSignX, startY, { align: 'center' })
 
 	// Add footer to the last page
