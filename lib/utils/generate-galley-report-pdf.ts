@@ -198,7 +198,7 @@ export function generateGalleyReportPDF(data: GalleyReportData): string {
 		// ========== EXAMINATION TITLE ==========
 		doc.setFont('times', 'bold')
 		doc.setFontSize(12)
-		const title = sessionName ? `END SEMESTER EXAMINATION REPORTS - ${sessionName.toUpperCase()}` : 'END SEMESTER EXAMINATIONS'
+		const title = sessionName ? `END SEMESTER EXAMINATION RESULTS - ${sessionName.toUpperCase()}` : 'END SEMESTER EXAMINATIONS'
 		doc.text(title, pageWidth / 2, currentY, { align: 'center' })
 
 		currentY += 6

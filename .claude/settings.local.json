@@ -82,7 +82,9 @@
       "mcp__playwright__browser_network_requests",
       "mcp__playwright__browser_type",
       "Bash(supabase db push:*)",
-      "Bash(echo:*)"
+      "Bash(echo:*)",
+      "Bash(bun --version:*)",
+      "Bash(npm:*)"
     ],
     "deny": [
       "mcp__filesystem__*"
