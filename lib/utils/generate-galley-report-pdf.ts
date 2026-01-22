@@ -125,7 +125,8 @@ export function generateGalleyReportPDF(data: GalleyReportData): string {
 	const pageWidth = doc.internal.pageSize.getWidth()
 	const pageHeight = doc.internal.pageSize.getHeight()
 	const margin = 5
-
+ 
+	
 	// Get all courses sorted by course_order from course_mapping
 	const allCourses = [...data.courseAnalysis].sort((a, b) => {
 		// Use 999 as fallback so courses without course_order appear at the end
