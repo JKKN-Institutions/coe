@@ -1,6 +1,6 @@
 "use client"
 
-import { useMemo, useState, useEffect } from "react"
+import React, { useMemo, useState, useEffect, useCallback, memo, useRef } from "react"
 import { useSearchParams } from "next/navigation"
 import { useInstitutionFilter } from "@/hooks/use-institution-filter"
 import { AppSidebar } from "@/components/layout/app-sidebar"
@@ -13,19 +13,19 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Label } from "@/components/ui/label"
+import { Skeleton } from "@/components/ui/skeleton"
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Switch } from "@/components/ui/switch"
 import { useToast } from "@/hooks/common/use-toast"
 import Link from "next/link"
-import { PlusCircle, Edit, Trash2, Save, RefreshCw, Link2, BookText, School, Calendar, Plus, X, ChevronDown, ChevronRight, CheckCircle2, Info, FileSpreadsheet, Download, Upload, XCircle, AlertTriangle } from "lucide-react"
+import { ArrowLeft, Save, RefreshCw, Calendar, Plus, Trash2, FileText, Upload, Download, Loader2, XCircle, AlertTriangle } from "lucide-react"
 import XLSX from "@/lib/utils/excel-compat"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
 import { Badge } from "@/components/ui/badge"
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
-import { Check, ChevronsUpDown } from "lucide-react"
+import { Check, ChevronsUpDown, ChevronDown, ChevronRight } from "lucide-react"
 import { cn } from "@/lib/utils"
 
 // Import types and constants from module
@@ -42,10 +42,179 @@ import {
 	fetchCourseById
 } from "@/services/course-management/course-mapping-service"
 
+// Types for course data
+type Course = {
+	id: string
+	course_code: string
+	course_title?: string
+	course_name?: string
+	course_type?: string
+	course_part_master?: string
+	course_category?: string
+	credits?: number
+	display_code?: string
+	institution_code?: string
+	regulation_code?: string
+	internal_max_mark?: number
+	internal_pass_mark?: number
+	internal_converted_mark?: number
+	external_max_mark?: number
+	external_pass_mark?: number
+	external_converted_mark?: number
+	total_pass_mark?: number
+	total_max_mark?: number
+}
+
+// Memoized Course Row Component for better performance
+const CourseTableRow = memo(function CourseTableRow({
+	mapping,
+	rowIndex,
+	semesterIndex,
+	courseMap,
+	isPopoverOpen,
+	onPopoverChange,
+	onUpdateRow,
+	onRemoveRow,
+	courses
+}: {
+	mapping: CourseMapping
+	rowIndex: number
+	semesterIndex: number
+	courseMap: Map<string, Course>
+	isPopoverOpen: boolean
+	onPopoverChange: (open: boolean) => void
+	onUpdateRow: (field: string, value: any) => void
+	onRemoveRow: () => void
+	courses: Course[]
+}) {
+	const course = mapping.course_id ? courseMap.get(mapping.course_id) : null
+
+	return (
+		<TableRow className="hover:bg-muted/50">
+			<TableCell className="text-sm font-medium py-3">{rowIndex + 1}</TableCell>
+			<TableCell className="py-3">
+				<Popover open={isPopoverOpen} onOpenChange={onPopoverChange}>
+					<PopoverTrigger asChild>
+						<Button
+							variant="outline"
+							role="combobox"
+							aria-expanded={isPopoverOpen}
+							className="h-9 w-full justify-between text-sm font-normal"
+						>
+							{mapping.course_id
+								? (() => {
+									const course = courses.find(c => c.id === mapping.course_id)
+									return course?.course_code || "Select course"
+								})()
+								: courses.length === 0
+									? "No courses available"
+									: "Select course"}
+							<ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+						</Button>
+					</PopoverTrigger>
+					<PopoverContent className="w-[400px] p-0" align="start">
+						<Command>
+							<CommandInput placeholder="Search by course code or name..." className="h-9" />
+							<CommandList>
+								<CommandEmpty>No course found.</CommandEmpty>
+								<CommandGroup>
+									{courses.map((c) => (
+										<CommandItem
+											key={c.id}
+											value={`${c.course_code} ${c.course_title || c.course_name || ''}`}
+											onSelect={() => {
+												onUpdateRow('course_id', c.id)
+												onPopoverChange(false)
+											}}
+										>
+											<div className="flex flex-col">
+												<span className="font-medium">{c.course_code}</span>
+												<span className="text-xs text-muted-foreground">
+													{c.course_title || c.course_name || '-'}
+												</span>
+											</div>
+											<Check
+												className={cn(
+													"ml-auto h-4 w-4",
+													mapping.course_id === c.id ? "opacity-100" : "opacity-0"
+												)}
+											/>
+										</CommandItem>
+									))}
+								</CommandGroup>
+							</CommandList>
+						</Command>
+					</PopoverContent>
+				</Popover>
+			</TableCell>
+			<TableCell className="text-sm py-3">
+				{(() => {
+					const course = courses.find(c => c.id === mapping.course_id)
+					return course?.course_title || course?.course_name || '-'
+				})()}
+			</TableCell>
+			<TableCell className="text-sm py-3">
+				{mapping.course_category || '-'}
+			</TableCell>
+			<TableCell className="text-center py-3">
+				<Checkbox
+					checked={mapping.annual_semester || false}
+					onCheckedChange={(v) => onUpdateRow('annual_semester', v)}
+					className="h-5 w-5"
+				/>
+			</TableCell>
+			<TableCell className="text-center py-3">
+				<Checkbox
+					checked={mapping.registration_based || false}
+					onCheckedChange={(v) => onUpdateRow('registration_based', v)}
+					className="h-5 w-5"
+				/>
+			</TableCell>
+			<TableCell className="text-center py-3">
+				<Checkbox
+					checked={mapping.is_active !== false}
+					onCheckedChange={(v) => onUpdateRow('is_active', v)}
+					className="h-5 w-5"
+				/>
+			</TableCell>
+			<TableCell className="py-3">
+				<Button
+					variant="ghost"
+					size="sm"
+					onClick={onRemoveRow}
+					className="h-8 w-8 p-0 text-red-600 hover:text-red-700 hover:bg-red-50"
+				>
+					<X className="h-4 w-4" />
+				</Button>
+			</TableCell>
+		</TableRow>
+	)
+})
+
+// Loading skeleton for semester cards
+const SemesterSkeleton = memo(function SemesterSkeleton() {
+	return (
+		<Card>
+			<CardHeader className="p-3">
+				<div className="flex items-center justify-between">
+					<div className="flex items-center gap-2">
+						<Skeleton className="h-6 w-6 rounded" />
+						<Skeleton className="h-4 w-4 rounded" />
+						<Skeleton className="h-4 w-32" />
+						<Skeleton className="h-5 w-24 rounded-full" />
+					</div>
+					<Skeleton className="h-7 w-24 rounded" />
+				</div>
+			</CardHeader>
+		</Card>
+	)
+})
+
 export default function CourseMappingAddPage() {
 	const searchParams = useSearchParams()
 	const [loading, setLoading] = useState(false)
 	const [saving, setSaving] = useState(false)
+	const [loadingProgress, setLoadingProgress] = useState<string>('')
 	const { toast } = useToast()
 
 	// Institution filter hook for multi-tenant filtering
@@ -72,11 +241,18 @@ export default function CourseMappingAddPage() {
 	const [institutions, setInstitutions] = useState<any[]>([])
 	const [programs, setPrograms] = useState<any[]>([])
 	const [programsLoading, setProgramsLoading] = useState(false)
-	const [courses, setCourses] = useState<any[]>([])
+	const [courses, setCourses] = useState<Course[]>([])
 	const [regulations, setRegulations] = useState<any[]>([])
 	const [regulationsLoading, setRegulationsLoading] = useState(false)
 	const [semesters, setSemesters] = useState<Semester[]>([])
 	const [semestersLoading, setSemestersLoading] = useState(false)
+
+	// Memoized course lookup map for O(1) access - major performance improvement
+	const courseMap = useMemo(() => {
+		const map = new Map<string, Course>()
+		courses.forEach(course => map.set(course.id, course))
+		return map
+	}, [courses])
 
 	// Computed values: get codes from selected IDs
 	// selectedProgram and selectedRegulation now store IDs (UUIDs) from MyJKKN
@@ -636,9 +812,30 @@ export default function CourseMappingAddPage() {
 	}
 
 	const toggleSemesterTable = (semesterIndex: number) => {
-		const updated = [...semesterTables]
-		updated[semesterIndex].isOpen = !updated[semesterIndex].isOpen
-		setSemesterTables(updated)
+		setSemesterTables(prev => {
+			const isCurrentlyOpen = prev[semesterIndex].isOpen
+			console.log(`[Toggle] Semester ${semesterIndex}, currently ${isCurrentlyOpen ? 'open' : 'closed'}`)
+
+			// Create new array with all semesters closed first
+			const updated = prev.map((table, idx) => {
+				// If opening a new semester, close all others
+				if (!isCurrentlyOpen && idx !== semesterIndex) {
+					return { ...table, isOpen: false }
+				}
+				// If closing current semester, keep others as is
+				if (isCurrentlyOpen && idx !== semesterIndex) {
+					return table
+				}
+				// Toggle the clicked semester
+				if (idx === semesterIndex) {
+					return { ...table, isOpen: !isCurrentlyOpen }
+				}
+				return table
+			})
+
+			console.log(`[Toggle] Open semesters:`, updated.map((t, i) => t.isOpen ? i : null).filter(i => i !== null))
+			return updated
+		})
 	}
 
 	const toggleAllRegistration = (semesterIndex: number) => {
@@ -1390,14 +1587,30 @@ export default function CourseMappingAddPage() {
 						</CardContent>
 					</Card>
 
+					{/* Loading Skeleton */}
+					{(loading || semestersLoading) && selectedProgram && selectedRegulation && (
+						<div className="space-y-3">
+							<div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg p-2">
+								<div className="flex items-center gap-2">
+									<Loader2 className="h-3 w-3 animate-spin text-blue-600" />
+									<span className="text-xs text-blue-600 dark:text-blue-400">
+										{loadingProgress || 'Loading semesters and courses...'}
+									</span>
+								</div>
+							</div>
+							{[1, 2, 3, 4].map((i) => (
+								<SemesterSkeleton key={i} />
+							))}
+						</div>
+					)}
+
 					{/* Semester Tables */}
-					{selectedRegulation && semesterTables.length > 0 && (
+					{!loading && !semestersLoading && selectedRegulation && semesterTables.length > 0 && (
 						<div className="space-y-3 relative">
 							{/* Course Filter Indicator */}
 							{(selectedInstitution || selectedProgram || selectedRegulation) && (
 								<div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg p-2">
 									<div className="flex items-center gap-2">
-
 										<span className="text-[11px] text-blue-600 dark:text-blue-400 ml-auto">
 											{courses.length} course{courses.length !== 1 ? 's' : ''} available
 										</span>
@@ -1443,279 +1656,62 @@ export default function CourseMappingAddPage() {
 														<Table className="mr-2">
 															<TableHeader className="sticky top-0 z-[5] bg-slate-50 dark:bg-slate-900/50 border-b shadow-sm">
 																<TableRow>
-																	<TableHead className="w-[50px] text-[11px] h-8">#</TableHead>
-																	<TableHead className="w-[180px] text-[11px] h-8">Course Code</TableHead>
-																	<TableHead className="w-[220px] text-[11px] h-8">Course Name</TableHead>
-																	<TableHead className="w-[150px] text-[11px] h-8">Course Category</TableHead>
-																	<TableHead className="w-[120px] text-[11px] h-8">Course Group</TableHead>
-																	<TableHead className="w-[80px] text-[11px] h-8">Order</TableHead>
-																	<TableHead className="w-[200px] text-center text-[11px] h-8" colSpan={3}>Internal Marks</TableHead>
-																	<TableHead className="w-[200px] text-center text-[11px] h-8" colSpan={3}>External Marks</TableHead>
-																	<TableHead className="w-[150px] text-center text-[11px] h-8" colSpan={2}>Total</TableHead>
-																	<TableHead className="w-[100px] text-center text-[11px] h-8">Annual</TableHead>
-																	<TableHead className="w-[120px] text-center text-[11px] h-8">
-																	<div className="flex flex-col items-center gap-1">
-																		<span className="text-[10px]">Registration</span>
-																		<Checkbox
-																			checked={selectAllRegistration[`semester_${semIndex}`] || false}
-																			onCheckedChange={() => toggleAllRegistration(semIndex)}
-																			aria-label="Select all registration based"
-																			className="h-3 w-3"
-																		/>
-																	</div>
-																</TableHead>
-																<TableHead className="w-[100px] text-center text-[11px] h-8">
-																	<div className="flex flex-col items-center gap-1">
-																		<span className="text-[10px]">Active</span>
-																		<Checkbox
-																			checked={selectAllStatus[`semester_${semIndex}`] !== false}
-																			onCheckedChange={() => toggleAllStatus(semIndex)}
-																			aria-label="Select all active"
-																			className="h-3 w-3"
-																		/>
-																	</div>
-																</TableHead>
-																<TableHead className="w-[80px] text-[11px] h-8">Action</TableHead>
-															</TableRow>
-															<TableRow className="border-b">
-																<TableHead className="py-2"></TableHead>
-																<TableHead className="py-2"></TableHead>
-																<TableHead className="py-2"></TableHead>
-																<TableHead className="py-2"></TableHead>
-																<TableHead className="py-2"></TableHead>
-																<TableHead className="py-2"></TableHead>
-																<TableHead className="text-xs text-center py-2">Pass</TableHead>
-																<TableHead className="text-xs text-center py-2">Max</TableHead>
-																<TableHead className="text-xs text-center py-2">Convert</TableHead>
-																<TableHead className="text-xs text-center py-2">Pass</TableHead>
-																<TableHead className="text-xs text-center py-2">Max</TableHead>
-																<TableHead className="text-xs text-center py-2">Convert</TableHead>
-																<TableHead className="text-xs text-center py-2">Pass</TableHead>
-																<TableHead className="text-xs text-center py-2">Max</TableHead>
-																<TableHead className="py-2"></TableHead>
-																<TableHead className="py-2"></TableHead>
-																<TableHead className="py-2"></TableHead>
-																<TableHead className="py-2"></TableHead>
-															</TableRow>
-														</TableHeader>
+																	<TableHead className="w-[50px] text-[11px] h-8 font-semibold">#</TableHead>
+																	<TableHead className="w-[180px] text-[11px] h-8 font-semibold">Course Code</TableHead>
+																	<TableHead className="w-[220px] text-[11px] h-8 font-semibold">Course Name</TableHead>
+																	<TableHead className="w-[150px] text-[11px] h-8 font-semibold">Course Category</TableHead>
+																	<TableHead className="w-[100px] text-center text-[11px] h-8 font-semibold">Annual</TableHead>
+																	<TableHead className="w-[120px] text-center text-[11px] h-8 font-semibold">
+																		<div className="flex flex-col items-center gap-1">
+																			<span className="text-[11px] font-semibold">Registration</span>
+																			<Checkbox
+																				checked={selectAllRegistration[`semester_${semIndex}`] || false}
+																				onCheckedChange={() => toggleAllRegistration(semIndex)}
+																				aria-label="Select all registration based"
+																				className="h-3 w-3"
+																			/>
+																		</div>
+																	</TableHead>
+																	<TableHead className="w-[100px] text-center text-[11px] h-8 font-semibold">
+																		<div className="flex flex-col items-center gap-1">
+																			<span className="text-[11px] font-semibold">Active</span>
+																			<Checkbox
+																				checked={selectAllStatus[`semester_${semIndex}`] !== false}
+																				onCheckedChange={() => toggleAllStatus(semIndex)}
+																				aria-label="Select all active"
+																				className="h-3 w-3"
+																			/>
+																		</div>
+																	</TableHead>
+																	<TableHead className="w-[80px] text-[11px] h-8 font-semibold">Action</TableHead>
+																</TableRow>
+															</TableHeader>
 														<TableBody>
 															{table.mappings.length === 0 ? (
 																<TableRow>
-																	<TableCell colSpan={18} className="text-center text-muted-foreground">
+																	<TableCell colSpan={8} className="text-center text-muted-foreground">
 																		No courses mapped. Click "Add Course" to start.
 																	</TableCell>
 																</TableRow>
 															) : (
 																table.mappings.map((mapping, rowIndex) => (
-																	<TableRow key={rowIndex} className="hover:bg-muted/50">
-																		<TableCell className="text-sm font-medium py-3">{rowIndex + 1}</TableCell>
-																		<TableCell className="py-3">
-																			<Popover
-																				open={openPopovers[`${semIndex}_${rowIndex}`] || false}
-																				onOpenChange={(open) => {
-																					setOpenPopovers(prev => ({
-																						...prev,
-																						[`${semIndex}_${rowIndex}`]: open
-																					}))
-																				}}
-																			>
-																				<PopoverTrigger asChild>
-																					<Button
-																						variant="outline"
-																						role="combobox"
-																						aria-expanded={openPopovers[`${semIndex}_${rowIndex}`] || false}
-																						className="h-9 w-full justify-between text-sm font-normal"
-																					>
-																						{mapping.course_id
-																							? (() => {
-																								const course = courses.find(c => c.id === mapping.course_id)
-																								return course?.course_code || "Select course"
-																							})()
-																							: courses.length === 0
-																								? "No courses available"
-																								: "Select course"}
-																						<ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
-																					</Button>
-																				</PopoverTrigger>
-																				<PopoverContent className="w-[400px] p-0" align="start">
-																					<Command>
-																						<CommandInput placeholder="Search by course code or name..." className="h-9" />
-																						<CommandList>
-																							<CommandEmpty>No course found.</CommandEmpty>
-																							<CommandGroup>
-																								{courses.map((course) => (
-																									<CommandItem
-																										key={course.id}
-																										value={`${course.course_code} ${course.course_title || course.course_name || ''}`}
-																										onSelect={() => {
-																											updateCourseRow(semIndex, rowIndex, 'course_id', course.id)
-																											setOpenPopovers(prev => ({
-																												...prev,
-																												[`${semIndex}_${rowIndex}`]: false
-																											}))
-																										}}
-																									>
-																										<div className="flex flex-col">
-																											<span className="font-medium">{course.course_code}</span>
-																											<span className="text-xs text-muted-foreground">
-																												{course.course_title || course.course_name || '-'}
-																											</span>
-																										</div>
-																										<Check
-																											className={cn(
-																												"ml-auto h-4 w-4",
-																												mapping.course_id === course.id ? "opacity-100" : "opacity-0"
-																											)}
-																										/>
-																									</CommandItem>
-																								))}
-																							</CommandGroup>
-																						</CommandList>
-																					</Command>
-																				</PopoverContent>
-																			</Popover>
-																		</TableCell>
-																		<TableCell className="text-sm py-3">
-																			{(() => {
-																				const course = courses.find(c => c.id === mapping.course_id)
-																				return course?.course_title || course?.course_name || '-'
-																			})()}
-																		</TableCell>
-																		<TableCell className="text-sm py-3">
-																			{mapping.course_category || '-'}
-																		</TableCell>
-																		<TableCell className="py-3">
-																			<Select
-																				value={mapping.course_group || "General"}
-																				onValueChange={(v) => updateCourseRow(semIndex, rowIndex, 'course_group', v)}
-																			>
-																				<SelectTrigger className="h-9 text-sm w-full">
-																					<SelectValue />
-																				</SelectTrigger>
-																				<SelectContent>
-																					{COURSE_GROUPS.map(group => (
-																						<SelectItem key={group.value} value={group.value}>
-																							{group.label}
-																						</SelectItem>
-																					))}
-																				</SelectContent>
-																			</Select>
-																		</TableCell>
-																		<TableCell className="py-3">
-																			<Input
-																				type="number"
-																				value={mapping.course_order || 1}
-																				onChange={(e) => updateCourseRow(semIndex, rowIndex, 'course_order', parseFloat(e.target.value))}
-																				className="h-9 w-20 text-sm text-center"
-																				min={0.1}
-																				max={999}
-																				step={0.1}
-																			/>
-																		</TableCell>
-																		<TableCell className="py-3">
-																			<Input
-																				type="number"
-																				value={mapping.internal_pass_mark || 0}
-																				onChange={(e) => updateCourseRow(semIndex, rowIndex, 'internal_pass_mark', parseInt(e.target.value))}
-																				className="h-9 w-16 text-sm text-center"
-																				min={0}
-																			/>
-																		</TableCell>
-																		<TableCell className="py-3">
-																			<Input
-																				type="number"
-																				value={mapping.internal_max_mark || 0}
-																				onChange={(e) => updateCourseRow(semIndex, rowIndex, 'internal_max_mark', parseInt(e.target.value))}
-																				className="h-9 w-16 text-sm text-center"
-																				min={0}
-																			/>
-																		</TableCell>
-																		<TableCell className="py-3">
-																			<Input
-																				type="number"
-																				value={mapping.internal_converted_mark || 0}
-																				onChange={(e) => updateCourseRow(semIndex, rowIndex, 'internal_converted_mark', parseInt(e.target.value))}
-																				className="h-9 w-16 text-sm text-center"
-																				min={0}
-																			/>
-																		</TableCell>
-																		<TableCell className="py-3">
-																			<Input
-																				type="number"
-																				value={mapping.external_pass_mark || 0}
-																				onChange={(e) => updateCourseRow(semIndex, rowIndex, 'external_pass_mark', parseInt(e.target.value))}
-																				className="h-9 w-16 text-sm text-center"
-																				min={0}
-																			/>
-																		</TableCell>
-																		<TableCell className="py-3">
-																			<Input
-																				type="number"
-																				value={mapping.external_max_mark || 0}
-																				onChange={(e) => updateCourseRow(semIndex, rowIndex, 'external_max_mark', parseInt(e.target.value))}
-																				className="h-9 w-16 text-sm text-center"
-																				min={0}
-																			/>
-																		</TableCell>
-																		<TableCell className="py-3">
-																			<Input
-																				type="number"
-																				value={mapping.external_converted_mark || 0}
-																				onChange={(e) => updateCourseRow(semIndex, rowIndex, 'external_converted_mark', parseInt(e.target.value))}
-																				className="h-9 w-16 text-sm text-center"
-																				min={0}
-																			/>
-																		</TableCell>
-																		<TableCell className="py-3">
-																			<Input
-																				type="number"
-																				value={mapping.total_pass_mark || 0}
-																				onChange={(e) => updateCourseRow(semIndex, rowIndex, 'total_pass_mark', parseInt(e.target.value))}
-																				className="h-9 w-16 text-sm text-center"
-																				min={0}
-																			/>
-																		</TableCell>
-																		<TableCell className="py-3">
-																			<Input
-																				type="number"
-																				value={mapping.total_max_mark || 0}
-																				onChange={(e) => updateCourseRow(semIndex, rowIndex, 'total_max_mark', parseInt(e.target.value))}
-																				className="h-9 w-16 text-sm text-center"
-																				min={0}
-																			/>
-																		</TableCell>
-																		<TableCell className="text-center py-3">
-																			<Checkbox
-																				checked={mapping.annual_semester || false}
-																				onCheckedChange={(v) => updateCourseRow(semIndex, rowIndex, 'annual_semester', v)}
-																				className="h-5 w-5"
-																			/>
-																		</TableCell>
-																		<TableCell className="text-center py-3">
-																			<Checkbox
-																				checked={mapping.registration_based || false}
-																				onCheckedChange={(v) => updateCourseRow(semIndex, rowIndex, 'registration_based', v)}
-																				className="h-5 w-5"
-																			/>
-																		</TableCell>
-																		<TableCell className="text-center py-3">
-																			<Checkbox
-																				checked={mapping.is_active !== false}
-																				onCheckedChange={(v) => updateCourseRow(semIndex, rowIndex, 'is_active', v)}
-																				className="h-5 w-5"
-																			/>
-																		</TableCell>
-																		<TableCell className="py-3">
-																			<Button
-																				variant="ghost"
-																				size="sm"
-																				onClick={() => removeCourseRow(semIndex, rowIndex)}
-																				className="h-8 w-8 p-0 text-red-600 hover:text-red-700 hover:bg-red-50"
-																			>
-																				<X className="h-4 w-4" />
-																			</Button>
-																		</TableCell>
-																	</TableRow>
+																	<CourseTableRow
+																		key={`${semIndex}-${mapping.id || `new-${rowIndex}`}-${rowIndex}`}
+																		mapping={mapping}
+																		rowIndex={rowIndex}
+																		semesterIndex={semIndex}
+																		courseMap={courseMap}
+																		isPopoverOpen={openPopovers[`${semIndex}_${rowIndex}`] || false}
+																		onPopoverChange={(open) => {
+																			setOpenPopovers(prev => ({
+																				...prev,
+																				[`${semIndex}_${rowIndex}`]: open
+																			}))
+																		}}
+																		onUpdateRow={(field, value) => updateCourseRow(semIndex, rowIndex, field, value)}
+																		onRemoveRow={() => removeCourseRow(semIndex, rowIndex)}
+																		courses={courses}
+																	/>
 																))
 															)}
 														</TableBody>

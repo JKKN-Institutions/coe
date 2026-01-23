@@ -17,7 +17,7 @@ import { Label } from "@/components/ui/label"
 import { Skeleton } from "@/components/ui/skeleton"
 import { useToast } from "@/hooks/common/use-toast"
 import Link from "next/link"
-import { ArrowLeft, Save, RefreshCw, Calendar, Plus, X, FileText, Upload, Download, Loader2 } from "lucide-react"
+import { ArrowLeft, Save, RefreshCw, Calendar, Plus, X, FileText, Upload, Download, Loader2, Trash2 } from "lucide-react"
 import XLSX from '@/lib/utils/excel-compat'
 import { Checkbox } from "@/components/ui/checkbox"
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
@@ -27,8 +27,6 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { Check, ChevronsUpDown, ChevronDown, ChevronRight } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { generateCourseMappingPDF } from "@/lib/utils/generate-course-mapping-pdf"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { COURSE_GROUPS } from "@/types/course-mapping"
 import { fetchCourses as fetchCoursesService } from "@/services/course-management/course-mapping-service"
 
 // Types for course data
@@ -119,15 +117,15 @@ const CourseTableRow = memo(function CourseTableRow({
 
 	return (
 		<TableRow className="hover:bg-muted/50">
-			<TableCell className="text-sm font-medium py-3">{rowIndex + 1}</TableCell>
-			<TableCell className="py-3">
+			<TableCell className="text-xs font-medium py-2 px-2">{rowIndex + 1}</TableCell>
+			<TableCell className="py-2 px-2">
 				<Popover open={isPopoverOpen} onOpenChange={onPopoverChange}>
 					<PopoverTrigger asChild>
 						<Button
 							variant="outline"
 							role="combobox"
 							aria-expanded={isPopoverOpen}
-							className="h-9 w-full justify-between text-sm font-normal"
+							className="h-8 w-full justify-between text-xs font-normal"
 						>
 							{mapping.course_id
 								? (() => {
@@ -135,14 +133,14 @@ const CourseTableRow = memo(function CourseTableRow({
 									return course?.course_code || "Select course"
 								})()
 								: courses.length === 0
-									? "No courses available"
+									? "No courses"
 									: "Select course"}
-							<ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+							<ChevronsUpDown className="ml-1 h-3 w-3 shrink-0 opacity-50" />
 						</Button>
 					</PopoverTrigger>
-					<PopoverContent className="w-[400px] p-0" align="start">
+					<PopoverContent className="w-[380px] p-0" align="start">
 						<Command>
-							<CommandInput placeholder="Search by course code or name..." className="h-9" />
+							<CommandInput placeholder="Search course..." className="h-8 text-xs" />
 							<CommandList>
 								<CommandEmpty>No course found.</CommandEmpty>
 								<CommandGroup>
@@ -154,16 +152,17 @@ const CourseTableRow = memo(function CourseTableRow({
 												onUpdateRow('course_id', c.id)
 												onPopoverChange(false)
 											}}
+											className="text-xs"
 										>
-											<div className="flex flex-col">
+											<div className="flex flex-col flex-1">
 												<span className="font-medium">{c.course_code}</span>
-												<span className="text-xs text-muted-foreground">
+												<span className="text-[10px] text-muted-foreground truncate">
 													{c.course_title || c.course_name || '-'}
 												</span>
 											</div>
 											<Check
 												className={cn(
-													"ml-auto h-4 w-4",
+													"ml-2 h-3 w-3 shrink-0",
 													mapping.course_id === c.id ? "opacity-100" : "opacity-0"
 												)}
 											/>
@@ -175,144 +174,57 @@ const CourseTableRow = memo(function CourseTableRow({
 					</PopoverContent>
 				</Popover>
 			</TableCell>
-			<TableCell className="text-sm py-3">
+			<TableCell className="text-xs py-2 px-2 whitespace-normal break-words">
 				{(() => {
 					const course = courses.find(c => c.id === mapping.course_id)
 					return course?.course_title || course?.course_name || '-'
 				})()}
 			</TableCell>
-			<TableCell className="text-sm py-3">
+			<TableCell className="text-xs py-2 px-2 whitespace-normal break-words">
 				{mapping.course_category || '-'}
 			</TableCell>
-			<TableCell className="py-3">
-				<Select
-					value={mapping.course_group || "General"}
-					onValueChange={(v) => onUpdateRow('course_group', v)}
-				>
-					<SelectTrigger className="h-9 text-sm w-full">
-						<SelectValue />
-					</SelectTrigger>
-					<SelectContent>
-						{COURSE_GROUPS.map(group => (
-							<SelectItem key={group.value} value={group.value}>
-								{group.label}
-							</SelectItem>
-						))}
-					</SelectContent>
-				</Select>
-			</TableCell>
-			<TableCell className="py-3">
+			<TableCell className="py-2 px-2">
 				<Input
 					type="number"
 					value={mapping.course_order || 1}
 					onChange={(e) => onUpdateRow('course_order', parseFloat(e.target.value))}
-					className="h-9 w-20 text-sm text-center"
+					className="h-7 w-14 text-xs text-center px-1"
 					min={0.1}
 					max={999}
 					step={0.1}
 				/>
 			</TableCell>
-			<TableCell className="py-3">
-				<Input
-					type="number"
-					value={mapping.internal_pass_mark || 0}
-					onChange={(e) => onUpdateRow('internal_pass_mark', parseInt(e.target.value))}
-					className="h-9 w-16 text-sm text-center"
-					min={0}
-				/>
-			</TableCell>
-			<TableCell className="py-3">
-				<Input
-					type="number"
-					value={mapping.internal_max_mark || 0}
-					onChange={(e) => onUpdateRow('internal_max_mark', parseInt(e.target.value))}
-					className="h-9 w-16 text-sm text-center"
-					min={0}
-				/>
-			</TableCell>
-			<TableCell className="py-3">
-				<Input
-					type="number"
-					value={mapping.internal_converted_mark || 0}
-					onChange={(e) => onUpdateRow('internal_converted_mark', parseInt(e.target.value))}
-					className="h-9 w-16 text-sm text-center"
-					min={0}
-				/>
-			</TableCell>
-			<TableCell className="py-3">
-				<Input
-					type="number"
-					value={mapping.external_pass_mark || 0}
-					onChange={(e) => onUpdateRow('external_pass_mark', parseInt(e.target.value))}
-					className="h-9 w-16 text-sm text-center"
-					min={0}
-				/>
-			</TableCell>
-			<TableCell className="py-3">
-				<Input
-					type="number"
-					value={mapping.external_max_mark || 0}
-					onChange={(e) => onUpdateRow('external_max_mark', parseInt(e.target.value))}
-					className="h-9 w-16 text-sm text-center"
-					min={0}
-				/>
-			</TableCell>
-			<TableCell className="py-3">
-				<Input
-					type="number"
-					value={mapping.external_converted_mark || 0}
-					onChange={(e) => onUpdateRow('external_converted_mark', parseInt(e.target.value))}
-					className="h-9 w-16 text-sm text-center"
-					min={0}
-				/>
-			</TableCell>
-			<TableCell className="py-3">
-				<Input
-					type="number"
-					value={mapping.total_pass_mark || 0}
-					onChange={(e) => onUpdateRow('total_pass_mark', parseInt(e.target.value))}
-					className="h-9 w-16 text-sm text-center"
-					min={0}
-				/>
-			</TableCell>
-			<TableCell className="py-3">
-				<Input
-					type="number"
-					value={mapping.total_max_mark || 0}
-					onChange={(e) => onUpdateRow('total_max_mark', parseInt(e.target.value))}
-					className="h-9 w-16 text-sm text-center"
-					min={0}
-				/>
-			</TableCell>
-			<TableCell className="text-center py-3">
+
+			<TableCell className="text-center py-2 px-1">
 				<Checkbox
 					checked={mapping.annual_semester || false}
 					onCheckedChange={(v) => onUpdateRow('annual_semester', v)}
-					className="h-5 w-5"
+					className="h-4 w-4"
 				/>
 			</TableCell>
-			<TableCell className="text-center py-3">
+			<TableCell className="text-center py-2 px-1">
 				<Checkbox
 					checked={mapping.registration_based || false}
 					onCheckedChange={(v) => onUpdateRow('registration_based', v)}
-					className="h-5 w-5"
+					className="h-4 w-4"
 				/>
 			</TableCell>
-			<TableCell className="text-center py-3">
+			<TableCell className="text-center py-2 px-1">
 				<Checkbox
 					checked={mapping.is_active !== false}
 					onCheckedChange={(v) => onUpdateRow('is_active', v)}
-					className="h-5 w-5"
+					className="h-4 w-4"
 				/>
 			</TableCell>
-			<TableCell className="py-3">
+			<TableCell className="py-2 px-1">
 				<Button
 					variant="ghost"
 					size="sm"
 					onClick={onRemoveRow}
-					className="h-8 w-8 p-0 text-red-600 hover:text-red-700 hover:bg-red-50"
+					className="h-7 w-7 p-0 text-red-500 hover:text-white hover:bg-red-500 dark:text-red-400 dark:hover:text-white dark:hover:bg-red-600 transition-all duration-200 rounded-md group"
+					title="Delete mapping"
 				>
-					<X className="h-4 w-4" />
+					<Trash2 className="h-3.5 w-3.5 group-hover:scale-110 transition-transform" />
 				</Button>
 			</TableCell>
 		</TableRow>
@@ -376,15 +288,15 @@ const DebouncedNumberInput = memo(function DebouncedNumberInput({
 const SemesterSkeleton = memo(function SemesterSkeleton() {
 	return (
 		<Card>
-			<CardHeader className="p-3">
+			<CardHeader className="p-2">
 				<div className="flex items-center justify-between">
-					<div className="flex items-center gap-2">
-						<Skeleton className="h-6 w-6 rounded" />
-						<Skeleton className="h-4 w-4 rounded" />
-						<Skeleton className="h-4 w-32" />
-						<Skeleton className="h-5 w-24 rounded-full" />
+					<div className="flex items-center gap-1.5">
+						<Skeleton className="h-5 w-5 rounded" />
+						<Skeleton className="h-3.5 w-3.5 rounded" />
+						<Skeleton className="h-3 w-28" />
+						<Skeleton className="h-4 w-20 rounded-full" />
 					</div>
-					<Skeleton className="h-7 w-24 rounded" />
+					<Skeleton className="h-6 w-16 rounded" />
 				</div>
 			</CardHeader>
 		</Card>
@@ -439,6 +351,7 @@ export default function CourseMappingEditPage() {
 	const [courses, setCourses] = useState<Course[]>([])
 	const [semesters, setSemesters] = useState<Semester[]>([])
 	const [initialLoading, setInitialLoading] = useState(true)
+	const [loadingProgress, setLoadingProgress] = useState<string>('')
 
 	// Memoized course lookup map for O(1) access - major performance improvement
 	const courseMap = useMemo(() => {
@@ -464,7 +377,7 @@ export default function CourseMappingEditPage() {
 	const [uploadSummary, setUploadSummary] = useState<{ total: number; success: number; failed: number }>({ total: 0, success: 0, failed: 0 })
 	const [uploadErrors, setUploadErrors] = useState<Array<{ row: number; course_code: string; semester: string; errors: string[] }>>([])
 
-	// Fetch initial data on mount - wait for institution context to be ready
+	// Fetch initial data on mount - optimized to reduce waterfall
 	useEffect(() => {
 		if (!institutionContextReady) {
 			console.log("[Edit Page] Institution context not ready yet")
@@ -481,61 +394,47 @@ export default function CourseMappingEditPage() {
 			return
 		}
 
-		console.log("[Edit Page] Starting initial data fetch", { institutionParam, programParam, regulationParam })
-		// Fetch all required data - fetch program first, then semesters
+		console.log("[Edit Page] Starting optimized initial data fetch", { institutionParam, programParam, regulationParam })
 		setInitialLoading(true)
-		
-		// First fetch program data to get program_id
-		fetchProgramData(programParam)
-			.then(async (programId) => {
-				console.log("[Edit Page] fetchProgramData completed, programId:", programId)
-				// Wait a bit for state to update if programId was found
-				if (programId) {
-					// Small delay to ensure state is updated
-					await new Promise(resolve => setTimeout(resolve, 100))
-				}
-				// Fetch semesters with the programId (or let it find it itself)
-				return fetchSemesters(programParam, programId || undefined)
-			})
-			.catch(err => {
-				console.error("[Edit Page] Error in program/semester fetch:", err)
-				// Still try to fetch semesters even if program fetch failed
-				return fetchSemesters(programParam)
-			})
-		
-		// Fetch other data in parallel
+		setLoadingProgress('Loading institution, program, and regulation data...')
+
+		// Optimize: Fetch institution, regulation, and program data in parallel
 		Promise.all([
 			fetchInstitutionName(institutionParam),
-			fetchRegulationName(regulationParam)
-		]).then(() => {
-			// After initial data is fetched, ensure courses are fetched
-			// The useEffect below should handle this, but we also call it here to ensure it happens
-			if (selectedInstitution && selectedProgram && selectedRegulation) {
-				console.log("[Edit Page] Initial fetch completed, calling fetchCourses")
-				fetchCourses(selectedInstitution, selectedProgram, selectedRegulation)
-			}
-		}).catch(err => {
-			console.error("[Edit Page] Error in initial data fetch:", err)
-		}).finally(() => {
-			console.log("[Edit Page] Initial data fetch completed")
-			setInitialLoading(false)
-		})
+			fetchRegulationName(regulationParam),
+			fetchProgramData(programParam)
+		])
+			.then(async ([, , programId]) => {
+				console.log("[Edit Page] Parallel fetch completed, programId:", programId)
+				setLoadingProgress('Loading semesters and courses...')
+
+				// Once we have program_id, fetch semesters and courses in parallel
+				await Promise.all([
+					fetchSemesters(programParam, programId || undefined),
+					fetchCourses(institutionParam, programParam, regulationParam)
+				])
+
+				setLoadingProgress('Finalizing...')
+			})
+			.catch(err => {
+				console.error("[Edit Page] Error in initial data fetch:", err)
+				setLoadingProgress('')
+				toast({
+					title: '❌ Loading Error',
+					description: 'Failed to load initial data. Please refresh the page.',
+					variant: 'destructive'
+				})
+			})
+			.finally(() => {
+				console.log("[Edit Page] Initial data fetch completed")
+				setLoadingProgress('')
+				setInitialLoading(false)
+			})
 	}, [institutionContextReady, institutionParam, programParam, regulationParam])
 
-	// Fetch courses when institution, program, and regulation are set (same as add page)
-	// This runs after state is initialized from URL params
-	useEffect(() => {
-		if (selectedInstitution && selectedProgram && selectedRegulation) {
-			console.log(`[Edit Page] useEffect triggered - Fetching courses for institution=${selectedInstitution}, program=${selectedProgram}, regulation=${selectedRegulation}`)
-			fetchCourses(selectedInstitution, selectedProgram, selectedRegulation)
-		} else {
-			console.log(`[Edit Page] useEffect for courses - conditions not met:`, {
-				hasInstitution: !!selectedInstitution,
-				hasProgram: !!selectedProgram,
-				hasRegulation: !!selectedRegulation
-			})
-		}
-	}, [selectedInstitution, selectedProgram, selectedRegulation])
+	// Note: Courses are now fetched in the initial data fetch above
+	// This useEffect is kept for manual refresh scenarios but won't run on initial mount
+	// since courses are already being fetched in parallel with semesters
 
 	// Load existing mappings when semesters are loaded (same as add page)
 	// This ensures semesterTables are initialized before loading mappings
@@ -892,6 +791,7 @@ export default function CourseMappingEditPage() {
 	const loadExistingMappings = async () => {
 		try {
 			setLoading(true)
+			setLoadingProgress('Loading existing course mappings...')
 			const res = await fetch(`/api/course-management/course-mapping?institution_code=${selectedInstitution}&program_code=${selectedProgram}&regulation_code=${selectedRegulation}`)
 
 			if (res.ok) {
@@ -953,16 +853,16 @@ export default function CourseMappingEditPage() {
 					if (semesterMappings.length === 0) {
 						console.log(`[Edit Page] No exact match for ${semesterCode}, trying flexible matching...`)
 						console.log(`[Edit Page] Available DB semester codes:`, data.map((m: CourseMapping) => m.semester_code))
-						
+
 						semesterMappings = data.filter((m: CourseMapping) => {
 							const dbCode = (m.semester_code || '').trim()
-							
+
 							// Case-insensitive match
 							if (dbCode.toLowerCase() === semesterCode.toLowerCase()) {
 								console.log(`[Edit Page] Case-insensitive match: ${dbCode} === ${semesterCode}`)
 								return true
 							}
-							
+
 							// Extract trailing number and match with semester_number
 							// Check if semester_number is valid (not 0 or undefined)
 							if (semesterNumber && semesterNumber > 0) {
@@ -975,7 +875,7 @@ export default function CourseMappingEditPage() {
 										return true
 									}
 								}
-								
+
 								// Generic trailing number match
 								const trailingNumberMatch = dbCode.match(/(\d+)$/)
 								if (trailingNumberMatch) {
@@ -988,10 +888,10 @@ export default function CourseMappingEditPage() {
 							} else {
 								console.log(`[Edit Page] Skipping flexible match for ${semesterCode} - semester_number is ${semesterNumber} (invalid)`)
 							}
-							
+
 							return false
 						})
-						
+
 						if (semesterMappings.length > 0) {
 							console.log(`[Edit Page] Found ${semesterMappings.length} mapping(s) using flexible matching for ${semesterCode}`)
 						} else {
@@ -1006,11 +906,11 @@ export default function CourseMappingEditPage() {
 						return (a.course_order || 0) - (b.course_order || 0)
 					})
 
-					// Return table with mappings (same as add page - don't create empty row if no mappings)
+					// Return table with mappings - all semesters start closed by default
 					return {
 						...table,
 						mappings: sortedMappings,
-						isOpen: sortedMappings.length > 0
+						isOpen: false
 					}
 				})
 
@@ -1029,6 +929,7 @@ export default function CourseMappingEditPage() {
 				variant: 'destructive'
 			})
 		} finally {
+			setLoadingProgress('')
 			setLoading(false)
 		}
 	}
@@ -1054,7 +955,6 @@ export default function CourseMappingEditPage() {
 				regulation_code: selectedRegulation,
 				batch_code: existingBatchCode,
 				semester_code: prev[semesterIndex].semester.semester_code,
-				course_group: "General",
 				course_category: "",
 				course_order: prev[semesterIndex].mappings.length + 1,
 				internal_max_mark: 40,
@@ -1180,11 +1080,27 @@ export default function CourseMappingEditPage() {
 
 	const toggleSemesterTable = useCallback((semesterIndex: number) => {
 		setSemesterTables(prev => {
-			const updated = [...prev]
-			updated[semesterIndex] = {
-				...updated[semesterIndex],
-				isOpen: !updated[semesterIndex].isOpen
-			}
+			const isCurrentlyOpen = prev[semesterIndex].isOpen
+			console.log(`[Toggle] Semester ${semesterIndex}, currently ${isCurrentlyOpen ? 'open' : 'closed'}`)
+
+			// Create new array with all semesters closed first
+			const updated = prev.map((table, idx) => {
+				// If opening a new semester, close all others
+				if (!isCurrentlyOpen && idx !== semesterIndex) {
+					return { ...table, isOpen: false }
+				}
+				// If closing current semester, keep others as is
+				if (isCurrentlyOpen && idx !== semesterIndex) {
+					return table
+				}
+				// Toggle the clicked semester
+				if (idx === semesterIndex) {
+					return { ...table, isOpen: !isCurrentlyOpen }
+				}
+				return table
+			})
+
+			console.log(`[Toggle] Open semesters:`, updated.map((t, i) => t.isOpen ? i : null).filter(i => i !== null))
 			return updated
 		})
 	}, [])
@@ -1292,7 +1208,6 @@ export default function CourseMappingEditPage() {
 						batch_code: mapping.batch_code || existingBatchCode,
 						semester_code: mapping.semester_code,
 						semester_id: table.semester.id, // MyJKKN semester.id
-						course_group: mapping.course_group,
 						course_category: mapping.course_category,
 						course_order: mapping.course_order,
 						internal_pass_mark: mapping.internal_pass_mark,
@@ -1495,7 +1410,6 @@ export default function CourseMappingEditPage() {
 						'Course Part': course?.course_part_master || '',
 						'Credits': course?.credits || 0,
 						'Course Category': mapping.course_category || '',
-						'Course Group': mapping.course_group || 'General',
 						'Course Order': mapping.course_order || 1,
 						'Annual Semester (TRUE/FALSE)': mapping.annual_semester ? 'TRUE' : 'FALSE',
 						'Registration Based (TRUE/FALSE)': mapping.registration_based ? 'TRUE' : 'FALSE',
@@ -1521,7 +1435,6 @@ export default function CourseMappingEditPage() {
 				'Course Part': '',
 				'Credits': 0,
 				'Course Category': '',
-				'Course Group': 'General',
 				'Course Order': 1,
 				'Annual Semester (TRUE/FALSE)': 'FALSE',
 				'Registration Based (TRUE/FALSE)': 'FALSE',
@@ -1722,7 +1635,6 @@ export default function CourseMappingEditPage() {
 						semester_code: semesterCode,
 						semester_id: semesterTable?.semester.id || "", // MyJKKN semester.id
 						course_category: row['Course Category'] || row.course_category || course.course_category || '',
-						course_group: row['Course Group'] || row.course_group || 'General',
 						course_order: Number(row['Course Order'] || row.course_order) || 1,
 						annual_semester: typeof row.annual_semester === 'boolean'
 							? row.annual_semester
@@ -1882,24 +1794,24 @@ export default function CourseMappingEditPage() {
 			<AppSidebar />
 			<SidebarInset className="flex flex-col min-h-screen">
 				<AppHeader />
-				<div className="flex flex-1 flex-col gap-4 p-4 pt-0 relative z-0">
+				<div className="flex flex-1 flex-col gap-2 p-2 pt-0 relative z-0">
 					<div className="flex items-center gap-2">
-						<Breadcrumb>
+						<Breadcrumb className="text-xs">
 							<BreadcrumbList>
 								<BreadcrumbItem>
 									<BreadcrumbLink asChild>
-										<Link href="/dashboard">Dashboard</Link>
+										<Link href="/dashboard" className="text-xs">Dashboard</Link>
 									</BreadcrumbLink>
 								</BreadcrumbItem>
 								<BreadcrumbSeparator />
 								<BreadcrumbItem>
 									<BreadcrumbLink asChild>
-										<Link href="/course-management/course-mapping-index">Course Mapping Index</Link>
+										<Link href="/course-management/course-mapping-index" className="text-xs">Mapping Index</Link>
 									</BreadcrumbLink>
 								</BreadcrumbItem>
 								<BreadcrumbSeparator />
 								<BreadcrumbItem>
-									<BreadcrumbPage>Edit Mapping</BreadcrumbPage>
+									<BreadcrumbPage className="text-xs">Edit</BreadcrumbPage>
 								</BreadcrumbItem>
 							</BreadcrumbList>
 						</Breadcrumb>
@@ -1907,35 +1819,35 @@ export default function CourseMappingEditPage() {
 
 					{/* Header Card with Locked Fields */}
 					<Card>
-						<CardHeader className="p-3">
+						<CardHeader className="p-2">
 							<div className="flex items-center justify-between">
-								<div className="flex items-center gap-3">
+								<div className="flex items-center gap-2">
 									<Button
 										size="sm"
 										asChild
-										className="bg-green-600 hover:bg-green-700 text-white h-8 text-sm px-2"
+										className="bg-green-600 hover:bg-green-700 text-white h-7 text-xs px-2"
 									>
 										<Link href="/course-management/course-mapping-index">
 											<ArrowLeft className="h-3 w-3 mr-1" />
-											Back to Index
+											Back
 										</Link>
 									</Button>
-									<div className="h-8 w-px bg-border" />
+									<div className="h-6 w-px bg-border" />
 									<div>
-										<h2 className="text-lg font-semibold">Edit Course Mapping</h2>
-										<p className="text-xs text-muted-foreground">Manage course mappings for selected program and regulation</p>
+										<h2 className="text-base font-semibold">Edit Course Mapping</h2>
+										<p className="text-[10px] text-muted-foreground">Manage course mappings</p>
 									</div>
 								</div>
-								<div className="flex gap-2">
-									<Button variant="outline" size="sm" className="h-8 text-sm px-2" onClick={handleGeneratePDF} disabled={loading}>
+								<div className="flex gap-1.5">
+									<Button variant="outline" size="sm" className="h-7 text-xs px-2" onClick={handleGeneratePDF} disabled={loading}>
 										<FileText className="h-3 w-3 mr-1" />
-										Generate PDF
+										PDF
 									</Button>
-									<Button variant="outline" size="sm" className="h-8 text-sm px-2" onClick={downloadBulkUpdateTemplate} disabled={loading}>
+									<Button variant="outline" size="sm" className="h-7 text-xs px-2" onClick={downloadBulkUpdateTemplate} disabled={loading}>
 										<Download className="h-3 w-3 mr-1" />
 										Export
 									</Button>
-									<Button variant="outline" size="sm" className="h-8 text-sm px-2" onClick={() => document.getElementById('bulk-update-file')?.click()} disabled={loading}>
+									<Button variant="outline" size="sm" className="h-7 text-xs px-2" onClick={() => document.getElementById('bulk-update-file')?.click()} disabled={loading}>
 										<Upload className="h-3 w-3 mr-1" />
 										Import
 									</Button>
@@ -1946,36 +1858,34 @@ export default function CourseMappingEditPage() {
 										onChange={handleBulkUpdate}
 										className="hidden"
 									/>
-									<Button variant="outline" size="sm" className="h-8 text-sm px-2" onClick={loadExistingMappings} disabled={loading}>
+									<Button variant="outline" size="sm" className="h-7 text-xs px-2" onClick={loadExistingMappings} disabled={loading}>
 										<RefreshCw className={`h-3 w-3 mr-1 ${loading ? 'animate-spin' : ''}`} />
 										Refresh
 									</Button>
-									<Button size="sm" className="h-8 text-sm px-2" onClick={saveAllMappings} disabled={saving || loading}>
+									<Button size="sm" className="h-7 text-xs px-2" onClick={saveAllMappings} disabled={saving || loading}>
 										<Save className="h-3 w-3 mr-1" />
 										{saving ? 'Saving...' : 'Save All'}
 									</Button>
 								</div>
 							</div>
 						</CardHeader>
-						<CardContent className="p-3 pt-0">
+						<CardContent className="p-2 pt-0">
 							{/* Locked Selection Display (NO BATCH) */}
-							<div className="bg-muted/50 border rounded-lg p-3">
-								<div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-									<div>
-										<Label className="text-xs text-muted-foreground">Institution</Label>
-										<p className="font-medium mt-1 text-sm">{institutionName || selectedInstitution}</p>
-										<p className="text-xs text-muted-foreground">{selectedInstitution}</p>
-									</div>
-									<div>
-										<Label className="text-xs text-muted-foreground">Program</Label>
-										<p className="font-medium mt-1 text-sm">{programName || selectedProgram}</p>
-										<p className="text-xs text-muted-foreground">{selectedProgram}</p>
-									</div>
-									<div>
-										<Label className="text-xs text-muted-foreground">Regulation</Label>
-										<p className="font-medium mt-1 text-sm">{regulationName || selectedRegulation}</p>
-										<p className="text-xs text-muted-foreground">{selectedRegulation}</p>
-									</div>
+							<div className="grid grid-cols-1 md:grid-cols-3 gap-2">
+								<div className="bg-gradient-to-br from-blue-50 to-blue-100 dark:from-blue-900/30 dark:to-blue-800/30 border-2 border-blue-200 dark:border-blue-700 rounded-lg p-2 shadow-sm">
+									<Label className="text-[10px] font-semibold text-blue-700 dark:text-blue-300 uppercase tracking-wide">Institution</Label>
+									<p className="font-bold mt-1 text-xs text-blue-900 dark:text-blue-100">{institutionName || selectedInstitution}</p>
+									<p className="text-[10px] text-blue-600 dark:text-blue-400 font-medium">{selectedInstitution}</p>
+								</div>
+								<div className="bg-gradient-to-br from-emerald-50 to-emerald-100 dark:from-emerald-900/30 dark:to-emerald-800/30 border-2 border-emerald-200 dark:border-emerald-700 rounded-lg p-2 shadow-sm">
+									<Label className="text-[10px] font-semibold text-emerald-700 dark:text-emerald-300 uppercase tracking-wide">Program</Label>
+									<p className="font-bold mt-1 text-xs text-emerald-900 dark:text-emerald-100">{programName || selectedProgram}</p>
+									<p className="text-[10px] text-emerald-600 dark:text-emerald-400 font-medium">{selectedProgram}</p>
+								</div>
+								<div className="bg-gradient-to-br from-purple-50 to-purple-100 dark:from-purple-900/30 dark:to-purple-800/30 border-2 border-purple-200 dark:border-purple-700 rounded-lg p-2 shadow-sm">
+									<Label className="text-[10px] font-semibold text-purple-700 dark:text-purple-300 uppercase tracking-wide">Regulation</Label>
+									<p className="font-bold mt-1 text-xs text-purple-900 dark:text-purple-100">{regulationName || selectedRegulation}</p>
+									<p className="text-[10px] text-purple-600 dark:text-purple-400 font-medium">{selectedRegulation}</p>
 								</div>
 							</div>
 						</CardContent>
@@ -1983,11 +1893,13 @@ export default function CourseMappingEditPage() {
 
 					{/* Loading Skeleton */}
 					{initialLoading && (
-						<div className="space-y-3">
-							<div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg p-2">
+						<div className="space-y-2">
+							<div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg p-1.5">
 								<div className="flex items-center gap-2">
-									<Loader2 className="h-4 w-4 animate-spin text-blue-600" />
-									<span className="text-sm text-blue-600 dark:text-blue-400">Loading course mappings...</span>
+									<Loader2 className="h-3 w-3 animate-spin text-blue-600" />
+									<span className="text-xs text-blue-600 dark:text-blue-400">
+										{loadingProgress || 'Loading course mappings...'}
+									</span>
 								</div>
 							</div>
 							{[1, 2, 3, 4].map((i) => (
@@ -1998,76 +1910,86 @@ export default function CourseMappingEditPage() {
 
 					{/* Semester Tables */}
 					{!initialLoading && selectedRegulation && semesterTables.length > 0 && (
-						<div className="space-y-3 relative">
+						<div className="space-y-2 relative">
 							{courses.length > 0 ? (
-								<div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg p-2">
-									<div className="flex items-center justify-between">
-										<span className="text-sm text-blue-600 dark:text-blue-400">
-											{courses.length} course{courses.length !== 1 ? 's' : ''} available for selection
-										</span>
-									</div>
+								<div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg p-1.5">
+									<span className="text-xs text-blue-600 dark:text-blue-400">
+										{courses.length} course{courses.length !== 1 ? 's' : ''} available
+									</span>
 								</div>
 							) : (
-								<div className="bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-lg p-2">
+								<div className="bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-lg p-1.5">
 									<div className="flex items-center gap-2">
-										<Loader2 className="h-4 w-4 animate-spin text-yellow-600" />
-										<span className="text-sm text-yellow-600 dark:text-yellow-400">
-											No courses loaded. Please check if courses exist for institution "{selectedInstitution}" and regulation "{selectedRegulation}".
+										<Loader2 className="h-3 w-3 animate-spin text-yellow-600" />
+										<span className="text-xs text-yellow-600 dark:text-yellow-400">
+											No courses loaded for "{selectedInstitution}" - "{selectedRegulation}".
 										</span>
 									</div>
 								</div>
 							)}
 
-							{semesterTables.map((table, semIndex) => (
-								<Card key={table.semester.id}>
-									<CardHeader className="p-3">
-										<Collapsible open={table.isOpen} onOpenChange={() => toggleSemesterTable(semIndex)}>
-											<CollapsibleTrigger asChild>
-												<div className="flex items-center justify-between cursor-pointer hover:bg-muted/50 rounded-lg p-2 -m-2 transition-colors">
-													<div className="flex items-center gap-2">
-														<Button variant="ghost" size="sm" className="h-6 w-6 p-0">
-															{table.isOpen ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}
-														</Button>
-														<Calendar className="h-4 w-4 text-primary" />
-														<h3 className="text-sm font-semibold">{table.semester.semester_name}</h3>
-														<Badge variant="outline" className="ml-2 text-xs h-5">
-															{table.mappings.filter(m => m.course_id).length} courses mapped
-														</Badge>
-													</div>
+							{semesterTables.map((table, semIndex) => {
+								// Determine color scheme based on semester number (odd = blue, even = emerald)
+								const isOddSemester = table.semester.semester_number % 2 === 1
+								const headerBgClass = isOddSemester
+									? 'bg-blue-100 dark:bg-blue-900/30 border-blue-200 dark:border-blue-800'
+									: 'bg-emerald-100 dark:bg-emerald-900/30 border-emerald-200 dark:border-emerald-800'
+								const cardBorderClass = isOddSemester
+									? 'border-l-4 border-l-blue-500 dark:border-l-blue-400'
+									: 'border-l-4 border-l-emerald-500 dark:border-l-emerald-400'
+								const badgeClass = isOddSemester
+									? 'bg-blue-50 text-blue-700 border-blue-300 dark:bg-blue-900/50 dark:text-blue-300 dark:border-blue-700'
+									: 'bg-emerald-50 text-emerald-700 border-emerald-300 dark:bg-emerald-900/50 dark:text-emerald-300 dark:border-emerald-700'
+
+								return (
+									<Card key={table.semester.id} className={cardBorderClass}>
+										<CardHeader className="p-2">
+											<Collapsible open={table.isOpen} onOpenChange={() => toggleSemesterTable(semIndex)}>
+												<CollapsibleTrigger asChild>
+													<div className="flex items-center justify-between cursor-pointer hover:bg-muted/50 rounded-lg p-1.5 -m-1.5 transition-colors">
+														<div className="flex items-center gap-1.5">
+															<Button variant="ghost" size="sm" className="h-5 w-5 p-0">
+																{table.isOpen ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}
+															</Button>
+															<Calendar className={`h-3.5 w-3.5 ${isOddSemester ? 'text-blue-600 dark:text-blue-400' : 'text-emerald-600 dark:text-emerald-400'}`} />
+															<h3 className="text-xs font-semibold">{table.semester.semester_name}</h3>
+															<Badge className={`ml-1 text-[10px] h-4 px-1.5 ${badgeClass}`}>
+																{table.mappings.filter(m => m.course_id).length} courses
+															</Badge>
+														</div>
 													<Button
 														size="sm"
-														variant="outline"
-														className="h-7 text-[11px] px-2"
+														className="h-6 text-[10px] px-1.5 bg-green-600 hover:bg-green-700 text-white border-green-600 hover:border-green-700 transition-colors"
 														onClick={(e) => {
 															e.stopPropagation()
 															addCourseRow(semIndex)
 														}}
 													>
-														<Plus className="h-3 w-3 mr-1" />
-														Add Course
+														<Plus className="h-3 w-3 mr-0.5" />
+														Add
 													</Button>
 												</div>
 											</CollapsibleTrigger>
 
 											<CollapsibleContent>
-												<div className="mt-4 border rounded-lg bg-background shadow-sm">
-													<div className="overflow-x-auto overflow-y-auto relative isolate scrollbar-thin scrollbar-thumb-gray-400 scrollbar-track-gray-100 dark:scrollbar-thumb-gray-600 dark:scrollbar-track-gray-800 pr-2" style={{ maxHeight: "440px" }}>
-														<Table className="mr-2">
-															<TableHeader className="sticky top-0 z-[5] bg-slate-50 dark:bg-slate-900/50 border-b shadow-sm">
+												<div className="mt-3 border rounded-lg bg-background shadow-sm overflow-hidden">
+													<div className="overflow-x-auto overflow-y-auto relative scrollbar-thin scrollbar-thumb-gray-400 scrollbar-track-gray-100 dark:scrollbar-thumb-gray-600 dark:scrollbar-track-gray-800" style={{ maxHeight: "26rem" }}>
+														<Table>
+															<TableHeader className={`sticky top-0 z-[5] ${headerBgClass} border-b shadow-md`}>
 																<TableRow>
-																	<TableHead className="w-[50px] text-[11px] h-8">#</TableHead>
-																	<TableHead className="w-[180px] text-[11px] h-8">Course Code</TableHead>
-																	<TableHead className="w-[220px] text-[11px] h-8">Course Name</TableHead>
-																	<TableHead className="w-[150px] text-[11px] h-8">Course Category</TableHead>
-																	<TableHead className="w-[120px] text-[11px] h-8">Course Group</TableHead>
-																	<TableHead className="w-[80px] text-[11px] h-8">Order</TableHead>
-																	<TableHead className="w-[200px] text-center text-[11px] h-8" colSpan={3}>Internal Marks</TableHead>
-																	<TableHead className="w-[200px] text-center text-[11px] h-8" colSpan={3}>External Marks</TableHead>
-																	<TableHead className="w-[150px] text-center text-[11px] h-8" colSpan={2}>Total</TableHead>
-																	<TableHead className="w-[100px] text-center text-[11px] h-8">Annual</TableHead>
-																	<TableHead className="w-[120px] text-center text-[11px] h-8">
-																		<div className="flex flex-col items-center gap-1">
-																			<span className="text-[10px]">Registration</span>
+																	<TableHead className="w-10 text-[11px] h-8 font-semibold px-2">#</TableHead>
+																	<TableHead className="w-[120px] text-[11px] h-8 font-semibold px-2 whitespace-normal">Course Code</TableHead>
+																	<TableHead className="min-w-[250px] text-[11px] h-8 font-semibold px-2 whitespace-normal">Course Name</TableHead>
+																	<TableHead className="w-[100px] text-[11px] h-8 font-semibold px-2 whitespace-normal">Category</TableHead>
+																	<TableHead className="w-16 text-[11px] h-8 font-semibold px-2">Order</TableHead>
+																	<TableHead className="w-16 text-center text-[11px] h-8 font-semibold px-1">
+																		<div className="flex flex-col items-center gap-0.5">
+																			<span className="text-[11px] font-semibold">Annual</span>
+																		</div>
+																	</TableHead>
+																	<TableHead className="w-20 text-center text-[11px] h-8 font-semibold px-1">
+																		<div className="flex flex-col items-center gap-0.5">
+																			<span className="text-[11px] font-semibold">Reg</span>
 																			<Checkbox
 																				checked={selectAllRegistration[`semester_${semIndex}`] || false}
 																				onCheckedChange={() => toggleAllRegistration(semIndex)}
@@ -2076,9 +1998,9 @@ export default function CourseMappingEditPage() {
 																			/>
 																		</div>
 																	</TableHead>
-																	<TableHead className="w-[100px] text-center text-[11px] h-8">
-																		<div className="flex flex-col items-center gap-1">
-																			<span className="text-[10px]">Active</span>
+																	<TableHead className="w-16 text-center text-[11px] h-8 font-semibold px-1">
+																		<div className="flex flex-col items-center gap-0.5">
+																			<span className="text-[11px] font-semibold">Active</span>
 																			<Checkbox
 																				checked={selectAllStatus[`semester_${semIndex}`] !== false}
 																				onCheckedChange={() => toggleAllStatus(semIndex)}
@@ -2087,34 +2009,15 @@ export default function CourseMappingEditPage() {
 																			/>
 																		</div>
 																	</TableHead>
-																	<TableHead className="w-[80px] text-[11px] h-8">Action</TableHead>
+																	<TableHead className="w-14 text-[11px] h-8 font-semibold px-1">Action</TableHead>
 																</TableRow>
-																<TableRow className="border-b">
-																	<TableHead className="py-2"></TableHead>
-																	<TableHead className="py-2"></TableHead>
-																	<TableHead className="py-2"></TableHead>
-																	<TableHead className="py-2"></TableHead>
-																	<TableHead className="py-2"></TableHead>
-																	<TableHead className="py-2"></TableHead>
-																	<TableHead className="text-xs text-center py-2">Pass</TableHead>
-																	<TableHead className="text-xs text-center py-2">Max</TableHead>
-																	<TableHead className="text-xs text-center py-2">Convert</TableHead>
-																	<TableHead className="text-xs text-center py-2">Pass</TableHead>
-																	<TableHead className="text-xs text-center py-2">Max</TableHead>
-																	<TableHead className="text-xs text-center py-2">Convert</TableHead>
-																	<TableHead className="text-xs text-center py-2">Pass</TableHead>
-																	<TableHead className="text-xs text-center py-2">Max</TableHead>
-																	<TableHead className="py-2"></TableHead>
-																	<TableHead className="py-2"></TableHead>
-																	<TableHead className="py-2"></TableHead>
-																	<TableHead className="py-2"></TableHead>
-																</TableRow>
+
 															</TableHeader>
 															<TableBody>
 																{table.mappings.length === 0 ? (
 																	<TableRow>
-																		<TableCell colSpan={18} className="text-center text-muted-foreground py-4">
-																			No courses mapped. Click "Add Course" to start.
+																		<TableCell colSpan={9} className="text-center text-muted-foreground py-3 text-xs">
+																			No courses mapped. Click "Add" to start.
 																		</TableCell>
 																	</TableRow>
 																) : (
@@ -2145,7 +2048,8 @@ export default function CourseMappingEditPage() {
 										</Collapsible>
 									</CardHeader>
 								</Card>
-							))}
+							)
+						})}
 						</div>
 					)}
 				</div>

@@ -15,7 +15,6 @@ export interface CourseMapping {
 	internal_converted_mark?: number
 	external_max_mark?: number
 	external_pass_mark?: number
-	external_converted_mark?: number
 	total_pass_mark?: number
 	total_max_mark?: number
 	annual_semester?: boolean

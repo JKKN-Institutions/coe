@@ -343,7 +343,25 @@ export default function CourseMappingPage() {
 
 				// Organize mappings by semester
 				const updatedTables = semesterTables.map(table => {
-					const semesterMappings = data.filter((m: CourseMapping) => m.semester_code === table.semester.semester_code)
+					const semesterMappings = data
+						.filter((m: CourseMapping) => m.semester_code === table.semester.semester_code)
+						.map((m: any) => {
+							// Merge mark fields from courses table (if available)
+							if (m.courses) {
+								return {
+									...m,
+									internal_max_mark: m.courses.internal_max_mark ?? m.internal_max_mark,
+									internal_pass_mark: m.courses.internal_pass_mark ?? m.internal_pass_mark,
+									internal_converted_mark: m.courses.internal_converted_mark ?? m.internal_converted_mark,
+									external_max_mark: m.courses.external_max_mark ?? m.external_max_mark,
+									external_pass_mark: m.courses.external_pass_mark ?? m.external_pass_mark,
+									external_converted_mark: m.courses.external_converted_mark ?? m.external_converted_mark,
+									total_pass_mark: m.courses.total_pass_mark ?? m.total_pass_mark,
+									total_max_mark: m.courses.total_max_mark ?? m.total_max_mark
+								}
+							}
+							return m
+						})
 					return {
 						...table,
 						mappings: semesterMappings.length > 0 ? semesterMappings : [{
@@ -976,17 +994,15 @@ export default function CourseMappingPage() {
 														<Table className="mr-2">
 															<TableHeader className="sticky top-0 z-[5] bg-muted/95 backdrop-blur-sm border-b shadow-sm">
 																<TableRow>
-																	<TableHead className="w-[50px] py-3">#</TableHead>
-																	<TableHead className="w-[180px] py-3">Course Code</TableHead>
-																	<TableHead className="w-[220px] py-3">Course Name</TableHead>
-																	<TableHead className="w-[150px] py-3">Course Category</TableHead>
-																	<TableHead className="w-[120px] py-3">Course Group</TableHead>
-																	<TableHead className="w-[80px] py-3">Order</TableHead>
-																	<TableHead className="w-[200px] text-center py-3" colSpan={3}>Internal Marks</TableHead>
-																	<TableHead className="w-[200px] text-center py-3" colSpan={3}>External Marks</TableHead>
-																	<TableHead className="w-[150px] text-center py-3" colSpan={2}>Total</TableHead>
-																	<TableHead className="w-[100px] text-center py-3">Annual</TableHead>
-																	<TableHead className="w-[120px] text-center py-3">
+																	<TableHead className="w-[50px] py-2 font-bold text-black dark:text-white">#</TableHead>
+																	<TableHead className="w-[180px] py-2 font-bold text-black dark:text-white">Course Code</TableHead>
+																	<TableHead className="w-[220px] py-2 font-bold text-black dark:text-white">Course Name</TableHead>
+																	<TableHead className="w-[150px] py-2 font-bold text-black dark:text-white">Course Category</TableHead>
+			
+																	<TableHead className="w-[80px] py-2 font-bold text-black dark:text-white">Order</TableHead>
+																	
+																	<TableHead className="w-[100px] text-center py-2 font-bold text-black dark:text-white">Annual</TableHead>
+																	<TableHead className="w-[120px] text-center py-2 font-bold text-black dark:text-white">
 																	<div className="flex flex-col items-center gap-1">
 																		<span>Registration</span>
 																		<Checkbox
@@ -996,7 +1012,7 @@ export default function CourseMappingPage() {
 																		/>
 																	</div>
 																</TableHead>
-																<TableHead className="w-[100px] text-center py-3">
+																<TableHead className="w-[100px] text-center py-2 font-bold text-black dark:text-white">
 																	<div className="flex flex-col items-center gap-1">
 																		<span>Active</span>
 																		<Checkbox
@@ -1006,27 +1022,7 @@ export default function CourseMappingPage() {
 																		/>
 																	</div>
 																</TableHead>
-																<TableHead className="w-[80px] py-3">Action</TableHead>
-															</TableRow>
-															<TableRow className="border-b">
-																<TableHead className="py-2"></TableHead>
-																<TableHead className="py-2"></TableHead>
-																<TableHead className="py-2"></TableHead>
-																<TableHead className="py-2"></TableHead>
-																<TableHead className="py-2"></TableHead>
-																<TableHead className="py-2"></TableHead>
-																<TableHead className="text-xs text-center py-2">Pass</TableHead>
-																<TableHead className="text-xs text-center py-2">Max</TableHead>
-																<TableHead className="text-xs text-center py-2">Convert</TableHead>
-																<TableHead className="text-xs text-center py-2">Pass</TableHead>
-																<TableHead className="text-xs text-center py-2">Max</TableHead>
-																<TableHead className="text-xs text-center py-2">Convert</TableHead>
-																<TableHead className="text-xs text-center py-2">Pass</TableHead>
-																<TableHead className="text-xs text-center py-2">Max</TableHead>
-																<TableHead className="py-2"></TableHead>
-																<TableHead className="py-2"></TableHead>
-																<TableHead className="py-2"></TableHead>
-																<TableHead className="py-2"></TableHead>
+																<TableHead className="w-[80px] py-2 font-bold text-black dark:text-white">Action</TableHead>
 															</TableRow>
 														</TableHeader>
 														<TableBody>
@@ -1115,23 +1111,7 @@ export default function CourseMappingPage() {
 																		<TableCell className="text-sm py-3">
 																			{mapping.course_category || '-'}
 																		</TableCell>
-																		<TableCell className="py-3">
-																			<Select
-																				value={mapping.course_group || "General"}
-																				onValueChange={(v) => updateCourseRow(semIndex, rowIndex, 'course_group', v)}
-																			>
-																				<SelectTrigger className="h-9 text-sm w-full">
-																					<SelectValue />
-																				</SelectTrigger>
-																				<SelectContent>
-																					{COURSE_GROUPS.map(group => (
-																						<SelectItem key={group.value} value={group.value}>
-																							{group.label}
-																						</SelectItem>
-																					))}
-																				</SelectContent>
-																			</Select>
-																		</TableCell>
+																		
 																		<TableCell className="py-3">
 																			<Input
 																				type="number"
@@ -1143,78 +1123,7 @@ export default function CourseMappingPage() {
 																				step={0.1}
 																			/>
 																		</TableCell>
-																		<TableCell className="py-3">
-																			<Input
-																				type="number"
-																				value={mapping.internal_pass_mark || 0}
-																				onChange={(e) => updateCourseRow(semIndex, rowIndex, 'internal_pass_mark', parseInt(e.target.value))}
-																				className="h-9 w-16 text-sm text-center"
-																				min={0}
-																			/>
-																		</TableCell>
-																		<TableCell className="py-3">
-																			<Input
-																				type="number"
-																				value={mapping.internal_max_mark || 0}
-																				onChange={(e) => updateCourseRow(semIndex, rowIndex, 'internal_max_mark', parseInt(e.target.value))}
-																				className="h-9 w-16 text-sm text-center"
-																				min={0}
-																			/>
-																		</TableCell>
-																		<TableCell className="py-3">
-																			<Input
-																				type="number"
-																				value={mapping.internal_converted_mark || 0}
-																				onChange={(e) => updateCourseRow(semIndex, rowIndex, 'internal_converted_mark', parseInt(e.target.value))}
-																				className="h-9 w-16 text-sm text-center"
-																				min={0}
-																			/>
-																		</TableCell>
-																		<TableCell className="py-3">
-																			<Input
-																				type="number"
-																				value={mapping.external_pass_mark || 0}
-																				onChange={(e) => updateCourseRow(semIndex, rowIndex, 'external_pass_mark', parseInt(e.target.value))}
-																				className="h-9 w-16 text-sm text-center"
-																				min={0}
-																			/>
-																		</TableCell>
-																		<TableCell className="py-3">
-																			<Input
-																				type="number"
-																				value={mapping.external_max_mark || 0}
-																				onChange={(e) => updateCourseRow(semIndex, rowIndex, 'external_max_mark', parseInt(e.target.value))}
-																				className="h-9 w-16 text-sm text-center"
-																				min={0}
-																			/>
-																		</TableCell>
-																		<TableCell className="py-3">
-																			<Input
-																				type="number"
-																				value={mapping.external_converted_mark || 0}
-																				onChange={(e) => updateCourseRow(semIndex, rowIndex, 'external_converted_mark', parseInt(e.target.value))}
-																				className="h-9 w-16 text-sm text-center"
-																				min={0}
-																			/>
-																		</TableCell>
-																		<TableCell className="py-3">
-																			<Input
-																				type="number"
-																				value={mapping.total_pass_mark || 0}
-																				onChange={(e) => updateCourseRow(semIndex, rowIndex, 'total_pass_mark', parseInt(e.target.value))}
-																				className="h-9 w-16 text-sm text-center"
-																				min={0}
-																			/>
-																		</TableCell>
-																		<TableCell className="py-3">
-																			<Input
-																				type="number"
-																				value={mapping.total_max_mark || 0}
-																				onChange={(e) => updateCourseRow(semIndex, rowIndex, 'total_max_mark', parseInt(e.target.value))}
-																				className="h-9 w-16 text-sm text-center"
-																				min={0}
-																			/>
-																		</TableCell>
+																		
 																		<TableCell className="text-center py-3">
 																			<Checkbox
 																				checked={mapping.annual_semester || false}

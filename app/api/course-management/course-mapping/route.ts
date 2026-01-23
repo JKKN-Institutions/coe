@@ -18,6 +18,22 @@ async function logDebug(payload: Record<string, unknown>) {
 }
 // #endregion
 
+// Helper function to filter out mark fields that belong to courses table, not course_mapping
+function filterCourseMappingFields(data: any) {
+	const {
+		internal_max_mark,
+		internal_pass_mark,
+		internal_converted_mark,
+		external_max_mark,
+		external_pass_mark,
+		external_converted_mark,
+		total_pass_mark,
+		total_max_mark,
+		...courseMappingData
+	} = data
+	return courseMappingData
+}
+
 export async function GET(request: Request) {
 	try {
 		const supabase = getSupabaseServer()
@@ -87,7 +103,19 @@ export async function GET(request: Request) {
 					if (courseIds.length > 0) {
 						const { data: coursesData, error: coursesError } = await supabase
 							.from('courses')
-							.select('id, course_code, course_name')
+							.select(`
+								id,
+								course_code,
+								course_name,
+								internal_max_mark,
+								internal_pass_mark,
+								internal_converted_mark,
+								external_max_mark,
+								external_pass_mark,
+								external_converted_mark,
+								total_pass_mark,
+								total_max_mark
+							`)
 							.in('id', courseIds)
 
 						if (coursesError) {
@@ -97,7 +125,15 @@ export async function GET(request: Request) {
 							// Create a map for quick lookup
 							const coursesMap = new Map(coursesData.map(c => [c.id, {
 								course_code: c.course_code,
-								course_title: c.course_name // Map course_name to course_title for consistency
+								course_title: c.course_name, // Map course_name to course_title for consistency
+								internal_max_mark: c.internal_max_mark,
+								internal_pass_mark: c.internal_pass_mark,
+								internal_converted_mark: c.internal_converted_mark,
+								external_max_mark: c.external_max_mark,
+								external_pass_mark: c.external_pass_mark,
+								external_converted_mark: c.external_converted_mark,
+								total_pass_mark: c.total_pass_mark,
+								total_max_mark: c.total_max_mark
 							}]))
 							console.log('[Course Mapping API] Courses map created with', coursesMap.size, 'entries')
 							// Enrich mappings with course details
@@ -212,8 +248,11 @@ export async function POST(request: Request) {
 
 				const institutionId = institutionMap.get(mapping.institution_code) || null
 
+				// Filter out mark fields that belong to courses table
+				const filteredMapping = filterCourseMappingFields(mapping)
+
 				upsertRecords.push({
-					...mapping,
+					...filteredMapping,
 					course_code: course.course_code,
 					institutions_id: institutionId,
 					// Use MyJKKN IDs from request body (program_id, regulation_id, semester_id)
@@ -460,10 +499,13 @@ export async function POST(request: Request) {
 			)
 		}
 
+		// Filter out mark fields that belong to courses table
+		const filteredBody = filterCourseMappingFields(body)
+
 		const { data, error } = await supabase
 			.from('course_mapping')
 			.insert([{
-				...body,
+				...filteredBody,
 				course_id: courseId,                  // Ensure course_id is set
 				course_code: courseCode,              // Ensure course_code is set
 				institutions_id: institutionData.id,  // Add institution ID
@@ -498,29 +540,9 @@ export async function PUT(request: Request) {
 			)
 		}
 
-		// Validate marks consistency
-		if (body.internal_pass_mark && body.internal_max_mark && body.internal_pass_mark > body.internal_max_mark) {
-			return NextResponse.json(
-				{ error: 'Internal pass mark cannot exceed internal max mark' },
-				{ status: 400 }
-			)
-		}
-
-		if (body.external_pass_mark && body.external_max_mark && body.external_pass_mark > body.external_max_mark) {
-			return NextResponse.json(
-				{ error: 'External pass mark cannot exceed external max mark' },
-				{ status: 400 }
-			)
-		}
-
-		if (body.total_pass_mark && body.total_max_mark && body.total_pass_mark > body.total_max_mark) {
-			return NextResponse.json(
-				{ error: 'Total pass mark cannot exceed total max mark' },
-				{ status: 400 }
-			)
-		}
-
-		const { id, ...updateData } = body
+		// Filter out mark fields that belong to courses table, not course_mapping
+		const { id, ...bodyWithoutId } = body
+		const updateData = filterCourseMappingFields(bodyWithoutId)
 
 		// If course_id is being updated, fetch the new course_code
 		if (updateData.course_id) {
