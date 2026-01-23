@@ -753,15 +753,15 @@ export async function GET(request: NextRequest) {
 		const students = Array.from(studentMarksMap.values()).map((studentData: any) => {
 			const semResult = semesterResults?.find((sr: any) => sr.student_id === studentData.student.id)
 
-			// Sort courses by: 1) semester (ascending), 2) course_order, 3) course_code
-			// This groups current semester courses first, then arrear courses by semester
+			// Sort courses by: 1) semester (DESCENDING), 2) course_order (ASCENDING), 3) course_code
+			// This shows current semester first, then arrears in reverse order (6→5→4→3→2→1)
 			const sortedCourses = [...studentData.courses].sort((a: any, b: any) => {
-				// Primary sort: by semester (ascending: Sem 1, Sem 2, ...)
-				const semA = a.course?.semester ?? 999
-				const semB = b.course?.semester ?? 999
-				if (semA !== semB) return semA - semB
+				// Primary sort: by semester (DESCENDING: Sem 6, Sem 5, Sem 4, ...)
+				const semA = a.course?.semester ?? -1
+				const semB = b.course?.semester ?? -1
+				if (semA !== semB) return semB - semA  // DESCENDING
 
-				// Secondary sort: by course_order from course_mapping
+				// Secondary sort: by course_order from course_mapping (ASCENDING)
 				const orderA = a.course?.course_order ?? 999
 				const orderB = b.course?.course_order ?? 999
 				if (orderA !== orderB) return orderA - orderB
@@ -770,9 +770,16 @@ export async function GET(request: NextRequest) {
 				return (a.course?.course_code || '').localeCompare(b.course?.course_code || '')
 			})
 
+			// Determine student's current semester (highest semester where is_regular=TRUE)
+			const regularCourses = studentData.courses.filter((c: any) => c.is_regular === true)
+			const currentSemester = regularCourses.length > 0
+				? Math.max(...regularCourses.map((c: any) => c.course?.semester || 0))
+				: 0
+
 			return {
 				...studentData,
 				courses: sortedCourses,
+				current_semester: currentSemester,  // Track student's current semester
 				semester_result: semResult ? {
 					sgpa: semResult.sgpa,
 					cgpa: semResult.cgpa,
@@ -786,7 +793,13 @@ export async function GET(request: NextRequest) {
 					total_backlogs: semResult.total_backlogs
 				} : null
 			}
-		}).sort((a, b) => {
+		})
+		.filter((student: any) => {
+			// CRITICAL: Only include students currently studying in the selected semester
+			// This ensures Semester 4 students don't appear in Semester 6 report
+			return student.current_semester === semesterNum
+		})
+		.sort((a, b) => {
 			// Sort by register number
 			const regA = a.student.register_number || ''
 			const regB = b.student.register_number || ''
@@ -854,13 +867,13 @@ export async function GET(request: NextRequest) {
 				? ((courseData.passed / courseData.appeared) * 100).toFixed(2)
 				: '0.00'
 		})).sort((a, b) => {
-			// Sort by: 1) semester (ascending), 2) course_order, 3) course_code
-			// Primary sort: by semester (ascending: Sem 1, Sem 2, ...)
-			const semA = a.course.semester ?? 999
-			const semB = b.course.semester ?? 999
-			if (semA !== semB) return semA - semB
+			// Sort by: 1) semester (DESCENDING), 2) course_order (ASCENDING), 3) course_code
+			// Primary sort: by semester (DESCENDING: Sem 6, Sem 5, Sem 4, ...)
+			const semA = a.course.semester ?? -1
+			const semB = b.course.semester ?? -1
+			if (semA !== semB) return semB - semA  // DESCENDING
 
-			// Secondary sort: by course_order from course_mapping (ascending), fallback to 999 if not set
+			// Secondary sort: by course_order from course_mapping (ASCENDING), fallback to 999 if not set
 			const orderA = a.course.course_order ?? 999
 			const orderB = b.course.course_order ?? 999
 			if (orderA !== orderB) return orderA - orderB

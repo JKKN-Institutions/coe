@@ -122,6 +122,13 @@ const COURSES_PER_ROW = 3
 // Columns per course: COURSE CODE, SEM, INT, EXT, TOT, RES, GP (7 columns)
 const COLS_PER_COURSE = 7
 
+// Helper function to convert number to Roman numerals
+function toRoman(num: number): string {
+	if (num < 1 || num > 10) return String(num)
+	const romanNumerals = ['I', 'II', 'III', 'IV', 'V', 'VI', 'VII', 'VIII', 'IX', 'X']
+	return romanNumerals[num - 1] || String(num)
+}
+
 export function generateGalleyReportPDF(data: GalleyReportData): string {
 	// Legal size Landscape
 	const doc = new jsPDF('landscape', 'mm', 'legal')
@@ -129,15 +136,15 @@ export function generateGalleyReportPDF(data: GalleyReportData): string {
 	const pageHeight = doc.internal.pageSize.getHeight()
 	const margin = 5
  
-	
-	// Get all courses sorted by: 1) semester, 2) course_order, 3) course_code
-	const allCourses = [...data.courseAnalysis].sort((a, b) => {
-		// Primary sort: by semester (ascending: Sem 1, Sem 2, ...)
-		const semA = a.course.semester ?? 999
-		const semB = b.course.semester ?? 999
-		if (semA !== semB) return semA - semB
 
-		// Secondary sort: by course_order from course_mapping
+	// Get all courses sorted by: 1) semester (ASCENDING), 2) course_order (ASCENDING), 3) course_code
+	const allCourses = [...data.courseAnalysis].sort((a, b) => {
+		// Primary sort: by semester (ASCENDING: Sem 1, Sem 2, Sem 3, ...)
+		const semA = a.course.semester ?? -1
+		const semB = b.course.semester ?? -1
+		if (semA !== semB) return semA - semB  // ASCENDING for course analysis table
+
+		// Secondary sort: by course_order from course_mapping (ASCENDING)
 		const orderA = a.course.course_order ?? 999
 		const orderB = b.course.course_order ?? 999
 		if (orderA !== orderB) return orderA - orderB
@@ -325,14 +332,14 @@ export function generateGalleyReportPDF(data: GalleyReportData): string {
 		const body: RowInput[] = []
 
 		sortedStudents.forEach((student, studentIndex) => {
-			// Sort student's courses by: 1) semester, 2) course_order, 3) course_code
+			// Sort student's courses by: 1) semester (DESCENDING), 2) course_order (ASCENDING), 3) course_code
 			const studentCourses = [...student.courses].sort((a, b) => {
-				// Primary sort: by semester (ascending: Sem 1, Sem 2, ...)
-				const semA = a.course.semester ?? 999
-				const semB = b.course.semester ?? 999
-				if (semA !== semB) return semA - semB
+				// Primary sort: by semester (DESCENDING: Sem 6, Sem 5, Sem 4, ...)
+				const semA = a.course.semester ?? -1
+				const semB = b.course.semester ?? -1
+				if (semA !== semB) return semB - semA  // DESCENDING
 
-				// Secondary sort: by course_order from course_mapping
+				// Secondary sort: by course_order from course_mapping (ASCENDING)
 				const orderA = a.course.course_order ?? 999
 				const orderB = b.course.course_order ?? 999
 				if (orderA !== orderB) return orderA - orderB
@@ -511,8 +518,10 @@ export function generateGalleyReportPDF(data: GalleyReportData): string {
 	// COURSE ANALYSIS TABLE
 	// =========================================
 	const courseAnalysisHeaders = [
+		'S.No',
 		'COURSE CODE',
 		'NAME OF THE COURSE',
+		'SEMESTER',
 		'INT MAX MARKS',
 		'EXT MAX MARKS',
 		'TOTAL MARKS',
@@ -525,7 +534,7 @@ export function generateGalleyReportPDF(data: GalleyReportData): string {
 	]
 
 	// Build course analysis data with color coding
-	const courseAnalysisData: (string | number | CellDef)[][] = allCourses.map(ca => {
+	const courseAnalysisData: (string | number | CellDef)[][] = allCourses.map((ca, index) => {
 		const passPercentNum = parseFloat(ca.pass_percentage) || 0
 		// Color code pass percentage: green for high, red for low
 		const passPercentCell: CellDef = {
@@ -537,8 +546,10 @@ export function generateGalleyReportPDF(data: GalleyReportData): string {
 		}
 
 		return [
+			index + 1,  // S.No
 			ca.course.course_code,
 			ca.course.course_name,
+			ca.course.semester ? toRoman(ca.course.semester) : '-',  // SEMESTER in Roman numerals (I, II, III, ...)
 			ca.course.internal_max_mark || '-',
 			ca.course.external_max_mark || '-',
 			ca.course.total_max_mark,
@@ -585,17 +596,19 @@ export function generateGalleyReportPDF(data: GalleyReportData): string {
 			fontSize: 10
 		},
 		columnStyles: {
-			0: { cellWidth: 30, halign: 'center' },  // Course code
-			1: { cellWidth: 70, halign: 'left' },    // Course name
-			2: { cellWidth: 20 },  // INT MAX
-			3: { cellWidth: 20 },  // EXT MAX
-			4: { cellWidth: 20 },  // TOTAL
-			5: { cellWidth: 26 },  // REGISTERED
-			6: { cellWidth: 26 },  // APPEARED
-			7: { cellWidth: 26 },  // ABSENT
-			8: { cellWidth: 26 },  // PASSED
-			9: { cellWidth: 26 },  // RE-APPEAR
-			10: { cellWidth: 18 }  // PASS %
+			0: { cellWidth: 12, halign: 'center' },  // S.No
+			1: { cellWidth: 28, halign: 'center' },  // Course code
+			2: { cellWidth: 65, halign: 'left' },    // Course name
+			3: { cellWidth: 15, halign: 'center' },  // Semester
+			4: { cellWidth: 20 },  // INT MAX
+			5: { cellWidth: 20 },  // EXT MAX
+			6: { cellWidth: 20 },  // TOTAL
+			7: { cellWidth: 26 },  // REGISTERED
+			8: { cellWidth: 26 },  // APPEARED
+			9: { cellWidth: 26 },  // ABSENT
+			10: { cellWidth: 26 },  // PASSED
+			11: { cellWidth: 26 },  // RE-APPEAR
+			12: { cellWidth: 18 }  // PASS %
 		},
 		margin: { left: margin, right: margin }
 	})
