@@ -449,7 +449,8 @@ export async function GET(request: NextRequest) {
 			exam_registrations:exam_registration_id (
 				id,
 				stu_register_no,
-				student_name
+				student_name,
+				is_regular
 			),
 			courses:course_id (
 				id,
@@ -575,19 +576,45 @@ export async function GET(request: NextRequest) {
 		}
 
 		// Filter by semester (from course_offerings) and transform data
+		// MODIFIED: Include both current semester courses AND arrear courses from previous semesters
 		const semesterNum = parseInt(semester)
 		console.log('Filtering by semester:', semesterNum)
 		console.log('finalMarksRaw count:', finalMarksRaw?.length || 0)
 		console.log('Sample finalMarksRaw course_offerings:', finalMarksRaw?.slice(0, 3).map((m: any) => ({
 			course_offerings_semester: m.course_offerings?.semester,
 			course_offerings_course_id: m.course_offerings?.course_id,
-			course_code: m.courses?.course_code
+			course_code: m.courses?.course_code,
+			is_pass: m.is_pass
 		})))
 
 		const filteredMarksRaw = (finalMarksRaw || [])
-			.filter((mark: any) => mark.course_offerings?.semester === semesterNum)
+			.filter((mark: any) => {
+				const courseSemester = mark.course_offerings?.semester
 
-		console.log('filteredMarks count after semester filter:', filteredMarksRaw.length)
+				// Include current semester courses (all courses for selected semester)
+				if (courseSemester === semesterNum) return true
+
+				// Include failed courses from previous semesters (arrears)
+				// Student failed if is_pass === false OR pass_status indicates failure/reappear
+				const isFailed = mark.is_pass === false ||
+					mark.pass_status === 'Fail' ||
+					mark.pass_status === 'Reappear' ||
+					mark.pass_status === 'RA' ||
+					mark.letter_grade === 'U' ||
+					mark.letter_grade === 'RA'
+
+				if (courseSemester < semesterNum && isFailed) return true
+
+				return false
+			})
+
+		console.log('filteredMarks count after semester + arrear filter:', filteredMarksRaw.length)
+
+		// Count how many are current vs arrear
+		const currentSemesterCount = filteredMarksRaw.filter((m: any) => m.course_offerings?.semester === semesterNum).length
+		const arrearCount = filteredMarksRaw.filter((m: any) => m.course_offerings?.semester < semesterNum).length
+		console.log(`  Current semester (${semesterNum}): ${currentSemesterCount}`)
+		console.log(`  Arrear courses: ${arrearCount}`)
 
 		const filteredMarks = filteredMarksRaw.map((mark: any) => {
 				// Get student name from exam_registrations
@@ -597,6 +624,12 @@ export async function GET(request: NextRequest) {
 				// Get course_order from course_mapping using course_id (courses.id)
 				const courseId = mark.course_id
 				const courseOrder = courseId ? (courseMappingMap.get(courseId) ?? 999) : 999
+
+				// Get course semester from course_offerings
+				const courseSemester = mark.course_offerings?.semester || 0
+
+				// Get is_regular from exam_registrations (TRUE = current semester, FALSE = arrear)
+				const isRegular = mark.exam_registrations?.is_regular ?? true
 
 				return {
 					id: mark.id,
@@ -612,6 +645,7 @@ export async function GET(request: NextRequest) {
 					is_pass: mark.is_pass,
 					pass_status: mark.pass_status,
 					result_status: mark.result_status,
+					is_regular: isRegular,  // ADDED: Track if course is current semester (TRUE) or arrear (FALSE)
 					students: {
 						id: mark.student_id,
 						first_name: nameParts[0] || '',
@@ -630,7 +664,8 @@ export async function GET(request: NextRequest) {
 						total_max_mark: mark.total_marks_maximum,
 						course_category: null,
 						course_type: null,
-						course_order: courseOrder
+						course_order: courseOrder,
+						semester: courseSemester  // ADDED: Include semester for sorting and display
 					}
 				}
 			})
@@ -709,7 +744,8 @@ export async function GET(request: NextRequest) {
 				grade_points: mark.grade_points,
 				is_pass: mark.is_pass,
 				pass_status: mark.pass_status,
-				result_status: mark.result_status
+				result_status: mark.result_status,
+				is_regular: mark.is_regular  // ADDED: Track if course is current semester or arrear
 			})
 		})
 
@@ -717,12 +753,20 @@ export async function GET(request: NextRequest) {
 		const students = Array.from(studentMarksMap.values()).map((studentData: any) => {
 			const semResult = semesterResults?.find((sr: any) => sr.student_id === studentData.student.id)
 
-			// Sort courses by course_order from course_mapping
+			// Sort courses by: 1) semester (ascending), 2) course_order, 3) course_code
+			// This groups current semester courses first, then arrear courses by semester
 			const sortedCourses = [...studentData.courses].sort((a: any, b: any) => {
+				// Primary sort: by semester (ascending: Sem 1, Sem 2, ...)
+				const semA = a.course?.semester ?? 999
+				const semB = b.course?.semester ?? 999
+				if (semA !== semB) return semA - semB
+
+				// Secondary sort: by course_order from course_mapping
 				const orderA = a.course?.course_order ?? 999
 				const orderB = b.course?.course_order ?? 999
 				if (orderA !== orderB) return orderA - orderB
-				// Secondary sort by course_code if course_order is the same
+
+				// Tertiary sort: by course_code if course_order is the same
 				return (a.course?.course_code || '').localeCompare(b.course?.course_code || '')
 			})
 
@@ -810,11 +854,18 @@ export async function GET(request: NextRequest) {
 				? ((courseData.passed / courseData.appeared) * 100).toFixed(2)
 				: '0.00'
 		})).sort((a, b) => {
-			// Sort by course_order from course_mapping (ascending), fallback to 999 if not set
+			// Sort by: 1) semester (ascending), 2) course_order, 3) course_code
+			// Primary sort: by semester (ascending: Sem 1, Sem 2, ...)
+			const semA = a.course.semester ?? 999
+			const semB = b.course.semester ?? 999
+			if (semA !== semB) return semA - semB
+
+			// Secondary sort: by course_order from course_mapping (ascending), fallback to 999 if not set
 			const orderA = a.course.course_order ?? 999
 			const orderB = b.course.course_order ?? 999
 			if (orderA !== orderB) return orderA - orderB
-			// Secondary sort by course_code if course_order is the same
+
+			// Tertiary sort: by course_code if course_order is the same
 			return (a.course.course_code || '').localeCompare(b.course.course_code || '')
 		})
 

@@ -84,7 +84,12 @@
       "Bash(supabase db push:*)",
       "Bash(echo:*)",
       "Bash(bun --version:*)",
-      "Bash(npm:*)"
+      "Bash(npm:*)",
+      "Skill(brainstorming)",
+      "Skill(brainstorming:*)",
+      "Bash(supabase migration:*)",
+      "Bash(supabase status:*)",
+      "Bash(supabase projects:*)"
     ],
     "deny": [
       "mcp__filesystem__*"

@@ -778,26 +778,38 @@ export async function POST(request: NextRequest) {
 		console.log('[Final Marks] Sample course:', courseDetails?.[0])
 
 		// 4. Fetch internal marks for these students/courses
+		// NOTE: NOT filtering by examination_session_id because internal marks are entered once
+		// and should be reused across exam sessions (including reappear scenarios)
 		const studentIds = [...new Set(examRegistrations.map((er: any) => er.student_id))]
 		const { data: internalMarks, error: internalError } = await supabase
 			.from('internal_marks')
 			.select('*')
 			.eq('institutions_id', institutions_id)
-			.eq('examination_session_id', examination_session_id)
+			// REMOVED: .eq('examination_session_id', examination_session_id)
 			.in('student_id', studentIds)
 			.in('course_id', course_ids)
 			.eq('is_active', true)
+			.order('created_at', { ascending: false }) // Get most recent if multiple entries
 
 		if (internalError) {
 			console.error('Error fetching internal marks:', internalError)
 		}
 
 		// Create internal marks lookup map: student_id + course_id -> marks
+		// If multiple internal marks exist for same student+course, use the most recent (first in sorted results)
 		const internalMarksMap = new Map<string, any>()
 		internalMarks?.forEach((im: any) => {
 			const key = `${im.student_id}|${im.course_id}`
-			internalMarksMap.set(key, im)
+			if (!internalMarksMap.has(key)) {
+				internalMarksMap.set(key, im)
+			}
 		})
+
+		console.log('[Final Marks] Internal marks found:', internalMarks?.length || 0)
+		console.log('[Final Marks] Unique student-course pairs in map:', internalMarksMap.size)
+		if (internalMarks && internalMarks.length > internalMarksMap.size) {
+			console.log('[Final Marks] Note: Multiple internal marks found for same student-course pairs (using most recent)')
+		}
 
 		// 4. Fetch external marks (marks_entry table)
 		const examRegIds = examRegistrations.map((er: any) => er.id)

@@ -12,6 +12,7 @@ interface CourseMarks {
 		external_max_mark: number
 		total_max_mark: number
 		course_order?: number
+		semester?: number  // ADDED: Include semester for display
 	}
 	internal_marks: number | null
 	internal_max: number
@@ -23,6 +24,7 @@ interface CourseMarks {
 	grade_points: number
 	is_pass: boolean
 	pass_status: string
+	is_regular?: boolean  // ADDED: Track if course is current semester (TRUE) or arrear (FALSE)
 }
 
 interface StudentData {
@@ -56,6 +58,7 @@ interface CourseAnalysis {
 		external_max_mark: number
 		total_max_mark: number
 		course_order?: number
+		semester?: number  // ADDED: Include semester for display
 	}
 	registered: number
 	appeared: number
@@ -127,13 +130,19 @@ export function generateGalleyReportPDF(data: GalleyReportData): string {
 	const margin = 5
  
 	
-	// Get all courses sorted by course_order from course_mapping
+	// Get all courses sorted by: 1) semester, 2) course_order, 3) course_code
 	const allCourses = [...data.courseAnalysis].sort((a, b) => {
-		// Use 999 as fallback so courses without course_order appear at the end
+		// Primary sort: by semester (ascending: Sem 1, Sem 2, ...)
+		const semA = a.course.semester ?? 999
+		const semB = b.course.semester ?? 999
+		if (semA !== semB) return semA - semB
+
+		// Secondary sort: by course_order from course_mapping
 		const orderA = a.course.course_order ?? 999
 		const orderB = b.course.course_order ?? 999
 		if (orderA !== orderB) return orderA - orderB
-		// Secondary sort by course_code if course_order is the same
+
+		// Tertiary sort: by course_code if course_order is the same
 		return (a.course.course_code || '').localeCompare(b.course.course_code || '')
 	})
 
@@ -273,10 +282,14 @@ export function generateGalleyReportPDF(data: GalleyReportData): string {
 		})
 
 		// Add course column headers (repeat for each course slot per row)
-		// Columns: COURSE CODE | INT (semester) | EXT (internal) | TOT (external) | RES (total) | GP (result) | (grade)
+		// Columns: COURSE CODE | SEM | INT | EXT | TOT | RES | GP (7 columns)
 		for (let i = 0; i < COURSES_PER_ROW; i++) {
 			row1.push({
 				content: 'COURSE CODE',
+				styles: { halign: 'center', fillColor: [230, 230, 230], fontStyle: 'bold', fontSize: 8 }
+			})
+			row1.push({
+				content: 'SEM',
 				styles: { halign: 'center', fillColor: [230, 230, 230], fontStyle: 'bold', fontSize: 8 }
 			})
 			row1.push({
@@ -312,13 +325,19 @@ export function generateGalleyReportPDF(data: GalleyReportData): string {
 		const body: RowInput[] = []
 
 		sortedStudents.forEach((student, studentIndex) => {
-			// Sort student's courses by course_order from course_mapping
+			// Sort student's courses by: 1) semester, 2) course_order, 3) course_code
 			const studentCourses = [...student.courses].sort((a, b) => {
-				// Use 999 as fallback so courses without course_order appear at the end
+				// Primary sort: by semester (ascending: Sem 1, Sem 2, ...)
+				const semA = a.course.semester ?? 999
+				const semB = b.course.semester ?? 999
+				if (semA !== semB) return semA - semB
+
+				// Secondary sort: by course_order from course_mapping
 				const orderA = a.course.course_order ?? 999
 				const orderB = b.course.course_order ?? 999
 				if (orderA !== orderB) return orderA - orderB
-				// Secondary sort by course_code if course_order is the same
+
+				// Tertiary sort: by course_code if course_order is the same
 				return (a.course.course_code || '').localeCompare(b.course.course_code || '')
 			})
 
@@ -357,6 +376,7 @@ export function generateGalleyReportPDF(data: GalleyReportData): string {
 
 					if (courseMarks) {
 						const courseCode = courseMarks.course.course_code || ''
+						const sem = courseMarks.course.semester ? String(courseMarks.course.semester) : '-'
 						// Convert marks to string, handling 0 as valid value (only null/undefined becomes '-')
 						const int = (courseMarks.internal_marks === 0 || courseMarks.internal_marks) ? String(courseMarks.internal_marks) : '-'
 						const ext = (courseMarks.external_marks === 0 || courseMarks.external_marks) ? String(courseMarks.external_marks) : '-'
@@ -387,13 +407,15 @@ export function generateGalleyReportPDF(data: GalleyReportData): string {
 						const gp = courseMarks.letter_grade ?? '-'
 
 						row.push(courseCode)
+						row.push(sem)  // ADDED: Semester column
 						row.push(int)
 						row.push(ext)
 						row.push(tot)
 						row.push(res)
 						row.push(gp)
 					} else {
-						// No more courses for this student - fill with empty cells
+						// No more courses for this student - fill with empty cells (7 columns now)
+						row.push('')
 						row.push('')
 						row.push('')
 						row.push('')
@@ -412,7 +434,7 @@ export function generateGalleyReportPDF(data: GalleyReportData): string {
 
 	// Build column styles - fit to legal landscape page
 	// Legal landscape: 355.6mm x 215.9mm, with 5mm margins = 345.6mm usable width
-	// 3 fixed columns + 3 courses x 6 columns = 21 columns total
+	// 3 fixed columns + 3 courses x 7 columns = 24 columns total
 	const buildColumnStyles = (): Record<number, object> => {
 		const styles: Record<number, object> = {}
 		let colIndex = 0
@@ -422,16 +444,17 @@ export function generateGalleyReportPDF(data: GalleyReportData): string {
 		styles[colIndex++] = { cellWidth: 28, halign: 'center' }   // Reg No
 		styles[colIndex++] = { cellWidth: 45, halign: 'left' }     // Name
 
-		// Course columns (6 per course slot: COURSE CODE, INT, EXT, TOT, RES, GP)
+		// Course columns (7 per course slot: COURSE CODE, SEM, INT, EXT, TOT, RES, GP)
 		// Remaining width: 345.6 - 12 - 28 - 45 = 260.6mm / 3 courses = ~87mm per course
-		// Per course: 87mm / 6 columns
+		// Per course: 87mm / 7 columns
 		for (let i = 0; i < COURSES_PER_ROW; i++) {
-			styles[colIndex++] = { cellWidth: 26, halign: 'center' }  // COURSE CODE
-			styles[colIndex++] = { cellWidth: 12, halign: 'center' }  // INT
-			styles[colIndex++] = { cellWidth: 12, halign: 'center' }  // EXT
-			styles[colIndex++] = { cellWidth: 12, halign: 'center' }  // TOT
-			styles[colIndex++] = { cellWidth: 12, halign: 'center' }  // RES
-			styles[colIndex++] = { cellWidth: 12, halign: 'center' }  // GP
+			styles[colIndex++] = { cellWidth: 24, halign: 'center' }  // COURSE CODE
+			styles[colIndex++] = { cellWidth: 10, halign: 'center' }  // SEM
+			styles[colIndex++] = { cellWidth: 11, halign: 'center' }  // INT
+			styles[colIndex++] = { cellWidth: 11, halign: 'center' }  // EXT
+			styles[colIndex++] = { cellWidth: 11, halign: 'center' }  // TOT
+			styles[colIndex++] = { cellWidth: 10, halign: 'center' }  // RES
+			styles[colIndex++] = { cellWidth: 10, halign: 'center' }  // GP
 		}
 
 		return styles
