@@ -122,13 +122,6 @@ const COURSES_PER_ROW = 3
 // Columns per course: COURSE CODE, SEM, INT, EXT, TOT, RES, GP (7 columns)
 const COLS_PER_COURSE = 7
 
-// Helper function to convert number to Roman numerals
-function toRoman(num: number): string {
-	if (num < 1 || num > 10) return String(num)
-	const romanNumerals = ['I', 'II', 'III', 'IV', 'V', 'VI', 'VII', 'VIII', 'IX', 'X']
-	return romanNumerals[num - 1] || String(num)
-}
-
 export function generateGalleyReportPDF(data: GalleyReportData): string {
 	// Legal size Landscape
 	const doc = new jsPDF('landscape', 'mm', 'legal')
@@ -521,7 +514,7 @@ export function generateGalleyReportPDF(data: GalleyReportData): string {
 		'S.No',
 		'COURSE CODE',
 		'NAME OF THE COURSE',
-		'SEMESTER',
+		'SEM',
 		'INT MAX MARKS',
 		'EXT MAX MARKS',
 		'TOTAL MARKS',
@@ -549,7 +542,7 @@ export function generateGalleyReportPDF(data: GalleyReportData): string {
 			index + 1,  // S.No
 			ca.course.course_code,
 			ca.course.course_name,
-			ca.course.semester ? toRoman(ca.course.semester) : '-',  // SEMESTER in Roman numerals (I, II, III, ...)
+			ca.course.semester ? String(ca.course.semester) : '-',  // SEMESTER in numeric (1, 2, 3, ...)
 			ca.course.internal_max_mark || '-',
 			ca.course.external_max_mark || '-',
 			ca.course.total_max_mark,
