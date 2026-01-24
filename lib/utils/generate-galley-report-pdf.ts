@@ -255,8 +255,6 @@ export function generateGalleyReportPDF(data: GalleyReportData): string {
 		doc.text(`Page ${pageNum}`, pageWidth / 2, pageHeight - 5, { align: 'center' })
 	}
 
-	let pageNumber = 1
-
 	// =========================================
 	// PAGE 1: STUDENT RESULTS TABLE
 	// =========================================
@@ -448,13 +446,13 @@ export function generateGalleyReportPDF(data: GalleyReportData): string {
 		// Remaining width: 345.6 - 12 - 28 - 45 = 260.6mm / 3 courses = ~87mm per course
 		// Per course: 87mm / 7 columns
 		for (let i = 0; i < COURSES_PER_ROW; i++) {
-			styles[colIndex++] = { cellWidth: 24, halign: 'center' }  // COURSE CODE
+			styles[colIndex++] = { cellWidth: 23, halign: 'center' }  // COURSE CODE
 			styles[colIndex++] = { cellWidth: 10, halign: 'center' }  // SEM
 			styles[colIndex++] = { cellWidth: 11, halign: 'center' }  // INT
 			styles[colIndex++] = { cellWidth: 11, halign: 'center' }  // EXT
 			styles[colIndex++] = { cellWidth: 11, halign: 'center' }  // TOT
 			styles[colIndex++] = { cellWidth: 10, halign: 'center' }  // RES
-			styles[colIndex++] = { cellWidth: 10, halign: 'center' }  // GP
+			styles[colIndex++] = { cellWidth: 11, halign: 'center' }  // GP (increased from 10 to 11 for AAA)
 		}
 
 		return styles
@@ -487,12 +485,7 @@ export function generateGalleyReportPDF(data: GalleyReportData): string {
 		},
 		columnStyles: buildColumnStyles(),
 		margin: { left: margin, right: margin },
-		tableWidth: 'auto',
-		didDrawPage: (data) => {
-			// data.pageNumber gives the current page number (1-based)
-			addPageFooter(data.pageNumber)
-			pageNumber = data.pageNumber  // Keep track for later use
-		}
+		tableWidth: 'auto'
 	})
 
 	startY = (doc as any).lastAutoTable.finalY + 3
@@ -555,12 +548,10 @@ export function generateGalleyReportPDF(data: GalleyReportData): string {
 		]
 	})
 
-	// Check if we need a new page
+	// Check if we need a new page for course analysis table
 	const remainingSpace = pageHeight - startY - 40
 	if (remainingSpace < 50) {
-		addPageFooter(pageNumber)  // Add footer to current page before adding new page
 		doc.addPage()
-		pageNumber++
 		startY = margin + 10
 	}
 
@@ -613,9 +604,7 @@ export function generateGalleyReportPDF(data: GalleyReportData): string {
 	// =========================================
 	// Check if we need a new page for signature (need ~25mm space)
 	if (pageHeight - startY < 25) {
-		addPageFooter(pageNumber)  // Add footer to current page before adding new page
 		doc.addPage()
-		pageNumber++
 		startY = 30
 	}
 
@@ -626,8 +615,16 @@ export function generateGalleyReportPDF(data: GalleyReportData): string {
 	doc.setFontSize(10)
 	doc.text('CONTROLLER OF EXAMINATIONS', rightSignX, startY, { align: 'center' })
 
-	// Add footer to the last page
-	addPageFooter(pageNumber)
+	// =========================================
+	// ADD PAGE FOOTERS TO ALL PAGES
+	// =========================================
+	// Add page numbers to all pages at the end to ensure sequential numbering
+	// and avoid duplicates from multiple tables on the same page
+	const totalPages = (doc as any).internal.getNumberOfPages()
+	for (let i = 1; i <= totalPages; i++) {
+		doc.setPage(i)
+		addPageFooter(i)
+	}
 
 	// Save PDF
 	const programCode = data.program?.program_code || 'PROGRAM'
