@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getSupabaseServer } from '@/lib/supabase-server'
+import { logGalleyDiagnostics } from './diagnostic-log'
 
 export async function GET(request: NextRequest) {
 	const supabase = getSupabaseServer()
@@ -578,6 +579,10 @@ export async function GET(request: NextRequest) {
 		// Filter by semester (from course_offerings) and transform data
 		// MODIFIED: Include both current semester courses AND arrear courses from previous semesters
 		const semesterNum = parseInt(semester)
+
+		// Run diagnostic logging to identify which courses are included/filtered
+		logGalleyDiagnostics(finalMarksRaw || [], semesterNum)
+
 		console.log('Filtering by semester:', semesterNum)
 		console.log('finalMarksRaw count:', finalMarksRaw?.length || 0)
 		console.log('Sample finalMarksRaw course_offerings:', finalMarksRaw?.slice(0, 3).map((m: any) => ({
@@ -591,30 +596,28 @@ export async function GET(request: NextRequest) {
 			.filter((mark: any) => {
 				const courseSemester = mark.course_offerings?.semester
 
-				// Include current semester courses (all courses for selected semester)
-				if (courseSemester === semesterNum) return true
+				// CRITICAL FIX: Handle undefined courseSemester (missing course_offerings data)
+				if (courseSemester === undefined || courseSemester === null) {
+					console.warn('Missing course_offerings.semester for course:', mark.courses?.course_code, 'student:', mark.exam_registrations?.stu_register_no)
+					return false  // Skip courses with missing semester data
+				}
 
-				// Include failed courses from previous semesters (arrears)
-				// Student failed if is_pass === false OR pass_status indicates failure/reappear
-				const isFailed = mark.is_pass === false ||
-					mark.pass_status === 'Fail' ||
-					mark.pass_status === 'Reappear' ||
-					mark.pass_status === 'RA' ||
-					mark.letter_grade === 'U' ||
-					mark.letter_grade === 'RA'
-
-				if (courseSemester < semesterNum && isFailed) return true
-
-				return false
+			// UPDATED LOGIC: Include ALL courses from current examination session
+			// No need to filter by semester or pass/fail status since we already filtered by session
+			// This includes:
+			// - Current semester courses (e.g., Sem 2 for students in Sem 2)
+			// - Arrear courses from previous semesters (both passed and failed)
+			// - All courses are from the same examination_session_id
+			return true
 			})
 
-		console.log('filteredMarks count after semester + arrear filter:', filteredMarksRaw.length)
+		console.log('✅ All courses from current examination session:', filteredMarksRaw.length)
 
-		// Count how many are current vs arrear
+		// Count by semester
 		const currentSemesterCount = filteredMarksRaw.filter((m: any) => m.course_offerings?.semester === semesterNum).length
-		const arrearCount = filteredMarksRaw.filter((m: any) => m.course_offerings?.semester < semesterNum).length
+		const previousSemesterCount = filteredMarksRaw.filter((m: any) => m.course_offerings?.semester < semesterNum).length
 		console.log(`  Current semester (${semesterNum}): ${currentSemesterCount}`)
-		console.log(`  Arrear courses: ${arrearCount}`)
+		console.log(`  Previous semesters (arrears/passed): ${previousSemesterCount}`)
 
 		const filteredMarks = filteredMarksRaw.map((mark: any) => {
 				// Get student name from exam_registrations
@@ -629,7 +632,13 @@ export async function GET(request: NextRequest) {
 				const courseSemester = mark.course_offerings?.semester || 0
 
 				// Get is_regular from exam_registrations (TRUE = current semester, FALSE = arrear)
-				const isRegular = mark.exam_registrations?.is_regular ?? true
+				// CRITICAL FIX: Don't default to true - use the actual value or determine based on semester
+				let isRegular = mark.exam_registrations?.is_regular
+				if (isRegular === undefined || isRegular === null) {
+					// Fallback: If is_regular is not set, determine based on course semester
+					// If course semester matches selected semester, it's likely regular
+					isRegular = (courseSemester === semesterNum)
+				}
 
 				return {
 					id: mark.id,
@@ -776,6 +785,12 @@ export async function GET(request: NextRequest) {
 				? Math.max(...regularCourses.map((c: any) => c.course?.semester || 0))
 				: 0
 
+			// DIAGNOSTIC: Log student course details
+			console.log(`Student ${studentData.student.register_number}: total courses=${studentData.courses.length}, regular courses=${regularCourses.length}, determined current semester=${currentSemester}`)
+			if (regularCourses.length === 0) {
+				console.warn(`⚠️ Student ${studentData.student.register_number} has NO regular courses (all arrears or is_regular not set)`)
+			}
+
 			return {
 				...studentData,
 				courses: sortedCourses,
@@ -797,7 +812,11 @@ export async function GET(request: NextRequest) {
 		.filter((student: any) => {
 			// CRITICAL: Only include students currently studying in the selected semester
 			// This ensures Semester 4 students don't appear in Semester 6 report
-			return student.current_semester === semesterNum
+			const included = student.current_semester === semesterNum
+			if (!included) {
+				console.log(`Filtered out student ${student.student.register_number}: current_semester=${student.current_semester}, selected semester=${semesterNum}`)
+			}
+			return included
 		})
 		.sort((a, b) => {
 			// Sort by register number
@@ -805,6 +824,10 @@ export async function GET(request: NextRequest) {
 			const regB = b.student.register_number || ''
 			return regA.localeCompare(regB)
 		})
+
+		// DIAGNOSTIC: Log final student count
+		console.log(`✅ Total students included in semester ${semesterNum} report: ${students.length}`)
+		console.log('Included students:', students.map((s: any) => `${s.student.register_number} (${s.courses.length} courses)`).join(', '))
 
 		// Get unique courses for the course-wise analysis
 		const coursesMap = new Map()
