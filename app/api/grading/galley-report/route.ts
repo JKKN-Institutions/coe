@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getSupabaseServer } from '@/lib/supabase-server'
-import { logGalleyDiagnostics } from './diagnostic-log'
 
 export async function GET(request: NextRequest) {
 	const supabase = getSupabaseServer()
@@ -577,11 +576,8 @@ export async function GET(request: NextRequest) {
 		}
 
 		// Filter by semester (from course_offerings) and transform data
-		// MODIFIED: Include both current semester courses AND arrear courses from previous semesters
+		// UPDATED: Include ALL courses from current examination session (no semester/pass filtering)
 		const semesterNum = parseInt(semester)
-
-		// Run diagnostic logging to identify which courses are included/filtered
-		logGalleyDiagnostics(finalMarksRaw || [], semesterNum)
 
 		console.log('Filtering by semester:', semesterNum)
 		console.log('finalMarksRaw count:', finalMarksRaw?.length || 0)
