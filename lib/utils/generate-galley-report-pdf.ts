@@ -216,17 +216,47 @@ export function generateGalleyReportPDF(data: GalleyReportData): string {
 		// ========== PROGRAM INFO LINE ==========
 		doc.setFont('times', 'bold')
 		doc.setFontSize(11)
-		const programText = `PROGRAM: ${data.program?.program_code || ''} - ${data.program?.program_name || ''}`
-		doc.text(programText, margin, currentY)
 
 		// SEMESTER/YEAR in center (1&2 = I-Year, 3&4 = II-Year, 5&6 = III-Year, 7&8 = IV-Year)
 		const yearNum = Math.ceil(data.semester / 2)
 		const yearRoman = toRoman(yearNum)
 		const semesterYearText = `SEMESTER/YEAR: ${toRoman(data.semester)}/ ${yearRoman}-Year`
-		doc.text(semesterYearText, pageWidth / 2, currentY, { align: 'center' })
 
 		const batchText = `BATCH: ${data.batch}`
+
+		// Draw semester/year centered on first line
+		doc.text(semesterYearText, pageWidth / 2, currentY, { align: 'center' })
+
+		// Draw batch right-aligned on first line
 		doc.text(batchText, pageWidth - margin, currentY, { align: 'right' })
+
+		// Calculate available width for program text (up to semester text)
+		const semesterWidth = doc.getTextWidth(semesterYearText)
+		const programMaxWidth = (pageWidth / 2) - margin - (semesterWidth / 2) - 5
+
+		// Build program text: "PROGRAM: UAD - B.Sc. COMPUTER SCIENCE..."
+		const programPrefix = 'PROGRAM: '
+		const programCode = data.program?.program_code || ''
+		const programName = data.program?.program_name || ''
+		const fullProgramText = `${programPrefix}${programCode} - ${programName}`
+
+		// Calculate indent for wrapped lines (align with after "PROGRAM: ")
+		const prefixWidth = doc.getTextWidth(programPrefix)
+
+		// Split the full text to fit within max width
+		const programLines = doc.splitTextToSize(fullProgramText, programMaxWidth)
+
+		// Draw first line at margin
+		const lineHeight = 4
+		if (programLines.length > 0) {
+			doc.text(programLines[0], margin, currentY)
+		}
+
+		// Draw subsequent lines indented to align after "PROGRAM: "
+		for (let i = 1; i < programLines.length; i++) {
+			currentY += lineHeight
+			doc.text(programLines[i].trim(), margin + prefixWidth, currentY)
+		}
 
 		currentY += 3
 

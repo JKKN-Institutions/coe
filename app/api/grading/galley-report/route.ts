@@ -962,6 +962,17 @@ export async function GET(request: NextRequest) {
 								l.register_number === firstStudentRegNo || l.roll_number === firstStudentRegNo
 							) || learners[0]
 
+							// Debug: Log full learner data to understand batch lookup
+							console.log('[Galley Report] Matched learner details:', {
+								register_number: matchedLearner.register_number,
+								roll_number: matchedLearner.roll_number,
+								batch_id: matchedLearner.batch_id,
+								batch_name: matchedLearner.batch_name,
+								program_id: matchedLearner.program_id,
+								program_name: matchedLearner.program_name,
+								institution_id: matchedLearner.institution_id
+							})
+
 							const batchId = matchedLearner.batch_id
 							console.log('[Galley Report] Matched learner batch_id:', batchId)
 
@@ -1004,7 +1015,55 @@ export async function GET(request: NextRequest) {
 		// Fallback to calculated batch if not found
 		if (!batchName && session?.start_date) {
 			const startYear = new Date(session.start_date).getFullYear()
-			batchName = `${startYear}-${startYear + 3}`
+
+			// Determine program duration based on program name/code
+			// PG programs (M.A., M.Sc., M.Com, MBA, MCA, M.Phil, etc.): 2 years
+			// UG programs (B.A., B.Sc., B.Com, BCA, BBA, etc.): 3 years
+			const programNameUpper = (programName || '').toUpperCase()
+			const isPGProgram = programNameUpper.startsWith('M.A.') ||
+				programNameUpper.startsWith('M.SC') ||
+				programNameUpper.startsWith('M.COM') ||
+				programNameUpper.startsWith('MBA') ||
+				programNameUpper.startsWith('MCA') ||
+				programNameUpper.startsWith('M.PHIL') ||
+				programNameUpper.startsWith('M.ED') ||
+				programNameUpper.startsWith('M.LIB') ||
+				programNameUpper.includes('MASTER')
+
+			const programDuration = isPGProgram ? 2 : 3
+			batchName = `${startYear}-${startYear + programDuration}`
+			console.log(`[Galley Report] ⚠️ FALLBACK batch calculation used (MyJKKN lookup failed)`)
+			console.log(`[Galley Report] program="${programName}", isPG=${isPGProgram}, duration=${programDuration}, batch=${batchName}`)
+		} else if (batchName) {
+			console.log(`[Galley Report] ✅ Batch from MyJKKN: "${batchName}"`)
+
+			// Validate batch duration matches program type (PG=2 years, UG=3 years)
+			// Fix incorrect batch if MyJKKN returns wrong duration
+			const batchMatch = batchName.match(/^(\d{4})-(\d{4})$/)
+			if (batchMatch) {
+				const startYear = parseInt(batchMatch[1])
+				const endYear = parseInt(batchMatch[2])
+				const currentDuration = endYear - startYear
+
+				const programNameUpper = (programName || '').toUpperCase()
+				const isPGProgram = programNameUpper.startsWith('M.A.') ||
+					programNameUpper.startsWith('M.SC') ||
+					programNameUpper.startsWith('M.COM') ||
+					programNameUpper.startsWith('MBA') ||
+					programNameUpper.startsWith('MCA') ||
+					programNameUpper.startsWith('M.PHIL') ||
+					programNameUpper.startsWith('M.ED') ||
+					programNameUpper.startsWith('M.LIB') ||
+					programNameUpper.includes('MASTER')
+
+				const expectedDuration = isPGProgram ? 2 : 3
+
+				if (currentDuration !== expectedDuration) {
+					const correctedBatch = `${startYear}-${startYear + expectedDuration}`
+					console.log(`[Galley Report] ⚠️ Correcting batch: "${batchName}" → "${correctedBatch}" (${isPGProgram ? 'PG' : 'UG'} program expects ${expectedDuration} years)`)
+					batchName = correctedBatch
+				}
+			}
 		}
 
 		const response = {
