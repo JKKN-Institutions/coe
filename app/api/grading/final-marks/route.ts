@@ -427,8 +427,35 @@ export async function GET(request: NextRequest) {
 				return NextResponse.json(data || [])
 			}
 
-			default:
-				return NextResponse.json({ error: 'Invalid action' }, { status: 400 })
+			default: {
+				// Handle direct query by exam_registration_id (for revaluation dialog)
+				const examRegistrationId = searchParams.get('exam_registration_id')
+				if (examRegistrationId) {
+					const { data, error } = await supabase
+						.from('final_marks')
+						.select(`
+							*,
+							courses:course_id (
+								id,
+								course_code,
+								course_name,
+								course_type,
+								course_category
+							)
+						`)
+						.eq('exam_registration_id', examRegistrationId)
+						.eq('is_active', true)
+						.order('created_at', { ascending: false })
+
+					if (error) {
+						console.error('Error fetching final marks by exam registration:', error)
+						return NextResponse.json({ error: 'Failed to fetch final marks' }, { status: 400 })
+					}
+					return NextResponse.json(data || [])
+				}
+
+				return NextResponse.json({ error: 'Invalid action or missing parameters' }, { status: 400 })
+			}
 		}
 	} catch (error) {
 		console.error('Final marks API GET error:', error)

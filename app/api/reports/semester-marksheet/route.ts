@@ -59,24 +59,53 @@ function getGradeFromPercentage(
 
 /**
  * Check if student passed based on pass marks
- * Passing requires: 40% in ESE AND 40% in Total
+ * UG: Passing requires 40% in ESE AND 40% in Total
+ * PG: Passing requires 50% in ESE AND 50% in Total
  */
 function checkPassStatus(
 	eseMarks: number,
 	eseMax: number,
 	totalMarks: number,
-	totalMax: number
+	totalMax: number,
+	passingPercentage: number = 40  // Default to UG (40%), use 50 for PG
 ): { isPassing: boolean; result: string } {
 	const esePercentage = eseMax > 0 ? (eseMarks / eseMax) * 100 : 0
 	const totalPercentage = totalMax > 0 ? (totalMarks / totalMax) * 100 : 0
 
-	const passesESE = esePercentage >= 40
-	const passesTotal = totalPercentage >= 40
+	const passesESE = esePercentage >= passingPercentage
+	const passesTotal = totalPercentage >= passingPercentage
 
 	if (passesESE && passesTotal) {
 		return { isPassing: true, result: 'PASS' }
 	}
 	return { isPassing: false, result: 'RA' }
+}
+
+/**
+ * Check if program is PG based on code or name
+ */
+function isPGProgram(programCode: string, programName?: string): boolean {
+	const code = programCode?.toUpperCase() || ''
+	const name = programName?.toUpperCase() || ''
+
+	// Check code prefixes
+	const pgCodePrefixes = ['M', 'MBA', 'MCA', 'MSW', 'MSC', 'MA', 'MCOM', 'PHD', 'PG']
+	if (pgCodePrefixes.some(prefix => code.startsWith(prefix))) {
+		return true
+	}
+
+	// Check if code contains 'PG'
+	if (code.includes('PG')) {
+		return true
+	}
+
+	// Check program name for PG indicators
+	const pgNamePatterns = ['M.SC', 'MSC', 'M.A.', 'M.A ', 'MA ', 'M.COM', 'MCOM', 'MBA', 'MCA', 'M.PHIL', 'MPHIL', 'PH.D', 'PHD', 'POST GRADUATE', 'POSTGRADUATE', 'MASTER']
+	if (pgNamePatterns.some(pattern => name.includes(pattern))) {
+		return true
+	}
+
+	return false
 }
 
 /**
@@ -170,12 +199,37 @@ export async function GET(req: NextRequest) {
 			const studentName = examReg?.student_name || ''
 			const registerNo = examReg?.stu_register_no || ''
 
-			// Fetch date of birth from learners_profiles using register number
+			// Fetch extended learner details from learners_profiles for JasperReports fields
 			let dateOfBirth: string | null = null
+			let photoUrl: string | null = null
+			let learnerExtendedInfo: {
+				firstName?: string
+				middleName?: string
+				lastName?: string
+				fatherName?: string
+				motherName?: string
+				guardianName?: string
+				gender?: string
+				admissionYear?: string
+				batchName?: string
+			} = {}
+
 			if (registerNo) {
 				const { data: learnerProfile } = await supabase
 					.from('learners_profiles')
-					.select('date_of_birth')
+					.select(`
+						date_of_birth,
+						student_photo_url,
+						first_name,
+						middle_name,
+						last_name,
+						father_name,
+						mother_name,
+						guardian_name,
+						gender,
+						admission_year,
+						batch_name
+					`)
 					.eq('register_number', registerNo)
 					.maybeSingle()
 
@@ -184,6 +238,25 @@ export async function GET(req: NextRequest) {
 					const dob = new Date(learnerProfile.date_of_birth)
 					if (!isNaN(dob.getTime())) {
 						dateOfBirth = `${String(dob.getDate()).padStart(2, '0')}-${String(dob.getMonth() + 1).padStart(2, '0')}-${dob.getFullYear()}`
+					}
+				}
+
+				if (learnerProfile?.student_photo_url) {
+					photoUrl = learnerProfile.student_photo_url
+				}
+
+				// Extract extended info for JasperReports compatibility
+				if (learnerProfile) {
+					learnerExtendedInfo = {
+						firstName: learnerProfile.first_name || undefined,
+						middleName: learnerProfile.middle_name || undefined,
+						lastName: learnerProfile.last_name || undefined,
+						fatherName: learnerProfile.father_name || undefined,
+						motherName: learnerProfile.mother_name || undefined,
+						guardianName: learnerProfile.guardian_name || undefined,
+						gender: learnerProfile.gender || undefined,
+						admissionYear: learnerProfile.admission_year || undefined,
+						batchName: learnerProfile.batch_name || undefined
 					}
 				}
 
@@ -216,6 +289,57 @@ export async function GET(req: NextRequest) {
 				.eq('examination_session_id', sessionId)
 				.single()
 
+			// Fetch program name from MyJKKN API using program_code
+			let programName = semesterResult?.program_name || ''
+			const programCode = semesterResult?.program_code || ''
+
+			if (programCode && !programName) {
+				// Get institution to look up program
+				const institutionId = semesterResult?.institutions_id
+				if (institutionId) {
+					const { data: institution } = await supabase
+						.from('institutions')
+						.select('myjkkn_institution_ids')
+						.eq('id', institutionId)
+						.single()
+
+					const myjkknIds: string[] = institution?.myjkkn_institution_ids || []
+
+					if (myjkknIds.length > 0) {
+						try {
+							const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'
+
+							for (const myjkknInstId of myjkknIds) {
+								const params = new URLSearchParams({
+									limit: '100',
+									is_active: 'true',
+									institution_id: myjkknInstId
+								})
+
+								const res = await fetch(`${baseUrl}/api/myjkkn/programs?${params.toString()}`)
+
+								if (res.ok) {
+									const response = await res.json()
+									const programs = response.data || response || []
+
+									// Find program by code (MyJKKN uses program_id as code)
+									const matchingProgram = programs.find((p: any) =>
+										(p.program_id === programCode || p.program_code === programCode)
+									)
+
+									if (matchingProgram) {
+										programName = matchingProgram.program_name || matchingProgram.name || ''
+										break
+									}
+								}
+							}
+						} catch (error) {
+							console.warn('[Semester Marksheet] Failed to fetch program name from MyJKKN:', error)
+						}
+					}
+				}
+			}
+
 			// Process courses and group by part
 			interface ProcessedCourse {
 				courseCode: string
@@ -238,9 +362,21 @@ export async function GET(req: NextRequest) {
 				creditPoints: number
 				isPassing: boolean
 				result: string
+				// Enhanced status flags (optional - from JasperReports decode)
+				assessmentType?: string
+				passMarks?: number
+				isAbsent?: boolean
+				isMalpractice?: boolean
+				isIneligible?: boolean
+				isTermFail?: boolean
+				isFinalFail?: boolean
 			}
 
 			const processedCourses: ProcessedCourse[] = []
+
+			// Determine passing percentage based on program type (UG: 40%, PG: 50%)
+			const isPG = isPGProgram(programCode, programName)
+			const passingPercentage = isPG ? 50 : 40
 
 			finalMarks.forEach((fm: any) => {
 				const courseData = fm.course_offerings?.course_mapping?.courses
@@ -264,11 +400,16 @@ export async function GET(req: NextRequest) {
 					letterGrade = gradeInfo.letterGrade
 				}
 
-				// Check pass status
-				const { isPassing, result } = checkPassStatus(eseMarks, eseMax, totalMarks, totalMax)
+				// Enhanced status detection (from JasperReports decode)
+				const isAbsent = (eseMarks === 0 && ciaMarks === 0 && totalMarks === 0) ||
+				                 (letterGrade === 'AAA')
+				const passMarks = Math.ceil(totalMax * (passingPercentage / 100)) // UG: 40%, PG: 50%
+
+				// Check pass status (UG: 40%, PG: 50%)
+				const { isPassing, result } = checkPassStatus(eseMarks, eseMax, totalMarks, totalMax, passingPercentage)
 
 				// If failed, grade point becomes 0
-				const finalGradePoint = isPassing ? gradePoint : 0
+				const finalGradePoint = (isPassing && !isAbsent) ? gradePoint : 0
 				const credits = courseData.credit || 0
 				const creditPoints = credits * finalGradePoint
 
@@ -294,7 +435,15 @@ export async function GET(req: NextRequest) {
 					letterGrade: letterGrade || 'U',
 					creditPoints: Math.round(creditPoints * 10) / 10,
 					isPassing,
-					result
+					result,
+					// Enhanced fields
+					assessmentType: undefined, // Can be populated from DB if available
+					passMarks,
+					isAbsent,
+					isMalpractice: false,     // Can be populated from DB if available
+					isIneligible: false,      // Can be populated from DB if available
+					isTermFail: !isPassing && !isAbsent,
+					isFinalFail: !isPassing && !isAbsent
 				})
 			})
 
@@ -364,12 +513,31 @@ export async function GET(req: NextRequest) {
 			const hasFailures = processedCourses.some(c => !c.isPassing)
 			const overallResult = hasFailures ? 'RA' : 'PASS'
 
+			// Calculate totals for JasperReports summary fields
+			const totalIAMax = processedCourses.reduce((sum, c) => sum + c.ciaMax, 0)
+			const totalIASecured = processedCourses.reduce((sum, c) => sum + c.ciaMarks, 0)
+			const totalEAMax = processedCourses.reduce((sum, c) => sum + c.eseMax, 0)
+			const totalEASecured = processedCourses.reduce((sum, c) => sum + c.eseMarks, 0)
+			const totalMaxMarks = processedCourses.reduce((sum, c) => sum + c.totalMax, 0)
+			const totalSecured = processedCourses.reduce((sum, c) => sum + c.totalMarks, 0)
+			const percentage = totalMaxMarks > 0 ? Math.round((totalSecured / totalMaxMarks) * 10000) / 100 : 0
+
 			return NextResponse.json({
 				student: {
 					id: studentId,
 					name: studentName,
+					firstName: learnerExtendedInfo.firstName,
+					middleName: learnerExtendedInfo.middleName,
+					lastName: learnerExtendedInfo.lastName,
 					registerNo,
-					dateOfBirth: dateOfBirth
+					dateOfBirth: dateOfBirth,
+					photoUrl: photoUrl,
+					fatherName: learnerExtendedInfo.fatherName,
+					motherName: learnerExtendedInfo.motherName,
+					guardianName: learnerExtendedInfo.guardianName,
+					gender: learnerExtendedInfo.gender,
+					admissionYear: learnerExtendedInfo.admissionYear,
+					batchName: learnerExtendedInfo.batchName
 				},
 				semester: parseInt(semester || '1'),
 				session: {
@@ -378,8 +546,9 @@ export async function GET(req: NextRequest) {
 					monthYear: semesterResult?.month_year || ''
 				},
 				program: {
-					code: semesterResult?.program_code || '',
-					name: semesterResult?.program_name || ''
+					code: programCode,
+					name: programName,
+					isPG: isPG
 				},
 				courses: processedCourses,
 				partBreakdown: sortedParts,
@@ -393,8 +562,23 @@ export async function GET(req: NextRequest) {
 					passedCount: processedCourses.filter(c => c.isPassing).length,
 					failedCount: processedCourses.filter(c => !c.isPassing).length,
 					overallResult,
-					folio: semesterResult?.folio_number || null
-				}
+					folio: semesterResult?.folio_number || null,
+					// JasperReports-compatible fields
+					totalIAMax,
+					totalIASecured,
+					totalEAMax,
+					totalEASecured,
+					totalMaxMarks,
+					totalSecured,
+					percentage,
+					resultPublicationDate: semesterResult?.result_publication_date || null
+				},
+				// Generated date for PDF
+				generatedDate: new Date().toLocaleDateString('en-IN', {
+					day: '2-digit',
+					month: '2-digit',
+					year: 'numeric'
+				})
 			})
 		}
 
@@ -462,6 +646,55 @@ export async function GET(req: NextRequest) {
 
 			if (error) throw error
 
+			// Fetch program name from MyJKKN API for PG detection
+			let batchProgramName = ''
+			if (programCode) {
+				// Get institution to look up program
+				const { data: institution } = await supabase
+					.from('institutions')
+					.select('myjkkn_institution_ids')
+					.eq('id', institutionId)
+					.single()
+
+				const myjkknIds: string[] = institution?.myjkkn_institution_ids || []
+
+				if (myjkknIds.length > 0) {
+					try {
+						const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'
+
+						for (const myjkknInstId of myjkknIds) {
+							const params = new URLSearchParams({
+								limit: '100',
+								is_active: 'true',
+								institution_id: myjkknInstId
+							})
+
+							const res = await fetch(`${baseUrl}/api/myjkkn/programs?${params.toString()}`)
+
+							if (res.ok) {
+								const response = await res.json()
+								const programs = response.data || response || []
+
+								const matchingProgram = programs.find((p: any) =>
+									(p.program_id === programCode || p.program_code === programCode)
+								)
+
+								if (matchingProgram) {
+									batchProgramName = matchingProgram.program_name || matchingProgram.name || ''
+									break
+								}
+							}
+						}
+					} catch (error) {
+						console.warn('[Semester Marksheet Batch] Failed to fetch program name from MyJKKN:', error)
+					}
+				}
+			}
+
+			// Determine if this is a PG program (for passing percentage)
+			const batchIsPG = isPGProgram(programCode || '', batchProgramName)
+			const batchPassingPercentage = batchIsPG ? 50 : 40
+
 			// Group by student
 			const studentMap: Record<string, any> = {}
 
@@ -493,14 +726,23 @@ export async function GET(req: NextRequest) {
 					letterGrade = gradeInfo.letterGrade
 				}
 
+				// Enhanced status detection
+				const isAbsent = (eseMarks === 0 && ciaMarks === 0 && totalMarks === 0) ||
+				                 (letterGrade === 'AAA')
+				const totalMax = fm.total_marks_maximum || 100
+
+				// Use pre-calculated passing percentage (UG: 40%, PG: 50%)
+				const passMarks = Math.ceil(totalMax * (batchPassingPercentage / 100))
+
 				const { isPassing, result } = checkPassStatus(
 					eseMarks,
 					fm.external_marks_maximum || 75,
 					totalMarks,
-					fm.total_marks_maximum || 100
+					totalMax,
+					batchPassingPercentage
 				)
 
-				const finalGradePoint = isPassing ? gradePoint : 0
+				const finalGradePoint = (isPassing && !isAbsent) ? gradePoint : 0
 				const credits = courseData.credit || 0
 
 				studentMap[studentId].courses.push({
@@ -512,7 +754,7 @@ export async function GET(req: NextRequest) {
 					credits,
 					eseMax: fm.external_marks_maximum || 75,
 					ciaMax: fm.internal_marks_maximum || 25,
-					totalMax: fm.total_marks_maximum || 100,
+					totalMax,
 					eseMarks,
 					ciaMarks,
 					totalMarks,
@@ -521,18 +763,27 @@ export async function GET(req: NextRequest) {
 					letterGrade: letterGrade || 'U',
 					creditPoints: Math.round(credits * finalGradePoint * 10) / 10,
 					isPassing,
-					result
+					result,
+					// Enhanced fields
+					assessmentType: undefined,
+					passMarks,
+					isAbsent,
+					isMalpractice: false,
+					isIneligible: false,
+					isTermFail: !isPassing && !isAbsent,
+					isFinalFail: !isPassing && !isAbsent
 				})
 			})
 
-			// Fetch date of birth for all students from learners_profiles
+			// Fetch date of birth and photo for all students from learners_profiles
 			const registerNumbers = Object.values(studentMap).map((s: any) => s.registerNo).filter(Boolean)
 			const dobMap: Record<string, string> = {}
+			const photoMap: Record<string, string> = {}
 
 			if (registerNumbers.length > 0) {
 				const { data: learnerProfiles } = await supabase
 					.from('learners_profiles')
-					.select('register_number, date_of_birth')
+					.select('register_number, date_of_birth, student_photo_url')
 					.in('register_number', registerNumbers)
 
 				learnerProfiles?.forEach((lp: any) => {
@@ -541,6 +792,9 @@ export async function GET(req: NextRequest) {
 						if (!isNaN(dob.getTime())) {
 							dobMap[lp.register_number] = `${String(dob.getDate()).padStart(2, '0')}-${String(dob.getMonth() + 1).padStart(2, '0')}-${dob.getFullYear()}`
 						}
+					}
+					if (lp.student_photo_url && lp.register_number) {
+						photoMap[lp.register_number] = lp.student_photo_url
 					}
 				})
 
@@ -642,7 +896,8 @@ export async function GET(req: NextRequest) {
 						id: student.studentId,
 						name: student.studentName,
 						registerNo: student.registerNo,
-						dateOfBirth: dobMap[student.registerNo] || null
+						dateOfBirth: dobMap[student.registerNo] || null,
+						photoUrl: photoMap[student.registerNo] || null
 					},
 					semester: parseInt(semester || '1'),
 					session: {
@@ -652,7 +907,8 @@ export async function GET(req: NextRequest) {
 					},
 					program: {
 						code: programCode || '',
-						name: programCode || ''
+						name: batchProgramName || programCode || '',
+						isPG: batchIsPG
 					},
 					courses: student.courses,
 					partBreakdown: sortedParts,

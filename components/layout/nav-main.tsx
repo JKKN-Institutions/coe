@@ -236,7 +236,7 @@ export function NavMain({
                         />
                       )
                     )}
-                    <span className={`font-grotesk font-medium transition-opacity duration-300 ${isActive ? 'text-gray-900' : 'text-slate-800 dark:text-slate-200'} ${isCollapsed ? 'opacity-0 w-0 overflow-hidden' : 'opacity-100'}`}>
+                    <span className={`font-grotesk font-medium transition-opacity duration-300 leading-tight ${isActive ? 'text-gray-900' : 'text-slate-800 dark:text-slate-200'} ${isCollapsed ? 'opacity-0 w-0 overflow-hidden' : 'opacity-100'}`}>
                       {item.title}
                     </span>
                   </Link>
@@ -285,7 +285,7 @@ export function NavMain({
                             />
                           )
                         )}
-                        <span className={`font-grotesk font-medium transition-all duration-300 ${isActive ? 'text-gray-900' : 'text-slate-800 dark:text-slate-200'} opacity-0 w-0 overflow-hidden`}>
+                        <span className={`font-grotesk font-medium transition-all duration-300 leading-tight ${isActive ? 'text-gray-900' : 'text-slate-800 dark:text-slate-200'} opacity-0 w-0 overflow-hidden`}>
                           {item.title}
                         </span>
                         <ChevronRight className={`ml-auto h-4 w-4 transition-all duration-300 ${isActive ? 'text-gray-900' : 'text-slate-500 dark:text-slate-400'} opacity-0`} />
@@ -315,7 +315,7 @@ export function NavMain({
                               ) : (
                                 subItem.icon && <subItem.icon className={`h-4 w-4 ${isSubItemActive ? 'text-[#16a34a]' : 'text-[#16a34a] dark:text-[#16a34a]'}`} />
                               )}
-                              <span className={`font-grotesk text-sm ${isSubItemActive ? 'text-[#e6a600] font-medium' : 'text-slate-700 dark:text-slate-300'}`}>
+                              <span className={`font-grotesk text-sm leading-tight ${isSubItemActive ? 'text-[#e6a600] font-medium' : 'text-slate-700 dark:text-slate-300'}`}>
                                 {subItem.title}
                               </span>
                             </Link>
@@ -361,7 +361,7 @@ export function NavMain({
                             }`}
                           />
                         )}
-                        <span className={`font-grotesk font-medium transition-all duration-300 ${isActive ? 'text-gray-900' : 'text-slate-800 dark:text-slate-200'}`}>
+                        <span className={`font-grotesk font-medium transition-all duration-300 leading-tight ${isActive ? 'text-gray-900' : 'text-slate-800 dark:text-slate-200'}`}>
                           {item.title}
                         </span>
                         <ChevronRight className={`ml-auto h-4 w-4 transition-all duration-300 group-data-[state=open]/collapsible:rotate-90 ${isActive ? 'text-gray-900' : 'text-slate-500 dark:text-slate-400'}`} />
@@ -416,7 +416,7 @@ export function NavMain({
                                       />
                                     )
                                   )}
-                                  <span className={`font-grotesk text-sm ${isSubItemActive ? 'text-gray-900 font-medium' : 'text-slate-700 dark:text-slate-300'}`}>{subItem.title}</span>
+                                  <span className={`font-grotesk text-sm leading-tight ${isSubItemActive ? 'text-gray-900 font-medium' : 'text-slate-700 dark:text-slate-300'}`}>{subItem.title}</span>
                                 </Link>
                               </SidebarMenuSubButton>
                             </SidebarMenuSubItem>

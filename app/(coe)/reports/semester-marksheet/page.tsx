@@ -413,7 +413,7 @@ export default function SemesterMarksheetPage() {
 	// PDF GENERATION
 	// =====================================================
 
-	const handleDownloadPDF = async () => {
+	const handleDownloadPDF = async (withHeader: boolean = false) => {
 		if (!marksheetData) return
 
 		try {
@@ -446,15 +446,17 @@ export default function SemesterMarksheetPage() {
 				})
 			}
 
-			// Download PDF directly
+			// Download PDF directly with header option
+			const suffix = withHeader ? '_with_header' : ''
 			downloadSemesterMarksheetPDF(
 				pdfData,
-				`Marksheet_${marksheetData.student.registerNo}_Sem${marksheetData.semester}.pdf`
+				`Marksheet_${marksheetData.student.registerNo}_Sem${marksheetData.semester}${suffix}.pdf`,
+				{ showHeader: withHeader }
 			)
 
 			toast({
 				title: '✅ PDF Downloaded',
-				description: 'Marksheet PDF has been downloaded',
+				description: withHeader ? 'Marksheet PDF (with header) has been downloaded' : 'Marksheet PDF has been downloaded',
 				className: 'bg-green-50 border-green-200 text-green-800'
 			})
 		} catch (error) {
@@ -469,7 +471,7 @@ export default function SemesterMarksheetPage() {
 		}
 	}
 
-	const handlePreviewPDF = async () => {
+	const handlePreviewPDF = async (withHeader: boolean = false) => {
 		if (!marksheetData) return
 
 		try {
@@ -502,15 +504,15 @@ export default function SemesterMarksheetPage() {
 				})
 			}
 
-			// Generate PDF data URI
-			const pdfDataUri = generateSemesterMarksheetPDF(pdfData)
+			// Generate PDF data URI with header option
+			const pdfDataUri = generateSemesterMarksheetPDF(pdfData, { showHeader: withHeader })
 
 			// Open in new tab using window.open with data URI
 			window.open(pdfDataUri, '_blank')
 
 			toast({
 				title: '✅ PDF Generated',
-				description: 'Marksheet PDF opened in new tab',
+				description: withHeader ? 'Marksheet PDF (with header) opened in new tab' : 'Marksheet PDF opened in new tab',
 				className: 'bg-green-50 border-green-200 text-green-800'
 			})
 		} catch (error) {
@@ -526,7 +528,7 @@ export default function SemesterMarksheetPage() {
 	}
 
 	// Batch download for all learners in selected semester
-	const handleBatchDownload = async () => {
+	const handleBatchDownload = async (withHeader: boolean = false) => {
 		if (!selectedInstitutionId || !selectedSessionId || !selectedProgramCode || !selectedSemester) {
 			toast({
 				title: '❌ Missing Filters',
@@ -597,14 +599,18 @@ export default function SemesterMarksheetPage() {
 			}))
 
 			// Download single merged PDF with all marksheets
+			const suffix = withHeader ? '_with_header' : ''
 			downloadMergedMarksheetPDF(
 				allStudentData,
-				`Marksheets_${selectedProgramCode}_Sem${selectedSemester}_${marksheets.length}students.pdf`
+				`Marksheets_${selectedProgramCode}_Sem${selectedSemester}_${marksheets.length}students${suffix}.pdf`,
+				{ showHeader: withHeader }
 			)
 
 			toast({
 				title: '✅ Download Complete',
-				description: `Downloaded merged PDF with ${marksheets.length} marksheets`,
+				description: withHeader
+					? `Downloaded merged PDF with header (${marksheets.length} marksheets)`
+					: `Downloaded merged PDF with ${marksheets.length} marksheets`,
 				className: 'bg-green-50 border-green-200 text-green-800'
 			})
 		} catch (error) {
@@ -925,19 +931,34 @@ export default function SemesterMarksheetPage() {
 												<p className="text-sm text-muted-foreground">Download all marksheets in a single merged PDF</p>
 											</div>
 										</div>
-										<Button onClick={handleBatchDownload} disabled={generatingBatchPDF}>
-											{generatingBatchPDF ? (
-												<>
-													<Loader2 className="h-4 w-4 mr-2 animate-spin" />
-													Generating PDF...
-												</>
-											) : (
-												<>
-													<FileDown className="h-4 w-4 mr-2" />
-													Download Merged PDF
-												</>
-											)}
-										</Button>
+										<div className="flex gap-2">
+											<Button onClick={() => handleBatchDownload(false)} disabled={generatingBatchPDF}>
+												{generatingBatchPDF ? (
+													<>
+														<Loader2 className="h-4 w-4 mr-2 animate-spin" />
+														Generating...
+													</>
+												) : (
+													<>
+														<FileDown className="h-4 w-4 mr-2" />
+														Download Merged PDF
+													</>
+												)}
+											</Button>
+											<Button onClick={() => handleBatchDownload(true)} disabled={generatingBatchPDF} variant="outline" size="sm">
+												{generatingBatchPDF ? (
+													<>
+														<Loader2 className="h-4 w-4 mr-2 animate-spin" />
+														Generating...
+													</>
+												) : (
+													<>
+														<FileDown className="h-4 w-4 mr-2" />
+														With Header
+													</>
+												)}
+											</Button>
+										</div>
 									</div>
 								</div>
 							)}
@@ -1080,27 +1101,49 @@ export default function SemesterMarksheetPage() {
 								</div>
 
 								{/* Action Buttons */}
-								<div className="flex gap-3 mt-6">
-									<Button onClick={handlePreviewPDF} disabled={generatingPDF} variant="outline">
-										{generatingPDF ? (
-											<Loader2 className="h-4 w-4 mr-2 animate-spin" />
-										) : (
-											<Eye className="h-4 w-4 mr-2" />
-										)}
-										Preview PDF
-									</Button>
-									<Button onClick={handleDownloadPDF} disabled={generatingPDF}>
-										{generatingPDF ? (
-											<Loader2 className="h-4 w-4 mr-2 animate-spin" />
-										) : (
-											<Download className="h-4 w-4 mr-2" />
-										)}
-										Download PDF
-									</Button>
-									<Button variant="outline" onClick={() => window.print()}>
-										<Printer className="h-4 w-4 mr-2" />
-										Print
-									</Button>
+								<div className="space-y-4 mt-6">
+									<div className="flex gap-3">
+										<Button onClick={() => handlePreviewPDF(false)} disabled={generatingPDF} variant="outline">
+											{generatingPDF ? (
+												<Loader2 className="h-4 w-4 mr-2 animate-spin" />
+											) : (
+												<Eye className="h-4 w-4 mr-2" />
+											)}
+											Preview PDF
+										</Button>
+										<Button onClick={() => handleDownloadPDF(false)} disabled={generatingPDF}>
+											{generatingPDF ? (
+												<Loader2 className="h-4 w-4 mr-2 animate-spin" />
+											) : (
+												<Download className="h-4 w-4 mr-2" />
+											)}
+											Download PDF
+										</Button>
+										<Button variant="outline" onClick={() => window.print()}>
+											<Printer className="h-4 w-4 mr-2" />
+											Print
+										</Button>
+									</div>
+
+									{/* With Header Versions */}
+									<div className="flex gap-3 pt-2 border-t">
+										<Button onClick={() => handlePreviewPDF(true)} disabled={generatingPDF} variant="outline" size="sm">
+											{generatingPDF ? (
+												<Loader2 className="h-4 w-4 mr-2 animate-spin" />
+											) : (
+												<Eye className="h-4 w-4 mr-2" />
+											)}
+											Preview (With Header)
+										</Button>
+										<Button onClick={() => handleDownloadPDF(true)} disabled={generatingPDF} size="sm">
+											{generatingPDF ? (
+												<Loader2 className="h-4 w-4 mr-2 animate-spin" />
+											) : (
+												<Download className="h-4 w-4 mr-2" />
+											)}
+											Download (With Header)
+										</Button>
+									</div>
 								</div>
 							</CardContent>
 						</Card>

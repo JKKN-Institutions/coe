@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getSupabaseServer } from '@/lib/supabase-server'
+import { fetchMyJKKNBatchById } from '@/lib/myjkkn-api'
 
 export async function GET(request: NextRequest) {
 	const supabase = getSupabaseServer()
@@ -942,128 +943,92 @@ export async function GET(request: NextRequest) {
 
 		const highestScorer = studentTotalMarks[0] || null
 
-		// Fetch batch from MyJKKN: first get batch_id from learner profile, then fetch batch by ID directly
+		// Fetch batch from MyJKKN API: learners_profiles -> batches
 		let batchName = ''
 		if (students.length > 0) {
 			const firstStudentRegNo = students[0]?.student?.register_number
 			console.log('[Galley Report] Looking up batch for student:', firstStudentRegNo)
 			if (firstStudentRegNo) {
 				try {
-					// Step 1: Get learner profile to get batch_id
-					const learnerRes = await fetch(`${baseUrl}/api/myjkkn/learner-profiles?search=${encodeURIComponent(firstStudentRegNo)}&limit=10`)
+					// Use internal API route which enriches data with batch_name
+					// Filter by institution to improve performance (reduces data fetched)
+					const myjkknInstIdParam = myjkknIds.length > 0 ? `&institution_id=${myjkknIds[0]}` : ''
+					const learnerUrl = `${baseUrl}/api/myjkkn/learner-profiles?search=${encodeURIComponent(firstStudentRegNo)}${myjkknInstIdParam}&limit=200`
+					console.log('[Galley Report] Fetching learner from:', learnerUrl)
+
+					const learnerRes = await fetch(learnerUrl)
 					if (learnerRes.ok) {
 						const learnerResponse = await learnerRes.json()
-						const learners = learnerResponse.data || learnerResponse || []
-						console.log('[Galley Report] MyJKKN learner profiles found:', Array.isArray(learners) ? learners.length : 0)
+						const learners = learnerResponse.data || []
+						console.log('[Galley Report] MyJKKN learner profiles found:', learners.length)
 
-						if (Array.isArray(learners) && learners.length > 0) {
-							// Find exact match by register_number
-							const matchedLearner = learners.find((l: any) =>
-								l.register_number === firstStudentRegNo || l.roll_number === firstStudentRegNo
-							) || learners[0]
-
-							// Debug: Log full learner data to understand batch lookup
-							console.log('[Galley Report] Matched learner details:', {
-								register_number: matchedLearner.register_number,
-								roll_number: matchedLearner.roll_number,
-								batch_id: matchedLearner.batch_id,
-								batch_name: matchedLearner.batch_name,
-								program_id: matchedLearner.program_id,
-								program_name: matchedLearner.program_name,
-								institution_id: matchedLearner.institution_id
+						if (learners.length > 0) {
+							// Log first learner's field names for debugging
+							console.log('[Galley Report] First learner fields:', Object.keys(learners[0]).filter(k =>
+								k.includes('register') || k.includes('roll') || k.includes('number') || k.includes('stu')
+							))
+							console.log('[Galley Report] First learner sample:', {
+								register_number: learners[0].register_number,
+								roll_number: learners[0].roll_number,
+								stu_register_no: learners[0].stu_register_no,
+								enrollment_number: learners[0].enrollment_number,
+								student_id: learners[0].student_id,
 							})
 
-							const batchId = matchedLearner.batch_id
-							console.log('[Galley Report] Matched learner batch_id:', batchId)
+							// Find exact match by various possible register number field names
+							const matchedLearner = learners.find((l: any) => {
+								const regNo = l.register_number || l.roll_number || l.stu_register_no || l.enrollment_number || l.student_id || ''
+								return regNo === firstStudentRegNo
+							}) || learners[0]
 
-							// Step 2: Fetch batch directly by ID from MyJKKN batches API
-							if (batchId) {
+							// Get register number from any available field
+							const actualRegNo = matchedLearner.register_number || matchedLearner.roll_number ||
+								matchedLearner.stu_register_no || matchedLearner.enrollment_number || matchedLearner.student_id || ''
+
+							console.log('[Galley Report] Matched learner:', {
+								register_number: matchedLearner.register_number,
+								roll_number: matchedLearner.roll_number,
+								stu_register_no: matchedLearner.stu_register_no,
+								actual_reg_no: actualRegNo,
+								batch_id: matchedLearner.batch_id,
+								batch_name: matchedLearner.batch_name
+							})
+
+							// First check if batch_name is already enriched in learner profile
+							if (matchedLearner.batch_name) {
+								batchName = matchedLearner.batch_name
+								console.log('[Galley Report] ✅ Batch from enriched learner profile:', batchName)
+							} else if (matchedLearner.batch_id) {
+								// Fallback: Get batch from MyJKKN API by batch_id
 								try {
-									const batchByIdRes = await fetch(`${baseUrl}/api/myjkkn/batches/${batchId}`)
-									if (batchByIdRes.ok) {
-										const batchData = await batchByIdRes.json()
-										batchName = batchData.batch_name || ''
-										console.log('[Galley Report] Fetched batch directly by ID:', {
-											id: batchData.id,
-											batch_name: batchData.batch_name,
-											batch_code: batchData.batch_code
-										})
+									const batch = await fetchMyJKKNBatchById(matchedLearner.batch_id)
+									if (batch?.batch_name) {
+										batchName = batch.batch_name
+										console.log('[Galley Report] ✅ Batch from separate API call:', batchName)
 									} else {
-										console.log('[Galley Report] Batch by ID API failed, status:', batchByIdRes.status)
-										// Fallback to enriched batch_name
-										batchName = matchedLearner.batch_name || ''
+										console.log('[Galley Report] Batch API returned:', batch)
 									}
 								} catch (batchError) {
 									console.error('[Galley Report] Error fetching batch by ID:', batchError)
-									// Fallback to enriched batch_name
-									batchName = matchedLearner.batch_name || ''
 								}
 							} else {
-								// No batch_id, use enriched batch_name if available
-								batchName = matchedLearner.batch_name || ''
+								console.log('[Galley Report] No batch_id in learner profile')
 							}
+						} else {
+							console.log('[Galley Report] No learner profile found for:', firstStudentRegNo)
 						}
 					} else {
-						console.log('[Galley Report] MyJKKN learner-profiles API failed:', learnerRes.status)
+						console.error('[Galley Report] Learner API error:', learnerRes.status, learnerRes.statusText)
 					}
 				} catch (e) {
-					console.error('[Galley Report] Error fetching batch from MyJKKN:', e)
+					console.error('[Galley Report] Error fetching from MyJKKN API:', e)
 				}
 			}
 		}
 
-		// Fallback to calculated batch if not found
-		if (!batchName && session?.start_date) {
-			const startYear = new Date(session.start_date).getFullYear()
-
-			// Determine program duration based on program name/code
-			// PG programs (M.A., M.Sc., M.Com, MBA, MCA, M.Phil, etc.): 2 years
-			// UG programs (B.A., B.Sc., B.Com, BCA, BBA, etc.): 3 years
-			const programNameUpper = (programName || '').toUpperCase()
-			const isPGProgram = programNameUpper.startsWith('M.A.') ||
-				programNameUpper.startsWith('M.SC') ||
-				programNameUpper.startsWith('M.COM') ||
-				programNameUpper.startsWith('MBA') ||
-				programNameUpper.startsWith('MCA') ||
-				programNameUpper.startsWith('M.PHIL') ||
-				programNameUpper.startsWith('M.ED') ||
-				programNameUpper.startsWith('M.LIB') ||
-				programNameUpper.includes('MASTER')
-
-			const programDuration = isPGProgram ? 2 : 3
-			batchName = `${startYear}-${startYear + programDuration}`
-			console.log(`[Galley Report] ⚠️ FALLBACK batch calculation used (MyJKKN lookup failed)`)
-			console.log(`[Galley Report] program="${programName}", isPG=${isPGProgram}, duration=${programDuration}, batch=${batchName}`)
-		} else if (batchName) {
-			console.log(`[Galley Report] ✅ Batch from MyJKKN: "${batchName}"`)
-
-			// Validate batch duration matches program type (PG=2 years, UG=3 years)
-			// Fix incorrect batch if MyJKKN returns wrong duration
-			const batchMatch = batchName.match(/^(\d{4})-(\d{4})$/)
-			if (batchMatch) {
-				const startYear = parseInt(batchMatch[1])
-				const endYear = parseInt(batchMatch[2])
-				const currentDuration = endYear - startYear
-
-				const programNameUpper = (programName || '').toUpperCase()
-				const isPGProgram = programNameUpper.startsWith('M.A.') ||
-					programNameUpper.startsWith('M.SC') ||
-					programNameUpper.startsWith('M.COM') ||
-					programNameUpper.startsWith('MBA') ||
-					programNameUpper.startsWith('MCA') ||
-					programNameUpper.startsWith('M.PHIL') ||
-					programNameUpper.startsWith('M.ED') ||
-					programNameUpper.startsWith('M.LIB') ||
-					programNameUpper.includes('MASTER')
-
-				const expectedDuration = isPGProgram ? 2 : 3
-
-				if (currentDuration !== expectedDuration) {
-					const correctedBatch = `${startYear}-${startYear + expectedDuration}`
-					console.log(`[Galley Report] ⚠️ Correcting batch: "${batchName}" → "${correctedBatch}" (${isPGProgram ? 'PG' : 'UG'} program expects ${expectedDuration} years)`)
-					batchName = correctedBatch
-				}
-			}
+		// Log warning if no batch found from MyJKKN
+		if (!batchName) {
+			console.log('[Galley Report] ⚠️ No batch found from MyJKKN learner profile')
 		}
 
 		const response = {

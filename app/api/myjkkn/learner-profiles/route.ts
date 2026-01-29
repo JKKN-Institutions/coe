@@ -302,6 +302,27 @@ export async function GET(request: NextRequest) {
 			})
 		])
 
+		// DEBUG: Log raw MyJKKN response before enrichment
+		const rawData = response.data || []
+		if (rawData.length > 0 && search) {
+			console.log('[Learner Profiles API] RAW MyJKKN response first learner:', {
+				register_number: (rawData[0] as any).register_number,
+				roll_number: (rawData[0] as any).roll_number,
+				first_name: (rawData[0] as any).first_name,
+				last_name: (rawData[0] as any).last_name,
+				batch_id: (rawData[0] as any).batch_id,
+			})
+			// Check if any learner has matching register number
+			const matchingLearner = rawData.find((l: any) =>
+				l.register_number === search || l.roll_number === search
+			)
+			console.log('[Learner Profiles API] Learner matching search:', matchingLearner ? {
+				register_number: (matchingLearner as any).register_number,
+				roll_number: (matchingLearner as any).roll_number,
+				batch_id: (matchingLearner as any).batch_id,
+			} : 'NONE FOUND')
+		}
+
 		const enrichedData = enrichLearnerData(response.data || [], lookups)
 
 		return NextResponse.json({

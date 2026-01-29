@@ -35,13 +35,15 @@ export async function GET(req: NextRequest) {
 		}
 
 		// Build base query for final_marks
-		// Note: Removed nested examination_sessions join to avoid PostgREST errors
+		// Note: Removed nested joins (examination_sessions, programs, degrees) to avoid PostgREST errors
+		// program_id has no FK constraint, so we fetch programs separately
 		let baseQuery = supabase
 			.from('final_marks')
 			.select(`
 				id,
 				student_id,
 				program_id,
+				program_code,
 				course_id,
 				examination_session_id,
 				internal_marks_obtained,
@@ -54,17 +56,6 @@ export async function GET(req: NextRequest) {
 				pass_status,
 				result_status,
 				institutions_id,
-				programs (
-					id,
-					program_code,
-					program_name,
-					degree_id,
-					degrees (
-						id,
-						degree_code,
-						degree_name
-					)
-				),
 				institutions (
 					id,
 					institution_code,
@@ -84,9 +75,8 @@ export async function GET(req: NextRequest) {
 		if (filters.program_id) {
 			baseQuery = baseQuery.eq('program_id', filters.program_id)
 		}
-		if (filters.semester) {
-			baseQuery = baseQuery.eq('semester', filters.semester)
-		}
+		// Note: semester filter not applied - final_marks doesn't have semester column
+		// Semester filtering would need to be done via course_offerings join
 
 		const { data: rawMarksData, error: finalMarksError } = await baseQuery
 
@@ -130,10 +120,24 @@ export async function GET(req: NextRequest) {
 			}
 		}
 
-		// Enrich marks data with examination sessions
+		// Fetch programs separately (no FK constraint on program_id)
+		const programIds = [...new Set((rawMarksData || []).map((m: any) => m.program_id).filter(Boolean))]
+		let programsMap = new Map<string, any>()
+
+		if (programIds.length > 0) {
+			const { data: programsData } = await supabase
+				.from('programs')
+				.select(`id, program_code, program_name, degree_id`)
+				.in('id', programIds)
+
+			programsData?.forEach((p: any) => programsMap.set(p.id, p))
+		}
+
+		// Enrich marks data with examination sessions and programs
 		const finalMarksData = (rawMarksData || []).map((mark: any) => ({
 			...mark,
-			examination_sessions: sessionsMap.get(mark.examination_session_id) || null
+			examination_sessions: sessionsMap.get(mark.examination_session_id) || null,
+			programs: programsMap.get(mark.program_id) || null
 		}))
 
 		if (!finalMarksData || finalMarksData.length === 0) {

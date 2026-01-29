@@ -89,7 +89,14 @@
       "Skill(brainstorming:*)",
       "Bash(supabase migration:*)",
       "Bash(supabase status:*)",
-      "Bash(supabase projects:*)"
+      "Bash(supabase projects:*)",
+      "Bash(powershell.exe -Command \"winget upgrade Anthropic.ClaudeCode\")",
+      "Bash(cmd.exe /c \"winget upgrade Anthropic.ClaudeCode\")",
+      "Bash(cmd.exe /c \"where winget\")",
+      "Bash(cmd.exe /c \"winget upgrade Anthropic.ClaudeCode --accept-source-agreements --accept-package-agreements\")",
+      "Bash(git checkout:*)",
+      "Bash(npx @anthropic-ai/claude-code:*)",
+      "WebFetch(domain:raw.githubusercontent.com)"
     ],
     "deny": [
       "mcp__filesystem__*"

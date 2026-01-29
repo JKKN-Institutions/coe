@@ -59,6 +59,12 @@ import {
 	Ticket,
 	Globe,
 	Search,
+	PanelLeftClose,
+	PanelLeft,
+	RefreshCcw,
+	FilePlus,
+	List,
+	Clock,
 } from "lucide-react"
 
 import { NavMain } from "@/components/layout/nav-main"
@@ -67,7 +73,9 @@ import {
   Sidebar,
   SidebarContent,
   SidebarHeader,
+  SidebarFooter,
   SidebarRail,
+  useSidebar,
 } from "@/components/ui/sidebar"
 
 /**
@@ -243,6 +251,18 @@ const data = {
 			],
 		},
 		{
+			title: "Revaluation",
+			url: "#",
+			icon: RefreshCcw,
+			roles: ["super_admin", "coe"],
+			items: [
+				{ title: "New Application", url: "/revaluation-management/new-application", icon: FilePlus },
+				{ title: "Create Revaluation", url: "/revaluation-management/create", icon: FilePlus },
+				{ title: "All Applications", url: "/revaluation-management", icon: List },
+				{ title: "Pending Review", url: "/revaluation-management/pending", icon: Clock },
+			],
+		},
+		{
 			title: "Reports",
 			url: "#",
 			icon: PieChart,
@@ -276,6 +296,8 @@ const data = {
 
 export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
 	const { hasAnyRole } = useAuth()
+	const { toggleSidebar, state } = useSidebar()
+	const isCollapsed = state === "collapsed"
 
 	// Filter navigation items based on current user's roles
 	const filteredNavItems = data.navMain.filter(item => {
@@ -332,6 +354,24 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
 				{/* Filtered Navigation based on user roles */}
 				<NavMain items={filteredNavItems} />
 			</SidebarContent>
+
+			{/* ===== Sidebar Footer with Toggle ===== */}
+			<SidebarFooter className="border-t border-sidebar-border">
+				<button
+					onClick={toggleSidebar}
+					className="flex items-center justify-center gap-2 w-full p-2 rounded-md hover:bg-sidebar-accent transition-colors text-sidebar-foreground"
+					title={isCollapsed ? "Expand sidebar" : "Collapse sidebar"}
+				>
+					{isCollapsed ? (
+						<PanelLeft className="h-5 w-5 text-[#16a34a]" />
+					) : (
+						<>
+							<PanelLeftClose className="h-5 w-5 text-[#16a34a]" />
+							<span className="text-sm font-medium text-slate-600 dark:text-slate-300">Collapse</span>
+						</>
+					)}
+				</button>
+			</SidebarFooter>
 
 			{/* ===== Sidebar Rail ===== */}
 			<SidebarRail />

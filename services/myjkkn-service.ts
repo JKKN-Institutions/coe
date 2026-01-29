@@ -393,8 +393,11 @@ export async function fetchAllMyJKKNBatches(
 }
 
 export async function fetchMyJKKNBatchById(id: string): Promise<MyJKKNBatch> {
-	const response = await fetchFromMyJKKN<{ data: MyJKKNBatch }>(`/api-management/academic/batches/${id}`)
-	return response.data
+	const response = await fetchFromMyJKKN<MyJKKNBatch | { data: MyJKKNBatch }>(`/api-management/academic/batches/${id}`)
+	// Handle both response structures: { data: batch } or batch directly
+	const batch = (response as { data?: MyJKKNBatch }).data || response as MyJKKNBatch
+	console.log('[MyJKKN API] Batch by ID response:', { id, batch_name: batch?.batch_name, raw: response })
+	return batch
 }
 
 // =====================================================

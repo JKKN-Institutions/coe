@@ -3,7 +3,7 @@
 import { useEffect, useState, useCallback, useMemo } from "react"
 import { SidebarProvider, SidebarInset } from "@/components/ui/sidebar"
 import { AppSidebar } from "@/components/layout/app-sidebar"
-import { AppHeaderWhite } from "@/components/layout/app-header-white"
+import { AppHeader } from "@/components/layout/app-header"
 import { AppFooter } from "@/components/layout/app-footer"
 import { PageTransition, CardAnimation } from "@/components/common/page-transition"
 import { ModernBreadcrumb } from "@/components/common/modern-breadcrumb"
@@ -101,6 +101,11 @@ import {
 	Printer
 } from "lucide-react"
 import { useToast } from "@/hooks/common/use-toast"
+import { useInstitutionFilter } from "@/hooks/use-institution-filter"
+import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command"
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
+import { Check, ChevronsUpDown } from "lucide-react"
+import { cn } from "@/lib/utils"
 import type {
 	FilterOptions,
 	FilterOption,
@@ -165,10 +170,65 @@ const classificationChartConfig: ChartConfig = {
 	needsSupport: { label: "Needs Support", color: "#ef4444" }
 }
 
+// Interfaces for dropdown data
+interface Institution {
+	id: string
+	institution_code: string
+	institution_name: string
+}
+
+interface ExaminationSession {
+	id: string
+	session_name: string
+	session_code: string
+}
+
+interface Program {
+	id: string
+	program_code: string
+	program_name: string
+}
+
+interface Semester {
+	semester: number
+	label: string
+}
+
 export default function ResultAnalyticsDashboard() {
 	const { toast } = useToast()
 
-	// State for filters
+	// Global institution filter
+	const {
+		institutionId: globalInstitutionId,
+		isReady: isInstitutionReady,
+		mustSelectInstitution
+	} = useInstitutionFilter()
+
+	// Dropdown data
+	const [institutions, setInstitutions] = useState<Institution[]>([])
+	const [sessions, setSessions] = useState<ExaminationSession[]>([])
+	const [programs, setPrograms] = useState<Program[]>([])
+	const [semesters, setSemesters] = useState<Semester[]>([])
+
+	// Selected values
+	const [selectedInstitutionId, setSelectedInstitutionId] = useState<string>("")
+	const [selectedSessionId, setSelectedSessionId] = useState<string>("")
+	const [selectedProgramId, setSelectedProgramId] = useState<string>("")
+	const [selectedSemesters, setSelectedSemesters] = useState<number[]>([])
+
+	// Popover states
+	const [institutionOpen, setInstitutionOpen] = useState(false)
+	const [sessionOpen, setSessionOpen] = useState(false)
+	const [programOpen, setProgramOpen] = useState(false)
+	const [semesterOpen, setSemesterOpen] = useState(false)
+
+	// Loading states for dropdowns
+	const [loadingInstitutions, setLoadingInstitutions] = useState(false)
+	const [loadingSessions, setLoadingSessions] = useState(false)
+	const [loadingPrograms, setLoadingPrograms] = useState(false)
+	const [loadingSemesters, setLoadingSemesters] = useState(false)
+
+	// State for filters (for API calls)
 	const [filterOptions, setFilterOptions] = useState<FilterOptions | null>(null)
 	const [selectedFilters, setSelectedFilters] = useState<ResultAnalyticsFilters>({})
 	const [activeTab, setActiveTab] = useState("college")
@@ -444,7 +504,101 @@ export default function ResultAnalyticsDashboard() {
 		}
 	}, [selectedFilters, toast])
 
-	// Initial load
+	// Use global institution from header - institution is always based on global filter
+	useEffect(() => {
+		if (isInstitutionReady && globalInstitutionId) {
+			setSelectedInstitutionId(globalInstitutionId)
+		}
+	}, [isInstitutionReady, globalInstitutionId])
+
+	// Institution -> Sessions
+	useEffect(() => {
+		if (selectedInstitutionId) {
+			setSelectedSessionId("")
+			setSelectedProgramId("")
+			setSelectedSemesters([])
+			setSessions([])
+			setPrograms([])
+			setSemesters([])
+			fetchSessions(selectedInstitutionId)
+			// Update selectedFilters for API calls
+			setSelectedFilters(prev => ({ ...prev, institution_id: selectedInstitutionId }))
+		}
+	}, [selectedInstitutionId])
+
+	const fetchSessions = async (institutionId: string) => {
+		try {
+			setLoadingSessions(true)
+			const res = await fetch(`/api/grading/galley-report?type=sessions&institution_id=${institutionId}`)
+			if (res.ok) {
+				const data = await res.json()
+				setSessions(data)
+			}
+		} catch (error) {
+			console.error('Error fetching sessions:', error)
+		} finally {
+			setLoadingSessions(false)
+		}
+	}
+
+	// Session -> Programs
+	useEffect(() => {
+		if (selectedSessionId && selectedInstitutionId) {
+			setSelectedProgramId("")
+			setSelectedSemesters([])
+			setPrograms([])
+			setSemesters([])
+			fetchProgramsDropdown(selectedInstitutionId, selectedSessionId)
+			// Update selectedFilters for API calls
+			setSelectedFilters(prev => ({ ...prev, examination_session_id: selectedSessionId }))
+		}
+	}, [selectedSessionId])
+
+	const fetchProgramsDropdown = async (institutionId: string, sessionId: string) => {
+		try {
+			setLoadingPrograms(true)
+			const res = await fetch(`/api/grading/galley-report?type=programs&institution_id=${institutionId}&session_id=${sessionId}`)
+			if (res.ok) {
+				const data = await res.json()
+				setPrograms(data)
+			}
+		} catch (error) {
+			console.error('Error fetching programs:', error)
+		} finally {
+			setLoadingPrograms(false)
+		}
+	}
+
+	// Program -> Semesters
+	useEffect(() => {
+		if (selectedProgramId && selectedSessionId && selectedInstitutionId) {
+			setSelectedSemesters([])
+			fetchSemestersDropdown(selectedInstitutionId, selectedSessionId, selectedProgramId)
+			// Update selectedFilters for API calls
+			setSelectedFilters(prev => ({ ...prev, program_id: selectedProgramId }))
+		} else {
+			setSemesters([])
+		}
+	}, [selectedProgramId])
+
+	const fetchSemestersDropdown = async (institutionId: string, sessionId: string, programId: string) => {
+		try {
+			setLoadingSemesters(true)
+			const program = programs.find(p => p.id === programId)
+			const programCode = program?.program_code || programId
+			const res = await fetch(`/api/grading/galley-report?type=semesters&institution_id=${institutionId}&session_id=${sessionId}&program_id=${programCode}`)
+			if (res.ok) {
+				const data = await res.json()
+				setSemesters(data)
+			}
+		} catch (error) {
+			console.error('Error fetching semesters:', error)
+		} finally {
+			setLoadingSemesters(false)
+		}
+	}
+
+	// Initial load for filter options
 	useEffect(() => {
 		fetchFilterOptions()
 	}, [fetchFilterOptions])
@@ -464,13 +618,30 @@ export default function ResultAnalyticsDashboard() {
 		}
 	}, [activeTab, selectedFilters, fetchCollegeStats, fetchProgramStats, fetchSubjectStats, fetchNaacData, fetchNaadData])
 
-	// Handler for filter changes
-	const handleFilterChange = (key: keyof ResultAnalyticsFilters, value: string) => {
-		setSelectedFilters(prev => ({
-			...prev,
-			[key]: value === 'all' ? undefined : value
-		}))
+	// Handler for multi-select semester toggle
+	const handleSemesterToggle = (semester: number) => {
+		setSelectedSemesters(prev => {
+			const newSelection = prev.includes(semester)
+				? prev.filter(s => s !== semester)
+				: [...prev, semester]
+			return newSelection.sort((a, b) => a - b)
+		})
 	}
+
+	// Select all semesters
+	const handleSelectAllSemesters = () => {
+		setSelectedSemesters(semesters.map(s => s.semester))
+	}
+
+	// Clear all selected semesters
+	const handleClearSemesters = () => {
+		setSelectedSemesters([])
+	}
+
+	// Get display values
+	const selectedInstitution = institutions.find(i => i.id === selectedInstitutionId)
+	const selectedSession = sessions.find(s => s.id === selectedSessionId)
+	const selectedProgram = programs.find(p => p.id === selectedProgramId)
 
 	// Refresh all data
 	const refreshData = () => {
@@ -608,8 +779,8 @@ export default function ResultAnalyticsDashboard() {
 	// NAAD Pivot CSV Export handler (Consolidated Format - one row per student with SUB1-SUB40 columns)
 	const handleExportNAADPivotCSV = useCallback(async () => {
 		toast({
-			title: "Generating NAAD Pivot CSV",
-			description: "Preparing consolidated pivot export file...",
+			title: "Generating NAD Pivot CSV",
+			description: "Preparing pivot export (one row per learner with SUB columns)...",
 			className: "bg-blue-50 border-blue-200 text-blue-800 dark:bg-blue-900/20 dark:border-blue-800 dark:text-blue-200"
 		})
 
@@ -621,7 +792,7 @@ export default function ResultAnalyticsDashboard() {
 			if (selectedFilters.program_id) params.set('program_id', selectedFilters.program_id)
 			if (selectedFilters.semester) params.set('semester', String(selectedFilters.semester))
 
-			const response = await fetch(`/api/result-analytics/naad-csv-export?${params.toString()}`)
+			const response = await fetch(`/api/result-analytics/nad-pivot-export?${params.toString()}`)
 
 			if (!response.ok) {
 				const errorData = await response.json()
@@ -645,20 +816,20 @@ export default function ResultAnalyticsDashboard() {
 			const url = URL.createObjectURL(blob)
 			const link = document.createElement('a')
 			link.href = url
-			link.download = `naad_pivot_export_${new Date().toISOString().split('T')[0]}.csv`
+			link.download = `nad_pivot_export_${new Date().toISOString().split('T')[0]}.csv`
 			link.click()
 			URL.revokeObjectURL(url)
 
 			toast({
 				title: "✅ Export Complete",
-				description: "NAAD Pivot CSV file (one row per student) has been downloaded successfully.",
+				description: "NAD Pivot CSV (one row per learner with SUB1-SUBn columns) downloaded.",
 				className: "bg-green-50 border-green-200 text-green-800 dark:bg-green-900/20 dark:border-green-800 dark:text-green-200"
 			})
 		} catch (error) {
-			console.error('NAAD Pivot CSV export error:', error)
+			console.error('NAD Pivot CSV export error:', error)
 			toast({
 				title: "❌ Export Failed",
-				description: error instanceof Error ? error.message : "Failed to generate NAAD Pivot CSV export",
+				description: error instanceof Error ? error.message : "Failed to generate NAD Pivot CSV export",
 				variant: "destructive"
 			})
 		}
@@ -744,7 +915,7 @@ export default function ResultAnalyticsDashboard() {
 		<SidebarProvider>
 			<AppSidebar />
 			<SidebarInset>
-				<AppHeaderWhite />
+				<AppHeader />
 
 				<PageTransition>
 					<div className="flex flex-1 flex-col gap-4 p-4 md:p-6">
@@ -821,7 +992,7 @@ export default function ResultAnalyticsDashboard() {
 														Pivot
 													</Button>
 												</TooltipTrigger>
-												<TooltipContent>Download NAAD Pivot CSV (one row per student with SUB1-SUB40 columns)</TooltipContent>
+												<TooltipContent>Download NAD Pivot CSV (one row per learner with SUB1-SUBn x 25 fields)</TooltipContent>
 											</UITooltip>
 										</TooltipProvider>
 										<Separator orientation="vertical" className="h-6 bg-white/20" />
@@ -860,128 +1031,191 @@ export default function ResultAnalyticsDashboard() {
 							<CardHeader className="pb-3">
 								<div className="flex items-center gap-2">
 									<Filter className="h-4 w-4 text-slate-500" />
-									<CardTitle className="text-sm font-semibold">Filters</CardTitle>
+									<CardTitle className="text-sm font-semibold">Report Filters</CardTitle>
 								</div>
+								<p className="text-xs text-muted-foreground">Select filters to view analytics</p>
 							</CardHeader>
 							<CardContent>
-								<div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-4">
-									{/* Institution Filter */}
+								<div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+									{/* Examination Session */}
 									<div className="space-y-1.5">
-										<Label className="text-xs font-medium">Institution</Label>
-										<SearchableSelect
-											value={selectedFilters.institution_id || 'all'}
-											onValueChange={(v) => handleFilterChange('institution_id', v)}
-											disabled={loadingFilters}
-											options={[
-												{ value: 'all', label: 'All Institutions' },
-												...(filterOptions?.institutions || [])
-											]}
-											placeholder="All Institutions"
-											searchPlaceholder="Search institution..."
-											emptyText="No institutions found"
-											className="h-9 text-xs"
-											wrapText={true}
-											clearable={false}
-										/>
+										<Label className="text-xs font-medium">
+											Examination Session <span className="text-red-500">*</span>
+										</Label>
+										<Popover open={sessionOpen} onOpenChange={setSessionOpen}>
+											<PopoverTrigger asChild>
+												<Button
+													variant="outline"
+													role="combobox"
+													className="h-9 w-full justify-between text-xs"
+													disabled={!selectedInstitutionId || loadingSessions}
+												>
+													<span className="truncate">
+														{selectedSessionId
+															? selectedSession?.session_name
+															: "Select session"}
+													</span>
+													<ChevronsUpDown className="h-3 w-3 opacity-50" />
+												</Button>
+											</PopoverTrigger>
+											<PopoverContent className="w-[350px] p-0" align="start">
+												<Command filter={(value, search) => {
+													if (value.toLowerCase().includes(search.toLowerCase())) return 1
+													return 0
+												}}>
+													<CommandInput placeholder="Search session..." className="h-8 text-xs" />
+													<CommandList>
+														<CommandEmpty className="text-xs py-2">No session found.</CommandEmpty>
+														<CommandGroup>
+															{sessions.map((session) => (
+																<CommandItem
+																	key={session.id}
+																	value={session.session_name}
+																	onSelect={() => {
+																		setSelectedSessionId(session.id)
+																		setSessionOpen(false)
+																	}}
+																	className="text-xs"
+																>
+																	<Check className={cn("mr-2 h-3 w-3", selectedSessionId === session.id ? "opacity-100" : "opacity-0")} />
+																	{session.session_name}
+																</CommandItem>
+															))}
+														</CommandGroup>
+													</CommandList>
+												</Command>
+											</PopoverContent>
+										</Popover>
 									</div>
 
-									{/* Academic Year Filter */}
+									{/* Program */}
 									<div className="space-y-1.5">
-										<Label className="text-xs font-medium">Academic Year</Label>
-										<SearchableSelect
-											value={selectedFilters.academic_year_id || 'all'}
-											onValueChange={(v) => handleFilterChange('academic_year_id', v)}
-											disabled={loadingFilters}
-											options={[
-												{ value: 'all', label: 'All Years' },
-												...(filterOptions?.academic_years || [])
-											]}
-											placeholder="All Years"
-											searchPlaceholder="Search year..."
-											emptyText="No years found"
-											className="h-9 text-xs"
-											wrapText={true}
-											clearable={false}
-										/>
+										<Label className="text-xs font-medium">
+											Program <span className="text-red-500">*</span>
+										</Label>
+										<Popover open={programOpen} onOpenChange={setProgramOpen}>
+											<PopoverTrigger asChild>
+												<Button
+													variant="outline"
+													role="combobox"
+													className="h-9 w-full justify-between text-xs"
+													disabled={!selectedSessionId || loadingPrograms}
+												>
+													<span className="truncate">
+														{selectedProgramId
+															? `${selectedProgram?.program_code} - ${selectedProgram?.program_name}`
+															: "Select program"}
+													</span>
+													<ChevronsUpDown className="h-3 w-3 opacity-50" />
+												</Button>
+											</PopoverTrigger>
+											<PopoverContent className="w-[400px] p-0" align="start">
+												<Command filter={(value, search) => {
+													if (value.toLowerCase().includes(search.toLowerCase())) return 1
+													return 0
+												}}>
+													<CommandInput placeholder="Search program..." className="h-8 text-xs" />
+													<CommandList>
+														<CommandEmpty className="text-xs py-2">No program found.</CommandEmpty>
+														<CommandGroup>
+															{programs.map((prog) => (
+																<CommandItem
+																	key={prog.id}
+																	value={`${prog.program_code} ${prog.program_name}`}
+																	onSelect={() => {
+																		setSelectedProgramId(prog.id)
+																		setProgramOpen(false)
+																	}}
+																	className="text-xs"
+																>
+																	<Check className={cn("mr-2 h-3 w-3", selectedProgramId === prog.id ? "opacity-100" : "opacity-0")} />
+																	{prog.program_code} - {prog.program_name}
+																</CommandItem>
+															))}
+														</CommandGroup>
+													</CommandList>
+												</Command>
+											</PopoverContent>
+										</Popover>
 									</div>
 
-									{/* Examination Session Filter */}
+									{/* Semester (Multi-select) */}
 									<div className="space-y-1.5">
-										<Label className="text-xs font-medium">Exam Session</Label>
-										<SearchableSelect
-											value={selectedFilters.examination_session_id || 'all'}
-											onValueChange={(v) => handleFilterChange('examination_session_id', v)}
-											disabled={loadingFilters}
-											options={[
-												{ value: 'all', label: 'All Sessions' },
-												...(filterOptions?.examination_sessions || [])
-											]}
-											placeholder="All Sessions"
-											searchPlaceholder="Search session..."
-											emptyText="No sessions found"
-											className="h-9 text-xs"
-											wrapText={true}
-											clearable={false}
-										/>
-									</div>
-
-									{/* Program Filter */}
-									<div className="space-y-1.5">
-										<Label className="text-xs font-medium">Program</Label>
-										<SearchableSelect
-											value={selectedFilters.program_id || 'all'}
-											onValueChange={(v) => handleFilterChange('program_id', v)}
-											disabled={loadingFilters}
-											options={[
-												{ value: 'all', label: 'All Programs' },
-												...(filterOptions?.programs || [])
-											]}
-											placeholder="All Programs"
-											searchPlaceholder="Search program..."
-											emptyText="No programs found"
-											className="h-9 text-xs"
-											wrapText={true}
-											clearable={false}
-										/>
-									</div>
-
-									{/* Semester Filter */}
-									<div className="space-y-1.5">
-										<Label className="text-xs font-medium">Semester</Label>
-										<SearchableSelect
-											value={selectedFilters.semester?.toString() || 'all'}
-											onValueChange={(v) => handleFilterChange('semester', v)}
-											disabled={loadingFilters}
-											options={[
-												{ value: 'all', label: 'All Semesters' },
-												...(filterOptions?.semesters || [])
-											]}
-											placeholder="All Semesters"
-											searchPlaceholder="Search semester..."
-											emptyText="No semesters found"
-											className="h-9 text-xs"
-											wrapText={true}
-											clearable={false}
-										/>
-									</div>
-
-									{/* Degree Level Filter */}
-									<div className="space-y-1.5">
-										<Label className="text-xs font-medium">Degree Level</Label>
-										<SearchableSelect
-											value={selectedFilters.degree_level || 'All'}
-											onValueChange={(v) => handleFilterChange('degree_level', v as any)}
-											disabled={loadingFilters}
-											options={filterOptions?.degree_levels || []}
-											placeholder="All Levels"
-											searchPlaceholder="Search level..."
-											emptyText="No levels found"
-											className="h-9 text-xs"
-											wrapText={true}
-											clearable={false}
-										/>
+										<Label className="text-xs font-medium">
+											Semester <span className="text-slate-400">(Optional - Multi)</span>
+										</Label>
+										<Popover open={semesterOpen} onOpenChange={setSemesterOpen}>
+											<PopoverTrigger asChild>
+												<Button
+													variant="outline"
+													role="combobox"
+													className="h-9 w-full justify-between text-xs"
+													disabled={!selectedProgramId || loadingSemesters}
+												>
+													<span className="truncate">
+														{selectedSemesters.length > 0
+															? selectedSemesters.length === semesters.length
+																? "All Semesters"
+																: `${selectedSemesters.length} selected`
+															: "All Semesters"}
+													</span>
+													<ChevronsUpDown className="h-3 w-3 opacity-50" />
+												</Button>
+											</PopoverTrigger>
+											<PopoverContent className="w-[250px] p-0" align="start">
+												<Command>
+													<CommandList>
+														<CommandGroup>
+															<CommandItem
+																onSelect={handleSelectAllSemesters}
+																className="text-xs"
+															>
+																<Check className={cn("mr-2 h-3 w-3", selectedSemesters.length === semesters.length && semesters.length > 0 ? "opacity-100" : "opacity-0")} />
+																Select All
+															</CommandItem>
+															<CommandItem
+																onSelect={handleClearSemesters}
+																className="text-xs"
+															>
+																<Check className={cn("mr-2 h-3 w-3", selectedSemesters.length === 0 ? "opacity-100" : "opacity-0")} />
+																Clear All
+															</CommandItem>
+														</CommandGroup>
+														<CommandGroup>
+															{semesters.map((sem) => (
+																<CommandItem
+																	key={sem.semester}
+																	onSelect={() => handleSemesterToggle(sem.semester)}
+																	className="text-xs"
+																>
+																	<Check className={cn("mr-2 h-3 w-3", selectedSemesters.includes(sem.semester) ? "opacity-100" : "opacity-0")} />
+																	{sem.label}
+																</CommandItem>
+															))}
+														</CommandGroup>
+													</CommandList>
+												</Command>
+											</PopoverContent>
+										</Popover>
 									</div>
 								</div>
+
+								{/* Selected Semesters Pills */}
+								{selectedSemesters.length > 0 && (
+									<div className="flex flex-wrap gap-1 mt-3 pt-3 border-t">
+										<span className="text-xs text-muted-foreground mr-1">Selected:</span>
+										{selectedSemesters.map(sem => (
+											<Badge
+												key={sem}
+												variant="secondary"
+												className="text-xs cursor-pointer hover:bg-destructive hover:text-destructive-foreground"
+												onClick={() => handleSemesterToggle(sem)}
+											>
+												Sem {sem} ×
+											</Badge>
+										))}
+									</div>
+								)}
 							</CardContent>
 						</Card>
 
