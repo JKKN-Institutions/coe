@@ -121,36 +121,55 @@ async function fetchAllPages<T>(
 	let page = 1
 	let totalPages = 1
 	const limit = options.limit || 100
+	const MAX_PAGES = 50  // Safety limit to prevent infinite loops
 
 	do {
+		console.log(`[fetchAllPages] Fetching page ${page}...`)
 		const response = await fetchFn({ ...options, page, limit, all: false })
 
 		// Handle response.data - might be array or nested
 		const pageData = Array.isArray(response.data) ? response.data : []
 		allData.push(...pageData)
 
+		console.log(`[fetchAllPages] Page ${page} returned ${pageData.length} records (total so far: ${allData.length})`)
 
-		
+		// Safety check: if we got no data, stop
+		if (pageData.length === 0) {
+			console.log(`[fetchAllPages] Got 0 records, stopping pagination`)
+			break
+		}
+
 		// Safely extract totalPages from metadata - handle missing/undefined metadata
 		if (response.metadata && typeof response.metadata.totalPages === 'number') {
 			totalPages = response.metadata.totalPages
+			console.log(`[fetchAllPages] Using metadata.totalPages: ${totalPages}`)
+		} else if (response.metadata && typeof response.metadata.total === 'number') {
+			// Calculate from total count
+			totalPages = Math.ceil(response.metadata.total / limit) || 1
+			console.log(`[fetchAllPages] Calculated totalPages from total: ${totalPages} (total: ${response.metadata.total}, limit: ${limit})`)
 		} else {
-			// If no metadata, assume single page (stop after first iteration)
-			// Or calculate from total if available
-			const total = response.metadata?.total || pageData.length
-			totalPages = Math.ceil(total / limit) || 1
-			console.log(`[fetchAllPages] No totalPages in metadata, calculated: ${totalPages} (total: ${total}, limit: ${limit})`)
+			// No metadata - use heuristic: if we got full page, there might be more
+			if (pageData.length >= limit) {
+				// Got full page, assume there's at least one more page
+				totalPages = page + 1
+				console.log(`[fetchAllPages] No metadata, got full page (${pageData.length}), will try page ${page + 1}`)
+			} else {
+				// Got partial page, this is the last page
+				totalPages = page
+				console.log(`[fetchAllPages] No metadata, got partial page (${pageData.length}), stopping`)
+			}
 		}
 
 		page++
 
-		// Safety check: if we got no data, stop to prevent infinite loop
-		if (pageData.length === 0) {
+		// Safety limit to prevent infinite loops
+		if (page > MAX_PAGES) {
+			console.warn(`[fetchAllPages] Reached max pages limit (${MAX_PAGES}), stopping`)
 			break
 		}
 	} while (page <= totalPages)
 
-	console.log(`[fetchAllPages] Fetched ${allData.length} total records across ${page - 1} pages`)
+	console.log(`[fetchAllPages] Complete! Fetched ${allData.length} total records across ${page - 1} pages`)
 	return allData
 }
 

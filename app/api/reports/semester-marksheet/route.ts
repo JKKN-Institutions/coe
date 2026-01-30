@@ -290,7 +290,7 @@ export async function GET(req: NextRequest) {
 					// Build options for the service call
 					const profileOptions: any = {
 						all: true,  // Fetch all pages
-						limit: 100  // Per-page limit for pagination
+						limit: 10000  // Increased limit to fetch all profiles at once
 					}
 					// Use program_id (UUID) - this is what the external API expects
 					if (myjkknProgramId) {
@@ -929,7 +929,7 @@ export async function GET(req: NextRequest) {
 					try {
 						const profileOptions: any = {
 							all: true,
-							limit: 100,
+							limit: 10000,  // Increased limit to fetch all profiles at once
 							institution_id: myjkknInstitutionId
 						}
 						if (myjkknProgramId) {
