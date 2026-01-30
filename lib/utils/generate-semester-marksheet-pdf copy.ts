@@ -360,57 +360,70 @@ function addStudentMarksheetToDoc(
 
 	// Only show header if showHeader option is true
 	if (options.showHeader) {
-		// College Logo (left side) - 16x16mm
-		if (data.logoImage) {
-			try {
-				doc.addImage(data.logoImage, 'PNG', MARGIN, currentY, 16, 16)
-			} catch (e) {
-				console.warn('Failed to add logo:', e)
-			}
+		// Add green decorative border at top
+		doc.setDrawColor(60, 120, 100)
+		doc.setLineWidth(0.5)
+		doc.rect(MARGIN, MARGIN, CONTENT_WIDTH, 0.5, 'F')
+		currentY += 2
+
+		// Institution name (main title)
+		doc.setFont('helvetica', 'bold')
+		doc.setFontSize(14)
+		doc.setTextColor(...COLORS.blue)
+		let institutionName = 'J.K.K.NATARAJA COLLEGE OF ARTS & SCIENCE'
+		if (data.institution?.name) {
+			institutionName = data.institution.name.toUpperCase()
 		}
+		let textWidth = doc.getTextWidth(institutionName)
+		doc.text(institutionName, (pageWidth - textWidth) / 2, currentY + 4)
+		currentY += 6
 
-		// Institution name (centered, bold) - Times font
-		doc.setFont('times', 'bold')
-		doc.setFontSize(12)
-		doc.setTextColor(0, 0, 0)
-		doc.text('J.K.K.NATARAJA COLLEGE OF ARTS & SCIENCE (AUTONOMOUS)', pageWidth / 2, currentY + 4, { align: 'center' })
-
-		// Accreditation text (2 lines) - Times font
-		doc.setFont('times', 'normal')
+		// Subtitle - affiliation
+		doc.setFont('helvetica', 'normal')
 		doc.setFontSize(8)
-		doc.text('(Accredited by NAAC, Approved by AICTE, Recognized by UGC Under Section 2(f) & 12(B),', pageWidth / 2, currentY + 9, { align: 'center' })
-		doc.text('Affiliated to Periyar University)', pageWidth / 2, currentY + 13, { align: 'center' })
-
-		currentY += 17
-
-		// Address - Times bold
-		doc.setFont('times', 'bold')
-		doc.setFontSize(9)
-		doc.text('Komarapalayam- 638 183, Namakkal District, Tamil Nadu', pageWidth / 2, currentY, { align: 'center' })
-
-		currentY += 5
-
-		// CHOICE BASED CREDIT SYSTEM - Line 1
-		doc.setFont('times', 'bold')
-		doc.setFontSize(10)
-		doc.text('CHOICE BASED CREDIT SYSTEM', pageWidth / 2, currentY, { align: 'center' })
-
+		doc.setTextColor(...COLORS.black)
+		const subtitle = '(An Autonomous College Affiliated to Periyar University, Salem.)'
+		textWidth = doc.getTextWidth(subtitle)
+		doc.text(subtitle, (pageWidth - textWidth) / 2, currentY + 2)
 		currentY += 4
 
-		// Regulation info - Line 2
-		const regulationText = data.regulation?.name ? `(${data.regulation.name})` : ''
-		if (regulationText) {
-			doc.setFont('times', 'normal')
-			doc.setFontSize(9)
-			doc.text(regulationText, pageWidth / 2, currentY, { align: 'center' })
-			currentY += 4
-		}
+		// Accreditation line
+		doc.setFontSize(7)
+		const accreditation = 'Accredited by NAAC, Approved by AICTE and Recognized by UGC Under Section 2(f) & 12(B),'
+		textWidth = doc.getTextWidth(accreditation)
+		doc.text(accreditation, (pageWidth - textWidth) / 2, currentY + 2)
+		currentY += 3.5
 
-		// GRADE CARD title
-		doc.setFont('times', 'bold')
-		doc.setFontSize(14)
-		doc.text('GRADE CARD', pageWidth / 2, currentY, { align: 'center' })
+		// Address line
+		const address = data.institution?.address || 'Komarapalayam- 638 183, Namakkal District, Tamil Nadu.'
+		textWidth = doc.getTextWidth(address)
+		doc.text(address, (pageWidth - textWidth) / 2, currentY + 2)
+		currentY += 5
 
+		// CHOICE BASED CREDIT SYSTEM
+		doc.setFont('helvetica', 'bold')
+		doc.setFontSize(9)
+		doc.setTextColor(...COLORS.blue)
+		const cbcsText = 'CHOICE BASED CREDIT SYSTEM'
+		textWidth = doc.getTextWidth(cbcsText)
+		doc.text(cbcsText, (pageWidth - textWidth) / 2, currentY + 3)
+		currentY += 5
+
+		// GRADE CARD title (red)
+		doc.setFont('helvetica', 'bold')
+		doc.setFontSize(16)
+		doc.setTextColor(180, 0, 0) // Red color
+		const gradeCardText = 'GRADE CARD'
+		textWidth = doc.getTextWidth(gradeCardText)
+		doc.text(gradeCardText, (pageWidth - textWidth) / 2, currentY + 4)
+		currentY += 6
+
+		// Serial Number (left aligned)
+		doc.setFont('helvetica', 'normal')
+		doc.setFontSize(8)
+		doc.setTextColor(...COLORS.black)
+		const serialNo = data.summary?.folio || generateFolio(data.program.code, data.program.name)
+		doc.text(`S.No. ${serialNo}`, MARGIN, currentY + 3)
 		currentY += 6
 	}
 
@@ -435,19 +448,23 @@ function addStudentMarksheetToDoc(
 	const photoBoxX = pageWidth - MARGIN - photoWidth  // Right aligned
 	const photoBoxY = MARGIN  // Immediately after margin
 
-	// No photo border - photo is displayed directly without a box frame
+	// Draw photo box with border (only if showHeader is true - for pre-printed sheet, box is already there)
+	if (options.showHeader) {
+		doc.setDrawColor(0, 0, 0)
+		doc.setLineWidth(0.5)
+		doc.setFillColor(...COLORS.white)
+		doc.rect(photoBoxX, photoBoxY, photoWidth, photoHeight, 'FD')
+	}
 
 	// Add student photo if available (must be base64 data URI)
-	// Photo fills the entire area without border
 	console.log('[PDF Generator] photoUrl received:', data.student.photoUrl ? `${data.student.photoUrl.substring(0, 50)}... (${data.student.photoUrl.length} chars)` : 'null/undefined')
 	console.log('[PDF Generator] showPhoto option:', options.showPhoto)
 	if (data.student.photoUrl && options.showPhoto !== false) {
 		try {
-			// Photo fills the entire box (no padding)
-			const photoX = photoBoxX
-			const photoY = photoBoxY
-			const imgWidth = photoWidth
-			const imgHeight = photoHeight
+			const photoX = photoBoxX + 2
+			const photoY = photoBoxY + 2
+			const imgWidth = photoWidth - 4
+			const imgHeight = photoHeight - 4
 
 			// Detect image format from base64 data URI
 			let imageFormat: 'JPEG' | 'PNG' | 'WEBP' = 'JPEG'
@@ -486,7 +503,7 @@ function addStudentMarksheetToDoc(
 
 	// Position below photo: Photo is 35mm tall starting at MARGIN (8mm), ends at 43mm
 	// Single line gap (0.8mm) between photo and student info table
-	currentY = MARGIN + 35   // Photo (35mm) + 0.8mm gap = 43.8mm from page top
+	currentY = MARGIN + 34   // Photo (35mm) + 0.8mm gap = 43.8mm from page top
 
 	// Table layout - 4 columns, full width
 	const rowHeight = 7  // JasperReports: 19pt = 7mm
@@ -1018,23 +1035,43 @@ function addStudentMarksheetToDoc(
 	const splitNote = doc.splitTextToSize(footnote, CONTENT_WIDTH)
 	doc.text(splitNote, MARGIN, footnoteY)
 
-	// ========== DATE (Only for PDF without header - pre-printed sheets have the date field) ==========
+	// ========== DATE (Immediately after footnote, left side at margin + 3.5cm) ==========
 
-	if (!options.showHeader) {
-		doc.setFont('helvetica', 'normal')
-		doc.setFontSize(9)
-		doc.setTextColor(...COLORS.black)
-		const dateStr = data.generatedDate || new Date().toLocaleDateString('en-IN', {
-			day: '2-digit',
-			month: '2-digit',
-			year: 'numeric'
-		})
-		// Position date immediately after footnote text
-		// X = MARGIN + 35 (3.5cm from margin, left side)
-		// Y = footnoteY + (footnote lines * line height) + small gap
-		const footnoteLineHeight = 2.5  // Font size 6 = ~2.5mm line height
-		const dateY = footnoteY + (splitNote.length * footnoteLineHeight) + 4  // 1.5mm gap after footnote
-		doc.text(dateStr, MARGIN + 35, dateY)
+	doc.setFont('helvetica', 'normal')
+	doc.setFontSize(9)
+	doc.setTextColor(...COLORS.black)
+	const dateStr = data.generatedDate || new Date().toLocaleDateString('en-IN', {
+		day: '2-digit',
+		month: '2-digit',
+		year: 'numeric'
+	})
+	// Position date immediately after footnote text
+	// X = MARGIN + 35 (3.5cm from margin, left side)
+	// Y = footnoteY + (footnote lines * line height) + small gap
+	const footnoteLineHeight = 2.5  // Font size 6 = ~2.5mm line height
+	const dateY = footnoteY + (splitNote.length * footnoteLineHeight) + 4  // 1.5mm gap after footnote
+	doc.text(dateStr, MARGIN + 35, dateY)
+
+	// ========== WATERMARK (Optional) ==========
+
+	// Only show watermark when header is enabled
+	if (options.showWatermark !== false && options.showHeader) {
+		// Add "JKKN" watermark in center of page
+		doc.setFont('helvetica', 'bold')
+		doc.setFontSize(120)
+		doc.setTextColor(240, 240, 240) // Very light gray
+		const watermarkText = 'JKKN'
+		const wmWidth = doc.getTextWidth(watermarkText)
+		const wmX = (pageWidth - wmWidth) / 2
+		const wmY = A4_HEIGHT / 2
+		doc.text(watermarkText, wmX, wmY)
+
+		// Smaller text below
+		doc.setFontSize(16)
+		doc.setTextColor(230, 230, 230)
+		const subWatermark = 'College of Arts & Science'
+		const subWmWidth = doc.getTextWidth(subWatermark)
+		doc.text(subWatermark, (pageWidth - subWmWidth) / 2, wmY + 15)
 	}
 }
 

@@ -149,6 +149,26 @@ async function fetchLookupData(): Promise<LookupMaps> {
 
 // Enrich learner data with lookup values
 function enrichLearnerData(learners: unknown[], lookups: LookupMaps): unknown[] {
+	// Log raw field names from first learner to help debug photo URL field name
+	if (learners.length > 0) {
+		const sampleLearner = learners[0] as Record<string, unknown>
+		const photoFields = Object.keys(sampleLearner).filter(k =>
+			k.toLowerCase().includes('photo') ||
+			k.toLowerCase().includes('image') ||
+			k.toLowerCase().includes('picture') ||
+			k.toLowerCase().includes('avatar')
+		)
+		console.log('[enrichLearnerData] Sample learner photo-related fields:', photoFields)
+		console.log('[enrichLearnerData] Sample learner photo field values:', {
+			student_photo_url: sampleLearner.student_photo_url,
+			photo_url: sampleLearner.photo_url,
+			profile_photo: sampleLearner.profile_photo,
+			image_url: sampleLearner.image_url,
+			profile_image: sampleLearner.profile_image,
+			student_image: sampleLearner.student_image,
+		})
+	}
+
 	return learners.map((learner) => {
 		const l = learner as Record<string, unknown>
 
@@ -174,6 +194,19 @@ function enrichLearnerData(learners: unknown[], lookups: LookupMaps): unknown[] 
 		const batchId = l.batch_id as string
 		const batchInfo = batchId ? lookups.batches.get(batchId) : undefined
 
+		// Check multiple possible photo field names from external API
+		const photoUrl = (
+			l.student_photo_url ||
+			l.photo_url ||
+			l.profile_photo ||
+			l.image_url ||
+			l.profile_image ||
+			l.student_image ||
+			l.avatar_url ||
+			l.picture_url ||
+			''
+		) as string
+
 		return {
 			...l,
 			// Institution fields
@@ -196,6 +229,8 @@ function enrichLearnerData(learners: unknown[], lookups: LookupMaps): unknown[] 
 			email: l.college_email || l.student_email || l.email || '',
 			phone: l.student_mobile || l.phone || '',
 			is_active: l.is_active ?? l.is_profile_complete ?? true,
+			// Photo URL - check multiple possible field names from external API
+			student_photo_url: photoUrl,
 		}
 	})
 }
@@ -204,7 +239,10 @@ export async function GET(request: NextRequest) {
 	const { searchParams } = new URL(request.url)
 	const page = searchParams.get('page')
 	const limit = searchParams.get('limit')
-	const search = searchParams.get('search')
+	// Support both 'search' and 'register_number' parameters
+	// If register_number is provided, use it as the search term
+	const register_number = searchParams.get('register_number')
+	const search = register_number || searchParams.get('search')
 	const is_active = searchParams.get('is_active')
 	const institution_id = searchParams.get('institution_id')
 	const institution_code = searchParams.get('institution_code')
@@ -216,6 +254,11 @@ export async function GET(request: NextRequest) {
 	const current_semester = searchParams.get('current_semester')
 	const admission_year = searchParams.get('admission_year')
 	const fetchAll = searchParams.get('fetchAll') === 'true' || (limit && parseInt(limit, 10) > MYJKKN_MAX_PER_PAGE)
+
+	// Log request parameters for debugging
+	if (register_number || program_id || institution_id) {
+		console.log(`[Learner Profiles API] Request params: register_number=${register_number}, program_id=${program_id}, institution_id=${institution_id}, fetchAll=${fetchAll}, limit=${limit}`)
+	}
 
 	// Try MyJKKN API first
 	try {
@@ -278,15 +321,29 @@ export async function GET(request: NextRequest) {
 
 			console.log(`[Learner Profiles API] Complete! Total learners fetched: ${allData.length}`)
 
+			// If register_number was specifically requested, filter to exact matches
+			let filteredData = allData
+			if (register_number && allData.length > 0) {
+				const exactMatches = allData.filter((l: any) =>
+					l.register_number === register_number || l.roll_number === register_number
+				)
+				if (exactMatches.length > 0) {
+					console.log(`[Learner Profiles API] Filtered to ${exactMatches.length} exact matches for register_number=${register_number}`)
+					filteredData = exactMatches
+				} else {
+					console.warn(`[Learner Profiles API] No exact match found for register_number=${register_number} in ${allData.length} results`)
+				}
+			}
+
 			// Enrich data with lookup values
-			const enrichedData = enrichLearnerData(allData, lookups)
+			const enrichedData = enrichLearnerData(filteredData, lookups)
 
 			return NextResponse.json({
 				data: enrichedData,
 				metadata: {
 					page: 1,
 					limit: enrichedData.length,
-					total: totalCount,
+					total: filteredData.length,
 					totalPages: 1,
 				},
 			})
@@ -303,7 +360,14 @@ export async function GET(request: NextRequest) {
 		])
 
 		// DEBUG: Log raw MyJKKN response before enrichment
-		const rawData = response.data || []
+		let rawData = response.data || []
+		console.log(`[Learner Profiles API] MyJKKN API returned ${rawData.length} results for search="${search}"`)
+
+		if (rawData.length === 0 && register_number) {
+			// MyJKKN search returned no results - this might mean search doesn't work for register_number
+			console.warn(`[Learner Profiles API] WARNING: MyJKKN API returned 0 results for register_number=${register_number}. The search parameter may not support register_number lookup.`)
+		}
+
 		if (rawData.length > 0 && search) {
 			console.log('[Learner Profiles API] RAW MyJKKN response first learner:', {
 				register_number: (rawData[0] as any).register_number,
@@ -311,6 +375,7 @@ export async function GET(request: NextRequest) {
 				first_name: (rawData[0] as any).first_name,
 				last_name: (rawData[0] as any).last_name,
 				batch_id: (rawData[0] as any).batch_id,
+				student_photo_url: (rawData[0] as any).student_photo_url?.substring(0, 80) || 'NULL',
 			})
 			// Check if any learner has matching register number
 			const matchingLearner = rawData.find((l: any) =>
@@ -320,10 +385,22 @@ export async function GET(request: NextRequest) {
 				register_number: (matchingLearner as any).register_number,
 				roll_number: (matchingLearner as any).roll_number,
 				batch_id: (matchingLearner as any).batch_id,
+				student_photo_url: (matchingLearner as any).student_photo_url?.substring(0, 80) || 'NULL',
 			} : 'NONE FOUND')
 		}
 
-		const enrichedData = enrichLearnerData(response.data || [], lookups)
+		// If register_number was specifically requested, filter to exact matches
+		if (register_number && rawData.length > 0) {
+			const exactMatches = rawData.filter((l: any) =>
+				l.register_number === register_number || l.roll_number === register_number
+			)
+			if (exactMatches.length > 0) {
+				console.log(`[Learner Profiles API] Filtered to ${exactMatches.length} exact matches for register_number=${register_number}`)
+				rawData = exactMatches
+			}
+		}
+
+		const enrichedData = enrichLearnerData(rawData, lookups)
 
 		return NextResponse.json({
 			...response,

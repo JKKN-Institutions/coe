@@ -247,6 +247,16 @@ export interface MyJKKNLearnerProfile {
 	is_active: boolean
 	created_at: string
 	updated_at: string
+	// Photo fields - API may use different field names
+	student_photo_url?: string
+	photo_url?: string
+	profile_photo?: string
+	image_url?: string
+	// Additional fields from external API
+	college_email?: string
+	student_email?: string
+	student_mobile?: string
+	is_profile_complete?: boolean
 }
 
 // =====================================================

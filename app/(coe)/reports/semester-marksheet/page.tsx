@@ -15,12 +15,12 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Badge } from "@/components/ui/badge"
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
 import { useToast } from "@/hooks/common/use-toast"
-import { Loader2, FileText, Check, ChevronsUpDown, GraduationCap, Calendar, ChevronDown, ChevronRight, Download, Printer, Eye, Users, FileDown } from "lucide-react"
+import { Loader2, FileText, Check, ChevronsUpDown, GraduationCap, ChevronDown, ChevronRight, Download, Users } from "lucide-react"
 import { cn } from "@/lib/utils"
 import Link from "next/link"
 import { useInstitutionFilter } from "@/hooks/use-institution-filter"
 import { useMyJKKNInstitutionFilter } from "@/hooks/use-myjkkn-institution-filter"
-import { generateSemesterMarksheetPDF, downloadSemesterMarksheetPDF, downloadMergedMarksheetPDF, type StudentMarksheetData } from "@/lib/utils/generate-semester-marksheet-pdf"
+import { downloadSemesterMarksheetPDF, downloadMergedMarksheetPDF, fetchImageAsBase64, type StudentMarksheetData } from "@/lib/utils/generate-semester-marksheet-pdf"
 
 // =====================================================
 // TYPE DEFINITIONS
@@ -89,6 +89,12 @@ interface MarksheetData {
 		name: string
 		registerNo: string
 		dateOfBirth?: string
+		photoUrl?: string
+		firstName?: string
+		lastName?: string
+		fatherName?: string
+		motherName?: string
+		gender?: string
 	}
 	semester: number
 	session: {
@@ -99,6 +105,7 @@ interface MarksheetData {
 	program: {
 		code: string
 		name: string
+		isPG?: boolean
 	}
 	courses: CourseResult[]
 	partBreakdown: PartBreakdown[]
@@ -224,10 +231,12 @@ export default function SemesterMarksheetPage() {
 		}
 	}, [appendToUrl, shouldFilter, mustSelectInstitution, contextInstitutionId])
 
-	const fetchSessions = async () => {
+	const fetchSessions = useCallback(async (institutionId: string) => {
 		try {
 			setLoadingSessions(true)
-			const res = await fetch('/api/exam-management/examination-sessions')
+			// Filter sessions by institution for better performance
+			const url = `/api/exam-management/examination-sessions?institutions_id=${institutionId}`
+			const res = await fetch(url)
 			if (res.ok) {
 				const data = await res.json()
 				setSessions(data)
@@ -237,7 +246,7 @@ export default function SemesterMarksheetPage() {
 		} finally {
 			setLoadingSessions(false)
 		}
-	}
+	}, [])
 
 	// Institution -> Sessions
 	useEffect(() => {
@@ -251,25 +260,11 @@ export default function SemesterMarksheetPage() {
 			setSemesters([])
 			setStudents([])
 			setMarksheetData(null)
-			fetchSessions()
+			fetchSessions(selectedInstitutionId)
 		}
-	}, [selectedInstitutionId])
+	}, [selectedInstitutionId, fetchSessions])
 
-	// Session -> Programs
-	useEffect(() => {
-		if (selectedInstitutionId && selectedSessionId && institutions.length > 0) {
-			setSelectedProgramCode("")
-			setSelectedSemester("")
-			setSelectedStudentId("")
-			setPrograms([])
-			setSemesters([])
-			setStudents([])
-			setMarksheetData(null)
-			fetchPrograms(selectedInstitutionId, selectedSessionId)
-		}
-	}, [selectedSessionId, institutions])
-
-	const fetchPrograms = async (institutionId: string, sessionId: string) => {
+	const fetchPrograms = useCallback(async (institutionId: string) => {
 		try {
 			setLoadingPrograms(true)
 			setPrograms([])
@@ -303,21 +298,23 @@ export default function SemesterMarksheetPage() {
 		} finally {
 			setLoadingPrograms(false)
 		}
-	}
+	}, [institutions, fetchMyJKKNPrograms])
 
-	// Program -> Semesters
+	// Session -> Programs
 	useEffect(() => {
-		if (selectedInstitutionId && selectedSessionId && selectedProgramCode) {
+		if (selectedInstitutionId && selectedSessionId && institutions.length > 0) {
+			setSelectedProgramCode("")
 			setSelectedSemester("")
 			setSelectedStudentId("")
+			setPrograms([])
 			setSemesters([])
 			setStudents([])
 			setMarksheetData(null)
-			fetchSemesters(selectedInstitutionId, selectedProgramCode, selectedSessionId)
+			fetchPrograms(selectedInstitutionId)
 		}
-	}, [selectedProgramCode])
+	}, [selectedSessionId, selectedInstitutionId, institutions.length, fetchPrograms])
 
-	const fetchSemesters = async (institutionId: string, programCode: string, sessionId: string) => {
+	const fetchSemesters = useCallback(async (institutionId: string, programCode: string, sessionId: string) => {
 		try {
 			setLoadingSemesters(true)
 			const res = await fetch(`/api/reports/semester-marksheet?action=semesters&institutionId=${institutionId}&programCode=${programCode}&sessionId=${sessionId}`)
@@ -330,24 +327,24 @@ export default function SemesterMarksheetPage() {
 		} finally {
 			setLoadingSemesters(false)
 		}
-	}
+	}, [])
 
-	// Semester -> Students
+	// Program -> Semesters
 	useEffect(() => {
-		if (selectedInstitutionId && selectedSessionId && selectedProgramCode && selectedSemester) {
+		if (selectedInstitutionId && selectedSessionId && selectedProgramCode) {
+			setSelectedSemester("")
 			setSelectedStudentId("")
+			setSemesters([])
 			setStudents([])
 			setMarksheetData(null)
-			fetchStudents()
+			fetchSemesters(selectedInstitutionId, selectedProgramCode, selectedSessionId)
 		}
-	}, [selectedSemester])
+	}, [selectedProgramCode, selectedInstitutionId, selectedSessionId, fetchSemesters])
 
-	const fetchStudents = async () => {
-		if (!selectedInstitutionId || !selectedSessionId || !selectedProgramCode || !selectedSemester) return
-
+	const fetchStudents = useCallback(async (institutionId: string, sessionId: string, programCode: string, semester: string) => {
 		try {
 			setLoadingStudents(true)
-			const url = `/api/reports/semester-marksheet?action=students&institutionId=${selectedInstitutionId}&sessionId=${selectedSessionId}&programCode=${selectedProgramCode}&semester=${selectedSemester}`
+			const url = `/api/reports/semester-marksheet?action=students&institutionId=${institutionId}&sessionId=${sessionId}&programCode=${programCode}&semester=${semester}`
 
 			const res = await fetch(url)
 			if (res.ok) {
@@ -359,7 +356,17 @@ export default function SemesterMarksheetPage() {
 		} finally {
 			setLoadingStudents(false)
 		}
-	}
+	}, [])
+
+	// Semester -> Students
+	useEffect(() => {
+		if (selectedInstitutionId && selectedSessionId && selectedProgramCode && selectedSemester) {
+			setSelectedStudentId("")
+			setStudents([])
+			setMarksheetData(null)
+			fetchStudents(selectedInstitutionId, selectedSessionId, selectedProgramCode, selectedSemester)
+		}
+	}, [selectedSemester, selectedInstitutionId, selectedSessionId, selectedProgramCode, fetchStudents])
 
 	// Load marksheet when student selected (optional - for individual view)
 	useEffect(() => {
@@ -422,9 +429,40 @@ export default function SemesterMarksheetPage() {
 			const selectedInstitution = institutions.find(i => i.id === selectedInstitutionId)
 			const selectedSession = sessions.find(s => s.id === selectedSessionId)
 
+			// Convert photo URL to base64 for PDF (jsPDF needs base64, not URL)
+			let photoBase64: string | null = null
+			console.log('[handleDownloadPDF] Student photoUrl from API:', marksheetData.student.photoUrl)
+			if (marksheetData.student.photoUrl) {
+				photoBase64 = await fetchImageAsBase64(marksheetData.student.photoUrl)
+				console.log('[handleDownloadPDF] Photo converted to base64:', photoBase64 ? `Success (${photoBase64.length} chars)` : 'Failed')
+			} else {
+				console.log('[handleDownloadPDF] No photo URL available for student')
+			}
+
+			// Fetch logo for header (only needed when withHeader is true)
+			let logoBase64: string | undefined = undefined
+			if (withHeader) {
+				try {
+					const logoResponse = await fetch('/jkkn_logo.png')
+					if (logoResponse.ok) {
+						const blob = await logoResponse.blob()
+						logoBase64 = await new Promise<string>((resolve) => {
+							const reader = new FileReader()
+							reader.onloadend = () => resolve(reader.result as string)
+							reader.readAsDataURL(blob)
+						})
+					}
+				} catch (e) {
+					console.warn('Logo not loaded:', e)
+				}
+			}
+
 			// Prepare data for PDF
 			const pdfData: StudentMarksheetData = {
-				student: marksheetData.student,
+				student: {
+					...marksheetData.student,
+					photoUrl: photoBase64 || undefined  // Use base64 instead of URL
+				},
 				semester: marksheetData.semester,
 				session: {
 					id: selectedSessionId,
@@ -439,6 +477,7 @@ export default function SemesterMarksheetPage() {
 				courses: marksheetData.courses,
 				partBreakdown: marksheetData.partBreakdown,
 				summary: marksheetData.summary,
+				logoImage: logoBase64,
 				generatedDate: new Date().toLocaleDateString('en-IN', {
 					day: '2-digit',
 					month: '2-digit',
@@ -457,62 +496,6 @@ export default function SemesterMarksheetPage() {
 			toast({
 				title: '✅ PDF Downloaded',
 				description: withHeader ? 'Marksheet PDF (with header) has been downloaded' : 'Marksheet PDF has been downloaded',
-				className: 'bg-green-50 border-green-200 text-green-800'
-			})
-		} catch (error) {
-			console.error('Error generating PDF:', error)
-			toast({
-				title: '❌ Error',
-				description: 'Failed to generate PDF',
-				variant: 'destructive'
-			})
-		} finally {
-			setGeneratingPDF(false)
-		}
-	}
-
-	const handlePreviewPDF = async (withHeader: boolean = false) => {
-		if (!marksheetData) return
-
-		try {
-			setGeneratingPDF(true)
-
-			const selectedInstitution = institutions.find(i => i.id === selectedInstitutionId)
-			const selectedSession = sessions.find(s => s.id === selectedSessionId)
-
-			// Prepare data for PDF
-			const pdfData: StudentMarksheetData = {
-				student: marksheetData.student,
-				semester: marksheetData.semester,
-				session: {
-					id: selectedSessionId,
-					name: selectedSession?.session_name || '',
-					monthYear: marksheetData.session?.monthYear || ''
-				},
-				program: marksheetData.program,
-				institution: selectedInstitution ? {
-					name: selectedInstitution.institution_name,
-					code: selectedInstitution.institution_code
-				} : undefined,
-				courses: marksheetData.courses,
-				partBreakdown: marksheetData.partBreakdown,
-				summary: marksheetData.summary,
-				generatedDate: new Date().toLocaleDateString('en-IN', {
-					day: '2-digit',
-					month: '2-digit',
-					year: 'numeric'
-				})
-			}
-
-			// Generate PDF data URI with header option
-			const pdfDataUri = generateSemesterMarksheetPDF(pdfData, { showHeader: withHeader })
-
-			// Open in new tab using window.open with data URI
-			window.open(pdfDataUri, '_blank')
-
-			toast({
-				title: '✅ PDF Generated',
-				description: withHeader ? 'Marksheet PDF (with header) opened in new tab' : 'Marksheet PDF opened in new tab',
 				className: 'bg-green-50 border-green-200 text-green-800'
 			})
 		} catch (error) {
@@ -574,9 +557,39 @@ export default function SemesterMarksheetPage() {
 				return
 			}
 
+			// Convert all student photos to base64 (in parallel for better performance)
+			const photoPromises = marksheets.map(async (data: any) => {
+				if (data.student.photoUrl) {
+					return fetchImageAsBase64(data.student.photoUrl)
+				}
+				return null
+			})
+			const photoBase64Array = await Promise.all(photoPromises)
+
+			// Fetch logo for header (only needed when withHeader is true)
+			let logoBase64: string | undefined = undefined
+			if (withHeader) {
+				try {
+					const logoResponse = await fetch('/jkkn_logo.png')
+					if (logoResponse.ok) {
+						const blob = await logoResponse.blob()
+						logoBase64 = await new Promise<string>((resolve) => {
+							const reader = new FileReader()
+							reader.onloadend = () => resolve(reader.result as string)
+							reader.readAsDataURL(blob)
+						})
+					}
+				} catch (e) {
+					console.warn('Logo not loaded:', e)
+				}
+			}
+
 			// Prepare all student data for merged PDF
-			const allStudentData: StudentMarksheetData[] = marksheets.map((data: any) => ({
-				student: data.student,
+			const allStudentData: StudentMarksheetData[] = marksheets.map((data: any, index: number) => ({
+				student: {
+					...data.student,
+					photoUrl: photoBase64Array[index] || undefined  // Use base64 instead of URL
+				},
 				semester: data.semester,
 				session: {
 					id: selectedSessionId,
@@ -591,6 +604,7 @@ export default function SemesterMarksheetPage() {
 				courses: data.courses,
 				partBreakdown: data.partBreakdown,
 				summary: data.summary,
+				logoImage: logoBase64,
 				generatedDate: new Date().toLocaleDateString('en-IN', {
 					day: '2-digit',
 					month: '2-digit',
@@ -651,7 +665,10 @@ export default function SemesterMarksheetPage() {
 		<SidebarProvider>
 			<AppSidebar />
 			<SidebarInset>
-				<AppHeader>
+				<AppHeader />
+
+				<div className="flex flex-1 flex-col gap-4 p-4">
+					{/* Breadcrumb */}
 					<Breadcrumb>
 						<BreadcrumbList>
 							<BreadcrumbItem>
@@ -671,9 +688,7 @@ export default function SemesterMarksheetPage() {
 							</BreadcrumbItem>
 						</BreadcrumbList>
 					</Breadcrumb>
-				</AppHeader>
 
-				<div className="flex flex-1 flex-col gap-4 p-4 pt-0">
 					{/* Filter Card */}
 					<Card>
 						<CardHeader className="pb-4">
@@ -699,10 +714,17 @@ export default function SemesterMarksheetPage() {
 													className="w-full justify-between"
 													disabled={loadingInstitutions}
 												>
-													{selectedInstitutionId
-														? institutions.find(i => i.id === selectedInstitutionId)?.institution_code
-														: "Select institution"}
-													<ChevronsUpDown className="ml-2 h-4 w-4 opacity-50" />
+													{loadingInstitutions ? (
+														<span className="flex items-center gap-2">
+															<Loader2 className="h-4 w-4 animate-spin" />
+															Loading...
+														</span>
+													) : selectedInstitutionId ? (
+														institutions.find(i => i.id === selectedInstitutionId)?.institution_code
+													) : (
+														"Select institution"
+													)}
+													{!loadingInstitutions && <ChevronsUpDown className="ml-2 h-4 w-4 opacity-50" />}
 												</Button>
 											</PopoverTrigger>
 											<PopoverContent className="w-[300px] p-0">
@@ -714,7 +736,8 @@ export default function SemesterMarksheetPage() {
 															{institutions.map(inst => (
 																<CommandItem
 																	key={inst.id}
-																	value={inst.id}
+																	value={`${inst.institution_code} ${inst.institution_name}`}
+																	keywords={[inst.institution_code, inst.institution_name]}
 																	onSelect={() => {
 																		setSelectedInstitutionId(inst.id)
 																		setInstitutionOpen(false)
@@ -743,10 +766,17 @@ export default function SemesterMarksheetPage() {
 												className="w-full justify-between"
 												disabled={!selectedInstitutionId || loadingSessions}
 											>
-												{selectedSessionId
-													? sessions.find(s => s.id === selectedSessionId)?.session_name
-													: "Select session"}
-												<ChevronsUpDown className="ml-2 h-4 w-4 opacity-50" />
+												{loadingSessions ? (
+													<span className="flex items-center gap-2">
+														<Loader2 className="h-4 w-4 animate-spin" />
+														Loading...
+													</span>
+												) : selectedSessionId ? (
+													sessions.find(s => s.id === selectedSessionId)?.session_name
+												) : (
+													"Select session"
+												)}
+												{!loadingSessions && <ChevronsUpDown className="ml-2 h-4 w-4 opacity-50" />}
 											</Button>
 										</PopoverTrigger>
 										<PopoverContent className="w-[300px] p-0">
@@ -758,7 +788,8 @@ export default function SemesterMarksheetPage() {
 														{sessions.map(sess => (
 															<CommandItem
 																key={sess.id}
-																value={sess.id}
+																value={`${sess.session_code} ${sess.session_name}`}
+																keywords={[sess.session_code, sess.session_name]}
 																onSelect={() => {
 																	setSelectedSessionId(sess.id)
 																	setSessionOpen(false)
@@ -786,12 +817,19 @@ export default function SemesterMarksheetPage() {
 												className="w-full justify-between text-left"
 												disabled={!selectedSessionId || loadingPrograms}
 											>
-												<span className="truncate">
-													{selectedProgramCode
-														? `${selectedProgramCode} - ${programs.find(p => p.program_code === selectedProgramCode)?.program_name || ''}`
-														: "Select program"}
-												</span>
-												<ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+												{loadingPrograms ? (
+													<span className="flex items-center gap-2">
+														<Loader2 className="h-4 w-4 animate-spin" />
+														Loading...
+													</span>
+												) : (
+													<span className="truncate">
+														{selectedProgramCode
+															? `${selectedProgramCode} - ${programs.find(p => p.program_code === selectedProgramCode)?.program_name || ''}`
+															: "Select program"}
+													</span>
+												)}
+												{!loadingPrograms && <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />}
 											</Button>
 										</PopoverTrigger>
 										<PopoverContent className="w-[400px] p-0">
@@ -831,8 +869,17 @@ export default function SemesterMarksheetPage() {
 												className="w-full justify-between"
 												disabled={!selectedProgramCode || loadingSemesters}
 											>
-												{selectedSemester ? `Semester ${toRoman(parseInt(selectedSemester))}` : "Select semester"}
-												<ChevronsUpDown className="ml-2 h-4 w-4 opacity-50" />
+												{loadingSemesters ? (
+													<span className="flex items-center gap-2">
+														<Loader2 className="h-4 w-4 animate-spin" />
+														Loading...
+													</span>
+												) : selectedSemester ? (
+													`Semester ${toRoman(parseInt(selectedSemester))}`
+												) : (
+													"Select semester"
+												)}
+												{!loadingSemesters && <ChevronsUpDown className="ml-2 h-4 w-4 opacity-50" />}
 											</Button>
 										</PopoverTrigger>
 										<PopoverContent className="w-[200px] p-0">
@@ -871,10 +918,17 @@ export default function SemesterMarksheetPage() {
 												className="w-full justify-between"
 												disabled={!selectedSemester || loadingStudents}
 											>
-												{selectedStudentId
-													? students.find(s => s.id === selectedStudentId)?.registerNo
-													: "All learners"}
-												<ChevronsUpDown className="ml-2 h-4 w-4 opacity-50" />
+												{loadingStudents ? (
+													<span className="flex items-center gap-2">
+														<Loader2 className="h-4 w-4 animate-spin" />
+														Loading...
+													</span>
+												) : selectedStudentId ? (
+													students.find(s => s.id === selectedStudentId)?.registerNo
+												) : (
+													"All learners"
+												)}
+												{!loadingStudents && <ChevronsUpDown className="ml-2 h-4 w-4 opacity-50" />}
 											</Button>
 										</PopoverTrigger>
 										<PopoverContent className="w-[300px] p-0">
@@ -899,7 +953,8 @@ export default function SemesterMarksheetPage() {
 														{students.map(student => (
 															<CommandItem
 																key={student.id}
-																value={student.id}
+																value={`${student.registerNo} ${student.name}`}
+																keywords={[student.registerNo, student.name]}
 																onSelect={() => {
 																	setSelectedStudentId(student.id)
 																	setStudentOpen(false)
@@ -931,32 +986,22 @@ export default function SemesterMarksheetPage() {
 												<p className="text-sm text-muted-foreground">Download all marksheets in a single merged PDF</p>
 											</div>
 										</div>
-										<div className="flex gap-2">
-											<Button onClick={() => handleBatchDownload(false)} disabled={generatingBatchPDF}>
+										<div className="flex gap-3">
+											<Button onClick={() => handleBatchDownload(false)} disabled={generatingBatchPDF} className="bg-emerald-600 hover:bg-emerald-700 text-white">
 												{generatingBatchPDF ? (
-													<>
-														<Loader2 className="h-4 w-4 mr-2 animate-spin" />
-														Generating...
-													</>
+													<Loader2 className="h-4 w-4 mr-2 animate-spin" />
 												) : (
-													<>
-														<FileDown className="h-4 w-4 mr-2" />
-														Download Merged PDF
-													</>
+													<Download className="h-4 w-4 mr-2" />
 												)}
+												Download PDF
 											</Button>
-											<Button onClick={() => handleBatchDownload(true)} disabled={generatingBatchPDF} variant="outline" size="sm">
+											<Button onClick={() => handleBatchDownload(true)} disabled={generatingBatchPDF} className="bg-blue-600 hover:bg-blue-700 text-white">
 												{generatingBatchPDF ? (
-													<>
-														<Loader2 className="h-4 w-4 mr-2 animate-spin" />
-														Generating...
-													</>
+													<Loader2 className="h-4 w-4 mr-2 animate-spin" />
 												) : (
-													<>
-														<FileDown className="h-4 w-4 mr-2" />
-														With Header
-													</>
+													<Download className="h-4 w-4 mr-2" />
 												)}
+												Download (With Header)
 											</Button>
 										</div>
 									</div>
@@ -1101,49 +1146,23 @@ export default function SemesterMarksheetPage() {
 								</div>
 
 								{/* Action Buttons */}
-								<div className="space-y-4 mt-6">
-									<div className="flex gap-3">
-										<Button onClick={() => handlePreviewPDF(false)} disabled={generatingPDF} variant="outline">
-											{generatingPDF ? (
-												<Loader2 className="h-4 w-4 mr-2 animate-spin" />
-											) : (
-												<Eye className="h-4 w-4 mr-2" />
-											)}
-											Preview PDF
-										</Button>
-										<Button onClick={() => handleDownloadPDF(false)} disabled={generatingPDF}>
-											{generatingPDF ? (
-												<Loader2 className="h-4 w-4 mr-2 animate-spin" />
-											) : (
-												<Download className="h-4 w-4 mr-2" />
-											)}
-											Download PDF
-										</Button>
-										<Button variant="outline" onClick={() => window.print()}>
-											<Printer className="h-4 w-4 mr-2" />
-											Print
-										</Button>
-									</div>
-
-									{/* With Header Versions */}
-									<div className="flex gap-3 pt-2 border-t">
-										<Button onClick={() => handlePreviewPDF(true)} disabled={generatingPDF} variant="outline" size="sm">
-											{generatingPDF ? (
-												<Loader2 className="h-4 w-4 mr-2 animate-spin" />
-											) : (
-												<Eye className="h-4 w-4 mr-2" />
-											)}
-											Preview (With Header)
-										</Button>
-										<Button onClick={() => handleDownloadPDF(true)} disabled={generatingPDF} size="sm">
-											{generatingPDF ? (
-												<Loader2 className="h-4 w-4 mr-2 animate-spin" />
-											) : (
-												<Download className="h-4 w-4 mr-2" />
-											)}
-											Download (With Header)
-										</Button>
-									</div>
+								<div className="flex gap-3 mt-6">
+									<Button onClick={() => handleDownloadPDF(false)} disabled={generatingPDF} className="bg-emerald-600 hover:bg-emerald-700 text-white">
+										{generatingPDF ? (
+											<Loader2 className="h-4 w-4 mr-2 animate-spin" />
+										) : (
+											<Download className="h-4 w-4 mr-2" />
+										)}
+										Download PDF
+									</Button>
+									<Button onClick={() => handleDownloadPDF(true)} disabled={generatingPDF} className="bg-blue-600 hover:bg-blue-700 text-white">
+										{generatingPDF ? (
+											<Loader2 className="h-4 w-4 mr-2 animate-spin" />
+										) : (
+											<Download className="h-4 w-4 mr-2" />
+										)}
+										Download (With Header)
+									</Button>
 								</div>
 							</CardContent>
 						</Card>
