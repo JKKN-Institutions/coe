@@ -129,6 +129,8 @@ async function fetchAllPages<T>(
 		const pageData = Array.isArray(response.data) ? response.data : []
 		allData.push(...pageData)
 
+
+		
 		// Safely extract totalPages from metadata - handle missing/undefined metadata
 		if (response.metadata && typeof response.metadata.totalPages === 'number') {
 			totalPages = response.metadata.totalPages
