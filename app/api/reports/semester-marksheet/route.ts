@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getSupabaseServer } from '@/lib/supabase-server'
+import { fetchAllMyJKKNPrograms, fetchAllMyJKKNLearnerProfiles } from '@/services/myjkkn-service'
 
 // =====================================================
 // GRADE CONVERSION TABLE (UG)
@@ -249,20 +250,20 @@ export async function GET(req: NextRequest) {
 					// The external API needs program_id (UUID), not program_code (string)
 					if (programCode) {
 						try {
-							const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'
-							const progRes = await fetch(`${baseUrl}/api/myjkkn/programs?institution_id=${myjkknInstitutionId}&limit=100`)
-							if (progRes.ok) {
-								const progData = await progRes.json()
-								const programs = progData.data || progData || []
-								// Find program by code (MyJKKN uses program_id as code field)
-								const matchingProg = programs.find((p: any) =>
-									(p.program_id === programCode || p.program_code === programCode)
-								)
-								
-								if (matchingProg && matchingProg.id) {
-									myjkknProgramId = matchingProg.id  // This is the UUID
-									console.log(`[Semester Marksheet] Found MyJKKN program UUID: ${myjkknProgramId} for code ${programCode}`)
-								}
+							// Use direct service call instead of internal HTTP request
+							const programs = await fetchAllMyJKKNPrograms({
+								institution_id: myjkknInstitutionId,
+								limit: 100,
+								is_active: true
+							})
+							// Find program by code (MyJKKN uses program_id as code field)
+							const matchingProg = programs.find((p: any) =>
+								(p.program_id === programCode || p.program_code === programCode)
+							)
+
+							if (matchingProg && matchingProg.id) {
+								myjkknProgramId = matchingProg.id  // This is the UUID
+								console.log(`[Semester Marksheet] Found MyJKKN program UUID: ${myjkknProgramId} for code ${programCode}`)
 							}
 						} catch (progErr) {
 							console.warn('[Semester Marksheet] Failed to look up program_id:', progErr)
@@ -273,85 +274,74 @@ export async function GET(req: NextRequest) {
 
 			if (registerNo) {
 				try {
-					const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'
-					// Build query params - use institution_id and program_id (UUIDs)
-					// Use fetchAll=true to get all learners (will paginate automatically)
-					// Don't use search/register_number as filter - external API doesn't support it well
-					const params = new URLSearchParams({
-						limit: '100000',  // Large limit to trigger fetchAll mode
-						fetchAll: 'true'  // Explicitly request all pages
-					})
+					// Use direct service call instead of internal HTTP request
+					// Build options for the service call
+					const profileOptions: any = {
+						all: true,  // Fetch all pages
+						limit: 100  // Per-page limit for pagination
+					}
 					// Use program_id (UUID) - this is what the external API expects
 					if (myjkknProgramId) {
-						params.set('program_id', myjkknProgramId)
+						profileOptions.program_id = myjkknProgramId
 					}
 					if (myjkknInstitutionId) {
-						params.set('institution_id', myjkknInstitutionId)
+						profileOptions.institution_id = myjkknInstitutionId
 					}
-					console.log(`[Semester Marksheet] Querying learner-profiles with: ${params.toString()}`)
-					const myjkknRes = await fetch(`${baseUrl}/api/myjkkn/learner-profiles?${params.toString()}`)
+					console.log(`[Semester Marksheet] Querying learner-profiles with:`, profileOptions)
+					const profiles = await fetchAllMyJKKNLearnerProfiles(profileOptions)
 
-					console.log(`[Semester Marksheet] MyJKKN API response status:`, myjkknRes.status)
+					console.log(`[Semester Marksheet] MyJKKN API returned ${profiles.length} profiles`)
 
-					if (myjkknRes.ok) {
-						const myjkknData = await myjkknRes.json()
-						let profiles = myjkknData.data || myjkknData || []
+					// If no exact match found but we have results, look for matching register number
+					if (profiles.length > 0) {
+						// Find the exact matching learner by register_number
+						const matchingProfile = profiles.find((p: any) =>
+							p.register_number === registerNo || p.roll_number === registerNo
+						)
 
-						console.log(`[Semester Marksheet] MyJKKN API returned ${profiles.length} profiles`)
+						const learnerProfile = matchingProfile || profiles[0]
 
-						// If no exact match found but we have results, look for matching register number
-						if (profiles.length > 0) {
-							// Find the exact matching learner by register_number
-							const matchingProfile = profiles.find((p: any) =>
-								p.register_number === registerNo || p.roll_number === registerNo
-							)
-
-							const learnerProfile = matchingProfile || profiles[0]
-
-							if (matchingProfile) {
-								console.log(`[Semester Marksheet] Found exact match for ${registerNo}`)
-							} else {
-								console.log(`[Semester Marksheet] No exact match, using first result`)
-							}
-
-							console.log(`[Semester Marksheet] Learner profile found:`, {
-								hasData: true,
-								register_number: learnerProfile.register_number,
-								hasPhotoUrl: !!learnerProfile.student_photo_url,
-								photoUrlPreview: learnerProfile.student_photo_url?.substring(0, 80) || 'NULL'
-							})
-
-							// Format DOB as DD-MM-YYYY
-							if (learnerProfile.date_of_birth) {
-								const dob = new Date(learnerProfile.date_of_birth)
-								if (!isNaN(dob.getTime())) {
-									dateOfBirth = `${String(dob.getDate()).padStart(2, '0')}-${String(dob.getMonth() + 1).padStart(2, '0')}-${dob.getFullYear()}`
-								}
-							}
-
-							// Get photo URL from MyJKKN (if available)
-							if (learnerProfile.student_photo_url) {
-								photoUrl = learnerProfile.student_photo_url
-								console.log(`[Semester Marksheet] Found photo URL from MyJKKN for ${registerNo}:`, photoUrl?.substring(0, 100))
-							}
-
-							// Extract extended info for JasperReports compatibility
-							learnerExtendedInfo = {
-								firstName: learnerProfile.first_name || undefined,
-								middleName: undefined,  // Not available in MyJKKN API
-								lastName: learnerProfile.last_name || undefined,
-								fatherName: learnerProfile.father_name || undefined,
-								motherName: learnerProfile.mother_name || undefined,
-								guardianName: undefined,  // Not available in MyJKKN API
-								gender: learnerProfile.gender || undefined,
-								admissionYear: learnerProfile.admission_year?.toString() || undefined,
-								batchName: undefined  // Not directly available, would need batch lookup
-							}
+						if (matchingProfile) {
+							console.log(`[Semester Marksheet] Found exact match for ${registerNo}`)
 						} else {
-							console.log(`[Semester Marksheet] No profile found in MyJKKN API for ${registerNo}`)
+							console.log(`[Semester Marksheet] No exact match, using first result`)
+						}
+
+						console.log(`[Semester Marksheet] Learner profile found:`, {
+							hasData: true,
+							register_number: learnerProfile.register_number,
+							hasPhotoUrl: !!learnerProfile.student_photo_url,
+							photoUrlPreview: learnerProfile.student_photo_url?.substring(0, 80) || 'NULL'
+						})
+
+						// Format DOB as DD-MM-YYYY
+						if (learnerProfile.date_of_birth) {
+							const dob = new Date(learnerProfile.date_of_birth)
+							if (!isNaN(dob.getTime())) {
+								dateOfBirth = `${String(dob.getDate()).padStart(2, '0')}-${String(dob.getMonth() + 1).padStart(2, '0')}-${dob.getFullYear()}`
+							}
+						}
+
+						// Get photo URL from MyJKKN (if available)
+						if (learnerProfile.student_photo_url) {
+							photoUrl = learnerProfile.student_photo_url
+							console.log(`[Semester Marksheet] Found photo URL from MyJKKN for ${registerNo}:`, photoUrl?.substring(0, 100))
+						}
+
+						// Extract extended info for JasperReports compatibility
+						learnerExtendedInfo = {
+							firstName: learnerProfile.first_name || undefined,
+							middleName: undefined,  // Not available in MyJKKN API
+							lastName: learnerProfile.last_name || undefined,
+							fatherName: learnerProfile.father_name || undefined,
+							motherName: learnerProfile.mother_name || undefined,
+							guardianName: undefined,  // Not available in MyJKKN API
+							gender: learnerProfile.gender || undefined,
+							admissionYear: learnerProfile.admission_year?.toString() || undefined,
+							batchName: undefined  // Not directly available, would need batch lookup
 						}
 					} else {
-						console.warn(`[Semester Marksheet] MyJKKN API error: ${myjkknRes.status}`)
+						console.log(`[Semester Marksheet] No profile found in MyJKKN API for ${registerNo}`)
 					}
 				} catch (myjkknError) {
 					console.warn('[Semester Marksheet] Failed to fetch from MyJKKN API:', myjkknError)
@@ -389,30 +379,22 @@ export async function GET(req: NextRequest) {
 
 					if (myjkknIds.length > 0) {
 						try {
-							const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'
-
+							// Use direct service call instead of internal HTTP request
 							for (const myjkknInstId of myjkknIds) {
-								const params = new URLSearchParams({
-									limit: '100',
-									is_active: 'true',
-									institution_id: myjkknInstId
+								const programs = await fetchAllMyJKKNPrograms({
+									institution_id: myjkknInstId,
+									limit: 100,
+									is_active: true
 								})
 
-								const res = await fetch(`${baseUrl}/api/myjkkn/programs?${params.toString()}`)
+								// Find program by code (MyJKKN uses program_id as code)
+								const matchingProgram = programs.find((p: any) =>
+									(p.program_id === programCode || p.program_code === programCode)
+								)
 
-								if (res.ok) {
-									const response = await res.json()
-									const programs = response.data || response || []
-
-									// Find program by code (MyJKKN uses program_id as code)
-									const matchingProgram = programs.find((p: any) =>
-										(p.program_id === programCode || p.program_code === programCode)
-									)
-
-									if (matchingProgram) {
-										programName = matchingProgram.program_name || matchingProgram.name || ''
-										break
-									}
+								if (matchingProgram) {
+									programName = matchingProgram.program_name || matchingProgram.name || ''
+									break
 								}
 							}
 						} catch (error) {
@@ -742,29 +724,21 @@ export async function GET(req: NextRequest) {
 
 				if (myjkknIds.length > 0) {
 					try {
-						const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'
-
+						// Use direct service call instead of internal HTTP request
 						for (const myjkknInstId of myjkknIds) {
-							const params = new URLSearchParams({
-								limit: '100',
-								is_active: 'true',
-								institution_id: myjkknInstId
+							const programs = await fetchAllMyJKKNPrograms({
+								institution_id: myjkknInstId,
+								limit: 100,
+								is_active: true
 							})
 
-							const res = await fetch(`${baseUrl}/api/myjkkn/programs?${params.toString()}`)
+							const matchingProgram = programs.find((p: any) =>
+								(p.program_id === programCode || p.program_code === programCode)
+							)
 
-							if (res.ok) {
-								const response = await res.json()
-								const programs = response.data || response || []
-
-								const matchingProgram = programs.find((p: any) =>
-									(p.program_id === programCode || p.program_code === programCode)
-								)
-
-								if (matchingProgram) {
-									batchProgramName = matchingProgram.program_name || matchingProgram.name || ''
-									break
-								}
+							if (matchingProgram) {
+								batchProgramName = matchingProgram.program_name || matchingProgram.name || ''
+								break
 							}
 						}
 					} catch (error) {
@@ -864,7 +838,6 @@ export async function GET(req: NextRequest) {
 
 			if (registerNumbers.length > 0) {
 				console.log(`[Semester Marksheet Batch] Fetching learner profiles from MyJKKN API for ${registerNumbers.length} students`)
-				const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'
 
 				// Get MyJKKN institution ID and program UUID for better filtering
 				const { data: institution } = await supabase
@@ -878,19 +851,20 @@ export async function GET(req: NextRequest) {
 				let myjkknProgramId: string | null = null
 
 				// Look up MyJKKN program_id (UUID) from program_code
+				// Use direct service call instead of internal HTTP request
 				if (programCode && myjkknInstitutionId) {
 					try {
-						const progRes = await fetch(`${baseUrl}/api/myjkkn/programs?institution_id=${myjkknInstitutionId}&limit=100`)
-						if (progRes.ok) {
-							const progData = await progRes.json()
-							const programs = progData.data || progData || []
-							const matchingProg = programs.find((p: any) =>
-								(p.program_id === programCode || p.program_code === programCode)
-							)
-							if (matchingProg && matchingProg.id) {
-								myjkknProgramId = matchingProg.id
-								console.log(`[Semester Marksheet Batch] Found MyJKKN program UUID: ${myjkknProgramId} for code ${programCode}`)
-							}
+						const programs = await fetchAllMyJKKNPrograms({
+							institution_id: myjkknInstitutionId,
+							limit: 100,
+							is_active: true
+						})
+						const matchingProg = programs.find((p: any) =>
+							(p.program_id === programCode || p.program_code === programCode)
+						)
+						if (matchingProg && matchingProg.id) {
+							myjkknProgramId = matchingProg.id
+							console.log(`[Semester Marksheet Batch] Found MyJKKN program UUID: ${myjkknProgramId} for code ${programCode}`)
 						}
 					} catch (progErr) {
 						console.warn('[Semester Marksheet Batch] Failed to look up program_id:', progErr)
@@ -898,44 +872,39 @@ export async function GET(req: NextRequest) {
 				}
 
 				// Fetch ALL profiles with institution_id and program_id (UUID), then filter locally
-				// This is the same approach used by individual marksheet fetch which works correctly
+				// Use direct service call instead of internal HTTP request
 				if (myjkknInstitutionId) {
 					try {
-						const params = new URLSearchParams({
-							limit: '100000',
-							fetchAll: 'true'
-						})
-						if (myjkknProgramId) {
-							params.set('program_id', myjkknProgramId)
+						const profileOptions: any = {
+							all: true,
+							limit: 100,
+							institution_id: myjkknInstitutionId
 						}
-						params.set('institution_id', myjkknInstitutionId)
+						if (myjkknProgramId) {
+							profileOptions.program_id = myjkknProgramId
+						}
 
-						console.log(`[Semester Marksheet Batch] Querying learner-profiles with: ${params.toString()}`)
-						const myjkknRes = await fetch(`${baseUrl}/api/myjkkn/learner-profiles?${params.toString()}`)
+						console.log(`[Semester Marksheet Batch] Querying learner-profiles with:`, profileOptions)
+						const allProfiles = await fetchAllMyJKKNLearnerProfiles(profileOptions)
+						console.log(`[Semester Marksheet Batch] MyJKKN API returned ${allProfiles.length} profiles`)
 
-						if (myjkknRes.ok) {
-							const myjkknData = await myjkknRes.json()
-							const allProfiles = myjkknData.data || myjkknData || []
-							console.log(`[Semester Marksheet Batch] MyJKKN API returned ${allProfiles.length} profiles`)
-
-							// Build lookup maps by register_number
-							allProfiles.forEach((lp: any) => {
-								const regNo = lp.register_number || lp.roll_number
-								if (regNo && registerNumbers.includes(regNo)) {
-									// Extract DOB
-									if (lp.date_of_birth) {
-										const dob = new Date(lp.date_of_birth)
-										if (!isNaN(dob.getTime())) {
-											dobMap[regNo] = `${String(dob.getDate()).padStart(2, '0')}-${String(dob.getMonth() + 1).padStart(2, '0')}-${dob.getFullYear()}`
-										}
-									}
-									// Extract photo URL
-									if (lp.student_photo_url) {
-										photoMap[regNo] = lp.student_photo_url
+						// Build lookup maps by register_number
+						allProfiles.forEach((lp: any) => {
+							const regNo = lp.register_number || lp.roll_number
+							if (regNo && registerNumbers.includes(regNo)) {
+								// Extract DOB
+								if (lp.date_of_birth) {
+									const dob = new Date(lp.date_of_birth)
+									if (!isNaN(dob.getTime())) {
+										dobMap[regNo] = `${String(dob.getDate()).padStart(2, '0')}-${String(dob.getMonth() + 1).padStart(2, '0')}-${dob.getFullYear()}`
 									}
 								}
-							})
-						}
+								// Extract photo URL
+								if (lp.student_photo_url) {
+									photoMap[regNo] = lp.student_photo_url
+								}
+							}
+						})
 					} catch (err) {
 						console.warn('[Semester Marksheet Batch] Failed to fetch profiles from MyJKKN:', err)
 					}
@@ -1102,26 +1071,16 @@ export async function GET(req: NextRequest) {
 			}
 
 			// Fetch programs from MyJKKN API for each institution ID
+			// Use direct service call instead of internal HTTP request
 			const allPrograms: any[] = []
-			const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'
 
 			for (const myjkknInstId of myjkknInstitutionIds) {
 				try {
-					const params = new URLSearchParams({
-						limit: '100',
-						is_active: 'true',
-						institution_id: myjkknInstId
+					const programs = await fetchAllMyJKKNPrograms({
+						institution_id: myjkknInstId,
+						limit: 100,
+						is_active: true
 					})
-
-					const res = await fetch(`${baseUrl}/api/myjkkn/programs?${params.toString()}`)
-
-					if (!res.ok) {
-						console.error(`[Semester Marksheet API] HTTP error ${res.status} for inst ${myjkknInstId}`)
-						continue
-					}
-
-					const response = await res.json()
-					const programs = response.data || response || []
 
 					// Client-side filter by institution_id
 					const filteredPrograms = Array.isArray(programs)
