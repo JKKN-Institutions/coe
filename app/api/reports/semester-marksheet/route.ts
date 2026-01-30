@@ -258,6 +258,7 @@ export async function GET(req: NextRequest) {
 								const matchingProg = programs.find((p: any) =>
 									(p.program_id === programCode || p.program_code === programCode)
 								)
+								
 								if (matchingProg && matchingProg.id) {
 									myjkknProgramId = matchingProg.id  // This is the UUID
 									console.log(`[Semester Marksheet] Found MyJKKN program UUID: ${myjkknProgramId} for code ${programCode}`)

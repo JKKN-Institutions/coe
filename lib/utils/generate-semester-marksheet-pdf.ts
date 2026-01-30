@@ -1153,6 +1153,7 @@ export class SemesterMarksheetPDFGenerator {
 		this.options = options
 	}
 
+	
 	public generate(): string {
 		addStudentMarksheetToDoc(this.doc, this.data, this.options)
 		return this.doc.output('datauristring')

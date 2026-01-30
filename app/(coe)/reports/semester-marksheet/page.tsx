@@ -1010,7 +1010,8 @@ export default function SemesterMarksheetPage() {
 						</CardContent>
 					</Card>
 
-					{/* Marksheet Display */}
+
+					{/*  Marksheet Display */}
 					{loadingMarksheet ? (
 						<Card>
 							<CardContent className="flex items-center justify-center py-20">
