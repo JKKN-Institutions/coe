@@ -124,11 +124,31 @@ async function fetchAllPages<T>(
 
 	do {
 		const response = await fetchFn({ ...options, page, limit, all: false })
-		allData.push(...response.data)
-		totalPages = response.metadata.totalPages
+
+		// Handle response.data - might be array or nested
+		const pageData = Array.isArray(response.data) ? response.data : []
+		allData.push(...pageData)
+
+		// Safely extract totalPages from metadata - handle missing/undefined metadata
+		if (response.metadata && typeof response.metadata.totalPages === 'number') {
+			totalPages = response.metadata.totalPages
+		} else {
+			// If no metadata, assume single page (stop after first iteration)
+			// Or calculate from total if available
+			const total = response.metadata?.total || pageData.length
+			totalPages = Math.ceil(total / limit) || 1
+			console.log(`[fetchAllPages] No totalPages in metadata, calculated: ${totalPages} (total: ${total}, limit: ${limit})`)
+		}
+
 		page++
+
+		// Safety check: if we got no data, stop to prevent infinite loop
+		if (pageData.length === 0) {
+			break
+		}
 	} while (page <= totalPages)
 
+	console.log(`[fetchAllPages] Fetched ${allData.length} total records across ${page - 1} pages`)
 	return allData
 }
 

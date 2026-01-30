@@ -266,7 +266,14 @@ export async function GET(req: NextRequest) {
 								console.log(`[Semester Marksheet] Found MyJKKN program UUID: ${myjkknProgramId} for code ${programCode}`)
 							}
 						} catch (progErr) {
-							console.warn('[Semester Marksheet] Failed to look up program_id:', progErr)
+							console.error('[Semester Marksheet] Failed to look up program_id:', progErr)
+							if (progErr instanceof Error) {
+								console.error('[Semester Marksheet] Program lookup error details:', {
+									name: progErr.name,
+									message: progErr.message,
+									stack: progErr.stack
+								})
+							}
 						}
 					}
 				}
@@ -274,6 +281,11 @@ export async function GET(req: NextRequest) {
 
 			if (registerNo) {
 				try {
+					// Check if MyJKKN API is configured
+					const hasApiKey = !!process.env.MYJKKN_API_KEY
+					const apiUrl = process.env.MYJKKN_API_URL || 'https://www.jkkn.ai/api'
+					console.log(`[Semester Marksheet] MyJKKN API config: hasApiKey=${hasApiKey}, apiUrl=${apiUrl}`)
+
 					// Use direct service call instead of internal HTTP request
 					// Build options for the service call
 					const profileOptions: any = {
@@ -344,7 +356,14 @@ export async function GET(req: NextRequest) {
 						console.log(`[Semester Marksheet] No profile found in MyJKKN API for ${registerNo}`)
 					}
 				} catch (myjkknError) {
-					console.warn('[Semester Marksheet] Failed to fetch from MyJKKN API:', myjkknError)
+					console.error('[Semester Marksheet] Failed to fetch from MyJKKN API:', myjkknError)
+					if (myjkknError instanceof Error) {
+						console.error('[Semester Marksheet] Error details:', {
+							name: myjkknError.name,
+							message: myjkknError.message,
+							stack: myjkknError.stack
+						})
+					}
 				}
 
 				// Fallback: Fetch photo URL from local Supabase if not found in MyJKKN
@@ -867,7 +886,14 @@ export async function GET(req: NextRequest) {
 							console.log(`[Semester Marksheet Batch] Found MyJKKN program UUID: ${myjkknProgramId} for code ${programCode}`)
 						}
 					} catch (progErr) {
-						console.warn('[Semester Marksheet Batch] Failed to look up program_id:', progErr)
+						console.error('[Semester Marksheet Batch] Failed to look up program_id:', progErr)
+						if (progErr instanceof Error) {
+							console.error('[Semester Marksheet Batch] Program lookup error details:', {
+								name: progErr.name,
+								message: progErr.message,
+								stack: progErr.stack
+							})
+						}
 					}
 				}
 
@@ -906,7 +932,14 @@ export async function GET(req: NextRequest) {
 							}
 						})
 					} catch (err) {
-						console.warn('[Semester Marksheet Batch] Failed to fetch profiles from MyJKKN:', err)
+						console.error('[Semester Marksheet Batch] Failed to fetch profiles from MyJKKN:', err)
+						if (err instanceof Error) {
+							console.error('[Semester Marksheet Batch] Error details:', {
+								name: err.name,
+								message: err.message,
+								stack: err.stack
+							})
+						}
 					}
 				}
 
