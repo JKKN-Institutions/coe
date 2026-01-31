@@ -1158,6 +1158,7 @@ export default function ExamRegistrationsPage() {
 						})
 					}
 					setLoading(false)
+					setImportInProgress(false)
 					return
 				}
 
@@ -1167,7 +1168,11 @@ export default function ExamRegistrationsPage() {
 				// Update progress indicator with total
 				setImportProgress({ current: 0, total: mapped.length })
 
-				// Save each registration to the database
+				// Process in batches of 50 to prevent UI freeze
+				const BATCH_SIZE = 50
+				const totalBatches = Math.ceil(mapped.length / BATCH_SIZE)
+				console.log(`[Import] Processing ${mapped.length} records in ${totalBatches} batches of ${BATCH_SIZE}`)
+
 				let successCount = 0
 				let errorCount = 0
 				const uploadErrors: Array<{
@@ -1176,58 +1181,84 @@ export default function ExamRegistrationsPage() {
 					course_code: string
 					errors: string[]
 				}> = []
+				const apiFailedRows: Record<string, unknown>[] = []
+				const savedRegistrations: any[] = []
 
-				const apiFailedRows: Record<string, unknown>[] = [] // Track rows that fail during API upload
-				for (let i = 0; i < mapped.length; i++) {
-					const registration = mapped[i]
-					const rowNumber = mappedRowIndices[i] + 2 // Use original row index
-					const displayCodes = (registration as any)._displayCodes
-					const originalRow = (registration as any)._originalRow
+				for (let batchIndex = 0; batchIndex < totalBatches; batchIndex++) {
+					const startIdx = batchIndex * BATCH_SIZE
+					const endIdx = Math.min(startIdx + BATCH_SIZE, mapped.length)
+					const batchItems = mapped.slice(startIdx, endIdx)
+					const batchRowIndices = mappedRowIndices.slice(startIdx, endIdx)
 
-					// Update progress
-					setImportProgress({ current: i + 1, total: mapped.length })
+					console.log(`[Import] Processing batch ${batchIndex + 1}/${totalBatches} (rows ${startIdx + 1}-${endIdx})`)
 
-					// Remove internal fields before sending to API
-					const { _displayCodes, _originalRow, ...registrationPayload } = registration as any
+					// Update progress before processing batch
+					setImportProgress({ current: startIdx, total: mapped.length })
 
-					try {
-						console.log(`[Import] Sending row ${rowNumber}:`, {
-							institutions_id: registrationPayload.institutions_id,
-							student_id: registrationPayload.student_id,
-							stu_register_no: registrationPayload.stu_register_no,
-							examination_session_id: registrationPayload.examination_session_id,
-							course_offering_id: registrationPayload.course_offering_id,
-						})
+					// Allow UI to update between batches
+					await new Promise(resolve => setTimeout(resolve, 0))
 
-						const response = await fetch('/api/exam-management/exam-registrations', {
-							method: 'POST',
-							headers: {
-								'Content-Type': 'application/json',
-							},
-							body: JSON.stringify(registrationPayload),
-						})
+					// Process each item in the batch
+					for (let i = 0; i < batchItems.length; i++) {
+						const registration = batchItems[i]
+						const rowNumber = batchRowIndices[i] + 2
+						const displayCodes = (registration as any)._displayCodes
+						const originalRow = (registration as any)._originalRow
 
-						if (response.ok) {
-							const savedRegistration = await response.json()
-							setItems(prev => [savedRegistration, ...prev])
-							successCount++
-						} else {
-							let errorMessage = 'Failed to create exam registration'
-							try {
-								const errorData = await response.json()
-								errorMessage = errorData.error || errorData.message || errorMessage
-								// Add more context for common errors
-								if (response.status === 400) {
-									errorMessage = `Validation error: ${errorMessage}`
-								} else if (response.status === 409 || errorMessage.includes('already exists')) {
-									errorMessage = `Duplicate entry: This registration already exists for this student, session, and course`
-								} else if (response.status === 500) {
-									errorMessage = `Server error: ${errorMessage}`
+						// Update progress within batch
+						setImportProgress({ current: startIdx + i + 1, total: mapped.length })
+
+						// Remove internal fields before sending to API
+						const { _displayCodes, _originalRow, ...registrationPayload } = registration as any
+
+						try {
+							const response = await fetch('/api/exam-management/exam-registrations', {
+								method: 'POST',
+								headers: { 'Content-Type': 'application/json' },
+								body: JSON.stringify(registrationPayload),
+							})
+
+							if (response.ok) {
+								const savedRegistration = await response.json()
+								savedRegistrations.push(savedRegistration)
+								successCount++
+							} else {
+								let errorMessage = 'Failed to create exam registration'
+								try {
+									const errorData = await response.json()
+									errorMessage = errorData.error || errorData.message || errorMessage
+									if (response.status === 400) {
+										errorMessage = `Validation error: ${errorMessage}`
+									} else if (response.status === 409 || errorMessage.includes('already exists')) {
+										errorMessage = `Duplicate entry: This registration already exists for this student, session, and course`
+									} else if (response.status === 500) {
+										errorMessage = `Server error: ${errorMessage}`
+									}
+								} catch {
+									errorMessage = `HTTP ${response.status}: ${response.statusText || 'Unknown error'}`
 								}
-							} catch {
-								errorMessage = `HTTP ${response.status}: ${response.statusText || 'Unknown error'}`
+								errorCount++
+								uploadErrors.push({
+									row: rowNumber,
+									student_register_no: displayCodes?.studentRegisterNo || 'N/A',
+									course_code: displayCodes?.courseCode || 'N/A',
+									errors: [errorMessage]
+								})
+								if (originalRow) apiFailedRows.push(originalRow)
+								console.error(`[Import] Row ${rowNumber} failed:`, errorMessage)
 							}
+						} catch (error) {
 							errorCount++
+							let errorMessage = 'Network error - please check your connection'
+							if (error instanceof Error) {
+								if (error.message.includes('fetch failed')) {
+									errorMessage = 'Network request failed - server may be unavailable or request timed out'
+								} else if (error.message.includes('timeout')) {
+									errorMessage = 'Request timed out - please try again'
+								} else {
+									errorMessage = `Error: ${error.message}`
+								}
+							}
 							uploadErrors.push({
 								row: rowNumber,
 								student_register_no: displayCodes?.studentRegisterNo || 'N/A',
@@ -1235,28 +1266,14 @@ export default function ExamRegistrationsPage() {
 								errors: [errorMessage]
 							})
 							if (originalRow) apiFailedRows.push(originalRow)
-							console.error(`[Import] Row ${rowNumber} failed:`, errorMessage)
+							console.error(`[Import] Row ${rowNumber} exception:`, error)
 						}
-					} catch (error) {
-						errorCount++
-						let errorMessage = 'Network error - please check your connection'
-						if (error instanceof Error) {
-							if (error.message.includes('fetch failed')) {
-								errorMessage = 'Network request failed - server may be unavailable or request timed out'
-							} else if (error.message.includes('timeout')) {
-								errorMessage = 'Request timed out - please try again'
-							} else {
-								errorMessage = `Error: ${error.message}`
-							}
-						}
-						uploadErrors.push({
-							row: rowNumber,
-							student_register_no: displayCodes?.studentRegisterNo || 'N/A',
-							course_code: displayCodes?.courseCode || 'N/A',
-							errors: [errorMessage]
-						})
-						if (originalRow) apiFailedRows.push(originalRow)
-						console.error(`[Import] Row ${rowNumber} exception:`, error)
+					}
+
+					// Update UI with batch results
+					if (savedRegistrations.length > 0) {
+						setItems(prev => [...savedRegistrations, ...prev])
+						savedRegistrations.length = 0 // Clear for next batch
 					}
 				}
 
