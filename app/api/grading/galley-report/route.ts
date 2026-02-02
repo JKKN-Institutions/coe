@@ -816,11 +816,14 @@ export async function GET(request: NextRequest) {
 			return included
 		})
 		.sort((a, b) => {
-			// Sort by register number
+			// Sort by registernumber
 			const regA = a.student.register_number || ''
 			const regB = b.student.register_number || ''
 			return regA.localeCompare(regB)
 		})
+
+
+
 
 		// DIAGNOSTIC: Log final studentcount
 		console.log(`✅ Total students included in semester ${semesterNum} report: ${students.length}`)
