@@ -822,7 +822,7 @@ export async function GET(request: NextRequest) {
 			return regA.localeCompare(regB)
 		})
 
-		// DIAGNOSTIC: Log final student count
+		// DIAGNOSTIC: Log final studentcount
 		console.log(`✅ Total students included in semester ${semesterNum} report: ${students.length}`)
 		console.log('Included students:', students.map((s: any) => `${s.student.register_number} (${s.courses.length} courses)`).join(', '))
 
@@ -831,15 +831,14 @@ export async function GET(request: NextRequest) {
 		// This ensures Semester 3 report only shows Semester 3 courses, not Semester 1 courses
 		const coursesMap = new Map()
 
+
+
 		// Filter marks to only include courses from the selected semester
 		const marksForSelectedSemester = filteredMarks.filter((mark: any) => {
 			const courseSemester = mark.courses?.semester
 			return courseSemester === semesterNum
 		})
   
-
-
-		
 		console.log(`Course analysis: Using ${marksForSelectedSemester.length} marks for semester ${semesterNum} (filtered from ${filteredMarks.length} total marks)`)
 
 		marksForSelectedSemester.forEach((mark: any) => {
