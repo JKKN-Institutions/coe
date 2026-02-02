@@ -64,6 +64,7 @@ interface Institution {
 	myjkkn_institution_ids: string[] | null
 }
 
+
 interface ExaminationSession {
 	id: string
 	session_name: string
@@ -125,7 +126,7 @@ export default function ExamAttendanceBulkPage() {
 		institutionId: contextInstitutionId,
 	} = useInstitutionFilter()
 
-	// State
+	// State 
 	const [institutions, setInstitutions] = useState<Institution[]>([])
 	const [sessions, setSessions] = useState<ExaminationSession[]>([])
 	const [attendanceRecords, setAttendanceRecords] = useState<AttendanceRecord[]>([])

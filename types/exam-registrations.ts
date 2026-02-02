@@ -1,4 +1,4 @@
-// Exam Registration type definitions
+// Exam Registration type    definitions
 export interface ExamRegistration {
 	id: string
 	institutions_id: string

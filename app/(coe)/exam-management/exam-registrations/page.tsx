@@ -29,8 +29,6 @@ import Link from "next/link"
 import { PlusCircle, Edit, Trash2, Search, ChevronLeft, ChevronRight, ArrowUpDown, ArrowUp, ArrowDown, ClipboardCheck, TrendingUp, FileSpreadsheet, RefreshCw, CheckCircle, XCircle, AlertTriangle, FileJson, Download, Upload, Loader2 } from "lucide-react"
 
 
-
-
 export default function ExamRegistrationsPage() {
 	const { toast } = useToast()
 

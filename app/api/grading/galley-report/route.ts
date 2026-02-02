@@ -822,10 +822,7 @@ export async function GET(request: NextRequest) {
 			return regA.localeCompare(regB)
 		})
 
-
-
-
-		// DIAGNOSTIC: Logfinal studentcount
+		// DIAGNOSTIC: Log final studentcount
 		console.log(`✅ Total students included in semester ${semesterNum} report: ${students.length}`)
 		console.log('Included students:', students.map((s: any) => `${s.student.register_number} (${s.courses.length} courses)`).join(', '))
 
