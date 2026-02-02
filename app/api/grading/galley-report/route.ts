@@ -965,10 +965,10 @@ export async function GET(request: NextRequest) {
 			console.log('[Galley Report] Looking up batch for student:', firstStudentRegNo)
 			if (firstStudentRegNo) {
 				try {
-					// Use internal API route which enriches data with batch_name
-					// Filter by institution to improve performance (reduces data fetched)
-					const myjkknInstIdParam = myjkknIds.length > 0 ? `&institution_id=${myjkknIds[0]}` : ''
-					const learnerUrl = `${baseUrl}/api/myjkkn/learner-profiles?search=${encodeURIComponent(firstStudentRegNo)}${myjkknInstIdParam}&limit=200`
+					// Use register_number parameter for exact match (not search which is fuzzy)
+					// Don't filter by institution_id as it may not match MyJKKN institution_id
+					// Use higher limit to ensure we find the learner across all pages
+					const learnerUrl = `${baseUrl}/api/myjkkn/learner-profiles?register_number=${encodeURIComponent(firstStudentRegNo)}&limit=1000&fetchAll=true`
 					console.log('[Galley Report] Fetching learner from:', learnerUrl)
 
 					const learnerRes = await fetch(learnerUrl)
@@ -1039,9 +1039,13 @@ export async function GET(request: NextRequest) {
 					console.error('[Galley Report] Error fetching from MyJKKN API:', e)
 				}
 			}
+
+			// TODO: If MyJKKN API search doesn't find the learner,
+			// need to fix MyJKKN API or use direct MyJKKN database query
+			// (learners_profiles table is in MyJKKN database, not COE local database)
 		}
 
-		// Log warning if no batch found from MyJKKN
+		// Log warning if no batch found
 		if (!batchName) {
 			console.log('[Galley Report] ⚠️ No batch found from MyJKKN learner profile')
 		}
