@@ -816,7 +816,7 @@ export async function GET(request: NextRequest) {
 			return included
 		})
 		.sort((a, b) => {
-			// Sort by registernumber
+			// Sort by register number
 			const regA = a.student.register_number || ''
 			const regB = b.student.register_number || ''
 			return regA.localeCompare(regB)
@@ -825,7 +825,7 @@ export async function GET(request: NextRequest) {
 
 
 
-		// DIAGNOSTIC: Log final studentcount
+		// DIAGNOSTIC: Logfinal studentcount
 		console.log(`✅ Total students included in semester ${semesterNum} report: ${students.length}`)
 		console.log('Included students:', students.map((s: any) => `${s.student.register_number} (${s.courses.length} courses)`).join(', '))
 
@@ -833,7 +833,6 @@ export async function GET(request: NextRequest) {
 		// CRITICAL FIX: Only include courses from the SELECTED semester in the course analysis
 		// This ensures Semester 3 report only shows Semester 3 courses, not Semester 1 courses
 		const coursesMap = new Map()
-
 
 
 		// Filter marks to only include courses from the selected semester
