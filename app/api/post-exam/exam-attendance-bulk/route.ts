@@ -12,6 +12,8 @@ const batchUploadCache = new Map<string, {
 	timestamp: number
 }>()
 
+
+
 // Clean up old cache entries (older than 30 minutes)
 function cleanupCache() {
 	const now = Date.now()

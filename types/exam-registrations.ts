@@ -28,6 +28,8 @@ export interface ExamRegistration {
 	approved_by_faculty?: { faculty_name: string; faculty_code: string }
 }
 
+
+
 export interface ExamRegistrationFormData {
 	institutions_id: string
 	student_id: string

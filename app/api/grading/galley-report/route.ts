@@ -836,7 +836,10 @@ export async function GET(request: NextRequest) {
 			const courseSemester = mark.courses?.semester
 			return courseSemester === semesterNum
 		})
+  
 
+
+		
 		console.log(`Course analysis: Using ${marksForSelectedSemester.length} marks for semester ${semesterNum} (filtered from ${filteredMarks.length} total marks)`)
 
 		marksForSelectedSemester.forEach((mark: any) => {
