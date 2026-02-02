@@ -59,6 +59,7 @@ export interface UploadSummary {
 	total: number
 	success: number
 	failed: number
+	skipped: number
 }
 
 // Dropdown data types

@@ -827,8 +827,19 @@ export async function GET(request: NextRequest) {
 		console.log('Included students:', students.map((s: any) => `${s.student.register_number} (${s.courses.length} courses)`).join(', '))
 
 		// Get unique courses for the course-wise analysis
+		// CRITICAL FIX: Only include courses from the SELECTED semester in the course analysis
+		// This ensures Semester 3 report only shows Semester 3 courses, not Semester 1 courses
 		const coursesMap = new Map()
-		filteredMarks.forEach((mark: any) => {
+
+		// Filter marks to only include courses from the selected semester
+		const marksForSelectedSemester = filteredMarks.filter((mark: any) => {
+			const courseSemester = mark.courses?.semester
+			return courseSemester === semesterNum
+		})
+
+		console.log(`Course analysis: Using ${marksForSelectedSemester.length} marks for semester ${semesterNum} (filtered from ${filteredMarks.length} total marks)`)
+
+		marksForSelectedSemester.forEach((mark: any) => {
 			if (!mark.courses) return
 			const courseId = mark.courses.id
 
@@ -920,9 +931,9 @@ export async function GET(request: NextRequest) {
 			(s.semester_result?.total_backlogs || 0) > 0
 		).length
 
-		// Grade distribution across all courses
+		// Grade distribution across courses in the selected semester ONLY
 		const overallGrades: Record<string, number> = {}
-		filteredMarks.forEach((mark: any) => {
+		marksForSelectedSemester.forEach((mark: any) => {
 			if (mark.letter_grade) {
 				overallGrades[mark.letter_grade] = (overallGrades[mark.letter_grade] || 0) + 1
 			}

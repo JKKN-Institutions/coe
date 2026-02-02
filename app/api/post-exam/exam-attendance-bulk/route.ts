@@ -1,6 +1,28 @@
 import { NextResponse } from 'next/server'
 import { getSupabaseServer } from '@/lib/supabase-server'
 
+// Server-side cache for batch upload lookup data (avoids 10MB request limit)
+// Key: cache_id, Value: { lookupData, timestamp }
+const batchUploadCache = new Map<string, {
+	institutions_id: string // The institution ID from global filter
+	institutionMapping: Record<string, string>
+	sessionLookup: Record<string, any>
+	registerLookup: Record<string, any>
+	existingAttendanceLookup: Record<string, boolean>
+	timestamp: number
+}>()
+
+// Clean up old cache entries (older than 30 minutes)
+function cleanupCache() {
+	const now = Date.now()
+	const maxAge = 30 * 60 * 1000 // 30 minutes
+	for (const [key, value] of batchUploadCache.entries()) {
+		if (now - value.timestamp > maxAge) {
+			batchUploadCache.delete(key)
+		}
+	}
+}
+
 export async function GET(request: Request) {
 	try {
 		const { searchParams } = new URL(request.url)
@@ -644,50 +666,37 @@ async function handleBulkDelete(supabase: any, body: any) {
 	}
 }
 
-// Prepare batch upload - fetches lookup data once and returns it for client-side use
+// Prepare batch upload - fetches lookup data once and caches it server-side
 async function handlePrepareBatchUpload(supabase: any, body: any) {
-	const { institution_codes } = body
+	const { institutions_id } = body
 
-	if (!institution_codes || !Array.isArray(institution_codes) || institution_codes.length === 0) {
+	if (!institutions_id) {
 		return NextResponse.json({
-			error: 'Missing required fields: institution_codes array is required'
+			error: 'Missing required field: institutions_id is required. Please select an institution.'
 		}, { status: 400 })
 	}
 
-	// Step 1: Fetch all institutions for code-to-id mapping
-	const { data: allInstitutions } = await supabase
+	// Validate institution exists
+	const { data: institution, error: instError } = await supabase
 		.from('institutions')
 		.select('id, institution_code')
+		.eq('id', institutions_id)
 		.eq('is_active', true)
+		.single()
 
-	const institutionCodeToId = new Map<string, string>(
-		allInstitutions?.map((i: any) => [i.institution_code?.toUpperCase(), i.id]) || []
-	)
-
-	// Validate all institution codes exist
-	const invalidInstCodes: string[] = []
-	const uniqueInstCodes = new Set<string>(
-		institution_codes.map((code: string) => code.toUpperCase().trim()).filter(Boolean)
-	)
-
-	uniqueInstCodes.forEach(code => {
-		if (!institutionCodeToId.has(code)) {
-			invalidInstCodes.push(code)
-		}
-	})
-
-	if (invalidInstCodes.length > 0) {
+	if (instError || !institution) {
 		return NextResponse.json({
-			error: `Invalid institution code(s): ${invalidInstCodes.join(', ')}. Please check the Institution Code column in your Excel file.`
+			error: 'Invalid or inactive institution selected.'
 		}, { status: 400 })
 	}
 
-	// Get institution IDs
-	const institutionIdsToFetch: string[] = []
-	uniqueInstCodes.forEach(code => {
-		const id = institutionCodeToId.get(code)
-		if (id) institutionIdsToFetch.push(id)
-	})
+	// Build institution mapping (single institution)
+	const institutionCodeToId = new Map<string, string>([
+		[institution.institution_code?.toUpperCase(), institution.id]
+	])
+
+	// Use the selected institution for data fetch
+	const institutionIdsToFetch: string[] = [institutions_id]
 
 	// Fetch examination sessions for all relevant institutions
 	let examSessions: any[] = []
@@ -851,12 +860,31 @@ async function handlePrepareBatchUpload(supabase: any, body: any) {
 		institutionMapping[code] = id
 	})
 
-	return NextResponse.json({
-		success: true,
+	// Generate a unique cache ID and store lookup data server-side
+	// This avoids sending large lookup data back and forth (which can exceed 10MB limit)
+	const cacheId = `batch_${Date.now()}_${Math.random().toString(36).substring(7)}`
+
+	// Clean up old cache entries
+	cleanupCache()
+
+	// Store in server-side cache
+	batchUploadCache.set(cacheId, {
+		institutions_id: institutions_id, // Store institution ID from global filter
 		institutionMapping,
 		sessionLookup,
 		registerLookup,
 		existingAttendanceLookup,
+		timestamp: Date.now()
+	})
+
+	console.log('=== DEBUG: Batch Upload Prepared ===')
+	console.log('Cache ID:', cacheId)
+	console.log('Register lookup entries:', Object.keys(registerLookup).length)
+	console.log('Existing attendance entries:', Object.keys(existingAttendanceLookup).length)
+
+	return NextResponse.json({
+		success: true,
+		cache_id: cacheId, // Only send cache ID, not the actual data
 		stats: {
 			institutions: institutionIdsToFetch.length,
 			sessions: examSessions.length,
@@ -871,10 +899,7 @@ async function handleProcessBatch(supabase: any, body: any) {
 	const {
 		batch_data,
 		uploaded_by,
-		institutionMapping,
-		sessionLookup,
-		registerLookup,
-		existingAttendanceLookup,
+		cache_id,
 		batch_start_index
 	} = body
 
@@ -883,6 +908,23 @@ async function handleProcessBatch(supabase: any, body: any) {
 			error: 'Missing required fields: batch_data array is required'
 		}, { status: 400 })
 	}
+
+	if (!cache_id) {
+		return NextResponse.json({
+			error: 'Missing required field: cache_id is required'
+		}, { status: 400 })
+	}
+
+	// Retrieve lookup data from server-side cache
+	const cachedData = batchUploadCache.get(cache_id)
+	if (!cachedData) {
+		return NextResponse.json({
+			error: 'Cache expired or invalid. Please restart the upload process.'
+		}, { status: 400 })
+	}
+
+	// Use institutions_id from cache (from global filter) instead of Excel row
+	const { institutions_id, sessionLookup, registerLookup, existingAttendanceLookup } = cachedData
 
 	const results = {
 		successful: 0,
@@ -899,24 +941,10 @@ async function handleProcessBatch(supabase: any, body: any) {
 		const rowNumber = (batch_start_index || 0) + i + 2 // +2 for Excel header row
 		const rowErrors: string[] = []
 
-		// Get institution_id from row's institution_code
-		const rowInstCode = String(row.institution_code || '').toUpperCase().trim()
-		const rowInstId = institutionMapping[rowInstCode]
+		// Use institution from global filter (stored in cache)
+		const rowInstId = institutions_id
 
-		if (!rowInstId) {
-			rowErrors.push(`Invalid institution code "${row.institution_code}"`)
-			results.failed++
-			results.validation_errors.push({
-				row: rowNumber,
-				register_number: row.register_number || 'N/A',
-				course_code: row.course_code || 'N/A',
-				errors: rowErrors,
-				original_data: row
-			})
-			continue
-		}
-
-		// Lookup registration
+		// Lookup registration using institution from global filter
 		const registerNo = String(row.register_number || '').toLowerCase().trim()
 		const courseCode = String(row.course_code || '').toLowerCase().trim()
 		const sessionCode = String(row.session_code || '').toLowerCase().trim()
@@ -928,7 +956,7 @@ async function handleProcessBatch(supabase: any, body: any) {
 		if (!regInfo) {
 			const sessionKey = `${rowInstId}|${sessionCode}`
 			if (!sessionLookup[sessionKey]) {
-				rowErrors.push(`Session with code "${row.session_code}" not found for institution "${row.institution_code}"`)
+				rowErrors.push(`Session with code "${row.session_code}" not found for the selected institution`)
 			} else {
 				rowErrors.push(`No exam registration found for register number "${row.register_number}" in course "${row.course_code}" for session "${row.session_code}"`)
 			}
@@ -1014,7 +1042,8 @@ async function handleProcessBatch(supabase: any, body: any) {
 				throw insertError
 			}
 
-			// Track for duplicate prevention
+			// Track for duplicate prevention - update cache directly
+			existingAttendanceLookup[existingKey] = true
 			results.newExistingKeys.push(existingKey)
 			results.successful++
 		} catch (error: any) {

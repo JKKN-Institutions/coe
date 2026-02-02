@@ -308,10 +308,9 @@ export default function ExamAttendanceBulkPage() {
 	const handleTemplateExport = async () => {
 		const wb = XLSX.utils.book_new()
 
-		// Template sheet with sample row
+		// Template sheet with sample row (Institution Code removed - uses global filter)
 		const sample = [
 			{
-				"Institution Code *": "",
 				"Session Code *": "",
 				"Register Number *": "",
 				"Course Code *": "",
@@ -324,9 +323,8 @@ export default function ExamAttendanceBulkPage() {
 
 		const ws = XLSX.utils.json_to_sheet(sample)
 
-		// Set column widths
+		// Set column widths (Institution Code removed)
 		const colWidths = [
-			{ wch: 20 }, // Institution Code
 			{ wch: 20 }, // Session Code
 			{ wch: 25 }, // Register Number
 			{ wch: 20 }, // Course Code
@@ -340,26 +338,12 @@ export default function ExamAttendanceBulkPage() {
 		// Add data validations
 		const validations: any[] = []
 
-		// Institution Code dropdown
-		const instCodes = institutions.map((i) => i.institution_code).filter(Boolean)
-		if (instCodes.length > 0) {
-			validations.push({
-				type: "list",
-				sqref: "A2:A1000",
-				formula1: `"${instCodes.join(",")}"`,
-				showDropDown: true,
-				showErrorMessage: true,
-				errorTitle: "Invalid Institution",
-				error: "Please select from the dropdown list",
-			})
-		}
-
-		// Session Code dropdown
+		// Session Code dropdown (Column A now)
 		const sessionCodes = sessions.map((s) => s.session_code).filter(Boolean)
 		if (sessionCodes.length > 0) {
 			validations.push({
 				type: "list",
-				sqref: "B2:B1000",
+				sqref: "A2:A1000",
 				formula1: `"${sessionCodes.join(",")}"`,
 				showDropDown: true,
 				showErrorMessage: true,
@@ -368,10 +352,10 @@ export default function ExamAttendanceBulkPage() {
 			})
 		}
 
-		// Attendance Status dropdown
+		// Attendance Status dropdown (Column D now)
 		validations.push({
 			type: "list",
-			sqref: "E2:E1000",
+			sqref: "D2:D1000",
 			formula1: '"Present,Absent"',
 			showDropDown: true,
 			showErrorMessage: true,
@@ -379,10 +363,10 @@ export default function ExamAttendanceBulkPage() {
 			error: "Select: Present or Absent",
 		})
 
-		// Identity Verified dropdown
+		// Identity Verified dropdown (Column F now)
 		validations.push({
 			type: "list",
-			sqref: "G2:G1000",
+			sqref: "F2:F1000",
 			formula1: '"Yes,No"',
 			showDropDown: true,
 			showErrorMessage: true,
@@ -393,18 +377,8 @@ export default function ExamAttendanceBulkPage() {
 		ws["!dataValidation"] = validations
 		XLSX.utils.book_append_sheet(wb, ws, "Template")
 
-		// Reference Codes sheet
+		// Reference Codes sheet (Institution Code removed - uses global filter)
 		const referenceData: any[] = []
-
-		// Institution codes section
-		referenceData.push({ Type: "=== INSTITUTION CODES ===", Code: "", Description: "" })
-		institutions.forEach((inst) => {
-			referenceData.push({
-				Type: "Institution",
-				Code: inst.institution_code,
-				Description: inst.name || "N/A",
-			})
-		})
 
 		// Session codes section
 		referenceData.push({ Type: "=== SESSION CODES ===", Code: "", Description: "" })
@@ -534,9 +508,8 @@ export default function ExamAttendanceBulkPage() {
 					return
 				}
 
-				// Map rows to API format
+				// Map rows to API format (institution_code removed - uses global filter)
 				const mapped = rows.map((r) => ({
-					institution_code: String(r["Institution Code *"] || r["Institution Code"] || r["institution_code"] || ""),
 					session_code: String(r["Session Code *"] || r["Session Code"] || r["session_code"] || ""),
 					register_number: String(r["Register Number *"] || r["Register Number"] || r["register_number"] || ""),
 					course_code: String(r["Course Code *"] || r["Course Code"] || r["course_code"] || ""),
@@ -548,16 +521,26 @@ export default function ExamAttendanceBulkPage() {
 
 				setImportProgress({ current: 0, total: mapped.length, success: 0, failed: 0, skipped: 0 })
 
-				// Get unique institution codes for prepare call
-				const uniqueInstCodes = [...new Set(mapped.map(r => r.institution_code.toUpperCase().trim()).filter(Boolean))]
+				// Use global institution filter - determine institution ID for upload
+				const uploadInstitutionId = selectedInstitutionId || contextInstitutionId
 
-				// Step 1: Prepare batch upload - fetch all lookup data once
+				if (!uploadInstitutionId) {
+					toast({
+						title: "Institution Required",
+						description: "Please select an institution before uploading attendance data.",
+						variant: "destructive",
+					})
+					setImportInProgress(false)
+					return
+				}
+
+				// Step 1: Prepare batch upload - fetch lookup data for the selected institution
 				const prepareResponse = await fetch("/api/post-exam/exam-attendance-bulk", {
 					method: "POST",
 					headers: { "Content-Type": "application/json" },
 					body: JSON.stringify({
 						action: "prepare-batch-upload",
-						institution_codes: uniqueInstCodes,
+						institutions_id: uploadInstitutionId, // Use global filter instead of Excel institution codes
 					}),
 				})
 
@@ -573,8 +556,12 @@ export default function ExamAttendanceBulkPage() {
 					return
 				}
 
-				// Extract lookup data
-				const { institutionMapping, sessionLookup, registerLookup, existingAttendanceLookup } = prepareResult
+				// Extract cache_id (lookup data is now cached server-side to avoid 10MB request limit)
+				const { cache_id, stats } = prepareResult
+
+				console.log('=== DEBUG: Batch Upload Prepared ===')
+				console.log('Cache ID:', cache_id)
+				console.log('Stats:', stats)
 
 				// Step 2: Process in batches
 				setImportPhase('uploading')
@@ -585,9 +572,6 @@ export default function ExamAttendanceBulkPage() {
 				let totalFailed = 0
 				let totalSkipped = 0
 				const allErrors: ImportError[] = []
-
-				// Create a mutable copy of existingAttendanceLookup to track new additions
-				const existingLookupCopy = { ...existingAttendanceLookup }
 
 				for (let batchIndex = 0; batchIndex < totalBatches; batchIndex++) {
 					const startIdx = batchIndex * BATCH_SIZE
@@ -601,10 +585,7 @@ export default function ExamAttendanceBulkPage() {
 							action: "process-batch",
 							batch_data: batchData,
 							uploaded_by: user?.email || "unknown",
-							institutionMapping,
-							sessionLookup,
-							registerLookup,
-							existingAttendanceLookup: existingLookupCopy,
+							cache_id: cache_id, // Use server-side cache instead of sending large lookup data
 							batch_start_index: startIdx,
 						}),
 					})
@@ -619,13 +600,7 @@ export default function ExamAttendanceBulkPage() {
 						// Collect errors with original data
 						const batchErrors = [...(batchResult.validation_errors || []), ...(batchResult.errors || [])]
 						allErrors.push(...batchErrors)
-
-						// Update existingLookupCopy with new keys to prevent duplicates in subsequent batches
-						if (batchResult.newExistingKeys) {
-							batchResult.newExistingKeys.forEach((key: string) => {
-								existingLookupCopy[key] = true
-							})
-						}
+						// Note: Server-side cache is automatically updated to prevent duplicates
 					} else {
 						// If batch fails entirely, mark all as failed
 						totalFailed += batchData.length
@@ -718,8 +693,7 @@ export default function ExamAttendanceBulkPage() {
 		}
 
 		const failedData = importErrors.map((err) => ({
-			// Same format as upload template (first 8 columns)
-			"Institution Code *": err.original_data?.institution_code || "",
+			// Same format as upload template (Institution Code removed - uses global filter)
 			"Session Code *": err.original_data?.session_code || "",
 			"Register Number *": err.original_data?.register_number || err.register_number || "",
 			"Course Code *": err.original_data?.course_code || err.course_code || "",
@@ -735,9 +709,8 @@ export default function ExamAttendanceBulkPage() {
 
 		const ws = XLSX.utils.json_to_sheet(failedData)
 
-		// Set column widths
+		// Set column widths (Institution Code removed)
 		ws["!cols"] = [
-			{ wch: 20 }, // Institution Code
 			{ wch: 20 }, // Session Code
 			{ wch: 25 }, // Register Number
 			{ wch: 20 }, // Course Code

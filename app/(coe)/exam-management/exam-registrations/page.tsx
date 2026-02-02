@@ -103,7 +103,7 @@ export default function ExamRegistrationsPage() {
 	const [statusFilter, setStatusFilter] = useState("all")
 	const [errorPopupOpen, setErrorPopupOpen] = useState(false)
 	const [importErrors, setImportErrors] = useState<ExamRegistrationImportError[]>([])
-	const [uploadSummary, setUploadSummary] = useState<UploadSummary>({ total: 0, success: 0, failed: 0 })
+	const [uploadSummary, setUploadSummary] = useState<UploadSummary>({ total: 0, success: 0, failed: 0, skipped: 0 })
 	const [failedRowsData, setFailedRowsData] = useState<Record<string, unknown>[]>([])
 	const [importInProgress, setImportInProgress] = useState(false)
 	const [importProgress, setImportProgress] = useState({ current: 0, total: 0 })
@@ -626,6 +626,8 @@ export default function ExamRegistrationsPage() {
 			setLoading(true)
 			setImportInProgress(true)
 			setImportProgress({ current: 0, total: 0 })
+			setFailedRowsData([])  // Reset failed rows for new upload
+			setImportErrors([])    // Reset errors for new upload
 			toast({
 				title: "📂 Processing File...",
 				description: `Reading ${file.name}`,
@@ -1175,6 +1177,7 @@ export default function ExamRegistrationsPage() {
 
 				let successCount = 0
 				let errorCount = 0
+				let skippedCount = 0
 				const uploadErrors: Array<{
 					row: number
 					student_register_no: string
@@ -1182,6 +1185,7 @@ export default function ExamRegistrationsPage() {
 					errors: string[]
 				}> = []
 				const apiFailedRows: Record<string, unknown>[] = []
+				const skippedRows: Record<string, unknown>[] = []
 				const savedRegistrations: any[] = []
 
 				for (let batchIndex = 0; batchIndex < totalBatches; batchIndex++) {
@@ -1224,28 +1228,44 @@ export default function ExamRegistrationsPage() {
 								successCount++
 							} else {
 								let errorMessage = 'Failed to create exam registration'
+								let isDuplicate = false
 								try {
 									const errorData = await response.json()
 									errorMessage = errorData.error || errorData.message || errorMessage
-									if (response.status === 400) {
+									// Check for duplicate FIRST (before other status checks)
+									if (response.status === 409 || errorMessage.toLowerCase().includes('already exists') || errorMessage.toLowerCase().includes('duplicate')) {
+										errorMessage = `Registration already exists for this student, session, and course`
+										isDuplicate = true
+									} else if (response.status === 400) {
 										errorMessage = `Validation error: ${errorMessage}`
-									} else if (response.status === 409 || errorMessage.includes('already exists')) {
-										errorMessage = `Duplicate entry: This registration already exists for this student, session, and course`
 									} else if (response.status === 500) {
 										errorMessage = `Server error: ${errorMessage}`
 									}
 								} catch {
 									errorMessage = `HTTP ${response.status}: ${response.statusText || 'Unknown error'}`
 								}
-								errorCount++
+
+								// Count duplicates as skipped, others as failed
+								if (isDuplicate) {
+									skippedCount++
+									console.log(`[Import] Row ${rowNumber} originalRow:`, originalRow ? 'exists' : 'undefined')
+									if (originalRow) {
+										skippedRows.push(originalRow)
+										console.log(`[Import] Row ${rowNumber} added to skippedRows, total:`, skippedRows.length)
+									}
+									console.log(`[Import] Row ${rowNumber} skipped (duplicate):`, errorMessage)
+								} else {
+									errorCount++
+									if (originalRow) apiFailedRows.push(originalRow)
+									console.error(`[Import] Row ${rowNumber} failed:`, errorMessage)
+								}
+
 								uploadErrors.push({
 									row: rowNumber,
 									student_register_no: displayCodes?.studentRegisterNo || 'N/A',
 									course_code: displayCodes?.courseCode || 'N/A',
 									errors: [errorMessage]
 								})
-								if (originalRow) apiFailedRows.push(originalRow)
-								console.error(`[Import] Row ${rowNumber} failed:`, errorMessage)
 							}
 						} catch (error) {
 							errorCount++
@@ -1281,33 +1301,41 @@ export default function ExamRegistrationsPage() {
 				setImportInProgress(false)
 
 				const totalRows = rows.length // Use original total rows
+				const totalFailed = preValidationErrors.length + errorCount
 
 				// Update upload summary
 				setUploadSummary({
 					total: totalRows,
 					success: successCount,
-					failed: preValidationErrors.length + errorCount
+					failed: totalFailed,
+					skipped: skippedCount
 				})
 
-				// Combine pre-validation failed rows with API failed rows
-				const allFailedRows = [...failedRows, ...apiFailedRows]
+				// Combine pre-validation failed rows with API failed rows and skipped rows
+				console.log(`[Import] Final counts - failedRows: ${failedRows.length}, apiFailedRows: ${apiFailedRows.length}, skippedRows: ${skippedRows.length}`)
+				const allFailedRows = [...failedRows, ...apiFailedRows, ...skippedRows]
+				console.log(`[Import] Setting failedRowsData with ${allFailedRows.length} total rows`)
 				setFailedRowsData(allFailedRows)
 
 				// Show detailed results dialog - always show for transparency
 				setImportErrors([...preValidationErrors, ...uploadErrors])
 				setErrorPopupOpen(true)
 
-				if (successCount > 0 && errorCount === 0) {
+				if (successCount > 0 && totalFailed === 0 && skippedCount === 0) {
 					toast({
 						title: "✅ Upload Complete",
 						description: `Successfully uploaded ${successCount} exam registration${successCount > 1 ? 's' : ''}.`,
 						className: "bg-green-50 border-green-200 text-green-800 dark:bg-green-900/20 dark:border-green-800 dark:text-green-200",
 						duration: 5000,
 					})
-				} else if (successCount > 0 && errorCount > 0) {
+				} else if (successCount > 0 && (totalFailed > 0 || skippedCount > 0)) {
+					const parts = []
+					if (successCount > 0) parts.push(`${successCount} successful`)
+					if (totalFailed > 0) parts.push(`${totalFailed} failed`)
+					if (skippedCount > 0) parts.push(`${skippedCount} skipped`)
 					toast({
 						title: "⚠️ Partial Upload",
-						description: `${successCount} successful, ${errorCount} failed. View details.`,
+						description: `${parts.join(', ')}. View details.`,
 						className: "bg-yellow-50 border-yellow-200 text-yellow-800 dark:bg-yellow-900/20 dark:border-yellow-800 dark:text-yellow-200",
 						duration: 6000,
 					})
@@ -2093,10 +2121,10 @@ export default function ExamRegistrationsPage() {
 					<AlertDialogHeader>
 						<div className="flex items-center gap-3">
 							<div className={`h-10 w-10 rounded-full flex items-center justify-center ${
-								uploadSummary.failed === 0 ? 'bg-green-100 dark:bg-green-900/40' :
+								uploadSummary.failed === 0 && uploadSummary.success > 0 ? 'bg-green-100 dark:bg-green-900/40' :
 								uploadSummary.success > 0 ? 'bg-amber-100 dark:bg-amber-900/40' : 'bg-red-100 dark:bg-red-900/40'
 							}`}>
-								{uploadSummary.failed === 0 ? (
+								{uploadSummary.failed === 0 && uploadSummary.success > 0 ? (
 									<CheckCircle className="h-5 w-5 text-green-600 dark:text-green-400" />
 								) : uploadSummary.success > 0 ? (
 									<AlertTriangle className="h-5 w-5 text-amber-600 dark:text-amber-400" />
@@ -2106,18 +2134,20 @@ export default function ExamRegistrationsPage() {
 							</div>
 							<div>
 								<AlertDialogTitle className={`text-xl font-bold ${
-									uploadSummary.failed === 0 ? 'text-green-600 dark:text-green-400' :
+									uploadSummary.failed === 0 && uploadSummary.success > 0 ? 'text-green-600 dark:text-green-400' :
 									uploadSummary.success > 0 ? 'text-amber-600 dark:text-amber-400' : 'text-red-600 dark:text-red-400'
 								}`}>
-									{uploadSummary.failed === 0 ? 'Upload Successful' :
+									{uploadSummary.failed === 0 && uploadSummary.success > 0 ? 'Upload Successful' :
 									 uploadSummary.success > 0 ? 'Partial Upload Complete' : 'Upload Failed'}
 								</AlertDialogTitle>
 								<AlertDialogDescription className="text-sm text-muted-foreground mt-1">
-									{uploadSummary.failed === 0
+									{uploadSummary.failed === 0 && uploadSummary.skipped === 0
 										? `All ${uploadSummary.success} exam registration${uploadSummary.success > 1 ? 's' : ''} have been successfully uploaded`
-										: uploadSummary.success > 0
-											? `${uploadSummary.success} of ${uploadSummary.total} registrations uploaded. ${uploadSummary.failed} failed.`
-											: `All ${uploadSummary.failed} row${uploadSummary.failed > 1 ? 's' : ''} failed validation`}
+										: uploadSummary.failed === 0 && uploadSummary.skipped > 0
+											? `${uploadSummary.success} uploaded, ${uploadSummary.skipped} skipped (already exist)`
+											: uploadSummary.success > 0
+												? `${uploadSummary.success} uploaded, ${uploadSummary.failed} failed${uploadSummary.skipped > 0 ? `, ${uploadSummary.skipped} skipped` : ''}`
+												: `All ${uploadSummary.failed} row${uploadSummary.failed > 1 ? 's' : ''} failed validation`}
 								</AlertDialogDescription>
 							</div>
 						</div>
@@ -2126,18 +2156,22 @@ export default function ExamRegistrationsPage() {
 					<div className="space-y-4">
 						{/* Upload Summary Cards */}
 						{uploadSummary.total > 0 && (
-							<div className="grid grid-cols-3 gap-3">
-								<div className="bg-blue-50 dark:bg-blue-900/30 border-blue-200 dark:border-blue-800 rounded-lg p-3">
+							<div className="grid grid-cols-4 gap-3">
+								<div className="bg-blue-50 dark:bg-blue-900/30 border border-blue-200 dark:border-blue-800 rounded-lg p-3">
 									<div className="text-xs text-blue-600 dark:text-blue-400 font-medium mb-1">Total Rows</div>
 									<div className="text-2xl font-bold text-blue-700 dark:text-blue-300">{uploadSummary.total}</div>
 								</div>
-								<div className="bg-green-50 dark:bg-green-900/30 border-green-200 dark:border-green-800 rounded-lg p-3">
+								<div className="bg-green-50 dark:bg-green-900/30 border border-green-200 dark:border-green-800 rounded-lg p-3">
 									<div className="text-xs text-green-600 dark:text-green-400 font-medium mb-1">Successful</div>
 									<div className="text-2xl font-bold text-green-700 dark:text-green-300">{uploadSummary.success}</div>
 								</div>
-								<div className="bg-red-50 dark:bg-red-900/30 border-red-200 dark:border-red-800 rounded-lg p-3">
+								<div className="bg-red-50 dark:bg-red-900/30 border border-red-200 dark:border-red-800 rounded-lg p-3">
 									<div className="text-xs text-red-600 dark:text-red-400 font-medium mb-1">Failed</div>
 									<div className="text-2xl font-bold text-red-700 dark:text-red-300">{uploadSummary.failed}</div>
+								</div>
+								<div className="bg-yellow-50 dark:bg-yellow-900/30 border border-yellow-200 dark:border-yellow-800 rounded-lg p-3">
+									<div className="text-xs text-yellow-600 dark:text-yellow-400 font-medium mb-1">Skipped</div>
+									<div className="text-2xl font-bold text-yellow-700 dark:text-yellow-300">{uploadSummary.skipped}</div>
 								</div>
 							</div>
 						)}
@@ -2248,7 +2282,7 @@ export default function ExamRegistrationsPage() {
 								className="border-amber-500 dark:border-amber-600 text-amber-700 dark:text-amber-400 hover:bg-amber-50 dark:hover:bg-amber-900/30"
 							>
 								<Download className="h-4 w-4 mr-2" />
-								Download Failed Rows ({failedRowsData.length})
+								Download Error Report ({failedRowsData.length})
 							</Button>
 						)}
 						{importErrors.length > 0 && (
