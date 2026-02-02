@@ -822,25 +822,28 @@ export async function GET(request: NextRequest) {
 			return regA.localeCompare(regB)
 		})
 
-		// DIAGNOSTIC: Log final studentcount
+		// DIAGNOSTIC: Log final student count
 		console.log(`✅ Total students included in semester ${semesterNum} report: ${students.length}`)
 		console.log('Included students:', students.map((s: any) => `${s.student.register_number} (${s.courses.length} courses)`).join(', '))
 
 		// Get unique courses for the course-wise analysis
-		// CRITICAL FIX: Only include courses from the SELECTED semester in the course analysis
-		// This ensures Semester 3 report only shows Semester 3 courses, not Semester 1 courses
+		// CRITICAL FIX: Include ALL courses from INCLUDED STUDENTS (not filtered by semester)
+		// This ensures Course Analysis Table matches exactly what's shown in Student Results Table
+		// If a Sem 3 student has arrear courses from Sem 1/2, those should be included
 		const coursesMap = new Map()
 
+		// Get list of included student IDs
+		const includedStudentIds = new Set(students.map((s: any) => s.student.id))
 
-		// Filter marks to only include courses from the selected semester
-		const marksForSelectedSemester = filteredMarks.filter((mark: any) => {
-			const courseSemester = mark.courses?.semester
-			return courseSemester === semesterNum
+		// Filter marks to only include courses from INCLUDED STUDENTS (matches Student Results Table)
+		const marksForIncludedStudents = filteredMarks.filter((mark: any) => {
+			const studentId = mark.students?.id
+			return includedStudentIds.has(studentId)
 		})
-  
-		console.log(`Course analysis: Using ${marksForSelectedSemester.length} marks for semester ${semesterNum} (filtered from ${filteredMarks.length} total marks)`)
 
-		marksForSelectedSemester.forEach((mark: any) => {
+		console.log(`Course analysis: Using ${marksForIncludedStudents.length} marks from ${includedStudentIds.size} included students (all their courses including arrears)`)
+
+		marksForIncludedStudents.forEach((mark: any) => {
 			if (!mark.courses) return
 			const courseId = mark.courses.id
 
@@ -932,9 +935,9 @@ export async function GET(request: NextRequest) {
 			(s.semester_result?.total_backlogs || 0) > 0
 		).length
 
-		// Grade distribution across courses in the selected semester ONLY
+		// Grade distribution across ALL courses from included students
 		const overallGrades: Record<string, number> = {}
-		marksForSelectedSemester.forEach((mark: any) => {
+		marksForIncludedStudents.forEach((mark: any) => {
 			if (mark.letter_grade) {
 				overallGrades[mark.letter_grade] = (overallGrades[mark.letter_grade] || 0) + 1
 			}
