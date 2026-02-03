@@ -686,7 +686,8 @@ export async function POST(request: NextRequest) {
 
 		// Step 2: Filter by course_code client-side
 		// Get course_code from: course_offerings.course_code OR course_mapping.course_code OR courses.course_code
-		const examRegistrations = (examRegsRaw || []).filter((er: any) => {
+		// Using 'let' to allow adding CIA virtual registrations later
+		let examRegistrations = (examRegsRaw || []).filter((er: any) => {
 			const co = er.course_offerings
 			if (!co) return false
 
@@ -712,27 +713,156 @@ export async function POST(request: NextRequest) {
 			return courseCode && courseCodes.includes(courseCode)
 		})
 
+		// =========================================================
+		// CIA ONLY COURSES: Fallback to internal_marks for student list
+		// CIA courses don't have external exams, so no exam_registrations exist.
+		// For these courses, we fetch students from internal_marks instead.
+		// =========================================================
+
+		// Check if selected courses are CIA only
+		const { data: selectedCoursesInfo } = await supabase
+			.from('courses')
+			.select('id, course_code, evaluation_type')
+			.in('id', course_ids)
+
+		const ciaOnlyCourseIds = (selectedCoursesInfo || [])
+			.filter((c: any) => {
+				const evalType = c.evaluation_type?.toUpperCase() || ''
+				return evalType === 'CIA' || evalType === 'CIA ONLY'
+			})
+			.map((c: any) => c.id)
+
+		const hasCIAOnlyCourses = ciaOnlyCourseIds.length > 0
+		console.log('[Final Marks] CIA only courses detected:', ciaOnlyCourseIds.length, 'of', course_ids.length)
+
 		if (!examRegistrations?.length) {
 			console.log('[Final Marks] No matches after course_code filter')
-			// Debug: show what course codes we found
-			const availableCodes = (examRegsRaw || []).map((er: any) => {
-				const co = er.course_offerings
-				if (!co) return null
-				let code = co.course_code
-				if (!code && co.course_mapping_id) {
-					const mapping = courseMappingToCodeMap.get(co.course_mapping_id)
-					code = mapping?.course_code
+
+			// For CIA only courses, try to get students from internal_marks
+			if (hasCIAOnlyCourses) {
+				console.log('[Final Marks] Attempting to fetch students from internal_marks for CIA courses')
+
+				// Fetch internal marks for CIA only courses
+				const { data: ciaInternalMarks, error: ciaError } = await supabase
+					.from('internal_marks')
+					.select(`
+						id,
+						student_id,
+						course_id,
+						total_internal_marks,
+						institutions_id
+					`)
+					.eq('institutions_id', institutions_id)
+					.in('course_id', ciaOnlyCourseIds)
+					.eq('is_active', true)
+
+				if (ciaError) {
+					console.error('[Final Marks] Error fetching CIA internal marks:', ciaError)
 				}
-				if (!code && co.course_id) {
-					code = directCourseCodeMap.get(co.course_id)
+
+				if (ciaInternalMarks && ciaInternalMarks.length > 0) {
+					console.log('[Final Marks] Found', ciaInternalMarks.length, 'internal marks for CIA courses')
+
+					// Get unique student IDs
+					const studentIds = [...new Set(ciaInternalMarks.map((im: any) => im.student_id))]
+
+					// Fetch student details from learners table
+					const { data: learnersData } = await supabase
+						.from('learners')
+						.select('id, register_number, learner_name, program_code')
+						.in('id', studentIds)
+
+					const learnersMap = new Map(
+						(learnersData || []).map((l: any) => [l.id, l])
+					)
+
+					// Get course_offering for these CIA courses
+					const { data: ciaOfferings } = await supabase
+						.from('course_offerings')
+						.select('id, course_id, course_mapping_id, program_id, program_code, course_code, semester')
+						.eq('examination_session_id', examination_session_id)
+						.eq('program_code', programCode)
+						.in('course_id', ciaOnlyCourseIds)
+
+					const ciaOfferingsMap = new Map(
+						(ciaOfferings || []).map((co: any) => [co.course_id, co])
+					)
+
+					// Create virtual exam registration records for CIA courses
+					const ciaExamRegistrations: any[] = []
+					const processedKeys = new Set<string>() // Prevent duplicates
+
+					for (const im of ciaInternalMarks) {
+						const key = `${im.student_id}|${im.course_id}`
+						if (processedKeys.has(key)) continue
+						processedKeys.add(key)
+
+						const learner = learnersMap.get(im.student_id)
+						const courseOffering = ciaOfferingsMap.get(im.course_id)
+
+						if (learner && courseOffering) {
+							ciaExamRegistrations.push({
+								id: `cia-virtual-${im.id}`, // Virtual ID for CIA courses
+								stu_register_no: learner.register_number,
+								student_id: im.student_id,
+								student_name: learner.learner_name,
+								course_offering_id: courseOffering.id,
+								examination_session_id: examination_session_id,
+								institutions_id: institutions_id,
+								program_code: programCode,
+								course_offerings: {
+									id: courseOffering.id,
+									course_id: courseOffering.course_id,
+									course_mapping_id: courseOffering.course_mapping_id,
+									program_id: courseOffering.program_id,
+									program_code: courseOffering.program_code,
+									course_code: courseOffering.course_code,
+									semester: courseOffering.semester,
+									_resolved_course_code: courseOffering.course_code,
+									_is_cia_only: true
+								}
+							})
+						}
+					}
+
+					if (ciaExamRegistrations.length > 0) {
+						console.log('[Final Marks] Created', ciaExamRegistrations.length, 'virtual exam registrations for CIA courses')
+						// Continue processing with CIA virtual registrations
+						examRegistrations.push(...ciaExamRegistrations)
+					}
 				}
-				return code
-			}).filter(Boolean)
-			console.log('[Final Marks] Available course_codes in exam_regs:', [...new Set(availableCodes)])
-			console.log('[Final Marks] Requested course_codes:', courseCodes)
-			return NextResponse.json({
-				error: 'No exam registrations found for the selected courses and session.'
-			}, { status: 400 })
+			}
+
+			// If still no registrations after CIA fallback, return error
+			if (!examRegistrations?.length) {
+				// Debug: show what course codes we found
+				const availableCodes = (examRegsRaw || []).map((er: any) => {
+					const co = er.course_offerings
+					if (!co) return null
+					let code = co.course_code
+					if (!code && co.course_mapping_id) {
+						const mapping = courseMappingToCodeMap.get(co.course_mapping_id)
+						code = mapping?.course_code
+					}
+					if (!code && co.course_id) {
+						code = directCourseCodeMap.get(co.course_id)
+					}
+					return code
+				}).filter(Boolean)
+				console.log('[Final Marks] Available course_codes in exam_regs:', [...new Set(availableCodes)])
+				console.log('[Final Marks] Requested course_codes:', courseCodes)
+
+				// Provide more helpful error message for CIA courses
+				if (hasCIAOnlyCourses) {
+					return NextResponse.json({
+						error: 'No internal marks found for the selected CIA courses. Please ensure internal marks have been entered for these courses.'
+					}, { status: 400 })
+				}
+
+				return NextResponse.json({
+					error: 'No exam registrations found for the selected courses and session.'
+				}, { status: 400 })
+			}
 		}
 
 		console.log('[Final Marks] Exam registrations found after course filter:', examRegistrations.length)
@@ -958,6 +1088,7 @@ export async function POST(request: NextRequest) {
 			// =========================================================
 			// BUSINESS RULE: Validation before generating final marks
 			// 1. Attendance is mandatory - No attendance record → Skip
+			//    EXCEPTION: CIA only courses don't require attendance (no external exam)
 			// 2. Internal and External marks are required (both must exist)
 			// 3. For courses with evaluation_type = 'CIA & ESE':
 			//    - If internal exists but external missing → Skip
@@ -965,8 +1096,12 @@ export async function POST(request: NextRequest) {
 			// 4. Generate only when: attendance + internal + external all exist
 			// =========================================================
 
-			// Rule 1: Attendance is mandatory
-			if (!attendanceRecord) {
+			// Check evaluation type FIRST to determine if attendance is required
+			const courseEvalType = course.evaluation_type?.toUpperCase() || ''
+			const courseIsCIAOnly = courseEvalType === 'CIA' || courseEvalType === 'CIA ONLY'
+
+			// Rule 1: Attendance is mandatory (EXCEPT for CIA only courses)
+			if (!attendanceRecord && !courseIsCIAOnly) {
 				// No attendance record means student didn't appear for exam
 				// Skip this student-course combination (no result needed)
 				summary.skipped_no_attendance++
@@ -975,7 +1110,8 @@ export async function POST(request: NextRequest) {
 
 			// Check if student is marked absent in attendance
 			// NOTE: Only attendance_status column exists (is_absent column doesn't exist)
-			const isAbsent = attendanceRecord.attendance_status?.toLowerCase() === 'absent'
+			// For CIA only courses without attendance record, treat as present
+			const isAbsent = attendanceRecord ? attendanceRecord.attendance_status?.toLowerCase() === 'absent' : false
 
 			// Check marks availability
 			const hasInternalMark = internalMark && internalMark.total_internal_marks !== null && internalMark.total_internal_marks !== undefined
@@ -995,6 +1131,7 @@ export async function POST(request: NextRequest) {
 			// 4. Present + ESE only + missing internal → Generate normally (external only)
 			// 5. Present + Other types + both marks missing → Skip
 			// 6. Present + all required marks exist → Generate normally
+			// NOTE: CIA only courses without attendance record are treated as present (isAbsent=false)
 			// =========================================================
 
 			// If student is absent, we generate AAA grade regardless of marks availability
