@@ -985,9 +985,9 @@ export default function GalleyReportPage() {
 																</TableCell>
 																{reportData.courseAnalysis.slice(0, 6).map((ca) => {
 																	const courseMarks = student.courses.find(c => c.course.id === ca.course.id)
-																	const evalType = ca.course.evaluation_type || 'CIA + ESE'
-																	// CIA: Show INT, EXT = '-'
-																	// ESE: INT = '-', Show EXT
+																	const evalType = (ca.course.evaluation_type || 'CIA + ESE').trim().toUpperCase()
+																	// CIA: Show INT, EXT = '-' (always)
+																	// ESE: INT = '-', Show EXT (always)
 																	// CIA + ESE: Show both
 																	const intDisplay = evalType === 'ESE' ? '-' : (courseMarks?.internal_marks ?? '-')
 																	const extDisplay = evalType === 'CIA' ? '-' : (courseMarks?.external_marks ?? '-')
@@ -1068,9 +1068,9 @@ export default function GalleyReportPage() {
 												</TableHeader>
 												<TableBody>
 													{reportData.courseAnalysis.map((ca) => {
-													const evalType = ca.course.evaluation_type || 'CIA + ESE'
-													// CIA: Show INT, EXT = '-'
-													// ESE: INT = '-', Show EXT
+													const evalType = (ca.course.evaluation_type || 'CIA + ESE').trim().toUpperCase()
+													// CIA: Show INT, EXT = '-' (always)
+													// ESE: INT = '-', Show EXT (always)
 													// CIA + ESE: Show both
 													const intMax = evalType === 'ESE' ? '-' : (ca.course.internal_max_mark || '-')
 													const extMax = evalType === 'CIA' ? '-' : (ca.course.external_max_mark || '-')

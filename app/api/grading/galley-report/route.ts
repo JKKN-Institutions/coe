@@ -673,7 +673,7 @@ export async function GET(request: NextRequest) {
 						course_type: null,
 						course_order: courseOrder,
 						semester: courseSemester,  // ADDED: Include semester for sorting and display
-						evaluation_type: mark.courses?.evaluation_type || 'CIA + ESE'  // ADDED: CIA, ESE, or CIA + ESE
+						evaluation_type: (mark.courses?.evaluation_type || 'CIA + ESE').trim().toUpperCase()  // ADDED: CIA, ESE, or CIA + ESE (normalized)
 					}
 				}
 			})
@@ -872,7 +872,7 @@ export async function GET(request: NextRequest) {
 			// CIA: Absent if internal_marks is null
 			// ESE: Absent if external_marks is null
 			// CIA + ESE: Absent if external_marks is null (traditional logic)
-			const evalType = mark.courses?.evaluation_type || 'CIA + ESE'
+			const evalType = (mark.courses?.evaluation_type || 'CIA + ESE').trim().toUpperCase()
 			let isAbsent = false
 
 			if (evalType === 'CIA') {

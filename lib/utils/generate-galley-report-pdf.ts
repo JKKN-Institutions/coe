@@ -407,22 +407,22 @@ export function generateGalleyReportPDF(data: GalleyReportData): string {
 					if (courseMarks) {
 						const courseCode = courseMarks.course.course_code || ''
 						const sem = courseMarks.course.semester ? String(courseMarks.course.semester) : '-'
-						const evalType = courseMarks.course.evaluation_type || 'CIA + ESE'
+						const evalType = (courseMarks.course.evaluation_type || 'CIA + ESE').trim().toUpperCase()
 
 						// Convert marks to string based on evaluation_type:
-						// CIA (Internal Only): Show INT, EXT = 'NA'
-						// ESE (External Only): INT = 'NA', Show EXT
+						// CIA (Internal Only): Show INT, EXT = '-' (always, regardless of database value)
+						// ESE (External Only): INT = '-', Show EXT (always, regardless of database value)
 						// CIA + ESE: Show both INT and EXT
 						let int: string
 						let ext: string
 
 						if (evalType === 'CIA') {
-							// CIA: Internal Only - no external mark
+							// CIA: Internal Only - always show '-' for external (no external mark for CIA)
 							int = (courseMarks.internal_marks === 0 || courseMarks.internal_marks) ? String(courseMarks.internal_marks) : '-'
-							ext = '-'
+							ext = '-'  // Always '-' for CIA, ignore any database value
 						} else if (evalType === 'ESE') {
-							// ESE: External Only - no internal mark
-							int = '-'
+							// ESE: External Only - always show '-' for internal (no internal mark for ESE)
+							int = '-'  // Always '-' for ESE, ignore any database value
 							ext = (courseMarks.external_marks === 0 || courseMarks.external_marks) ? String(courseMarks.external_marks) : '-'
 						} else {
 							// CIA + ESE: Both internal and external
@@ -590,7 +590,7 @@ export function generateGalleyReportPDF(data: GalleyReportData): string {
 	// Build course analysis data with color coding
 	const courseAnalysisData: (string | number | CellDef)[][] = allCourses.map((ca, index) => {
 		const passPercentNum = parseFloat(ca.pass_percentage) || 0
-		const evalType = ca.course.evaluation_type || 'CIA + ESE'
+		const evalType = (ca.course.evaluation_type || 'CIA + ESE').trim().toUpperCase()
 
 		// Color code pass percentage: green for high, red for low
 		const passPercentCell: CellDef = {
