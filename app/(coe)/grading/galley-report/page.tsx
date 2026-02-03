@@ -82,6 +82,7 @@ interface CourseData {
 		course_category: string
 		course_type: string
 		course_order?: number
+		evaluation_type?: string  // CIA, ESE, or CIA + ESE
 	}
 	internal_marks: number
 	internal_max: number
@@ -131,6 +132,7 @@ interface CourseAnalysis {
 		total_max_mark: number
 		course_category: string
 		course_order?: number
+		evaluation_type?: string  // CIA, ESE, or CIA + ESE
 	}
 	registered: number
 	appeared: number
@@ -983,14 +985,21 @@ export default function GalleyReportPage() {
 																</TableCell>
 																{reportData.courseAnalysis.slice(0, 6).map((ca) => {
 																	const courseMarks = student.courses.find(c => c.course.id === ca.course.id)
+																	const evalType = ca.course.evaluation_type || 'CIA + ESE'
+																	// CIA: Show INT, EXT = '-'
+																	// ESE: INT = '-', Show EXT
+																	// CIA + ESE: Show both
+																	const intDisplay = evalType === 'ESE' ? '-' : (courseMarks?.internal_marks ?? '-')
+																	const extDisplay = evalType === 'CIA' ? '-' : (courseMarks?.external_marks ?? '-')
+
 																	return (
 																		<TableCell key={ca.course.id} className="text-xs text-center">
 																			{courseMarks ? (
 																				<div className="flex flex-col gap-0.5">
 																					<div className="flex justify-center gap-1">
-																						<span>{courseMarks.internal_marks}</span>
+																						<span>{intDisplay}</span>
 																						<span>|</span>
-																						<span>{courseMarks.external_marks}</span>
+																						<span>{extDisplay}</span>
 																						<span>|</span>
 																						<span className="font-medium">{courseMarks.total_marks}</span>
 																					</div>
@@ -1058,12 +1067,20 @@ export default function GalleyReportPage() {
 													</TableRow>
 												</TableHeader>
 												<TableBody>
-													{reportData.courseAnalysis.map((ca) => (
+													{reportData.courseAnalysis.map((ca) => {
+													const evalType = ca.course.evaluation_type || 'CIA + ESE'
+													// CIA: Show INT, EXT = '-'
+													// ESE: INT = '-', Show EXT
+													// CIA + ESE: Show both
+													const intMax = evalType === 'ESE' ? '-' : (ca.course.internal_max_mark || '-')
+													const extMax = evalType === 'CIA' ? '-' : (ca.course.external_max_mark || '-')
+
+													return (
 														<TableRow key={ca.course.id}>
 															<TableCell className="text-xs font-medium">{ca.course.course_code}</TableCell>
 															<TableCell className="text-xs">{ca.course.course_name}</TableCell>
-															<TableCell className="text-xs text-center">{ca.course.internal_max_mark || '-'}</TableCell>
-															<TableCell className="text-xs text-center">{ca.course.external_max_mark || '-'}</TableCell>
+															<TableCell className="text-xs text-center">{intMax}</TableCell>
+															<TableCell className="text-xs text-center">{extMax}</TableCell>
 															<TableCell className="text-xs text-center">{ca.course.total_max_mark}</TableCell>
 															<TableCell className="text-xs text-center">{ca.registered}</TableCell>
 															<TableCell className="text-xs text-center">{ca.appeared}</TableCell>
@@ -1085,7 +1102,8 @@ export default function GalleyReportPage() {
 																</Badge>
 															</TableCell>
 														</TableRow>
-													))}
+													)
+												})}
 												</TableBody>
 											</Table>
 										</CardContent>

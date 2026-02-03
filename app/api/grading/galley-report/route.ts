@@ -457,7 +457,8 @@ export async function GET(request: NextRequest) {
 				id,
 				course_code,
 				course_name,
-				credit
+				credit,
+				evaluation_type
 			),
 			course_offerings:course_offering_id (
 				semester,
@@ -671,7 +672,8 @@ export async function GET(request: NextRequest) {
 						course_category: null,
 						course_type: null,
 						course_order: courseOrder,
-						semester: courseSemester  // ADDED: Include semester for sorting and display
+						semester: courseSemester,  // ADDED: Include semester for sorting and display
+						evaluation_type: mark.courses?.evaluation_type || 'CIA + ESE'  // ADDED: CIA, ESE, or CIA + ESE
 					}
 				}
 			})
@@ -866,11 +868,32 @@ export async function GET(request: NextRequest) {
 			const courseData = coursesMap.get(courseId)
 			courseData.registered++
 
-			// Check for absent: pass_status = 'Absent' OR letter_grade = 'AAA' OR external marks is null/0 with no appearance
-			const isAbsent = mark.pass_status === 'Absent' ||
-				mark.pass_status === 'AAA' ||
-				mark.letter_grade === 'AAA' ||
-				(mark.external_marks_obtained === null && mark.internal_marks_obtained !== null)
+			// Check for absent based on evaluation_type:
+			// CIA: Absent if internal_marks is null
+			// ESE: Absent if external_marks is null
+			// CIA + ESE: Absent if external_marks is null (traditional logic)
+			const evalType = mark.courses?.evaluation_type || 'CIA + ESE'
+			let isAbsent = false
+
+			if (evalType === 'CIA') {
+				// CIA (Internal Only): Absent if no internal marks
+				isAbsent = mark.pass_status === 'Absent' ||
+					mark.pass_status === 'AAA' ||
+					mark.letter_grade === 'AAA' ||
+					mark.internal_marks_obtained === null
+			} else if (evalType === 'ESE') {
+				// ESE (External Only): Absent if no external marks
+				isAbsent = mark.pass_status === 'Absent' ||
+					mark.pass_status === 'AAA' ||
+					mark.letter_grade === 'AAA' ||
+					mark.external_marks_obtained === null
+			} else {
+				// CIA + ESE: Traditional logic - absent if no external marks
+				isAbsent = mark.pass_status === 'Absent' ||
+					mark.pass_status === 'AAA' ||
+					mark.letter_grade === 'AAA' ||
+					(mark.external_marks_obtained === null && mark.internal_marks_obtained !== null)
+			}
 
 			if (isAbsent) {
 				courseData.absent++

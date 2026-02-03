@@ -13,6 +13,7 @@ interface CourseMarks {
 		total_max_mark: number
 		course_order?: number
 		semester?: number  // ADDED: Include semester for display
+		evaluation_type?: string  // ADDED: CIA, ESE, or CIA + ESE
 	}
 	internal_marks: number | null
 	internal_max: number
@@ -59,6 +60,7 @@ interface CourseAnalysis {
 		total_max_mark: number
 		course_order?: number
 		semester?: number  // ADDED: Include semester for display
+		evaluation_type?: string  // ADDED: CIA, ESE, or CIA + ESE
 	}
 	registered: number
 	appeared: number
@@ -405,17 +407,53 @@ export function generateGalleyReportPDF(data: GalleyReportData): string {
 					if (courseMarks) {
 						const courseCode = courseMarks.course.course_code || ''
 						const sem = courseMarks.course.semester ? String(courseMarks.course.semester) : '-'
-						// Convert marks to string, handling 0 as valid value (only null/undefined becomes '-')
-						const int = (courseMarks.internal_marks === 0 || courseMarks.internal_marks) ? String(courseMarks.internal_marks) : '-'
-						const ext = (courseMarks.external_marks === 0 || courseMarks.external_marks) ? String(courseMarks.external_marks) : '-'
+						const evalType = courseMarks.course.evaluation_type || 'CIA + ESE'
+
+						// Convert marks to string based on evaluation_type:
+						// CIA (Internal Only): Show INT, EXT = 'NA'
+						// ESE (External Only): INT = 'NA', Show EXT
+						// CIA + ESE: Show both INT and EXT
+						let int: string
+						let ext: string
+
+						if (evalType === 'CIA') {
+							// CIA: Internal Only - no external mark
+							int = (courseMarks.internal_marks === 0 || courseMarks.internal_marks) ? String(courseMarks.internal_marks) : '-'
+							ext = '-'
+						} else if (evalType === 'ESE') {
+							// ESE: External Only - no internal mark
+							int = '-'
+							ext = (courseMarks.external_marks === 0 || courseMarks.external_marks) ? String(courseMarks.external_marks) : '-'
+						} else {
+							// CIA + ESE: Both internal and external
+							int = (courseMarks.internal_marks === 0 || courseMarks.internal_marks) ? String(courseMarks.internal_marks) : '-'
+							ext = (courseMarks.external_marks === 0 || courseMarks.external_marks) ? String(courseMarks.external_marks) : '-'
+						}
+
 						const tot = (courseMarks.total_marks === 0 || courseMarks.total_marks) ? String(courseMarks.total_marks) : '-'
 
-						// Determine if student is absent
-						const isAbsent = courseMarks.pass_status === 'Absent' ||
-							courseMarks.pass_status === 'AAA' ||
-							courseMarks.letter_grade === 'AAA' ||
-							(courseMarks.external_marks === null && courseMarks.internal_marks !== null) ||
-							(courseMarks.external_marks === 0 && courseMarks.internal_marks !== null && courseMarks.internal_marks > 0 && courseMarks.total_marks === 0)
+						// Determine if student is absent based on evaluation_type
+						// CIA: Absent if internal_marks is null
+						// ESE: Absent if external_marks is null
+						// CIA + ESE: Absent if external_marks is null (traditional logic)
+						let isAbsent = false
+						if (evalType === 'CIA') {
+							isAbsent = courseMarks.pass_status === 'Absent' ||
+								courseMarks.pass_status === 'AAA' ||
+								courseMarks.letter_grade === 'AAA' ||
+								courseMarks.internal_marks === null
+						} else if (evalType === 'ESE') {
+							isAbsent = courseMarks.pass_status === 'Absent' ||
+								courseMarks.pass_status === 'AAA' ||
+								courseMarks.letter_grade === 'AAA' ||
+								courseMarks.external_marks === null
+						} else {
+							isAbsent = courseMarks.pass_status === 'Absent' ||
+								courseMarks.pass_status === 'AAA' ||
+								courseMarks.letter_grade === 'AAA' ||
+								(courseMarks.external_marks === null && courseMarks.internal_marks !== null) ||
+								(courseMarks.external_marks === 0 && courseMarks.internal_marks !== null && courseMarks.internal_marks > 0 && courseMarks.total_marks === 0)
+						}
 
 						// Determine result status: P for Pass, RA for Fail/Reappear, A for Absent
 						let res: string
@@ -552,6 +590,8 @@ export function generateGalleyReportPDF(data: GalleyReportData): string {
 	// Build course analysis data with color coding
 	const courseAnalysisData: (string | number | CellDef)[][] = allCourses.map((ca, index) => {
 		const passPercentNum = parseFloat(ca.pass_percentage) || 0
+		const evalType = ca.course.evaluation_type || 'CIA + ESE'
+
 		// Color code pass percentage: green for high, red for low
 		const passPercentCell: CellDef = {
 			content: ca.pass_percentage,
@@ -561,13 +601,31 @@ export function generateGalleyReportPDF(data: GalleyReportData): string {
 			}
 		}
 
+		// Determine INT MAX and EXT MAX based on evaluation_type
+		// CIA: Show INT MAX, EXT MAX = 'NA'
+		// ESE: INT MAX = 'NA', Show EXT MAX
+		// CIA + ESE: Show both
+		let intMaxDisplay: string | number
+		let extMaxDisplay: string | number
+
+		if (evalType === 'CIA') {
+			intMaxDisplay = ca.course.internal_max_mark || '-'
+			extMaxDisplay = '-'
+		} else if (evalType === 'ESE') {
+			intMaxDisplay = '-'
+			extMaxDisplay = ca.course.external_max_mark || '-'
+		} else {
+			intMaxDisplay = ca.course.internal_max_mark || '-'
+			extMaxDisplay = ca.course.external_max_mark || '-'
+		}
+
 		return [
 			index + 1,  // S.No
 			ca.course.course_code,
 			ca.course.course_name,
 			ca.course.semester ? String(ca.course.semester) : '-',  // SEMESTER in numeric (1, 2, 3, ...)
-			ca.course.internal_max_mark || '-',
-			ca.course.external_max_mark || '-',
+			intMaxDisplay,
+			extMaxDisplay,
 			ca.course.total_max_mark,
 			ca.registered,
 			ca.appeared,
