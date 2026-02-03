@@ -8,9 +8,14 @@
  *
  * Migration Note: This page replaces the old /users/learners-list page
  * that used local COE database tables.
+ *
+ * Performance: Uses server-side pagination to avoid fetching all records at once.
+ * - Debounced search (300ms) to reduce API calls
+ * - Cached lookup data on API side (5 min TTL)
+ * - Server-side pagination with configurable page size
  */
 
-import { useState, useMemo, useEffect, useCallback } from 'react'
+import { useState, useMemo, useEffect, useCallback, useRef } from 'react'
 import Image from 'next/image'
 import Link from 'next/link'
 import XLSX from '@/lib/utils/excel-compat'
@@ -90,7 +95,36 @@ export default function LearnersMyJKKNPage() {
 	const [learners, setLearners] = useState<COELearner[]>([])
 	const [loading, setLoading] = useState(true)
 	const [error, setError] = useState<string | null>(null)
+	const [totalCount, setTotalCount] = useState(0)
+	const [totalPages, setTotalPages] = useState(1)
 
+	// Local state for filtering and pagination
+	const [searchTerm, setSearchTerm] = useState("")
+	const [debouncedSearch, setDebouncedSearch] = useState("")
+	const [statusFilter, setStatusFilter] = useState("all")
+	const [programFilter, setProgramFilter] = useState("all")
+	const [semesterFilter, setSemesterFilter] = useState("all")
+	const [sortColumn, setSortColumn] = useState<string | null>(null)
+	const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc')
+	const [currentPage, setCurrentPage] = useState(1)
+	const [itemsPerPage, setItemsPerPage] = useState(50)
+
+	// Debounce search input (300ms delay)
+	const searchTimeoutRef = useRef<NodeJS.Timeout | null>(null)
+	useEffect(() => {
+		if (searchTimeoutRef.current) {
+			clearTimeout(searchTimeoutRef.current)
+		}
+		searchTimeoutRef.current = setTimeout(() => {
+			setDebouncedSearch(searchTerm)
+			setCurrentPage(1) // Reset to page 1 on search
+		}, 300)
+		return () => {
+			if (searchTimeoutRef.current) clearTimeout(searchTimeoutRef.current)
+		}
+	}, [searchTerm])
+
+	// Fetch with server-side pagination
 	const refetch = useCallback(async () => {
 		if (!isReady) return
 
@@ -98,8 +132,17 @@ export default function LearnersMyJKKNPage() {
 			setLoading(true)
 			setError(null)
 
-			// Use institution filter skill to append institution params
-			const baseUrl = '/api/myjkkn/learner-profiles?fetchAll=true&limit=100000'
+			// Build URL with server-side pagination params
+			const params = new URLSearchParams()
+			params.set('page', String(currentPage))
+			params.set('limit', String(itemsPerPage))
+
+			// Add search if present
+			if (debouncedSearch.trim()) {
+				params.set('search', debouncedSearch.trim())
+			}
+
+			const baseUrl = `/api/myjkkn/learner-profiles?${params.toString()}`
 			const url = appendToUrl(baseUrl)
 
 			const response = await fetch(url)
@@ -110,6 +153,7 @@ export default function LearnersMyJKKNPage() {
 
 			const result = await response.json()
 			const rawData = Array.isArray(result) ? result : (result.data || [])
+			const metadata = result.metadata || {}
 
 			// Extra safety: client-side filter by institution_code when active
 			const filteredData: COELearner[] =
@@ -120,30 +164,24 @@ export default function LearnersMyJKKNPage() {
 					: (rawData as COELearner[])
 
 			setLearners(filteredData)
+			setTotalCount(metadata.total || filteredData.length)
+			setTotalPages(metadata.totalPages || Math.ceil((metadata.total || filteredData.length) / itemsPerPage))
 		} catch (err) {
 			const message = err instanceof Error ? err.message : 'Failed to load learners from MyJKKN'
 			setError(message)
 			setLearners([])
+			setTotalCount(0)
+			setTotalPages(1)
 		} finally {
 			setLoading(false)
 		}
-	}, [appendToUrl, filter.institution_code, isReady, shouldFilter])
+	}, [appendToUrl, currentPage, debouncedSearch, filter.institution_code, isReady, itemsPerPage, shouldFilter])
 
-	// Initial load & refetch when institution filter changes
+	// Refetch when pagination, search, or institution changes
 	useEffect(() => {
 		if (!isReady) return
 		refetch()
-	}, [isReady, filter, refetch])
-
-	// Local state for filtering and pagination
-	const [searchTerm, setSearchTerm] = useState("")
-	const [statusFilter, setStatusFilter] = useState("all")
-	const [programFilter, setProgramFilter] = useState("all")
-	const [semesterFilter, setSemesterFilter] = useState("all")
-	const [sortColumn, setSortColumn] = useState<string | null>(null)
-	const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc')
-	const [currentPage, setCurrentPage] = useState(1)
-	const [itemsPerPage, setItemsPerPage] = useState(20)
+	}, [isReady, filter, currentPage, itemsPerPage, debouncedSearch, refetch])
 
 	// Handle sorting
 	const handleSort = (column: string) => {
@@ -155,20 +193,18 @@ export default function LearnersMyJKKNPage() {
 		}
 	}
 
-	// Filter and sort learners
+	// Filter and sort learners (client-side for dropdown filters only)
+	// Search is handled server-side for performance
 	const filteredLearners = useMemo(() => {
 		return learners
 			.filter((learner) => {
-				const matchesSearch = learner.register_number?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-					learner.learner_name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-					learner.email?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-					learner.program_code?.toLowerCase().includes(searchTerm.toLowerCase())
+				// Status, program, semester filters applied client-side on current page
 				const matchesStatus = statusFilter === "all" ||
 					(statusFilter === "active" && learner.is_active) ||
 					(statusFilter === "inactive" && !learner.is_active)
 				const matchesProgram = programFilter === "all" || learner.program_code === programFilter
 				const matchesSemester = semesterFilter === "all" || String(learner.current_semester) === semesterFilter
-				return matchesSearch && matchesStatus && matchesProgram && matchesSemester
+				return matchesStatus && matchesProgram && matchesSemester
 			})
 			.sort((a, b) => {
 				if (!sortColumn) return 0
@@ -211,9 +247,9 @@ export default function LearnersMyJKKNPage() {
 					return aValue < bValue ? 1 : aValue > bValue ? -1 : 0
 				}
 			})
-	}, [learners, searchTerm, statusFilter, programFilter, semesterFilter, sortColumn, sortDirection])
+	}, [learners, statusFilter, programFilter, semesterFilter, sortColumn, sortDirection])
 
-	// Get unique values for filters
+	// Get unique values for filters from current page data
 	const uniquePrograms = useMemo(() => {
 		return [...new Set(learners.map(l => l.program_code).filter(Boolean))].sort()
 	}, [learners])
@@ -222,11 +258,11 @@ export default function LearnersMyJKKNPage() {
 		return [...new Set(learners.map(l => l.current_semester).filter(Boolean))].sort((a, b) => (a || 0) - (b || 0))
 	}, [learners])
 
-	// Calculate pagination
-	const totalPages = Math.ceil(filteredLearners.length / itemsPerPage)
-	const startIndex = (currentPage - 1) * itemsPerPage
-	const endIndex = startIndex + itemsPerPage
-	const paginatedLearners = filteredLearners.slice(startIndex, endIndex)
+	// Server-side pagination - use totalPages from API response
+	const startIndex = (currentPage - 1) * itemsPerPage + 1
+	const endIndex = Math.min(currentPage * itemsPerPage, totalCount)
+	// For display, use the client-filtered data (filters applied to current page)
+	const paginatedLearners = filteredLearners
 
 	// Helper functions
 	const getSortIcon = (column: string) => {
@@ -264,10 +300,10 @@ export default function LearnersMyJKKNPage() {
 		setCurrentPage(1) // Reset to first page when changing items per page
 	}
 
-	// Export function with all details
+	// Export current page data
 	const handleExport = () => {
-		const excelData = filteredLearners.map((learner, index) => ({
-			'S.No': index + 1,
+		const excelData = paginatedLearners.map((learner, index) => ({
+			'S.No': startIndex + index,
 			'Register Number': learner.register_number || '',
 			'Roll Number': learner.roll_number || '',
 			'Learner Name': learner.learner_name || '',
@@ -307,11 +343,11 @@ export default function LearnersMyJKKNPage() {
 
 		const wb = XLSX.utils.book_new()
 		XLSX.utils.book_append_sheet(wb, ws, 'Learners')
-		XLSX.writeFile(wb, `learners_myjkkn_export_${new Date().toISOString().split('T')[0]}.xlsx`)
+		XLSX.writeFile(wb, `learners_myjkkn_page${currentPage}_${new Date().toISOString().split('T')[0]}.xlsx`)
 
 		toast({
 			title: "Export Successful",
-			description: `Exported ${excelData.length} learners with all details.`,
+			description: `Exported ${excelData.length} learners (Page ${currentPage}).`,
 			className: "bg-green-50 border-green-200 text-green-800 dark:bg-green-900/20 dark:border-green-800 dark:text-green-200",
 		})
 	}
@@ -389,7 +425,7 @@ export default function LearnersMyJKKNPage() {
 								<div className="flex items-center justify-between">
 									<div>
 										<p className="text-xs font-medium text-muted-foreground">Total Learners</p>
-										<p className="text-xl font-bold">{learners.length}</p>
+										<p className="text-xl font-bold">{totalCount.toLocaleString()}</p>
 									</div>
 									<div className="h-7 w-7 rounded-full bg-blue-100 dark:bg-blue-900/20 flex items-center justify-center">
 										<Users className="h-3 w-3 text-blue-600 dark:text-blue-400" />
@@ -402,9 +438,9 @@ export default function LearnersMyJKKNPage() {
 							<CardContent className="p-3">
 								<div className="flex items-center justify-between">
 									<div>
-										<p className="text-xs font-medium text-muted-foreground">Active Learners</p>
+										<p className="text-xs font-medium text-muted-foreground">Active (This Page)</p>
 										<p className="text-xl font-bold text-green-600">
-											{learners.filter(l => l.is_active).length}
+											{paginatedLearners.filter(l => l.is_active).length}
 										</p>
 									</div>
 									<div className="h-7 w-7 rounded-full bg-green-100 dark:bg-green-900/20 flex items-center justify-center">
@@ -418,9 +454,9 @@ export default function LearnersMyJKKNPage() {
 							<CardContent className="p-3">
 								<div className="flex items-center justify-between">
 									<div>
-										<p className="text-xs font-medium text-muted-foreground">Inactive Learners</p>
+										<p className="text-xs font-medium text-muted-foreground">Inactive (This Page)</p>
 										<p className="text-xl font-bold text-red-600">
-											{learners.filter(l => !l.is_active).length}
+											{paginatedLearners.filter(l => !l.is_active).length}
 										</p>
 									</div>
 									<div className="h-7 w-7 rounded-full bg-red-100 dark:bg-red-900/20 flex items-center justify-center">
@@ -434,9 +470,9 @@ export default function LearnersMyJKKNPage() {
 							<CardContent className="p-3">
 								<div className="flex items-center justify-between">
 									<div>
-										<p className="text-xs font-medium text-muted-foreground">Programs</p>
+										<p className="text-xs font-medium text-muted-foreground">Page {currentPage} of {totalPages}</p>
 										<p className="text-xl font-bold text-purple-600">
-											{uniquePrograms.length}
+											{paginatedLearners.length} shown
 										</p>
 									</div>
 									<div className="h-7 w-7 rounded-full bg-purple-100 dark:bg-purple-900/20 flex items-center justify-center">
@@ -503,9 +539,14 @@ export default function LearnersMyJKKNPage() {
 										<Input
 											placeholder="Search by name, reg no, email..."
 											value={searchTerm}
-											onChange={(e) => { setSearchTerm(e.target.value); setCurrentPage(1); }}
+											onChange={(e) => setSearchTerm(e.target.value)}
 											className="pl-8 h-8 text-xs"
 										/>
+										{searchTerm && searchTerm !== debouncedSearch && (
+											<span className="absolute right-2 top-1/2 -translate-y-1/2">
+												<RefreshCw className="h-3 w-3 animate-spin text-muted-foreground" />
+											</span>
+										)}
 									</div>
 								</div>
 
@@ -535,10 +576,10 @@ export default function LearnersMyJKKNPage() {
 										size="sm"
 										className="text-xs px-2 h-8"
 										onClick={handleExport}
-										disabled={filteredLearners.length === 0}
+										disabled={paginatedLearners.length === 0}
 									>
 										<Download className="h-3 w-3 mr-1" />
-										Export All
+										Export Page
 									</Button>
 								</div>
 							</div>
@@ -709,9 +750,9 @@ export default function LearnersMyJKKNPage() {
 							{/* Pagination Controls */}
 							<div className="flex items-center justify-between space-x-2 py-2 mt-2 flex-shrink-0">
 								<div className="text-xs text-muted-foreground">
-									Showing {filteredLearners.length === 0 ? 0 : startIndex + 1}-{Math.min(endIndex, filteredLearners.length)} of {filteredLearners.length} learners
-									{learners.length !== filteredLearners.length && (
-										<span className="ml-1">(filtered from {learners.length} total)</span>
+									Showing {totalCount === 0 ? 0 : startIndex}-{endIndex} of {totalCount.toLocaleString()} learners
+									{debouncedSearch && (
+										<span className="ml-1">(searching: "{debouncedSearch}")</span>
 									)}
 								</div>
 								<div className="flex items-center gap-2">

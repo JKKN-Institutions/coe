@@ -154,7 +154,8 @@ export async function GET(request: NextRequest) {
 								course_code,
 								course_name,
 								course_type,
-								credit
+								credit,
+								evaluation_type
 							)
 						`)
 						.in('id', courseMappingIds)
@@ -175,7 +176,8 @@ export async function GET(request: NextRequest) {
 							course_code: cm.courses?.course_code || cm.course_code,
 							course_name: cm.courses?.course_name || cm.courses?.course_code || cm.course_code,
 							course_type: cm.courses?.course_type,
-							credit: cm.courses?.credit
+							credit: cm.courses?.credit,
+							evaluation_type: cm.courses?.evaluation_type
 						}
 					])
 				)
@@ -190,7 +192,7 @@ export async function GET(request: NextRequest) {
 				if (courseIdsWithoutMapping.length > 0) {
 					const { data: directCourses, error: directCoursesError } = await supabase
 						.from('courses')
-						.select('id, course_code, course_name, course_type, credit')
+						.select('id, course_code, course_name, course_type, credit, evaluation_type')
 						.in('id', courseIdsWithoutMapping)
 
 					if (directCoursesError) {
@@ -204,7 +206,8 @@ export async function GET(request: NextRequest) {
 									course_code: c.course_code,
 									course_name: c.course_name || c.course_code,
 									course_type: c.course_type,
-									credit: c.credit
+									credit: c.credit,
+									evaluation_type: c.evaluation_type
 								}
 							])
 						)
@@ -261,6 +264,38 @@ export async function GET(request: NextRequest) {
 					}
 				}
 
+				// =========================================================
+				// CIA ONLY COURSES: Check internal marks availability
+				// For courses with evaluation_type = 'CIA', check if internal marks exist
+				// =========================================================
+				const allCourseIds = (offerings || []).map((co: any) => {
+					const mapping = courseMappingMap.get(co.course_mapping_id)
+					return mapping?.course_id || co.course_id
+				}).filter(Boolean)
+
+				// Check internal marks availability for all courses (useful for CIA courses)
+				const internalMarksAvailability = new Map<string, { count: number; has_marks: boolean }>()
+				if (institutionId && sessionId && allCourseIds.length > 0) {
+					const { data: internalMarksCount } = await supabase
+						.from('internal_marks')
+						.select('course_id')
+						.eq('institutions_id', institutionId)
+						.eq('examination_session_id', sessionId)
+						.in('course_id', allCourseIds)
+						.eq('is_active', true)
+
+					if (internalMarksCount) {
+						// Count internal marks per course
+						const countMap = new Map<string, number>()
+						internalMarksCount.forEach((im: any) => {
+							countMap.set(im.course_id, (countMap.get(im.course_id) || 0) + 1)
+						})
+						countMap.forEach((count, courseId) => {
+							internalMarksAvailability.set(courseId, { count, has_marks: count > 0 })
+						})
+					}
+				}
+
 				// Transform to flatten course data and include result_status
 				const transformed = (offerings || []).map((co: any) => {
 					// Try course_mapping first, then fallback to direct courses lookup
@@ -272,6 +307,10 @@ export async function GET(request: NextRequest) {
 
 					const actualCourseId = courseDetails.course_id || co.course_id
 					const status = courseStatusMap.get(actualCourseId)
+					const evalType = courseDetails.evaluation_type?.toUpperCase() || ''
+					const isCIAOnly = evalType === 'CIA' || evalType === 'CIA ONLY'
+					const internalStatus = internalMarksAvailability.get(actualCourseId)
+
 					return {
 						id: co.id,
 						course_id: actualCourseId,
@@ -283,11 +322,16 @@ export async function GET(request: NextRequest) {
 						course_name: courseDetails.course_name || courseDetails.course_code,
 						course_type: courseDetails.course_type,
 						credits: courseDetails.credit,
+						evaluation_type: courseDetails.evaluation_type,
+						is_cia_only: isCIAOnly,
 						is_saved: status?.is_saved || false,
 						result_status: status?.result_status || null,
 						// Can regenerate only if no results exist for this course
 						// Once results are saved, regeneration is blocked regardless of status
-						can_regenerate: !status
+						can_regenerate: !status,
+						// Internal marks info (especially useful for CIA courses)
+						has_internal_marks: internalStatus?.has_marks || false,
+						internal_marks_count: internalStatus?.count || 0
 					}
 				})
 
@@ -735,14 +779,32 @@ export async function POST(request: NextRequest) {
 		const hasCIAOnlyCourses = ciaOnlyCourseIds.length > 0
 		console.log('[Final Marks] CIA only courses detected:', ciaOnlyCourseIds.length, 'of', course_ids.length)
 
-		if (!examRegistrations?.length) {
-			console.log('[Final Marks] No matches after course_code filter')
+		// =========================================================
+		// CIA COURSES: Always check for CIA courses that need virtual registrations
+		// This runs ALWAYS when there are CIA courses, not just when examRegistrations is empty
+		// =========================================================
+		if (hasCIAOnlyCourses) {
+			// Find which CIA courses already have exam registrations
+			const ciaCourseCodesInRegs = new Set(
+				examRegistrations
+					.filter((er: any) => {
+						const courseId = er.course_offerings?.course_id
+						return ciaOnlyCourseIds.includes(courseId)
+					})
+					.map((er: any) => er.course_offerings?.course_id)
+			)
 
-			// For CIA only courses, try to get students from internal_marks
-			if (hasCIAOnlyCourses) {
-				console.log('[Final Marks] Attempting to fetch students from internal_marks for CIA courses')
+			// CIA courses that DON'T have exam registrations yet
+			const ciaCourseIdsWithoutRegs = ciaOnlyCourseIds.filter(
+				(id: string) => !ciaCourseCodesInRegs.has(id)
+			)
 
-				// Fetch internal marks for CIA only courses
+			console.log('[Final Marks] CIA courses without exam registrations:', ciaCourseIdsWithoutRegs.length)
+
+			if (ciaCourseIdsWithoutRegs.length > 0) {
+				console.log('[Final Marks] Fetching students from internal_marks for CIA courses without registrations')
+
+				// Fetch internal marks for CIA courses that don't have exam registrations
 				const { data: ciaInternalMarks, error: ciaError } = await supabase
 					.from('internal_marks')
 					.select(`
@@ -753,7 +815,7 @@ export async function POST(request: NextRequest) {
 						institutions_id
 					`)
 					.eq('institutions_id', institutions_id)
-					.in('course_id', ciaOnlyCourseIds)
+					.in('course_id', ciaCourseIdsWithoutRegs)
 					.eq('is_active', true)
 
 				if (ciaError) {
@@ -782,7 +844,7 @@ export async function POST(request: NextRequest) {
 						.select('id, course_id, course_mapping_id, program_id, program_code, course_code, semester')
 						.eq('examination_session_id', examination_session_id)
 						.eq('program_code', programCode)
-						.in('course_id', ciaOnlyCourseIds)
+						.in('course_id', ciaCourseIdsWithoutRegs)
 
 					const ciaOfferingsMap = new Map(
 						(ciaOfferings || []).map((co: any) => [co.course_id, co])
@@ -832,37 +894,37 @@ export async function POST(request: NextRequest) {
 					}
 				}
 			}
+		}
 
-			// If still no registrations after CIA fallback, return error
-			if (!examRegistrations?.length) {
-				// Debug: show what course codes we found
-				const availableCodes = (examRegsRaw || []).map((er: any) => {
-					const co = er.course_offerings
-					if (!co) return null
-					let code = co.course_code
-					if (!code && co.course_mapping_id) {
-						const mapping = courseMappingToCodeMap.get(co.course_mapping_id)
-						code = mapping?.course_code
-					}
-					if (!code && co.course_id) {
-						code = directCourseCodeMap.get(co.course_id)
-					}
-					return code
-				}).filter(Boolean)
-				console.log('[Final Marks] Available course_codes in exam_regs:', [...new Set(availableCodes)])
-				console.log('[Final Marks] Requested course_codes:', courseCodes)
-
-				// Provide more helpful error message for CIA courses
-				if (hasCIAOnlyCourses) {
-					return NextResponse.json({
-						error: 'No internal marks found for the selected CIA courses. Please ensure internal marks have been entered for these courses.'
-					}, { status: 400 })
+		// If still no registrations after CIA fallback, return error
+		if (!examRegistrations?.length) {
+			// Debug: show what course codes we found
+			const availableCodes = (examRegsRaw || []).map((er: any) => {
+				const co = er.course_offerings
+				if (!co) return null
+				let code = co.course_code
+				if (!code && co.course_mapping_id) {
+					const mapping = courseMappingToCodeMap.get(co.course_mapping_id)
+					code = mapping?.course_code
 				}
+				if (!code && co.course_id) {
+					code = directCourseCodeMap.get(co.course_id)
+				}
+				return code
+			}).filter(Boolean)
+			console.log('[Final Marks] Available course_codes in exam_regs:', [...new Set(availableCodes)])
+			console.log('[Final Marks] Requested course_codes:', courseCodes)
 
+			// Provide more helpful error message for CIA courses
+			if (hasCIAOnlyCourses) {
 				return NextResponse.json({
-					error: 'No exam registrations found for the selected courses and session.'
+					error: 'No internal marks found for the selected CIA courses. Please ensure internal marks have been entered for these courses.'
 				}, { status: 400 })
 			}
+
+			return NextResponse.json({
+				error: 'No exam registrations found for the selected courses and session.'
+			}, { status: 400 })
 		}
 
 		console.log('[Final Marks] Exam registrations found after course filter:', examRegistrations.length)

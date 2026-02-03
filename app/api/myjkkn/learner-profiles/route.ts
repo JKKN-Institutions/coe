@@ -13,6 +13,10 @@ import { getSupabaseServer } from '@/lib/supabase-server'
 // MyJKKN API has a server-side max limit per request
 const MYJKKN_MAX_PER_PAGE = 200
 
+// Cache for lookup data with TTL (5 minutes)
+const LOOKUP_CACHE_TTL = 5 * 60 * 1000
+let lookupCache: { data: LookupMaps | null; timestamp: number } = { data: null, timestamp: 0 }
+
 // Cache for lookup data (refreshed per request)
 interface LookupMaps {
 	institutions: Map<string, { counselling_code: string; name: string }>
@@ -23,8 +27,15 @@ interface LookupMaps {
 	localInstitutions: Map<string, { institution_name: string; institution_code: string }>
 }
 
-// Fetch all lookup data from MyJKKN APIs
+// Fetch all lookup data from MyJKKN APIs (with caching)
 async function fetchLookupData(): Promise<LookupMaps> {
+	// Check cache first
+	const now = Date.now()
+	if (lookupCache.data && (now - lookupCache.timestamp) < LOOKUP_CACHE_TTL) {
+		console.log('[Learner Profiles API] Using cached lookup data')
+		return lookupCache.data
+	}
+
 	console.log('[Learner Profiles API] Fetching lookup data for enrichment...')
 
 	const [institutionsRes, programsRes, semestersRes, departmentsRes, batchesRes] = await Promise.all([
@@ -144,7 +155,12 @@ async function fetchLookupData(): Promise<LookupMaps> {
 
 	console.log(`[Learner Profiles API] Lookup data loaded: ${institutions.size} institutions, ${programs.size} programs, ${semesters.size} semesters, ${departments.size} departments, ${batches.size} batches, ${localInstitutions.size} local institutions`)
 
-	return { institutions, programs, semesters, departments, batches, localInstitutions }
+	const result = { institutions, programs, semesters, departments, batches, localInstitutions }
+
+	// Store in cache
+	lookupCache = { data: result, timestamp: Date.now() }
+
+	return result
 }
 
 // Enrich learner data with lookup values

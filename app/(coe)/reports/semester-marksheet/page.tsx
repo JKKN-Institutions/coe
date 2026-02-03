@@ -1132,7 +1132,7 @@ export default function SemesterMarksheetPage() {
 										<TableBody>
 											{marksheetData.partBreakdown.filter(p => p.courses.length > 0).map((part) => (
 												<TableRow key={part.partName}>
-													<TableCell className="text-center">{part.partName.replace('Part ', '')}</TableCell>
+													<TableCell className="text-center">{marksheetData.program.isPG ? '-' : part.partName.replace('Part ', '')}</TableCell>
 													<TableCell className="text-center">{part.creditsEarned}</TableCell>
 													<TableCell className="text-center">{part.partGPA.toFixed(2)}</TableCell>
 												</TableRow>

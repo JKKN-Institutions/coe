@@ -408,7 +408,8 @@ export default function GenerateFinalMarksPage() {
 		// Don't allow toggling courses that cannot be regenerated
 		// A course can be regenerated only if: no results exist OR result_status is 'Pending'
 		const course = courseOfferings.find(co => co.course_id === courseId)
-		if (course && course.can_regenerate === false) return
+		// Block selection if course can't be regenerated OR is CIA without internal marks
+		if (course && (course.can_regenerate === false || (course.is_cia_only && !course.has_internal_marks))) return
 
 		setSelectedCourses(prev =>
 			prev.includes(courseId)
@@ -418,8 +419,10 @@ export default function GenerateFinalMarksPage() {
 	}
 
 	const handleSelectAllCourses = () => {
-		// Only select courses that can be regenerated
-		const regeneratableCourses = courseOfferings.filter(co => co.can_regenerate !== false)
+		// Only select courses that can be regenerated AND (not CIA OR has internal marks)
+		const regeneratableCourses = courseOfferings.filter(co =>
+			co.can_regenerate !== false && !(co.is_cia_only && !co.has_internal_marks)
+		)
 		if (selectedCourses.length === regeneratableCourses.length) {
 			setSelectedCourses([])
 		} else {
@@ -854,16 +857,21 @@ export default function GenerateFinalMarksPage() {
 											{courseOfferings.map(co => {
 												// Determine if this course can be selected for regeneration
 												// Once results are saved, regeneration is blocked
-												const canSelect = co.can_regenerate !== false
+												// For CIA courses, also check if internal marks are available
+												const canSelect = co.can_regenerate !== false &&
+													!(co.is_cia_only && !co.has_internal_marks)
 												// Determine visual state - any saved course is now locked
-												const isLocked = co.is_saved === true
+												// Also lock CIA courses without internal marks
+												const isLocked = co.is_saved === true || (co.is_cia_only && !co.has_internal_marks)
 
 												return (
 													<div
 														key={co.id}
 														className={`p-3 border rounded-lg transition-all ${
 															isLocked
-																? 'border-amber-300 bg-amber-50 dark:bg-amber-900/10 dark:border-amber-700 cursor-not-allowed opacity-70'
+																? co.is_cia_only && !co.has_internal_marks && !co.is_saved
+																	? 'border-red-300 bg-red-50 dark:bg-red-900/10 dark:border-red-700 cursor-not-allowed opacity-70'
+																	: 'border-amber-300 bg-amber-50 dark:bg-amber-900/10 dark:border-amber-700 cursor-not-allowed opacity-70'
 																: selectedCourses.includes(co.course_id)
 																	? 'border-primary bg-primary/5 cursor-pointer'
 																	: 'border-border hover:border-primary/50 cursor-pointer'
@@ -906,7 +914,33 @@ export default function GenerateFinalMarksPage() {
 																<div className="flex items-center gap-2 mt-1">
 																	<Badge variant="secondary" className="text-xs">Sem {co.semester}</Badge>
 																	<Badge variant="outline" className="text-xs">{co.credits} Credits</Badge>
+																	{/* Show CIA badge for internal-only courses */}
+																	{co.is_cia_only && (
+																		<Badge variant="outline" className="text-xs bg-purple-100 text-purple-700 border-purple-300 dark:bg-purple-900/20 dark:text-purple-400 dark:border-purple-700">
+																			CIA Only
+																		</Badge>
+																	)}
 																</div>
+																{/* Show internal marks availability for CIA courses */}
+																{co.is_cia_only && !co.is_saved && (
+																	<div className={`text-xs mt-2 flex items-center gap-1 ${
+																		co.has_internal_marks
+																			? 'text-green-600 dark:text-green-400'
+																			: 'text-red-600 dark:text-red-400'
+																	}`}>
+																		{co.has_internal_marks ? (
+																			<>
+																				<CheckCircle2 className="h-3 w-3" />
+																				Internal marks available ({co.internal_marks_count} entries)
+																			</>
+																		) : (
+																			<>
+																				<AlertTriangle className="h-3 w-3" />
+																				No internal marks found - Cannot generate
+																			</>
+																		)}
+																	</div>
+																)}
 																{/* Show status message for saved courses */}
 																{co.is_saved && (
 																	<div className={`text-xs mt-2 flex items-center gap-1 ${
