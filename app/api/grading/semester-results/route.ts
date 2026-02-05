@@ -1565,12 +1565,18 @@ export async function POST(req: NextRequest) {
 				// Determine result_status based on backlogs
 				const resultStatus = totalBacklogs === 0 ? 'Pass' : 'Fail'
 
+				// Determine program_type from program_code (P* = PG, U* = UG, or M* = PG)
+				const programCodeUpper = program_code?.toUpperCase() || ''
+				const isPGProgram = programCodeUpper.startsWith('P') || ['M', 'MBA', 'MCA', 'MSW', 'MSC', 'MA', 'MCOM', 'PHD'].some(prefix => programCodeUpper.startsWith(prefix))
+				const program_type = isPGProgram ? 'PG' : 'UG'
+
 				semesterResultsToInsert.push({
 					institutions_id,
 					student_id,
 					examination_session_id,
 					program_id,
 					program_code,
+					program_type,
 					register_number: register_no,
 					semester: currentSemester, // Use student's current semester from students table
 					total_credits_registered: totalCreditsRegistered,
@@ -1673,15 +1679,111 @@ export async function POST(req: NextRequest) {
 				}
 			}
 
+			// Update backlogs - clear if passed, increment attempt_count if failed
+			let clearedBacklogsCount = 0
+			let attemptUpdatedCount = 0
+			if (successCount > 0) {
+				try {
+					console.log('[Generate Results] Updating backlogs...')
+
+					// Get ALL final_marks from this session (both passed and failed)
+					const { data: allMarks } = await supabase
+						.from('final_marks')
+						.select('id, student_id, course_id, examination_session_id, internal_marks_obtained, external_marks_obtained, total_marks_obtained, percentage, grade_points, letter_grade, is_pass, course_offerings(semester)')
+						.eq('examination_session_id', sessionId)
+						.eq('is_active', true)
+						.range(0, 99999)
+
+					if (allMarks && allMarks.length > 0) {
+						// Get semester_results map for cleared_semester_result_id
+						const allStudentIds = [...new Set(allMarks.map(fm => fm.student_id))]
+						const { data: srData } = await supabase
+							.from('semester_results')
+							.select('id, student_id, semester')
+							.eq('examination_session_id', sessionId)
+							.in('student_id', allStudentIds)
+
+						const srMap: Record<string, { id: string; semester: number }> = {}
+						srData?.forEach(sr => { srMap[sr.student_id] = { id: sr.id, semester: sr.semester } })
+
+						const today = new Date().toISOString().split('T')[0]
+
+						for (const fm of allMarks) {
+							// Find most recent uncleared backlog for this student + course
+							const { data: backlogs } = await supabase
+								.from('student_backlogs')
+								.select('id, attempt_count')
+								.eq('student_id', fm.student_id)
+								.eq('course_id', fm.course_id)
+								.eq('is_cleared', false)
+								.eq('is_active', true)
+								.order('created_at', { ascending: false })
+								.limit(1)
+
+							if (backlogs && backlogs.length > 0) {
+								const sr = srMap[fm.student_id]
+								const clearedSemester = (fm.course_offerings as any)?.semester || sr?.semester || null
+
+								if (fm.is_pass) {
+									// PASSED: Clear the backlog + update last_attempt_*
+									const { error: updateErr } = await supabase
+										.from('student_backlogs')
+										.update({
+											is_cleared: true,
+											cleared_examination_session_id: fm.examination_session_id,
+											cleared_semester_result_id: sr?.id || null,
+											cleared_final_marks_id: fm.id,
+											cleared_date: today,
+											cleared_semester: clearedSemester,
+											cleared_internal_marks: fm.internal_marks_obtained,
+											cleared_external_marks: fm.external_marks_obtained,
+											cleared_total_marks: fm.total_marks_obtained,
+											cleared_percentage: fm.percentage,
+											cleared_grade_points: fm.grade_points,
+											cleared_letter_grade: fm.letter_grade,
+											last_attempt_date: today,
+											last_attempt_session_id: fm.examination_session_id,
+											updated_at: new Date().toISOString()
+										})
+										.eq('id', backlogs[0].id)
+
+									if (!updateErr) clearedBacklogsCount++
+								} else {
+									// FAILED: Increment attempt_count + update last_attempt_*
+									const currentAttempts = backlogs[0].attempt_count || 0
+									const { error: updateErr } = await supabase
+										.from('student_backlogs')
+										.update({
+											attempt_count: currentAttempts + 1,
+											last_attempt_date: today,
+											last_attempt_session_id: fm.examination_session_id,
+											updated_at: new Date().toISOString()
+										})
+										.eq('id', backlogs[0].id)
+
+									if (!updateErr) attemptUpdatedCount++
+								}
+							}
+						}
+					}
+					console.log(`[Generate Results] Backlogs: ${clearedBacklogsCount} cleared, ${attemptUpdatedCount} attempts updated`)
+				} catch (clearErr) {
+					console.error('[Generate Results] Error updating backlogs:', clearErr)
+					// Don't fail - this is an enhancement
+				}
+			}
+
 			return NextResponse.json({
 				success: true,
-				message: `Generated ${successCount} semester results. ${failureCount} failed. ${backlogsCreated} backlogs created.${backlogNote}`,
+				message: `Generated ${successCount} semester results. ${failureCount} failed. ${backlogsCreated} backlogs created. ${clearedBacklogsCount} backlogs cleared. ${attemptUpdatedCount} backlog attempts updated.${backlogNote}`,
 				results,
 				summary: {
 					total: semesterResultsToInsert.length,
 					success: successCount,
 					failed: failureCount,
-					backlogs_created: backlogsCreated
+					backlogs_created: backlogsCreated,
+					backlogs_cleared: clearedBacklogsCount,
+					backlog_attempts_updated: attemptUpdatedCount
 				}
 			})
 		}
@@ -1823,7 +1925,7 @@ export async function POST(req: NextRequest) {
 				.in('id', semesterResultIds)
 				.eq('is_published', false)
 				.not('result_declared_date', 'is', null)
-				.select('id, student_id, examination_session_id, semester, program_id, register_number, institutions_id, program_code, folio_number')
+				.select('id, student_id, examination_session_id, semester, program_id, register_number, institutions_id, program_code, program_type, folio_number')
 
 			if (error) throw error
 
@@ -1844,10 +1946,13 @@ export async function POST(req: NextRequest) {
 				// Assign folio numbers in sorted order
 				let folioAssignedCount = 0
 				for (const sr of needsFolio) {
-					// Determine program type (UG/PG) from program_code
-					const programCode = sr.program_code?.toUpperCase() || ''
-					const isPGProgram = ['M', 'MBA', 'MCA', 'MSW', 'MSC', 'MA', 'MCOM', 'PHD', 'PG'].some(prefix => programCode.startsWith(prefix)) || programCode.includes('PG')
-					const programType = isPGProgram ? 'PG' : 'UG'
+					// Use stored program_type, fallback to detection from program_code
+					let programType = sr.program_type?.toUpperCase()
+					if (!programType || (programType !== 'UG' && programType !== 'PG')) {
+						const programCode = sr.program_code?.toUpperCase() || ''
+						const isPGProgram = programCode.startsWith('P') || ['M', 'MBA', 'MCA', 'MSW', 'MSC', 'MA', 'MCOM', 'PHD'].some(prefix => programCode.startsWith(prefix))
+						programType = isPGProgram ? 'PG' : 'UG'
+					}
 
 					// Assign folio number using database function (atomic operation)
 					try {
@@ -1901,7 +2006,7 @@ export async function POST(req: NextRequest) {
 			// Fetch all published semester_results without folio_number
 			let query = supabase
 				.from('semester_results')
-				.select('id, student_id, register_number, institutions_id, program_code')
+				.select('id, student_id, register_number, institutions_id, program_code, program_type')
 				.is('folio_number', null)
 				.eq('is_published', true)
 
@@ -1950,10 +2055,13 @@ export async function POST(req: NextRequest) {
 				console.log(`[Backfill Folio] Processing ${results.length} results for institution ${instId}`)
 
 				for (const sr of results) {
-					// Determine program type (UG/PG) from program_code
-					const programCode = sr.program_code?.toUpperCase() || ''
-					const isPGProgram = ['M', 'MBA', 'MCA', 'MSW', 'MSC', 'MA', 'MCOM', 'PHD', 'PG'].some(prefix => programCode.startsWith(prefix)) || programCode.includes('PG')
-					const programType = isPGProgram ? 'PG' : 'UG'
+					// Use stored program_type, fallback to detection from program_code
+					let programType = sr.program_type?.toUpperCase()
+					if (!programType || (programType !== 'UG' && programType !== 'PG')) {
+						const programCode = sr.program_code?.toUpperCase() || ''
+						const isPGProgram = programCode.startsWith('P') || ['M', 'MBA', 'MCA', 'MSW', 'MSC', 'MA', 'MCOM', 'PHD'].some(prefix => programCode.startsWith(prefix))
+						programType = isPGProgram ? 'PG' : 'UG'
+					}
 
 					try {
 						const { data: folioData, error: folioError } = await supabase.rpc('assign_folio_number', {
@@ -1978,6 +2086,172 @@ export async function POST(req: NextRequest) {
 				message: `Assigned folio numbers to ${totalAssigned} published results.`,
 				assigned_count: totalAssigned,
 				total_processed: resultsWithoutFolio.length
+			})
+		}
+
+		// Update cleared backlogs - marks backlogs as cleared when student passes, increments attempt_count when fails
+		if (action === 'update-cleared-backlogs') {
+			const { examinationSessionId, programId, semester, institutionsId } = body
+
+			if (!examinationSessionId) {
+				return NextResponse.json({ error: 'examinationSessionId is required' }, { status: 400 })
+			}
+
+			console.log('[Update Backlogs] Starting for session:', examinationSessionId)
+
+			// Step 1: Get ALL final_marks from this examination session (both passed and failed)
+			let allMarksQuery = supabase
+				.from('final_marks')
+				.select(`
+					id,
+					student_id,
+					course_id,
+					course_offering_id,
+					examination_session_id,
+					institutions_id,
+					program_id,
+					program_code,
+					internal_marks_obtained,
+					external_marks_obtained,
+					total_marks_obtained,
+					percentage,
+					grade_points,
+					letter_grade,
+					is_pass,
+					course_offerings (
+						semester
+					)
+				`)
+				.eq('examination_session_id', examinationSessionId)
+				.eq('is_active', true)
+
+			if (institutionsId) {
+				allMarksQuery = allMarksQuery.eq('institutions_id', institutionsId)
+			}
+			if (programId) {
+				allMarksQuery = allMarksQuery.eq('program_id', programId)
+			}
+
+			const { data: allMarks, error: marksError } = await allMarksQuery.range(0, 99999)
+
+			if (marksError) {
+				console.error('[Update Backlogs] Error fetching marks:', marksError)
+				return NextResponse.json({ error: marksError.message }, { status: 500 })
+			}
+
+			if (!allMarks || allMarks.length === 0) {
+				return NextResponse.json({
+					success: true,
+					message: 'No marks found for this session.',
+					cleared_count: 0,
+					attempt_updated_count: 0
+				})
+			}
+
+			console.log(`[Update Backlogs] Found ${allMarks.length} final_marks`)
+
+			// Step 2: Get semester_results for these students in this session
+			const studentIds = [...new Set(allMarks.map(fm => fm.student_id))]
+			const { data: semesterResults } = await supabase
+				.from('semester_results')
+				.select('id, student_id, semester')
+				.eq('examination_session_id', examinationSessionId)
+				.in('student_id', studentIds)
+
+			const semesterResultMap: Record<string, { id: string; semester: number }> = {}
+			semesterResults?.forEach(sr => {
+				semesterResultMap[sr.student_id] = { id: sr.id, semester: sr.semester }
+			})
+
+			// Step 3: Process each mark - clear if passed, increment attempt if failed
+			let clearedCount = 0
+			let attemptUpdatedCount = 0
+			let noBacklogCount = 0
+			const today = new Date().toISOString().split('T')[0]
+
+			for (const fm of allMarks) {
+				// Find uncleared backlogs for this student + course (most recent first)
+				const { data: backlogs, error: backlogError } = await supabase
+					.from('student_backlogs')
+					.select('id, attempt_count, created_at')
+					.eq('student_id', fm.student_id)
+					.eq('course_id', fm.course_id)
+					.eq('is_cleared', false)
+					.eq('is_active', true)
+					.order('created_at', { ascending: false })
+					.limit(1)
+
+				if (backlogError) {
+					console.warn('[Update Backlogs] Error finding backlog for student:', fm.student_id, backlogError)
+					continue
+				}
+
+				if (!backlogs || backlogs.length === 0) {
+					// No uncleared backlog for this course - student might be regular (not arrear)
+					noBacklogCount++
+					continue
+				}
+
+				const backlogToUpdate = backlogs[0]
+				const semesterResult = semesterResultMap[fm.student_id]
+				const clearedSemester = (fm.course_offerings as any)?.semester || semesterResult?.semester || null
+
+				if (fm.is_pass) {
+					// PASSED: Clear the backlog + update last_attempt_* (don't increment attempt_count)
+					const { error: updateError } = await supabase
+						.from('student_backlogs')
+						.update({
+							is_cleared: true,
+							cleared_examination_session_id: fm.examination_session_id,
+							cleared_semester_result_id: semesterResult?.id || null,
+							cleared_final_marks_id: fm.id,
+							cleared_date: today,
+							cleared_semester: clearedSemester,
+							cleared_internal_marks: fm.internal_marks_obtained,
+							cleared_external_marks: fm.external_marks_obtained,
+							cleared_total_marks: fm.total_marks_obtained,
+							cleared_percentage: fm.percentage,
+							cleared_grade_points: fm.grade_points,
+							cleared_letter_grade: fm.letter_grade,
+							last_attempt_date: today,
+							last_attempt_session_id: fm.examination_session_id,
+							updated_at: new Date().toISOString()
+						})
+						.eq('id', backlogToUpdate.id)
+
+					if (!updateError) {
+						clearedCount++
+						console.log(`[Update Backlogs] Cleared backlog ${backlogToUpdate.id} for student ${fm.student_id}`)
+					}
+				} else {
+					// FAILED: Increment attempt_count + update last_attempt_*
+					const currentAttempts = backlogToUpdate.attempt_count || 0
+					const { error: updateError } = await supabase
+						.from('student_backlogs')
+						.update({
+							attempt_count: currentAttempts + 1,
+							last_attempt_date: today,
+							last_attempt_session_id: fm.examination_session_id,
+							updated_at: new Date().toISOString()
+						})
+						.eq('id', backlogToUpdate.id)
+
+					if (!updateError) {
+						attemptUpdatedCount++
+						console.log(`[Update Backlogs] Updated attempt_count to ${currentAttempts + 1} for backlog ${backlogToUpdate.id}`)
+					}
+				}
+			}
+
+			console.log(`[Update Backlogs] Summary: cleared=${clearedCount}, attempts_updated=${attemptUpdatedCount}, no_backlog=${noBacklogCount}`)
+
+			return NextResponse.json({
+				success: true,
+				message: `Updated backlogs: ${clearedCount} cleared, ${attemptUpdatedCount} attempts incremented.`,
+				cleared_count: clearedCount,
+				attempt_updated_count: attemptUpdatedCount,
+				no_backlog_count: noBacklogCount,
+				total_marks_processed: allMarks.length
 			})
 		}
 

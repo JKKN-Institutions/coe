@@ -658,38 +658,59 @@ export async function POST(request: NextRequest) {
 
 		// Step 1: Get exam_registrations for the program
 		// Note: We'll fetch course details separately since course_offerings.course_code may not be populated
-		const { data: examRegsRaw, error: examRegError } = await supabase
-			.from('exam_registrations')
-			.select(`
-				id,
-				stu_register_no,
-				student_id,
-				student_name,
-				course_offering_id,
-				examination_session_id,
-				institutions_id,
-				program_code,
-				course_offerings (
-					id,
-					course_id,
-					course_mapping_id,
-					program_id,
-					program_code,
-					course_code,
-					semester
-				)
-			`)
-			.eq('institutions_id', institutions_id)
-			.eq('examination_session_id', examination_session_id)
-			.eq('program_code', programCode)
-			.range(0, 9999) // Override Supabase's default 1000-row limit
+		// IMPORTANT: Use pagination to overcome Supabase's 1000-row server limit
+		// PAGE_SIZE must match server's max-rows limit for pagination to detect more pages
+		const PAGE_SIZE = 1000
+		let examRegsRaw: any[] = []
+		let page = 0
+		let hasMore = true
 
-		if (examRegError) {
-			console.error('Error fetching exam registrations:', examRegError)
-			return NextResponse.json({ error: 'Failed to fetch exam registrations' }, { status: 400 })
+		while (hasMore) {
+			const from = page * PAGE_SIZE
+			const to = from + PAGE_SIZE - 1
+
+			const { data: pageData, error: pageError } = await supabase
+				.from('exam_registrations')
+				.select(`
+					id,
+					stu_register_no,
+					student_id,
+					student_name,
+					course_offering_id,
+					examination_session_id,
+					institutions_id,
+					program_code,
+					course_offerings (
+						id,
+						course_id,
+						course_mapping_id,
+						program_id,
+						program_code,
+						course_code,
+						semester
+					)
+				`)
+				.eq('institutions_id', institutions_id)
+				.eq('examination_session_id', examination_session_id)
+				.eq('program_code', programCode)
+				.range(from, to)
+
+			if (pageError) {
+				console.error('Error fetching exam registrations page', page, ':', pageError)
+				return NextResponse.json({ error: 'Failed to fetch exam registrations' }, { status: 400 })
+			}
+
+			if (pageData && pageData.length > 0) {
+				examRegsRaw.push(...pageData)
+				// If we got fewer records than PAGE_SIZE, we've reached the end
+				hasMore = pageData.length === PAGE_SIZE
+				page++
+			} else {
+				hasMore = false
+			}
 		}
 
-		console.log('[Final Marks] Raw exam registrations for program:', examRegsRaw?.length || 0)
+		console.log('[Final Marks] Raw exam registrations for program:', examRegsRaw.length, '(fetched in', page, 'pages)')
 
 		// Step 1a: Get all course_mapping_ids and course_ids from the exam registrations
 		// to resolve course codes for filtering
