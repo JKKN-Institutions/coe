@@ -187,7 +187,7 @@ export interface MarksheetPDFOptions {
 
 const A4_WIDTH = 210  // mm
 const A4_HEIGHT = 297 // mm
-const MARGIN = 8      // 0.8cm left/right margins
+const MARGIN = 8.5      // 0.8cm left/right margins
 const CONTENT_WIDTH = A4_WIDTH - 2 * MARGIN - 1 // 194mm
 
 // Colors matching reference - Blue theme
@@ -428,11 +428,11 @@ function addStudentMarksheetToDoc(
 	// +----------------------------------+
 	//
 	// Photo dimensions: 2.8cm × 3.5cm (width × height)
-	const photoWidth = 28   // 2.8cm
-	const photoHeight = 35  // 3.5cm
+	const photoWidth = 27   // 2.8cm
+	const photoHeight = 34  // 3.5cm
 
 	// Photo position - immediately after margin (top right)
-	const photoBoxX = pageWidth - MARGIN - photoWidth  // Right aligned
+	const photoBoxX = pageWidth - MARGIN - photoWidth - 1 // Right aligned
 	const photoBoxY = MARGIN  // Immediately after margin
 
 	// No photo border - photo is displayed directly without a box frame
@@ -496,7 +496,7 @@ function addStudentMarksheetToDoc(
 	// JRXML line positions: x=134pt, x=368pt, x=456pt, total width=555pt
 	// Col1: 134pt=47mm, Col2: 234pt=83mm, Col3: 88pt=31mm, Col4: 99pt=35mm
 	const col1 = 46  // Label 1 (NAME OF THE CANDIDATE, REGISTER NO, PROGRAMME)
-	const col2 = 79  // Value 1 (student name, regno, program)
+	const col2 = 78  // Value 1 (student name, regno, program)
 	const col3 = 34  // Label 2 (DATE OF BIRTH, MONTH & YEAR, FOLIO NUMBER)
 	const col4 = CONTENT_WIDTH - col1 - col2 - col3  // Value 2 (remaining width = 35mm)
 
@@ -631,8 +631,8 @@ function addStudentMarksheetToDoc(
 	// UG: 14 columns with PART
 	// PG: 13 columns without PART (TITLE column gets extra width)
 	const colWidths = isPG
-		? [6, 18, 100, 6, 6, 6, 7, 6, 6, 8, 8, 6, 10]  // PG: 13 columns = 194mm (no PART)
-		: [6, 6, 18, 94, 6, 6, 6, 7, 6, 6, 8, 8, 6, 10]  // UG: 14 columns = 194mm (with PART)
+		? [6, 18, 100, 6, 6, 6, 7, 7, 7, 7, 7, 7, 9]  // PG: 13 columns = 194mm (no PART)
+		: [6, 6, 18, 94, 6, 6, 6, 7, 7, 7, 7, 7, 7, 9]  // UG: 14 columns = 194mm (with PART)
 
 	// ===== MANUALLY DRAW VERTICAL HEADER =====
 	const headerHeight = 25  // Total header height (two rows)
@@ -809,10 +809,11 @@ function addStudentMarksheetToDoc(
 	const body: RowInput[] = data.courses.map(course => {
 		// Use enhanced result status (handles absent, malpractice, ineligible, etc.)
 		const resultStatus = getEnhancedResultStatus(course)
-		const displayGradePoint = course.isAbsent ? 'AAA' : (course.gradePoint > 0 ? course.gradePoint.toFixed(1) : '0')
+		const displayGradePoint = course.isAbsent ? '0' : (course.gradePoint > 0 ? course.gradePoint.toFixed(1) : '0')
 		const displayGrade = course.isAbsent ? 'AAA' : course.letterGrade
 		// For PART column (UG only): show Roman numeral if available, otherwise "-"
-		const partDisplay = course.part ? partToRoman(course.part) : '-'
+		// PG programs don't have PART column, but if shown, always use "-"
+		const partDisplay = isPG ? '-' : (course.part ? partToRoman(course.part) : '-')
 
 		// Common columns (same for UG and PG)
 		const commonCols = [
@@ -824,7 +825,7 @@ function addStudentMarksheetToDoc(
 			{ content: course.ciaMax.toString(), styles: { halign: 'center' as const, fontSize: 8 } },
 			{ content: course.totalMax.toString(), styles: { halign: 'center' as const, fontSize: 8 } },
 			{ content: course.isAbsent ? 'AAA' : course.eseMarks.toString(), styles: { halign: 'center' as const, fontSize: 8 } },
-			{ content: course.isAbsent ? 'AAA' : course.ciaMarks.toString(), styles: { halign: 'center' as const, fontSize: 8 } },
+			{ content: course.ciaMarks.toString(), styles: { halign: 'center' as const, fontSize: 8 } },
 			{ content: course.isAbsent ? 'AAA' : course.totalMarks.toString(), styles: { halign: 'center' as const, fontSize: 8 } },
 			{ content: displayGradePoint, styles: { halign: 'center' as const, fontSize: 8 } },
 			{ content: displayGrade, styles: { halign: 'center' as const, fontSize: 8 } },
@@ -960,8 +961,10 @@ function addStudentMarksheetToDoc(
 			partsWithData.forEach((part, idx) => {
 				const rowY = gpaRowY + (idx * 4)  // 4mm row height
 
-				// PART - centered under PART header (show "-" if no part name)
-				const partText = part.partName ? partToRoman(part.partName) : '-'
+				// PART - centered under PART header
+				// PG programs: always show "-" (no part system)
+				// UG programs: show Roman numeral if available, otherwise "-"
+				const partText = isPG ? '-' : (part.partName ? partToRoman(part.partName) : '-')
 				const partTextWidth = doc.getTextWidth(partText)
 				doc.text(partText, MARGIN + 13 - partTextWidth / 2, rowY)
 
@@ -1033,8 +1036,8 @@ function addStudentMarksheetToDoc(
 		// X = MARGIN + 35 (3.5cm from margin, left side)
 		// Y = footnoteY + (footnote lines * line height) + small gap
 		const footnoteLineHeight = 2.5  // Font size 6 = ~2.5mm line height
-		const dateY = footnoteY + (splitNote.length * footnoteLineHeight) + 4  // 1.5mm gap after footnote
-		doc.text(dateStr, MARGIN + 35, dateY)
+		const dateY = footnoteY + (splitNote.length * footnoteLineHeight) + 6  // 1.5mm gap after footnote
+		doc.text(dateStr, MARGIN + 33, dateY)
 	}
 }
 
@@ -1153,6 +1156,7 @@ export class SemesterMarksheetPDFGenerator {
 		this.options = options
 	}
 
+	
 	public generate(): string {
 		addStudentMarksheetToDoc(this.doc, this.data, this.options)
 		return this.doc.output('datauristring')

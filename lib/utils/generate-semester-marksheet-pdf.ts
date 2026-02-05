@@ -187,7 +187,7 @@ export interface MarksheetPDFOptions {
 
 const A4_WIDTH = 210  // mm
 const A4_HEIGHT = 297 // mm
-const MARGIN = 8      // 0.8cm left/right margins
+const MARGIN = 8.5      // 0.8cm left/right margins
 const CONTENT_WIDTH = A4_WIDTH - 2 * MARGIN - 1 // 194mm
 
 // Colors matching reference - Blue theme
@@ -292,12 +292,13 @@ function isPGProgram(programCode: string, programName?: string): boolean {
 }
 
 /**
- * Generate folio number
+ * Generate folio number placeholder (used when folio is not assigned from database)
+ * NOTE: Folio numbers should be assigned from database via folio_sequences table.
+ * This function is kept for backward compatibility but should show a placeholder.
+ * @deprecated Use database-assigned folio numbers instead
  */
-function generateFolio(programCode: string, programName?: string): string {
-	const programType = isPGProgram(programCode, programName) ? 'PG' : 'UG'
-	const randomNum = Math.floor(Math.random() * 100000).toString().padStart(8, '0')
-	return `${programType}-${randomNum}`
+function generateFolioPlaceholder(): string {
+	return '-'  // Show dash when folio not assigned from database
 }
 
 // ============================================================
@@ -617,7 +618,7 @@ function addStudentMarksheetToDoc(
 	doc.setFont('helvetica', 'normal')
 	doc.setFontSize(9)
 	doc.setTextColor(...COLORS.black)
-	doc.text(data.summary.folio || generateFolio(data.program.code, data.program.name), x + 2, y + 5)
+	doc.text(data.summary.folio || generateFolioPlaceholder(), x + 2, y + 5)
 
 	// Move past the table (no gap - tables are joined)
 	currentY = infoBoxY + infoTableHeight
@@ -871,7 +872,7 @@ function addStudentMarksheetToDoc(
 	// GPA table must end 1mm before footnotes
 	const targetGpaEndY = footnoteYTarget - 1  // 253mm
 	// GPA table height is 28mm (fixed)
-	const gpaTableHeight = 30
+	const gpaTableHeight = 28
 	// Subject table should end where GPA table starts
 	const targetSubjectEndY = targetGpaEndY - gpaTableHeight  // 216mm
 	// Calculate subject table height to reach target end position
@@ -1009,7 +1010,7 @@ function addStudentMarksheetToDoc(
 	// Fixed position: bottom margin + 3.5cm (35mm from bottom margin)
 	// Y = A4_HEIGHT - MARGIN - 35 = 297 - 8 - 35 = 254mm from top
 
-	const footnoteY = A4_HEIGHT - MARGIN - 35
+	const footnoteY = A4_HEIGHT - MARGIN - 33
 
 	doc.setFont('helvetica', 'normal')
 	doc.setFontSize(7)
@@ -1036,8 +1037,8 @@ function addStudentMarksheetToDoc(
 		// X = MARGIN + 35 (3.5cm from margin, left side)
 		// Y = footnoteY + (footnote lines * line height) + small gap
 		const footnoteLineHeight = 2.5  // Font size 6 = ~2.5mm line height
-		const dateY = footnoteY + (splitNote.length * footnoteLineHeight) + 4  // 1.5mm gap after footnote
-		doc.text(dateStr, MARGIN + 35, dateY)
+		const dateY = footnoteY + (splitNote.length * footnoteLineHeight) + 6  // 1.5mm gap after footnote
+		doc.text(dateStr, MARGIN + 33, dateY)
 	}
 }
 

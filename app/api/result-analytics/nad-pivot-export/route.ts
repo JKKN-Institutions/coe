@@ -7,6 +7,12 @@ import { getSupabaseServer } from '@/lib/supabase-server'
  * Generates CSV in PIVOT format: One row per student with subjects as columns (SUB1, SUB2, etc.)
  * This is the format required for NAD portal bulk upload.
  *
+ * Features:
+ * - Fetches learner profiles from MyJKKN API for GENDER, DOB, FNAME, MNAME, PHOTO
+ * - Theory/Practical marks based on course_category
+ * - CERT_NO from semester_results.folio_number
+ * - REMARKS mapping: Absent->AB, Reappear->RA, Pass->P
+ *
  * GET /api/result-analytics/nad-pivot-export
  *
  * Query Parameters:
@@ -16,6 +22,24 @@ import { getSupabaseServer } from '@/lib/supabase-server'
  * - semester: Filter by semester number (optional)
  * - max_subjects: Maximum number of subject columns (default: 20)
  */
+
+// Interface for MyJKKN learner profile data
+interface LearnerProfile {
+	register_number?: string
+	roll_number?: string
+	first_name?: string
+	last_name?: string
+	father_name?: string
+	mother_name?: string
+	date_of_birth?: string
+	gender?: string
+	students_photo_url?: string  // Note: MyJKKN uses 'students' (plural)
+	student_photo_url?: string
+	photo_url?: string
+	profile_photo?: string
+	image_url?: string
+	institution_id?: string
+}
 
 // Fixed columns for each subject (25 fields per subject - exact NAD format)
 const SUBJECT_FIELD_SUFFIXES = [
@@ -95,6 +119,7 @@ const FIXED_COLUMNS = [
 interface SubjectData {
 	course_code: string
 	course_name: string
+	course_category: string  // THEORY or PRACTICAL
 	total_max_mark: number
 	total_min_mark: number
 	theory_max_mark: number | null
@@ -106,12 +131,14 @@ interface SubjectData {
 	theory_marks_obtained: number | null
 	practical_marks_obtained: number | null
 	internal_marks_obtained: number | null
+	practical_ce_marks: number | null
 	total_marks_obtained: number
 	letter_grade: string | null
 	grade_points: number | null
 	credit: number
 	credit_points: number | null
 	pass_status: string
+	raw_pass_status: string  // For REMARKS mapping
 	is_regular: boolean
 	subject_order: number
 }
@@ -125,6 +152,7 @@ interface StudentData {
 	mother_name: string
 	date_of_birth: string
 	gender: string
+	photo_url: string
 	aadhar_number: string
 	program_code: string
 	program_name: string
@@ -141,6 +169,7 @@ interface StudentData {
 	overall_result: string
 	percentage: number
 	result_date: string
+	folio_number: string  // CERT_NO
 	subjects: SubjectData[]
 }
 
@@ -225,6 +254,7 @@ export async function GET(req: NextRequest) {
 					mother_name: row.MOTHER_NAME || '',
 					date_of_birth: row.DATE_OF_BIRTH || '',
 					gender: row.GENDER || '',
+					photo_url: '',  // Will be enriched from MyJKKN
 					aadhar_number: row.ABC_ID || '',
 					program_code: row.PROGRAM_CODE || '',
 					program_name: row.PROGRAM_NAME || '',
@@ -241,33 +271,41 @@ export async function GET(req: NextRequest) {
 					overall_result: 'PASS',
 					percentage: 0,
 					result_date: row.RESULT_DATE || '',
+					folio_number: row.folio_number || '',  // CERT_NO
 					subjects: []
 				})
 			}
 
 			const student = studentMap.get(studentKey)!
 
-			// Add subject to student
+			// Add subject to student - using course_category from view
+			const courseCategory = (row.course_category || 'THEORY').toUpperCase()
 			const subjectData: SubjectData = {
 				course_code: row.SUBJECT_CODE || '',
 				course_name: row.SUBJECT_NAME || '',
+				course_category: courseCategory,
 				total_max_mark: parseInt(row.MAX_MARKS) || 100,
 				total_min_mark: Math.round((parseInt(row.MAX_MARKS) || 100) * 0.4), // 40% pass mark
-				theory_max_mark: null, // Will be calculated if available
-				theory_min_mark: null,
-				practical_max_mark: null,
-				practical_min_mark: null,
-				internal_max_mark: null,
-				internal_min_mark: null,
-				theory_marks_obtained: null,
-				practical_marks_obtained: null,
-				internal_marks_obtained: null,
+				// Theory columns (from view - populated if course_category = Theory)
+				theory_max_mark: row.theory_max_mark ?? null,
+				theory_min_mark: row.theory_min_mark ?? null,
+				theory_marks_obtained: row.theory_marks_obtained ?? null,
+				// Practical columns (from view - populated if course_category = Practical)
+				practical_max_mark: row.practical_max_mark ?? null,
+				practical_min_mark: row.practical_min_mark ?? null,
+				practical_marks_obtained: row.practical_marks_obtained ?? null,
+				practical_ce_marks: row.practical_ce_marks ?? null,
+				// Internal/CE columns
+				internal_max_mark: row.ce_max_mark ?? row.internal_marks_maximum ?? null,
+				internal_min_mark: row.ce_min_mark ?? null,
+				internal_marks_obtained: row.ce_marks_obtained ?? row.internal_marks_obtained ?? null,
 				total_marks_obtained: parseInt(row.MARKS_OBTAINED) || 0,
 				letter_grade: row.letter_grade || '',
 				grade_points: row.grade_points || 0,
 				credit: row.credit || 0,
 				credit_points: (row.grade_points || 0) * (row.credit || 0),
 				pass_status: row.RESULT_STATUS || 'PASS',
+				raw_pass_status: row.raw_pass_status || 'Pass',  // For REMARKS mapping
 				is_regular: row.is_regular_subject !== false,
 				subject_order: row.subject_order || 0
 			}
@@ -301,6 +339,115 @@ export async function GET(req: NextRequest) {
 			else student.overall_grade = 'F'
 		}
 
+		// Fetch learner profiles from MyJKKN API for GENDER, DOB, FNAME, MNAME, PHOTO
+		// Using batch fetching pattern with pagination (MyJKKN API max 200 records per page)
+		const studentsList = Array.from(studentMap.values())
+
+		if (institutionId && studentsList.length > 0) {
+			console.log(`[NAD Export] Fetching learner profiles from MyJKKN for institution ${institutionId}...`)
+
+			try {
+				const myjkknApiUrl = process.env.MYJKKN_API_URL
+				const myjkknApiKey = process.env.MYJKKN_API_KEY
+
+				if (!myjkknApiUrl || !myjkknApiKey) {
+					console.warn('[NAD Export] MyJKKN API credentials not configured')
+				} else {
+					// Get myjkkn_institution_ids from COE institution table
+					const { data: institution } = await supabase
+						.from('institutions')
+						.select('myjkkn_institution_ids')
+						.eq('id', institutionId)
+						.single()
+
+					const myjkknInstIds: string[] = institution?.myjkkn_institution_ids || []
+
+					if (myjkknInstIds.length > 0) {
+						// Fetch all profiles from MyJKKN with pagination
+						const allProfiles: LearnerProfile[] = []
+						const pageSize = 200  // MyJKKN API max per page
+
+						for (const myjkknInstId of myjkknInstIds) {
+							let page = 1
+							let hasMorePages = true
+
+							while (hasMorePages) {
+								const profileParams = new URLSearchParams()
+								profileParams.set('institution_id', myjkknInstId)
+								profileParams.set('limit', String(pageSize))
+								profileParams.set('page', String(page))
+
+								try {
+									const response = await fetch(
+										`${myjkknApiUrl}/api-management/learners/profiles?${profileParams.toString()}`,
+										{
+											method: 'GET',
+											headers: {
+												'Authorization': `Bearer ${myjkknApiKey}`,
+												'Accept': 'application/json',
+												'Content-Type': 'application/json',
+											},
+											cache: 'no-store',
+										}
+									)
+
+									if (response.ok) {
+										const data = await response.json()
+										const profiles = data.data || []
+										allProfiles.push(...profiles)
+										hasMorePages = profiles.length === pageSize
+										page++
+										console.log(`[NAD Export] Fetched page ${page - 1}, ${profiles.length} profiles (total: ${allProfiles.length})`)
+									} else {
+										console.warn(`[NAD Export] MyJKKN API returned ${response.status}`)
+										hasMorePages = false
+									}
+								} catch (err) {
+									console.error(`[NAD Export] Error fetching page ${page}:`, err)
+									hasMorePages = false
+								}
+							}
+						}
+
+						console.log(`[NAD Export] Total profiles fetched: ${allProfiles.length}`)
+
+						// Create lookup map by register_number
+						const profileMap = new Map<string, LearnerProfile>(
+							allProfiles.map(p => [p.register_number || '', p])
+						)
+
+						// Enrich student data with MyJKKN profiles
+						let enrichedCount = 0
+						for (const student of studentsList) {
+							const profile = profileMap.get(student.register_number)
+							if (profile) {
+								// Update with MyJKKN data
+								student.gender = profile.gender || student.gender || ''
+								student.date_of_birth = profile.date_of_birth || student.date_of_birth || ''
+								student.father_name = profile.father_name || student.father_name || ''
+								student.mother_name = profile.mother_name || student.mother_name || ''
+								// Check multiple photo field names (MyJKKN may use different names)
+								student.photo_url = profile.students_photo_url
+									|| profile.student_photo_url
+									|| profile.photo_url
+									|| profile.profile_photo
+									|| profile.image_url
+									|| ''
+								enrichedCount++
+							}
+						}
+
+						console.log(`[NAD Export] Enriched ${enrichedCount} of ${studentsList.length} students with profile data`)
+					} else {
+						console.warn('[NAD Export] No myjkkn_institution_ids found for institution')
+					}
+				}
+			} catch (err) {
+				console.error('[NAD Export] Error fetching learner profiles:', err)
+				// Continue without enrichment - use existing data
+			}
+		}
+
 		// Find max subjects needed
 		let actualMaxSubjects = 0
 		for (const student of Array.from(studentMap.values())) {
@@ -329,11 +476,11 @@ export async function GET(req: NextRequest) {
 			row.push(student.register_number)                     // REGN_NO
 			row.push(student.roll_number)                         // RROLL
 			row.push(student.student_name)                        // CNAME
-			row.push(student.gender)                              // GENDER
-			row.push(student.date_of_birth)                       // DOB
-			row.push(student.father_name)                         // FNAME
-			row.push(student.mother_name)                         // MNAME
-			row.push('')                                          // PHOTO
+			row.push(student.gender)                              // GENDER (from MyJKKN)
+			row.push(student.date_of_birth)                       // DOB (from MyJKKN)
+			row.push(student.father_name)                         // FNAME (from MyJKKN)
+			row.push(student.mother_name)                         // MNAME (from MyJKKN)
+			row.push(student.photo_url)                           // PHOTO (from MyJKKN)
 			row.push('C')                                         // MRKS_REC_STATUS (C=Complete)
 			row.push(student.overall_result)                      // RESULT
 			row.push(student.academic_year.split('-')[0] || '')   // YEAR
@@ -341,7 +488,7 @@ export async function GET(req: NextRequest) {
 			row.push(student.exam_session.split(' ')[0] || '')    // MONTH
 			row.push(student.percentage.toString())               // PERCENT
 			row.push(student.result_date)                         // DOI (Date of Issue)
-			row.push('')                                          // CERT_NO
+			row.push(student.folio_number)                        // CERT_NO (from semester_results.folio_number)
 			row.push(student.semester.toString())                 // SEM
 			row.push('REGULAR')                                   // EXAM_TYPE
 			row.push(student.total_credits.toString())            // TOT_CREDIT
@@ -357,6 +504,20 @@ export async function GET(req: NextRequest) {
 				const subject = student.subjects[i]
 
 				if (subject) {
+					const isTheory = subject.course_category === 'THEORY'
+					const isPractical = subject.course_category === 'PRACTICAL'
+
+					// Map raw_pass_status to REMARKS: Absent->AB, Reappear->RA, Pass->P
+					let remarks = ''
+					const rawStatus = (subject.raw_pass_status || '').toLowerCase()
+					if (rawStatus.includes('absent')) {
+						remarks = 'AB'
+					} else if (rawStatus.includes('reappear') || rawStatus.includes('fail')) {
+						remarks = 'RA'
+					} else if (rawStatus.includes('pass') || subject.pass_status === 'PASS') {
+						remarks = 'P'
+					}
+
 					// SUBnNM - Subject Name
 					row.push(subject.course_name)
 					// SUBn - Subject Code
@@ -365,28 +526,40 @@ export async function GET(req: NextRequest) {
 					row.push(subject.total_max_mark.toString())
 					// SUBnMIN - Min Marks
 					row.push(subject.total_min_mark.toString())
-					// SUBn_TH_MAX - Theory Max
-					row.push(subject.theory_max_mark?.toString() || '')
+
+					// SUBn_TH_MAX - Theory Max (course.external_max_mark if Theory)
+					row.push(isTheory && subject.theory_max_mark != null ? subject.theory_max_mark.toString() : '')
+
 					// SUBn_VV_MRKS - Viva Marks
 					row.push('')
-					// SUBn_PR_CE_MRKS - Practical CE Marks
-					row.push('')
-					// SUBn_TH_MIN - Theory Min
-					row.push(subject.theory_min_mark?.toString() || '')
-					// SUBn_PR_MAX - Practical Max
-					row.push(subject.practical_max_mark?.toString() || '')
-					// SUBn_PR_MIN - Practical Min
-					row.push(subject.practical_min_mark?.toString() || '')
-					// SUBn_CE_MAX - CE Max
-					row.push(subject.internal_max_mark?.toString() || '')
-					// SUBn_CE_MIN - CE Min
-					row.push(subject.internal_min_mark?.toString() || '')
-					// SUBn_TH_MRKS - Theory Marks
-					row.push(subject.theory_marks_obtained?.toString() || '')
-					// SUBn_PR_MRKS - Practical Marks
-					row.push(subject.practical_marks_obtained?.toString() || '')
-					// SUBn_CE_MRKS - CE Marks
-					row.push(subject.internal_marks_obtained?.toString() || '')
+
+					// SUBn_PR_CE_MRKS - Practical CE Marks (final_marks.internal_marks_maximum if Practical)
+					row.push(isPractical && subject.practical_ce_marks != null ? subject.practical_ce_marks.toString() : '')
+
+					// SUBn_TH_MIN - Theory Min (course.external_pass_mark if Theory)
+					row.push(isTheory && subject.theory_min_mark != null ? subject.theory_min_mark.toString() : '')
+
+					// SUBn_PR_MAX - Practical Max (course.external_max_mark if Practical)
+					row.push(isPractical && subject.practical_max_mark != null ? subject.practical_max_mark.toString() : '')
+
+					// SUBn_PR_MIN - Practical Min (course.internal_pass_mark if Practical)
+					row.push(isPractical && subject.practical_min_mark != null ? subject.practical_min_mark.toString() : '')
+
+					// SUBn_CE_MAX - CE Max (final_marks.internal_marks_maximum if Theory)
+					row.push(isTheory && subject.internal_max_mark != null ? subject.internal_max_mark.toString() : '')
+
+					// SUBn_CE_MIN - CE Min (course.internal_pass_mark if Theory)
+					row.push(isTheory && subject.internal_min_mark != null ? subject.internal_min_mark.toString() : '')
+
+					// SUBn_TH_MRKS - Theory Marks (final_marks.external_marks_obtained if Theory)
+					row.push(isTheory && subject.theory_marks_obtained != null ? subject.theory_marks_obtained.toString() : '')
+
+					// SUBn_PR_MRKS - Practical Marks (final_marks.external_marks_obtained if Practical)
+					row.push(isPractical && subject.practical_marks_obtained != null ? subject.practical_marks_obtained.toString() : '')
+
+					// SUBn_CE_MRKS - CE Marks (final_marks.internal_marks_obtained)
+					row.push(subject.internal_marks_obtained != null ? subject.internal_marks_obtained.toString() : '')
+
 					// SUBn_TOT - Total Marks
 					row.push(subject.total_marks_obtained.toString())
 					// SUBn_GRADE - Grade
@@ -397,8 +570,10 @@ export async function GET(req: NextRequest) {
 					row.push(subject.credit.toString())
 					// SUBn_CREDIT_POINTS - Credit Points
 					row.push(subject.credit_points?.toString() || '')
-					// SUBn_REMARKS - Remarks
-					row.push(subject.pass_status === 'PASS' ? '' : 'NEEDS IMPROVEMENT')
+
+					// SUBn_REMARKS - Remarks (Absent->AB, Reappear->RA, Pass->P)
+					row.push(remarks)
+
 					// SUBn_VV_MIN - Viva Min
 					row.push('')
 					// SUBn_VV_MAX - Viva Max

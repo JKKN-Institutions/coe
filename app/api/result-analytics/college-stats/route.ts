@@ -422,24 +422,20 @@ function calculateSemesterWise(data: any[]): SemesterWiseResult[] {
 
 // Helper function to get top performers
 async function getTopPerformers(supabase: any, filters: ResultAnalyticsFilters): Promise<TopPerformer[]> {
-	// semester_results.student_id references students table
-	// Use the detailed view which already handles joins
+	// Note: semester_results.student_id has NO FK to students table
+	// We must fetch semester_results and students separately
 	let query = supabase
 		.from('semester_results')
 		.select(`
 			id,
 			student_id,
 			program_id,
+			program_code,
+			register_number,
 			semester,
 			sgpa,
 			cgpa,
 			percentage,
-			students (
-				id,
-				first_name,
-				last_name,
-				roll_number
-			),
 			programs (
 				program_name
 			)
@@ -463,16 +459,38 @@ async function getTopPerformers(supabase: any, filters: ResultAnalyticsFilters):
 		return []
 	}
 
-	return (data || []).map((record: any, index: number) => ({
-		student_id: record.student_id,
-		register_number: record.students?.roll_number || '',
-		student_name: `${record.students?.first_name || ''} ${record.students?.last_name || ''}`.trim(),
-		program_name: record.programs?.program_name || '',
-		semester: record.semester,
-		cgpa: record.cgpa || 0,
-		percentage: record.percentage || 0,
-		rank: index + 1
-	}))
+	if (!data || data.length === 0) {
+		return []
+	}
+
+	// Fetch students separately (no FK constraint on student_id)
+	const studentIds = [...new Set(data.map((r: any) => r.student_id).filter(Boolean))]
+	let studentsMap = new Map<string, any>()
+
+	if (studentIds.length > 0) {
+		const { data: studentsData } = await supabase
+			.from('students')
+			.select('id, first_name, last_name, roll_number')
+			.in('id', studentIds)
+
+		studentsData?.forEach((s: any) => studentsMap.set(s.id, s))
+	}
+
+	return data.map((record: any, index: number) => {
+		const student = studentsMap.get(record.student_id)
+		return {
+			student_id: record.student_id,
+			register_number: record.register_number || student?.roll_number || '',
+			student_name: student
+				? `${student.first_name || ''} ${student.last_name || ''}`.trim()
+				: '',
+			program_name: record.programs?.program_name || '',
+			semester: record.semester,
+			cgpa: record.cgpa || 0,
+			percentage: record.percentage || 0,
+			rank: index + 1
+		}
+	})
 }
 
 // Helper function to get recent sessions

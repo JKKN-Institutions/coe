@@ -462,7 +462,7 @@ export async function GET(request: NextRequest) {
 					query = query.eq('course_offerings.program_id', programId)
 				}
 
-				const { data, error } = await query
+				const { data, error } = await query.range(0, 9999) // Override Supabase's default 1000-row limit
 
 				if (error) {
 					console.error('Error fetching exam registrations:', error)
@@ -682,6 +682,7 @@ export async function POST(request: NextRequest) {
 			.eq('institutions_id', institutions_id)
 			.eq('examination_session_id', examination_session_id)
 			.eq('program_code', programCode)
+			.range(0, 9999) // Override Supabase's default 1000-row limit
 
 		if (examRegError) {
 			console.error('Error fetching exam registrations:', examRegError)
@@ -803,8 +804,10 @@ export async function POST(request: NextRequest) {
 
 			if (ciaCourseIdsWithoutRegs.length > 0) {
 				console.log('[Final Marks] Fetching students from internal_marks for CIA courses without registrations')
+				console.log('[Final Marks] CIA: Filtering by program_code:', programCode)
 
-				// Fetch internal marks for CIA courses that don't have exam registrations
+				// Fetch internal marks for CIA courses filtered by program_code directly
+				// internal_marks table has program_code field, so filter on it directly
 				const { data: ciaInternalMarks, error: ciaError } = await supabase
 					.from('internal_marks')
 					.select(`
@@ -812,31 +815,48 @@ export async function POST(request: NextRequest) {
 						student_id,
 						course_id,
 						total_internal_marks,
-						institutions_id
+						institutions_id,
+						program_code,
+						exam_registrations!inner (
+							student_id,
+							stu_register_no,
+							student_name,
+							program_code
+						)
 					`)
 					.eq('institutions_id', institutions_id)
 					.in('course_id', ciaCourseIdsWithoutRegs)
 					.eq('is_active', true)
+					.eq('program_code', programCode)
+					.range(0, 9999) // Override Supabase's default 1000-row limit
 
 				if (ciaError) {
 					console.error('[Final Marks] Error fetching CIA internal marks:', ciaError)
+					console.error('[Final Marks] CIA error details:', JSON.stringify(ciaError, null, 2))
 				}
 
+				console.log('[Final Marks] CIA: Raw internal marks fetched:', ciaInternalMarks?.length || 0)
+
 				if (ciaInternalMarks && ciaInternalMarks.length > 0) {
-					console.log('[Final Marks] Found', ciaInternalMarks.length, 'internal marks for CIA courses')
+					console.log('[Final Marks] Found', ciaInternalMarks.length, 'internal marks for CIA courses (filtered by program)')
 
-					// Get unique student IDs
-					const studentIds = [...new Set(ciaInternalMarks.map((im: any) => im.student_id))]
+					// Build students map directly from the joined data
+					// Deduplicate by student_id (same student may have multiple internal marks or registrations)
+					const studentsMap = new Map<string, any>()
+					ciaInternalMarks.forEach((im: any) => {
+						const er = im.exam_registrations
+						if (er && !studentsMap.has(im.student_id)) {
+							studentsMap.set(im.student_id, {
+								id: im.student_id,
+								register_number: er.stu_register_no,
+								learner_name: er.student_name,
+								program_code: er.program_code
+							})
+						}
+					})
 
-					// Fetch student details from learners table
-					const { data: learnersData } = await supabase
-						.from('learners')
-						.select('id, register_number, learner_name, program_code')
-						.in('id', studentIds)
-
-					const learnersMap = new Map(
-						(learnersData || []).map((l: any) => [l.id, l])
-					)
+					console.log('[Final Marks] CIA: Found', ciaInternalMarks.length, 'internal marks records')
+					console.log('[Final Marks] CIA: Found', studentsMap.size, 'unique students with exam registrations')
 
 					// Get course_offering for these CIA courses
 					const { data: ciaOfferings } = await supabase
@@ -859,15 +879,15 @@ export async function POST(request: NextRequest) {
 						if (processedKeys.has(key)) continue
 						processedKeys.add(key)
 
-						const learner = learnersMap.get(im.student_id)
+						const student = studentsMap.get(im.student_id)
 						const courseOffering = ciaOfferingsMap.get(im.course_id)
 
-						if (learner && courseOffering) {
+						if (student && courseOffering) {
 							ciaExamRegistrations.push({
 								id: `cia-virtual-${im.id}`, // Virtual ID for CIA courses
-								stu_register_no: learner.register_number,
+								stu_register_no: student.register_number,
 								student_id: im.student_id,
-								student_name: learner.learner_name,
+								student_name: student.learner_name,
 								course_offering_id: courseOffering.id,
 								examination_session_id: examination_session_id,
 								institutions_id: institutions_id,
@@ -1009,6 +1029,7 @@ export async function POST(request: NextRequest) {
 			.in('course_id', course_ids)
 			.eq('is_active', true)
 			.order('created_at', { ascending: false }) // Get most recent if multiple entries
+			.range(0, 9999) // Override Supabase's default 1000-row limit
 
 		if (internalError) {
 			console.error('Error fetching internal marks:', internalError)

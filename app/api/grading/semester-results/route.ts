@@ -1610,6 +1610,8 @@ export async function POST(req: NextRequest) {
 						})
 						failureCount++
 					} else {
+						// Note: Folio numbers are assigned when results are published (not generated)
+						// This ensures proper ordering by register_number
 						results.push({
 							studentId: sr.student_id,
 							semester: sr.semester,
@@ -1821,11 +1823,51 @@ export async function POST(req: NextRequest) {
 				.in('id', semesterResultIds)
 				.eq('is_published', false)
 				.not('result_declared_date', 'is', null)
-				.select('id, student_id, examination_session_id, semester, program_id')
+				.select('id, student_id, examination_session_id, semester, program_id, register_number, institutions_id, program_code, folio_number')
 
 			if (error) throw error
 
 			const publishedCount = data?.length || 0
+
+			// Assign folio numbers in register_number ascending order (only for results without folio)
+			if (data && data.length > 0) {
+				// Filter results that need folio assignment (folio_number is null)
+				const needsFolio = data.filter(sr => !sr.folio_number)
+
+				// Sort by register_number ascending
+				needsFolio.sort((a, b) => {
+					const regA = a.register_number || ''
+					const regB = b.register_number || ''
+					return regA.localeCompare(regB)
+				})
+
+				// Assign folio numbers in sorted order
+				let folioAssignedCount = 0
+				for (const sr of needsFolio) {
+					// Determine program type (UG/PG) from program_code
+					const programCode = sr.program_code?.toUpperCase() || ''
+					const isPGProgram = ['M', 'MBA', 'MCA', 'MSW', 'MSC', 'MA', 'MCOM', 'PHD', 'PG'].some(prefix => programCode.startsWith(prefix)) || programCode.includes('PG')
+					const programType = isPGProgram ? 'PG' : 'UG'
+
+					// Assign folio number using database function (atomic operation)
+					try {
+						const { data: folioData, error: folioError } = await supabase.rpc('assign_folio_number', {
+							p_semester_result_id: sr.id,
+							p_institutions_id: sr.institutions_id,
+							p_program_type: programType
+						})
+						if (folioError) {
+							console.warn('Folio assignment warning for student:', sr.student_id, folioError)
+						} else {
+							console.log('Assigned folio number:', folioData, 'for register:', sr.register_number)
+							folioAssignedCount++
+						}
+					} catch (folioErr) {
+						console.warn('Folio assignment exception for student:', sr.student_id, folioErr)
+					}
+				}
+				console.log(`Assigned ${folioAssignedCount} folio numbers during publish`)
+			}
 
 			// Also update final_marks.result_status to 'Published' for all related records
 			// This is required for create_backlogs_from_semester_results to work correctly
@@ -1849,6 +1891,93 @@ export async function POST(req: NextRequest) {
 				success: true,
 				message: `Published ${publishedCount} semester results.`,
 				published_count: publishedCount
+			})
+		}
+
+		// Backfill folio numbers for existing published results that don't have them
+		if (action === 'backfill-folio') {
+			const { institutionsId } = body
+
+			// Fetch all published semester_results without folio_number
+			let query = supabase
+				.from('semester_results')
+				.select('id, student_id, register_number, institutions_id, program_code')
+				.is('folio_number', null)
+				.eq('is_published', true)
+
+			if (institutionsId) {
+				query = query.eq('institutions_id', institutionsId)
+			}
+
+			const { data: resultsWithoutFolio, error: fetchError } = await query
+				.order('register_number', { ascending: true })
+				.range(0, 99999)
+
+			if (fetchError) {
+				return NextResponse.json({ error: fetchError.message }, { status: 500 })
+			}
+
+			if (!resultsWithoutFolio || resultsWithoutFolio.length === 0) {
+				return NextResponse.json({
+					success: true,
+					message: 'No published results without folio numbers found.',
+					assigned_count: 0
+				})
+			}
+
+			console.log(`[Backfill Folio] Found ${resultsWithoutFolio.length} published results without folio numbers`)
+
+			// Group by institution and sort by register_number within each group
+			const groupedByInstitution: Record<string, typeof resultsWithoutFolio> = {}
+			for (const sr of resultsWithoutFolio) {
+				const instId = sr.institutions_id
+				if (!groupedByInstitution[instId]) {
+					groupedByInstitution[instId] = []
+				}
+				groupedByInstitution[instId].push(sr)
+			}
+
+			// Assign folio numbers per institution
+			let totalAssigned = 0
+			for (const [instId, results] of Object.entries(groupedByInstitution)) {
+				// Sort by register_number ascending
+				results.sort((a, b) => {
+					const regA = a.register_number || ''
+					const regB = b.register_number || ''
+					return regA.localeCompare(regB)
+				})
+
+				console.log(`[Backfill Folio] Processing ${results.length} results for institution ${instId}`)
+
+				for (const sr of results) {
+					// Determine program type (UG/PG) from program_code
+					const programCode = sr.program_code?.toUpperCase() || ''
+					const isPGProgram = ['M', 'MBA', 'MCA', 'MSW', 'MSC', 'MA', 'MCOM', 'PHD', 'PG'].some(prefix => programCode.startsWith(prefix)) || programCode.includes('PG')
+					const programType = isPGProgram ? 'PG' : 'UG'
+
+					try {
+						const { data: folioData, error: folioError } = await supabase.rpc('assign_folio_number', {
+							p_semester_result_id: sr.id,
+							p_institutions_id: sr.institutions_id,
+							p_program_type: programType
+						})
+						if (folioError) {
+							console.warn('[Backfill Folio] Assignment warning for:', sr.register_number, folioError)
+						} else {
+							console.log('[Backfill Folio] Assigned:', folioData, 'for register:', sr.register_number)
+							totalAssigned++
+						}
+					} catch (err) {
+						console.warn('[Backfill Folio] Exception for:', sr.register_number, err)
+					}
+				}
+			}
+
+			return NextResponse.json({
+				success: true,
+				message: `Assigned folio numbers to ${totalAssigned} published results.`,
+				assigned_count: totalAssigned,
+				total_processed: resultsWithoutFolio.length
 			})
 		}
 

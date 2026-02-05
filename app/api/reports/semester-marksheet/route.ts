@@ -997,6 +997,53 @@ export async function GET(req: NextRequest) {
 				console.log(`[Semester Marksheet Batch] Final: ${Object.keys(photoMap).length} photos, ${Object.keys(dobMap).length} DOBs`)
 			}
 
+			// Fetch folio numbers and other data from semester_results
+			const studentIds = Object.keys(studentMap)
+			const folioMap: Record<string, string> = {}
+			const cgpaMap: Record<string, number> = {}
+			const resultPublicationDateMap: Record<string, string> = {}
+
+			if (studentIds.length > 0) {
+				console.log(`[Semester Marksheet Batch] Querying semester_results for ${studentIds.length} students, sessionId: ${sessionId}, semester: ${semester}, programCode: ${programCode}`)
+
+				let srQuery = supabase
+					.from('semester_results')
+					.select('student_id, folio_number, cgpa, published_date')
+					.in('student_id', studentIds)
+					.eq('examination_session_id', sessionId)
+
+				// Add semester filter if provided
+				if (semester) {
+					srQuery = srQuery.eq('semester', parseInt(semester))
+				}
+
+				// Add program_code filter if provided
+				if (programCode) {
+					srQuery = srQuery.eq('program_code', programCode)
+				}
+
+				// Override default 1000-row limit
+				const { data: semesterResults, error: srError } = await srQuery.range(0, 99999)
+
+				if (srError) {
+					console.error('[Semester Marksheet Batch] semester_results query error:', srError)
+				} else if (semesterResults) {
+					console.log(`[Semester Marksheet Batch] Found ${semesterResults.length} semester_results records`)
+					semesterResults.forEach((sr: any) => {
+						if (sr.folio_number) {
+							folioMap[sr.student_id] = sr.folio_number
+						}
+						if (sr.cgpa !== null && sr.cgpa !== undefined) {
+							cgpaMap[sr.student_id] = sr.cgpa
+						}
+						if (sr.published_date) {
+							resultPublicationDateMap[sr.student_id] = sr.published_date
+						}
+					})
+				}
+				console.log(`[Semester Marksheet Batch] Mapped ${Object.keys(folioMap).length} folio numbers from semester_results`)
+			}
+
 			// Process each student's data into marksheet format
 			const marksheets = Object.values(studentMap).map((student: any) => {
 				// Sort courses
@@ -1089,9 +1136,12 @@ export async function GET(req: NextRequest) {
 						creditsEarned,
 						totalCreditPoints: Math.round(totalCreditPoints * 100) / 100,
 						semesterGPA,
+						cgpa: cgpaMap[student.studentId] || semesterGPA,
 						passedCount: student.courses.filter((c: any) => c.isPassing).length,
 						failedCount: student.courses.filter((c: any) => !c.isPassing).length,
-						overallResult: hasFailures ? 'RA' : 'PASS'
+						overallResult: hasFailures ? 'RA' : 'PASS',
+						folio: folioMap[student.studentId] || null,
+						resultPublicationDate: resultPublicationDateMap[student.studentId] || null
 					}
 				}
 			})

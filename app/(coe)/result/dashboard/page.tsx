@@ -989,10 +989,10 @@ export default function ResultAnalyticsDashboard() {
 												<TooltipTrigger asChild>
 													<Button variant="ghost" size="sm" onClick={handleExportNAADPivotCSV} className="text-white hover:bg-white/20">
 														<LayoutGrid className="h-4 w-4 mr-1.5" />
-														Pivot
+														NAD CSV
 													</Button>
 												</TooltipTrigger>
-												<TooltipContent>Download NAD Pivot CSV (one row per learner with SUB1-SUBn x 25 fields)</TooltipContent>
+												<TooltipContent>Download NAD CSV (one row per learner with SUB1-SUBn x 25 fields)</TooltipContent>
 											</UITooltip>
 										</TooltipProvider>
 										<Separator orientation="vertical" className="h-6 bg-white/20" />
