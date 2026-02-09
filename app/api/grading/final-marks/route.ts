@@ -462,7 +462,7 @@ export async function GET(request: NextRequest) {
 					query = query.eq('course_offerings.program_id', programId)
 				}
 
-				const { data, error } = await query.range(0, 9999) // Override Supabase's default 1000-row limit
+				const { data, error } = await query.range(0, 19999) // Override Supabase's default 1000-row limit
 
 				if (error) {
 					console.error('Error fetching exam registrations:', error)
@@ -849,7 +849,7 @@ export async function POST(request: NextRequest) {
 					.in('course_id', ciaCourseIdsWithoutRegs)
 					.eq('is_active', true)
 					.eq('program_code', programCode)
-					.range(0, 9999) // Override Supabase's default 1000-row limit
+					.range(0, 19999) // Override Supabase's default 1000-row limit
 
 				if (ciaError) {
 					console.error('[Final Marks] Error fetching CIA internal marks:', ciaError)
@@ -1017,6 +1017,7 @@ export async function POST(request: NextRequest) {
 				course_type,
 				credit,
 				evaluation_type,
+				result_type,
 				internal_max_mark,
 				internal_pass_mark,
 				internal_converted_mark,
@@ -1040,20 +1041,35 @@ export async function POST(request: NextRequest) {
 		// 4. Fetch internal marks for these students/courses
 		// NOTE: NOT filtering by examination_session_id because internal marks are entered once
 		// and should be reused across exam sessions (including reappear scenarios)
+		// IMPORTANT: Batch the query to avoid "Bad Request" error with large IN clauses
+		const INTERNAL_BATCH_SIZE = 200
 		const studentIds = [...new Set(examRegistrations.map((er: any) => er.student_id))]
-		const { data: internalMarks, error: internalError } = await supabase
-			.from('internal_marks')
-			.select('*')
-			.eq('institutions_id', institutions_id)
-			// REMOVED: .eq('examination_session_id', examination_session_id)
-			.in('student_id', studentIds)
-			.in('course_id', course_ids)
-			.eq('is_active', true)
-			.order('created_at', { ascending: false }) // Get most recent if multiple entries
-			.range(0, 9999) // Override Supabase's default 1000-row limit
+		const internalMarks: any[] = []
 
-		if (internalError) {
-			console.error('Error fetching internal marks:', internalError)
+		console.log('[Final Marks] Unique students to fetch internal marks:', studentIds.length)
+		console.log('[Final Marks] Course IDs for internal marks filter:', course_ids)
+
+		for (let i = 0; i < studentIds.length; i += INTERNAL_BATCH_SIZE) {
+			const batchStudentIds = studentIds.slice(i, i + INTERNAL_BATCH_SIZE)
+			const batchNum = Math.floor(i / INTERNAL_BATCH_SIZE) + 1
+			console.log(`[Final Marks] Internal marks batch ${batchNum}: ${batchStudentIds.length} students`)
+
+			const { data: batchMarks, error: batchError } = await supabase
+				.from('internal_marks')
+				.select('*')
+				.eq('institutions_id', institutions_id)
+				.in('student_id', batchStudentIds)
+				.in('course_id', course_ids)
+				.eq('is_active', true)
+				.order('created_at', { ascending: false })
+				.range(0, 19999)
+
+			if (batchError) {
+				console.error(`Error fetching internal marks batch ${batchNum}:`, batchError)
+			} else if (batchMarks) {
+				console.log(`[Final Marks] Batch ${batchNum} returned ${batchMarks.length} internal marks`)
+				internalMarks.push(...batchMarks)
+			}
 		}
 
 		// Create internal marks lookup map: student_id + course_id -> marks
@@ -1072,16 +1088,42 @@ export async function POST(request: NextRequest) {
 			console.log('[Final Marks] Note: Multiple internal marks found for same student-course pairs (using most recent)')
 		}
 
-		// 4. Fetch external marks (marks_entry table)
-		const examRegIds = examRegistrations.map((er: any) => er.id)
-		const { data: externalMarks, error: externalError } = await supabase
-			.from('marks_entry')
-			.select('*')
-			.in('exam_registration_id', examRegIds)
-
-		if (externalError) {
-			console.error('Error fetching external marks:', externalError)
+		// Debug: Check if specific test student's marks are in the map
+		const testStudentId = '09585567-4f53-4dc5-a542-31eb06ac1b03' // BALANATHAN I (24JUGCCA006)
+		const testCourseId = '74983239-7595-4236-9d96-d2a1bfe3572b' // 24UCCS01
+		const testKey = `${testStudentId}|${testCourseId}`
+		const testMark = internalMarksMap.get(testKey)
+		console.log(`[Final Marks] DEBUG: Test student (24JUGCCA006) internal mark for 24UCCS01:`, testMark ? testMark.total_internal_marks : 'NOT FOUND')
+		if (!testMark) {
+			// Check if student is in studentIds
+			const studentInList = studentIds.includes(testStudentId)
+			console.log(`[Final Marks] DEBUG: Test student in studentIds list: ${studentInList}`)
+			// Check if any internal marks exist for this student
+			const studentMarks = internalMarks.filter((im: any) => im.student_id === testStudentId)
+			console.log(`[Final Marks] DEBUG: Internal marks for test student: ${studentMarks.length}`, studentMarks.map((m: any) => ({ course_id: m.course_id, marks: m.total_internal_marks })))
 		}
+
+		// 4. Fetch external marks (marks_entry table)
+		// IMPORTANT: Batch the query to avoid "Bad Request" error with large IN clauses
+		const BATCH_SIZE = 200
+		const examRegIds = examRegistrations.map((er: any) => er.id)
+		const externalMarks: any[] = []
+
+		for (let i = 0; i < examRegIds.length; i += BATCH_SIZE) {
+			const batchIds = examRegIds.slice(i, i + BATCH_SIZE)
+			const { data: batchMarks, error: batchError } = await supabase
+				.from('marks_entry')
+				.select('*, grade')
+				.in('exam_registration_id', batchIds)
+
+			if (batchError) {
+				console.error('Error fetching external marks batch:', batchError)
+			} else if (batchMarks) {
+				externalMarks.push(...batchMarks)
+			}
+		}
+
+		console.log('[Final Marks] External marks found:', externalMarks.length)
 
 		// Create external marks lookup map: exam_registration_id -> marks
 		const externalMarksMap = new Map<string, any>()
@@ -1093,7 +1135,6 @@ export async function POST(request: NextRequest) {
 		// NOTE: Only attendance_status column exists (is_absent column doesn't exist)
 		// IMPORTANT: exam_attendance is per course per student, so we need composite key for lookup
 		// Batch the query to avoid "Bad Request" error with large IN clauses
-		const BATCH_SIZE = 200
 		const examAttendance: any[] = []
 
 		for (let i = 0; i < examRegIds.length; i += BATCH_SIZE) {
@@ -1156,6 +1197,66 @@ export async function POST(request: NextRequest) {
 
 		let skippedNoCourse = 0
 		let skippedNoMapping = 0
+
+		// =========================================================
+		// STATUS PAPER VALIDATION: Define valid status values
+		// =========================================================
+		const VALID_STATUS_GRADES = ['Commended', 'Highly Commended', 'AAA'] as const
+		type StatusGrade = typeof VALID_STATUS_GRADES[number]
+
+		function isValidStatusGrade(grade: any): grade is StatusGrade {
+			return typeof grade === 'string' && VALID_STATUS_GRADES.includes(grade as StatusGrade)
+		}
+
+		function getFinalGradeForStatusPaper(
+			course: any,
+			internalMark: any,
+			externalMark: any,
+			attendanceRecord: any
+		): { grade: StatusGrade; isPass: boolean; failReason: 'EXTERNAL' | null } {
+			const courseEvalType = course.evaluation_type?.toUpperCase() || ''
+			const isCIAOnly = courseEvalType === 'CIA' || courseEvalType === 'CIA ONLY'
+			const isExternalOnly = courseEvalType === 'ESE' || courseEvalType === 'ESE ONLY' || courseEvalType === 'EXTERNAL'
+
+			let finalGrade: StatusGrade
+			let isPass = true
+			let failReason: 'EXTERNAL' | null = null
+
+			if (isCIAOnly) {
+				if (!internalMark || !internalMark.grade) {
+					throw new Error('Missing internal grade for CIA status paper')
+				}
+				if (!isValidStatusGrade(internalMark.grade)) {
+					throw new Error(`Invalid internal status grade: ${internalMark.grade}`)
+				}
+				finalGrade = internalMark.grade
+			} else if (isExternalOnly) {
+				const isAbsent = attendanceRecord?.attendance_status?.toLowerCase() === 'absent'
+				if (isAbsent) {
+					finalGrade = 'AAA'
+					isPass = false
+					failReason = 'EXTERNAL'
+				} else {
+					if (!externalMark || !externalMark.grade) {
+						throw new Error('Missing external grade for external status paper')
+					}
+					if (!isValidStatusGrade(externalMark.grade)) {
+						throw new Error(`Invalid external status grade: ${externalMark.grade}`)
+					}
+					finalGrade = externalMark.grade
+				}
+			} else {
+				throw new Error(`Invalid evaluation_type "${course.evaluation_type}" for status-based paper`)
+			}
+
+			if (finalGrade === 'AAA') {
+				isPass = false
+				failReason = 'EXTERNAL'
+			}
+
+			return { grade: finalGrade, isPass, failReason }
+		}
+
 		for (const examReg of examRegistrations) {
 			const courseOffering = (examReg as any).course_offerings
 			// Look up course_mapping and course from our maps
@@ -1188,6 +1289,121 @@ export async function POST(request: NextRequest) {
 			// Use composite key for attendance lookup (exam_registration_id|course_id)
 			const attendanceKey = `${examReg.id}|${course.id}`
 			const attendanceRecord = examAttendanceMap.get(attendanceKey)
+
+			// =========================================================
+			// TYPE BRANCHING: Handle Status Papers vs Mark Papers
+			// =========================================================
+			const courseResultType = course.result_type?.toUpperCase() || 'MARK'
+			const isStatusPaper = courseResultType === 'STATUS'
+
+			if (isStatusPaper) {
+				// STATUS PAPER PROCESSING
+				const courseEvalType = course.evaluation_type?.toUpperCase() || ''
+				const isCIAOnly = courseEvalType === 'CIA' || courseEvalType === 'CIA ONLY'
+
+				// Validation
+				if (isCIAOnly) {
+					if (!internalMark || !internalMark.grade) {
+						summary.skipped_missing_marks++
+						skippedRecords.push({
+							student_name: examReg.student_name || 'Unknown',
+							register_no: examReg.stu_register_no || 'N/A',
+							course_code: course.course_code || 'N/A',
+							reason: 'Missing internal status grade'
+						})
+						continue
+					}
+				} else {
+					if (!attendanceRecord) {
+						summary.skipped_no_attendance++
+						continue
+					}
+					if (!externalMark || !externalMark.grade) {
+						const isAbsent = attendanceRecord.attendance_status?.toLowerCase() === 'absent'
+						if (!isAbsent) {
+							summary.skipped_missing_marks++
+							skippedRecords.push({
+								student_name: examReg.student_name || 'Unknown',
+								register_no: examReg.stu_register_no || 'N/A',
+								course_code: course.course_code || 'N/A',
+								reason: 'Missing external status grade'
+							})
+							continue
+						}
+					}
+				}
+
+				// Calculate final grade
+				let finalGrade: StatusGrade
+				let isPass: boolean
+				let failReason: 'EXTERNAL' | null
+
+				try {
+					const result = getFinalGradeForStatusPaper(course, internalMark, externalMark, attendanceRecord)
+					finalGrade = result.grade
+					isPass = result.isPass
+					failReason = result.failReason
+				} catch (error) {
+					errors.push({
+						student_id: examReg.student_id,
+						student_name: examReg.student_name || 'Unknown',
+						register_no: examReg.stu_register_no || 'N/A',
+						course_code: course.course_code || 'N/A',
+						error: error instanceof Error ? error.message : 'Failed to calculate status grade'
+					})
+					continue
+				}
+
+				// Determine pass status
+				let passStatus: 'Pass' | 'Fail' | 'Reappear' | 'Absent' | 'Withheld' | 'Expelled' = 'Fail'
+				if (finalGrade === 'AAA') {
+					passStatus = 'Absent'
+					summary.absent++
+				} else if (isPass) {
+					passStatus = 'Pass'
+					summary.passed++
+				} else {
+					passStatus = 'Reappear'
+					summary.failed++
+					summary.reappear++
+				}
+
+				// Create result row
+				const resultRow: StudentResultRow = {
+					student_id: examReg.student_id,
+					student_name: examReg.student_name || 'Unknown',
+					register_no: examReg.stu_register_no || 'N/A',
+					exam_registration_id: examReg.id,
+					course_offering_id: courseOffering.id,
+					course_id: course.id,
+					course_code: course.course_code,
+					course_name: course.course_name || course.course_code,
+					internal_marks: 0,
+					internal_max: 0,
+					internal_pass_mark: 0,
+					external_marks: 0,
+					external_max: 0,
+					external_pass_mark: 0,
+					total_marks: 0,
+					total_max: 0,
+					total_pass_mark: 0,
+					percentage: 0,
+					grade: finalGrade,
+					grade_point: 0,
+					grade_description: finalGrade,
+					credits: course.credit || 0,
+					credit_points: 0,
+					pass_status: passStatus,
+					is_pass: isPass,
+					is_absent: finalGrade === 'AAA',
+					fail_reason: failReason,
+					internal_marks_id: internalMark?.id || null,
+					marks_entry_id: externalMark?.id || null
+				}
+
+				results.push(resultRow)
+				continue // Skip mark-based processing
+			}
 
 			// =========================================================
 			// BUSINESS RULE: Validation before generating final marks
