@@ -150,6 +150,7 @@ export interface ExternalMarkData {
 	percentage?: number
 	is_absent?: boolean
 	attendance_status?: string
+	grade?: string | null // NEW: Status grade for status-based papers (Commended, Highly Commended, AAA)
 	// Joined data
 	student_id?: string
 	student_name?: string
@@ -188,6 +189,7 @@ export interface CourseData {
 	course_name?: string
 	course_type: string
 	credits: number
+	result_type?: 'Mark' | 'Status' // NEW: Determines if course uses marks or status grading
 	internal_max_mark: number
 	internal_pass_mark: number
 	internal_converted_mark: number
