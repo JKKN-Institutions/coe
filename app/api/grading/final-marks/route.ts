@@ -1684,8 +1684,12 @@ export async function POST(request: NextRequest) {
 		if (save_to_db && results.length > 0) {
 			for (const result of results) {
 				try {
-					// Calculate total_grade_points: credit * grade_points (0 if fail/absent)
-					const totalGradePoints = result.is_pass
+					// Detect status papers: have status grades and zero marks/percentage
+					const isStatusResult = result.total_marks === 0 && result.percentage === 0 &&
+						['Commended', 'Highly Commended', 'AAA'].includes(result.grade)
+
+					// Calculate total_grade_points: credit * grade_points (0 if fail/absent or status paper)
+					const totalGradePoints = result.is_pass && !isStatusResult
 						? result.credits * result.grade_point
 						: 0
 
@@ -1700,16 +1704,17 @@ export async function POST(request: NextRequest) {
 						student_id: result.student_id,
 						internal_marks_id: result.internal_marks_id,
 						marks_entry_id: result.marks_entry_id,
-						internal_marks_obtained: result.internal_marks,
-						internal_marks_maximum: result.internal_max,
-						external_marks_obtained: result.external_marks,
-						external_marks_maximum: result.external_max,
-						total_marks_obtained: result.total_marks,
-						total_marks_maximum: result.total_max,
-						percentage: result.percentage,
+						// For status papers, set marks to NULL instead of 0
+						internal_marks_obtained: isStatusResult ? null : result.internal_marks,
+						internal_marks_maximum: isStatusResult ? null : result.internal_max,
+						external_marks_obtained: isStatusResult ? null : result.external_marks,
+						external_marks_maximum: isStatusResult ? null : result.external_max,
+						total_marks_obtained: isStatusResult ? null : result.total_marks,
+						total_marks_maximum: isStatusResult ? null : result.total_max,
+						percentage: isStatusResult ? null : result.percentage,
 						grace_marks: 0,
-						letter_grade: result.grade,
-						grade_points: result.grade_point,
+						letter_grade: result.grade, // Will be status grade for status papers
+						grade_points: isStatusResult ? null : result.grade_point,
 						grade_description: result.grade_description,
 						is_pass: result.is_pass,
 						pass_status: result.pass_status,
@@ -1719,7 +1724,7 @@ export async function POST(request: NextRequest) {
 						is_active: true,
 						// New fields for NAAD/ABC export
 						credit: result.credits,
-						total_grade_points: totalGradePoints,
+						total_grade_points: isStatusResult ? null : totalGradePoints,
 						register_number: result.register_no || null
 					}
 
