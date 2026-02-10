@@ -132,6 +132,16 @@ export async function GET(request: Request) {
 
 					console.log(`[Status Grades Programs API] Found ${courseOfferings?.length || 0} course offerings`)
 
+					// Debug: Show sample course offerings
+					if (courseOfferings && courseOfferings.length > 0) {
+						const sample = courseOfferings.slice(0, 3).map((co: any) => ({
+							program_id: co.program_id,
+							result_type: co.courses?.result_type,
+							eval_type: co.courses?.evaluation_type
+						}))
+						console.log('[Status Grades Programs API] Sample course offerings:', sample)
+					}
+
 					// Filter program_ids (codes) based on statusType and evaluation_type
 					const programCodesSet = new Set<string>()
 
@@ -208,6 +218,9 @@ export async function GET(request: Request) {
 					}
 
 					// Step 4: Filter MyJKKN programs to only those with Status courses and deduplicate by program_code
+					console.log('[Status Grades Programs API] Program codes from course_offerings:', Array.from(programCodesSet))
+					console.log('[Status Grades Programs API] Sample MyJKKN programs:', allPrograms.slice(0, 3).map(p => ({ program_id: p.program_id, program_code: p.program_code })))
+
 					const programMap = new Map<string, any>()
 					for (const prog of allPrograms) {
 						// MyJKKN returns program_id as the CODE (e.g., "PCH", "UCH"), NOT a UUID
@@ -215,6 +228,7 @@ export async function GET(request: Request) {
 
 						// Only include programs that have Status-type courses in course_offerings
 						if (code && programCodesSet.has(code) && !programMap.has(code)) {
+							console.log(`[Status Grades Programs API] ✓ Matched program: ${code}`)
 							programMap.set(code, {
 								id: code, // Use code as ID for compatibility
 								program_code: code,
