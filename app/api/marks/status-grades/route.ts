@@ -81,18 +81,35 @@ export async function GET(request: Request) {
 						return NextResponse.json({ error: 'Institution ID is required' }, { status: 400 })
 					}
 
-					const { data, error } = await supabase
-						.from('programs')
-						.select('id, program_code, program_name')
+					// Fetch unique programs from exam_registrations
+					const sessionId = searchParams.get('sessionId')
+
+					let query = supabase
+						.from('exam_registrations')
+						.select('program_code')
 						.eq('institutions_id', institutionId)
-						.eq('is_active', true)
-						.order('program_name')
+
+					if (sessionId) {
+						query = query.eq('examination_session_id', sessionId)
+					}
+
+					const { data, error } = await query
 
 					if (error) {
 						console.error('Error fetching programs:', error)
 						return NextResponse.json({ error: 'Failed to fetch programs' }, { status: 500 })
 					}
-					return NextResponse.json(data || [])
+
+					// Get unique program codes and format response
+					const uniquePrograms = [...new Set((data || []).map((r: any) => r.program_code).filter(Boolean))]
+						.map(code => ({
+							id: code,
+							program_code: code,
+							program_name: code
+						}))
+						.sort((a, b) => a.program_code.localeCompare(b.program_code))
+
+					return NextResponse.json(uniquePrograms)
 				}
 
 				case 'courses': {
