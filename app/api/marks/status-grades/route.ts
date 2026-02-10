@@ -86,11 +86,16 @@ export async function GET(request: Request) {
 					// Fetch programs with courses matching the status type
 					const sessionId = searchParams.get('sessionId')
 
-					// Get course_offerings with courses to filter by evaluation_type
+					// Get course_offerings with courses and programs to filter by evaluation_type
 					let coQuery = supabase
 						.from('course_offerings')
 						.select(`
 							program_id,
+							programs:program_id (
+								id,
+								program_code,
+								program_name
+							),
 							courses:course_id (
 								id,
 								evaluation_type,
@@ -112,11 +117,12 @@ export async function GET(request: Request) {
 					}
 
 					// Filter programs based on statusType and evaluation_type
-					const programCodesSet = new Set<string>()
+					const programsMap = new Map<string, { id: string; program_code: string; program_name: string }>()
 
 					for (const co of (courseOfferings || [])) {
 						const course = co.courses as any
-						if (!course || !co.program_id) continue
+						const program = co.programs as any
+						if (!course || !program) continue
 
 						// Only include Status-type courses
 						if (course.result_type?.toUpperCase() !== 'STATUS') continue
@@ -124,29 +130,33 @@ export async function GET(request: Request) {
 						// Filter by evaluation_type based on statusType
 						const evalType = course.evaluation_type?.toUpperCase() || ''
 
+						let shouldInclude = false
 						if (statusType === 'Internal') {
 							// Only CIA courses
 							if (evalType === 'CIA' || evalType === 'CIA ONLY') {
-								programCodesSet.add(co.program_id)
+								shouldInclude = true
 							}
 						} else if (statusType === 'External') {
 							// Only External/ESE courses
 							if (evalType === 'EXTERNAL' || evalType === 'ESE' || evalType === 'ESE ONLY') {
-								programCodesSet.add(co.program_id)
+								shouldInclude = true
 							}
 						} else {
 							// No status type filter - include all status courses
-							programCodesSet.add(co.program_id)
+							shouldInclude = true
+						}
+
+						if (shouldInclude && !programsMap.has(program.id)) {
+							programsMap.set(program.id, {
+								id: program.id,
+								program_code: program.program_code,
+								program_name: program.program_name || program.program_code
+							})
 						}
 					}
 
 					// Format response
-					const uniquePrograms = Array.from(programCodesSet)
-						.map(code => ({
-							id: code,
-							program_code: code,
-							program_name: code
-						}))
+					const uniquePrograms = Array.from(programsMap.values())
 						.sort((a, b) => a.program_code.localeCompare(b.program_code))
 
 					return NextResponse.json(uniquePrograms)
