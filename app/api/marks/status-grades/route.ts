@@ -93,10 +93,12 @@ export async function GET(request: Request) {
 						query = query.eq('examination_session_id', sessionId)
 					}
 
-					const { data, error } = await query
+					// Add range to prevent fetching too many rows and timeout
+					const { data, error } = await query.range(0, 9999)
 
 					if (error) {
 						console.error('Error fetching programs:', error)
+						console.error('Full error details:', JSON.stringify(error, null, 2))
 						return NextResponse.json({ error: 'Failed to fetch programs' }, { status: 500 })
 					}
 
@@ -151,6 +153,7 @@ export async function GET(request: Request) {
 
 					if (coError) {
 						console.error('Error fetching course offerings:', coError)
+						console.error('Full error details:', JSON.stringify(coError, null, 2))
 						return NextResponse.json({ error: 'Failed to fetch courses' }, { status: 500 })
 					}
 
