@@ -116,6 +116,7 @@ export async function GET(request: Request) {
 					const institutionId = searchParams.get('institutionId')
 					const sessionId = searchParams.get('sessionId')
 					const programId = searchParams.get('programId')
+					const statusType = searchParams.get('statusType') // 'Internal' or 'External'
 
 					if (!institutionId) {
 						return NextResponse.json({ error: 'Institution ID is required' }, { status: 400 })
@@ -162,6 +163,16 @@ export async function GET(request: Request) {
 						if (!course) continue
 						if (course.result_type?.toUpperCase() !== 'STATUS') continue
 						if (seenCourseIds.has(course.id)) continue
+
+						// Filter by evaluation_type based on selected status type
+						const evalType = course.evaluation_type?.toUpperCase() || ''
+						if (statusType === 'Internal') {
+							// Only CIA courses
+							if (evalType !== 'CIA' && evalType !== 'CIA ONLY') continue
+						} else if (statusType === 'External') {
+							// Only External/ESE courses
+							if (evalType !== 'EXTERNAL' && evalType !== 'ESE' && evalType !== 'ESE ONLY') continue
+						}
 
 						seenCourseIds.add(course.id)
 						statusCourses.push({

@@ -167,7 +167,7 @@ export default function StatusGradesPage() {
 	useEffect(() => {
 		if (isReady && selectedSessionId && effectiveInstitutionId) {
 			loadPrograms(effectiveInstitutionId)
-			loadCourses(effectiveInstitutionId, selectedSessionId, selectedProgramId)
+			loadCourses(effectiveInstitutionId, selectedSessionId, statusType, selectedProgramId)
 			resetDependentFields(['course'])
 		}
 	}, [isReady, selectedSessionId])
@@ -175,9 +175,17 @@ export default function StatusGradesPage() {
 	// Load courses when program changes
 	useEffect(() => {
 		if (isReady && effectiveInstitutionId && selectedSessionId) {
-			loadCourses(effectiveInstitutionId, selectedSessionId, selectedProgramId)
+			loadCourses(effectiveInstitutionId, selectedSessionId, statusType, selectedProgramId)
 		}
 	}, [selectedProgramId])
+
+	// Load courses when status type changes
+	useEffect(() => {
+		if (isReady && effectiveInstitutionId && selectedSessionId) {
+			loadCourses(effectiveInstitutionId, selectedSessionId, statusType, selectedProgramId)
+			resetDependentFields(['course'])
+		}
+	}, [statusType])
 
 	// =========================================================
 	// Reset helpers
@@ -246,10 +254,12 @@ export default function StatusGradesPage() {
 		}
 	}, [toast])
 
-	const loadCourses = useCallback(async (institutionId: string, sessionId: string, programId?: string) => {
+	const loadCourses = useCallback(async (institutionId: string, sessionId: string, statusTypeFilter: StatusType, programId?: string) => {
 		try {
 			setLoadingCourses(true)
-			let url = `/api/marks/status-grades?action=courses&institutionId=${institutionId}&sessionId=${sessionId}`
+			// Map 'internal' to 'Internal' and 'external' to 'External' for API
+			const statusTypeParam = statusTypeFilter === 'internal' ? 'Internal' : 'External'
+			let url = `/api/marks/status-grades?action=courses&institutionId=${institutionId}&sessionId=${sessionId}&statusType=${statusTypeParam}`
 			if (programId) url += `&programId=${programId}`
 			const res = await fetch(url)
 			if (!res.ok) throw new Error('Failed to load courses')
