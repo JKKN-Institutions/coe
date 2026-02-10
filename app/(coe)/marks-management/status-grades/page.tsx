@@ -166,7 +166,7 @@ export default function StatusGradesPage() {
 	// Load programs when session changes
 	useEffect(() => {
 		if (isReady && selectedSessionId && effectiveInstitutionId) {
-			loadPrograms(effectiveInstitutionId)
+			loadPrograms(effectiveInstitutionId, statusType, selectedSessionId)
 			loadCourses(effectiveInstitutionId, selectedSessionId, statusType, selectedProgramId)
 			resetDependentFields(['course'])
 		}
@@ -179,11 +179,12 @@ export default function StatusGradesPage() {
 		}
 	}, [selectedProgramId])
 
-	// Load courses when status type changes
+	// Reload programs and courses when status type changes
 	useEffect(() => {
 		if (isReady && effectiveInstitutionId && selectedSessionId) {
+			loadPrograms(effectiveInstitutionId, statusType, selectedSessionId)
 			loadCourses(effectiveInstitutionId, selectedSessionId, statusType, selectedProgramId)
-			resetDependentFields(['course'])
+			resetDependentFields(['program', 'course'])
 		}
 	}, [statusType])
 
@@ -240,10 +241,14 @@ export default function StatusGradesPage() {
 		}
 	}, [toast])
 
-	const loadPrograms = useCallback(async (institutionId: string) => {
+	const loadPrograms = useCallback(async (institutionId: string, statusTypeFilter: StatusType, sessionId?: string) => {
 		try {
 			setLoadingPrograms(true)
-			const res = await fetch(`/api/marks/status-grades?action=programs&institutionId=${institutionId}`)
+			// Map 'internal' to 'Internal' and 'external' to 'External' for API
+			const statusTypeParam = statusTypeFilter === 'internal' ? 'Internal' : 'External'
+			let url = `/api/marks/status-grades?action=programs&institutionId=${institutionId}&statusType=${statusTypeParam}`
+			if (sessionId) url += `&sessionId=${sessionId}`
+			const res = await fetch(url)
 			if (!res.ok) throw new Error('Failed to load programs')
 			const data = await res.json()
 			setPrograms(data)
@@ -823,9 +828,9 @@ export default function StatusGradesPage() {
 										</Popover>
 									</div>
 
-									{/* Program (optional filter) */}
+									{/* Program (mandatory filter) */}
 									<div className="space-y-1.5">
-										<Label className="text-xs font-medium">Program (Optional)</Label>
+										<Label className="text-xs font-medium">Program *</Label>
 										<Popover open={programOpen} onOpenChange={setProgramOpen}>
 											<PopoverTrigger asChild>
 												<Button

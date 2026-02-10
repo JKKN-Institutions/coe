@@ -77,33 +77,71 @@ export async function GET(request: Request) {
 
 				case 'programs': {
 					const institutionId = searchParams.get('institutionId')
+					const statusType = searchParams.get('statusType') // 'Internal' or 'External'
+
 					if (!institutionId) {
 						return NextResponse.json({ error: 'Institution ID is required' }, { status: 400 })
 					}
 
-					// Fetch unique programs from exam_registrations
+					// Fetch programs with courses matching the status type
 					const sessionId = searchParams.get('sessionId')
 
-					let query = supabase
-						.from('exam_registrations')
-						.select('program_code')
+					// Get course_offerings with courses to filter by evaluation_type
+					let coQuery = supabase
+						.from('course_offerings')
+						.select(`
+							program_id,
+							courses:course_id (
+								id,
+								evaluation_type,
+								result_type
+							)
+						`)
 						.eq('institutions_id', institutionId)
 
 					if (sessionId) {
-						query = query.eq('examination_session_id', sessionId)
+						coQuery = coQuery.eq('examination_session_id', sessionId)
 					}
 
-					// Add range to prevent fetching too many rows and timeout
-					const { data, error } = await query.range(0, 9999)
+					const { data: courseOfferings, error: coError } = await coQuery.range(0, 9999)
 
-					if (error) {
-						console.error('Error fetching programs:', error)
-						console.error('Full error details:', JSON.stringify(error, null, 2))
+					if (coError) {
+						console.error('Error fetching programs:', coError)
+						console.error('Full error details:', JSON.stringify(coError, null, 2))
 						return NextResponse.json({ error: 'Failed to fetch programs' }, { status: 500 })
 					}
 
-					// Get unique program codes and format response
-					const uniquePrograms = [...new Set((data || []).map((r: any) => r.program_code).filter(Boolean))]
+					// Filter programs based on statusType and evaluation_type
+					const programCodesSet = new Set<string>()
+
+					for (const co of (courseOfferings || [])) {
+						const course = co.courses as any
+						if (!course || !co.program_id) continue
+
+						// Only include Status-type courses
+						if (course.result_type?.toUpperCase() !== 'STATUS') continue
+
+						// Filter by evaluation_type based on statusType
+						const evalType = course.evaluation_type?.toUpperCase() || ''
+
+						if (statusType === 'Internal') {
+							// Only CIA courses
+							if (evalType === 'CIA' || evalType === 'CIA ONLY') {
+								programCodesSet.add(co.program_id)
+							}
+						} else if (statusType === 'External') {
+							// Only External/ESE courses
+							if (evalType === 'EXTERNAL' || evalType === 'ESE' || evalType === 'ESE ONLY') {
+								programCodesSet.add(co.program_id)
+							}
+						} else {
+							// No status type filter - include all status courses
+							programCodesSet.add(co.program_id)
+						}
+					}
+
+					// Format response
+					const uniquePrograms = Array.from(programCodesSet)
 						.map(code => ({
 							id: code,
 							program_code: code,
