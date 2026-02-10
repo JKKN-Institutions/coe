@@ -143,7 +143,7 @@ export function generateHallTicketPDF(options: GenerateHallTicketOptions): strin
 		const valueColWidth = infoTableWidth - labelColWidth - 35 // Leave space for photo
 		const photoWidth = 30
 		const photoHeight = 35
-		const rowHeight = 8
+		const rowHeight = 6
 
 		// Student info fields
 		const fields = [
@@ -151,7 +151,7 @@ export function generateHallTicketPDF(options: GenerateHallTicketOptions): strin
 			{ label: 'Student Name', value: student.student_name },
 			{ label: 'Date of Birth', value: student.date_of_birth || '' },
 			{ label: 'Program', value: student.program },
-			{ label: 'EMIS', value: student.emis || '' },
+			{ label: 'UMIS', value: student.emis || '' },
 		]
 
 		const infoTableHeight = fields.length * rowHeight
@@ -214,8 +214,8 @@ export function generateHallTicketPDF(options: GenerateHallTicketOptions): strin
 		// ========== FIXED LAYOUT SUBJECT TABLE ==========
 		// Fixed dimensions for A4 academic document standard
 		const tableWidth = pageWidth - 2 * margin
-		const subjectHeaderHeight = 10 // Header row height
-		const subjectRowHeight = 8 // Each subject row height
+		const subjectHeaderHeight = 8 // Header row height
+		const subjectRowHeight = 6 // Each subject row height
 		const tableHeight = subjectHeaderHeight + (maxRows * subjectRowHeight) // Total fixed table height
 
 		const subjectTableStartY = currentY
@@ -274,15 +274,16 @@ export function generateHallTicketPDF(options: GenerateHallTicketOptions): strin
 			bodyStyles: {
 				font: 'times',
 				fontSize: 8,
+				valign: 'middle',
 				minCellHeight: subjectRowHeight
 			},
 			columnStyles: {
-				0: { halign: 'center', cellWidth: columnWidths[0] }, // S.No
-				1: { halign: 'center', cellWidth: columnWidths[1] }, // Subject Code
-				2: { halign: 'center', cellWidth: columnWidths[2] }, // Date of Exam
-				3: { halign: 'center', cellWidth: columnWidths[3] }, // Exam Time
-				4: { halign: 'left', cellWidth: columnWidths[4] }, // Subject Name
-				5: { halign: 'center', cellWidth: columnWidths[5] } // Semester
+				0: { halign: 'center', valign: 'middle', cellWidth: columnWidths[0] }, // S.No
+				1: { halign: 'center', valign: 'middle', cellWidth: columnWidths[1] }, // Subject Code
+				2: { halign: 'center', valign: 'middle', cellWidth: columnWidths[2] }, // Date of Exam
+				3: { halign: 'center', valign: 'middle', cellWidth: columnWidths[3] }, // Exam Time
+				4: { halign: 'left', valign: 'middle', cellWidth: columnWidths[4] }, // Subject Name
+				5: { halign: 'center', valign: 'middle', cellWidth: columnWidths[5] } // Semester
 			},
 			margin: { left: margin, right: margin },
 			tableWidth: tableWidth
@@ -328,7 +329,7 @@ export function generateHallTicketPDF(options: GenerateHallTicketOptions): strin
 					[
 						{ content: '\n\nStudent Signature', styles: { halign: 'center', valign: 'bottom', fontStyle: 'bold' } },
 						{ content: '\n\nSignature of the Controller\nof Examinations (FAC)', styles: { halign: 'center', valign: 'bottom', fontStyle: 'bold' } },
-						{ content: '\n\nSignature of the\nChief Superintendent', styles: { halign: 'center', valign: 'bottom', fontStyle: 'bold' } }
+						{ content: '\n\nSignature of the\nChief Controller', styles: { halign: 'center', valign: 'bottom', fontStyle: 'bold' } }
 					]
 				],
 				theme: 'grid',
@@ -598,14 +599,14 @@ export function generateHallTicketPDFBlob(options: GenerateHallTicketOptions): B
 			const valueColWidth = infoTableWidth - labelColWidth - 35
 			const photoWidth = 30
 			const photoHeight = 35
-			const rowHeight = 7
+			const rowHeight = 6
 
 			const fields = [
 				{ label: 'Register Number', value: student.register_number },
 				{ label: 'Student Name', value: student.student_name },
 				{ label: 'Date of Birth', value: student.date_of_birth || '' },
 				{ label: 'Program', value: student.program },
-				{ label: 'EMIS', value: student.emis || '' },
+				{ label: 'UMIS', value: student.emis || '' },
 			]
 
 			const infoTableHeight = fields.length * rowHeight
@@ -653,14 +654,14 @@ export function generateHallTicketPDFBlob(options: GenerateHallTicketOptions): B
 			// ========== FIXED LAYOUT SUBJECT TABLE ==========
 			// Fixed dimensions for A4 academic document standard
 			const tableWidth = pageWidth - 2 * margin
-			const subjectHeaderHeight = 10 // Header row height
-			const subjectRowHeight = 8 // Each subject row height
+			const subjectHeaderHeight = 8 // Header row height
+			const subjectRowHeight = 6 // Each subject row height
 			const tableHeight = subjectHeaderHeight + (maxRows * subjectRowHeight) // Total fixed table height
 
 			const subjectTableStartY = currentY
 
 			// Column widths (must sum to tableWidth)
-			const columnWidths = [10, 24, 22, 32, 78, 27] // S.No, Code, Date, Exam, Name, Semester
+			const columnWidths = [10, 24, 10, 22, 105, 22] // S.No, Code, Date, Exam, Name, Semester
 
 			// Prepare table data - pad to exactly maxRows rows
 			// Use pageSubjects (chunk for this page) with correct serial numbers
@@ -713,15 +714,16 @@ export function generateHallTicketPDFBlob(options: GenerateHallTicketOptions): B
 				bodyStyles: {
 					font: 'times',
 					fontSize: 9,
+					valign: 'middle',
 					minCellHeight: subjectRowHeight
 				},
 				columnStyles: {
-					0: { halign: 'center', cellWidth: columnWidths[0] }, // S.No
-					1: { halign: 'center', cellWidth: columnWidths[1] }, // Subject Code
-					2: { halign: 'center', cellWidth: columnWidths[2] }, // Date of Exam
-					3: { halign: 'center', cellWidth: columnWidths[3] }, // Exam Time
-					4: { halign: 'left', cellWidth: columnWidths[4] }, // Subject Name
-					5: { halign: 'center', cellWidth: columnWidths[5] } // Semester
+					0: { halign: 'center', valign: 'middle', cellWidth: columnWidths[0] }, // S.No
+					1: { halign: 'center', valign: 'middle', cellWidth: columnWidths[1] }, // Subject Code
+					2: { halign: 'center', valign: 'middle', cellWidth: columnWidths[2] }, // Date of Exam
+					3: { halign: 'center', valign: 'middle', cellWidth: columnWidths[3] }, // Exam Time
+					4: { halign: 'left', valign: 'middle', cellWidth: columnWidths[4] }, // Subject Name
+					5: { halign: 'center', valign: 'middle', cellWidth: columnWidths[5] } // Semester
 				},
 				margin: { left: margin, right: margin },
 				tableWidth: tableWidth
@@ -767,7 +769,7 @@ export function generateHallTicketPDFBlob(options: GenerateHallTicketOptions): B
 						[
 							{ content: '\n\nStudent Signature', styles: { halign: 'center', valign: 'bottom', fontStyle: 'bold' } },
 							{ content: '\n\nSignature of the Controller\nof Examinations (FAC)', styles: { halign: 'center', valign: 'bottom', fontStyle: 'bold' } },
-							{ content: '\n\nSignature of the\nChief Superintendent', styles: { halign: 'center', valign: 'bottom', fontStyle: 'bold' } }
+							{ content: '\n\nSignature of the\nChief Controller', styles: { halign: 'center', valign: 'bottom', fontStyle: 'bold' } }
 						]
 					],
 					theme: 'grid',
@@ -802,7 +804,7 @@ export function generateHallTicketPDFBlob(options: GenerateHallTicketOptions): B
 					theme: 'grid',
 					styles: {
 						font: 'times',
-						fontSize: 7,
+						fontSize: 8,
 						textColor: [0, 0, 0],
 						lineColor: [0, 0, 0],
 						lineWidth: 0.3,

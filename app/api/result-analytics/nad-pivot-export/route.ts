@@ -39,6 +39,8 @@ interface LearnerProfile {
 	profile_photo?: string
 	image_url?: string
 	institution_id?: string
+	admission_year?: number | string
+	aadhaar_name?: string
 }
 
 // Fixed columns for each subject (25 fields per subject - exact NAD format)
@@ -82,39 +84,107 @@ function getSubjectColumns(subNum: number): string[] {
 	})
 }
 
-// Fixed header columns (before subjects)
+// Fixed header columns (before subjects) - NAD format
+// Note: RROLL, MNAME, RESULT, PERCENT, DOI, CERT_NO, CGPA, TOT_GRADE, DEPARTMENT columns kept but values left empty
 const FIXED_COLUMNS = [
 	'ORG_NAME',
+	'PROGRAM_NAME',        // Full program name (e.g., "B.A. ENGLISH")
 	'ACADEMIC_COURSE_ID',
-	'COURSE_NAME',
-	'STREAM',
+	'COURSE_NAME',         // Short form (e.g., "B.A")
+	'STREAM',              // Specialization (e.g., "English")
 	'SESSION',
 	'REGN_NO',
-	'RROLL',
+	'RROLL',               // Empty - not fetched
 	'CNAME',
-	'GENDER',
+	'GENDER',              // First letter only (M/F)
 	'DOB',
 	'FNAME',
-	'MNAME',
+	'MNAME',               // Empty - not fetched
 	'PHOTO',
-	'MRKS_REC_STATUS',
-	'RESULT',
-	'YEAR',
-	'CSV_MONTH',
-	'MONTH',
-	'PERCENT',
-	'DOI',
-	'CERT_NO',
-	'SEM',
+	'MRKS_REC_STATUS',     // Always "O"
+	'RESULT',              // Empty - not fetched
+	'YEAR',                // Extract year from exam session
+	'CSV_MONTH',           // Month name from exam session
+	'MONTH',               // Month name from exam session
+	'PERCENT',             // Empty - not fetched
+	'DOI',                 // Empty - not fetched
+	'CERT_NO',             // Empty - not fetched
+	'SEM',                 // Roman numerals (I, II, III, etc.)
 	'EXAM_TYPE',
 	'TOT_CREDIT',
 	'TOT_CREDIT_POINTS',
-	'CGPA',
+	'CGPA',                // Empty - not fetched
 	'ABC_ACCOUNT_ID',
 	'TERM_TYPE',
-	'TOT_GRADE',
-	'DEPARTMENT'
+	'TOT_GRADE',           // Empty - not fetched
+	'DEPARTMENT'           // Empty - not fetched
 ] as const
+
+// Helper: Convert number to Roman numeral
+function toRomanNumeral(num: number): string {
+	const romanNumerals: [number, string][] = [
+		[10, 'X'], [9, 'IX'], [5, 'V'], [4, 'IV'], [1, 'I']
+	]
+	let result = ''
+	for (const [value, numeral] of romanNumerals) {
+		while (num >= value) {
+			result += numeral
+			num -= value
+		}
+	}
+	return result || 'I'
+}
+
+// Helper: Extract year from exam session (e.g., "Nov-Dec-2025" → "2025")
+function extractYear(examSession: string): string {
+	if (!examSession) return ''
+	const match = examSession.match(/(\d{4})/)
+	return match ? match[1] : ''
+}
+
+// Helper: Extract month name from exam session (e.g., "Nov-Dec-2025" → "NOVEMBER")
+function extractMonth(examSession: string): string {
+	if (!examSession) return ''
+	const monthMap: Record<string, string> = {
+		'jan': 'JANUARY', 'feb': 'FEBRUARY', 'mar': 'MARCH',
+		'apr': 'APRIL', 'may': 'MAY', 'jun': 'JUNE',
+		'jul': 'JULY', 'aug': 'AUGUST', 'sep': 'SEPTEMBER',
+		'oct': 'OCTOBER', 'nov': 'NOVEMBER', 'dec': 'DECEMBER'
+	}
+	const lower = examSession.toLowerCase()
+	for (const [abbrev, full] of Object.entries(monthMap)) {
+		if (lower.includes(abbrev)) {
+			return full
+		}
+	}
+	return ''
+}
+
+// Helper: Parse program name into short form and stream
+function parseProgramName(programName: string): { shortForm: string; stream: string } {
+	if (!programName) return { shortForm: '', stream: '' }
+
+	// Common patterns: "B.A. ENGLISH", "B.Sc. COMPUTER SCIENCE", "M.A. TAMIL"
+	const match = programName.match(/^([A-Z]+\.?[A-Za-z]*\.?)\s+(.+)$/i)
+	if (match) {
+		return {
+			shortForm: match[1].toUpperCase(),  // "B.A", "B.Sc", "M.A"
+			stream: match[2].trim()             // "ENGLISH", "COMPUTER SCIENCE"
+		}
+	}
+
+	// If no match, return program name as short form
+	return { shortForm: programName, stream: '' }
+}
+
+// Helper: Format gender to first letter (Male → M, Female → F)
+function formatGender(gender: string): string {
+	if (!gender) return ''
+	const g = gender.toLowerCase().trim()
+	if (g.startsWith('m')) return 'M'
+	if (g.startsWith('f')) return 'F'
+	return gender.charAt(0).toUpperCase()
+}
 
 interface SubjectData {
 	course_code: string
@@ -171,6 +241,9 @@ interface StudentData {
 	result_date: string
 	folio_number: string  // CERT_NO
 	subjects: SubjectData[]
+	// Additional fields at end (after all subjects)
+	aadhaar_name: string
+	admission_year: string
 }
 
 export async function GET(req: NextRequest) {
@@ -272,7 +345,10 @@ export async function GET(req: NextRequest) {
 					percentage: 0,
 					result_date: row.RESULT_DATE || '',
 					folio_number: row.folio_number || '',  // CERT_NO
-					subjects: []
+					subjects: [],
+					// Additional fields (enriched from MyJKKN)
+					aadhaar_name: '',
+					admission_year: ''
 				})
 			}
 
@@ -433,6 +509,9 @@ export async function GET(req: NextRequest) {
 									|| profile.profile_photo
 									|| profile.image_url
 									|| ''
+								// Additional fields for end columns
+								student.aadhaar_name = profile.aadhaar_name || ''
+								student.admission_year = profile.admission_year?.toString() || ''
 								enrichedCount++
 							}
 						}
@@ -460,6 +539,8 @@ export async function GET(req: NextRequest) {
 		for (let i = 1; i <= actualMaxSubjects; i++) {
 			headerRow.push(...getSubjectColumns(i))
 		}
+		// Add end columns after all subjects
+		headerRow.push('AADHAAR_NAME', 'ADMISSION_YEAR', 'unsani_URI_data_key', 'URI_data_key')
 
 		// Generate data rows
 		const csvRows: string[][] = [headerRow]
@@ -467,37 +548,41 @@ export async function GET(req: NextRequest) {
 		for (const student of Array.from(studentMap.values())) {
 			const row: string[] = []
 
-			// Fixed columns
+			// Parse program name into short form and stream
+			const { shortForm, stream } = parseProgramName(student.program_name)
+
+			// Fixed columns - matching FIXED_COLUMNS order
 			row.push(student.institution_name)                    // ORG_NAME
+			row.push(student.program_name)                        // PROGRAM_NAME (full name e.g., "B.A. ENGLISH")
 			row.push(student.program_code)                        // ACADEMIC_COURSE_ID
-			row.push(student.program_name)                        // COURSE_NAME
-			row.push('')                                          // STREAM
+			row.push(shortForm)                                   // COURSE_NAME (short form e.g., "B.A")
+			row.push(stream)                                      // STREAM (specialization e.g., "English")
 			row.push(student.exam_session)                        // SESSION
 			row.push(student.register_number)                     // REGN_NO
-			row.push(student.roll_number)                         // RROLL
+			row.push('')                                          // RROLL - empty (not fetched)
 			row.push(student.student_name)                        // CNAME
-			row.push(student.gender)                              // GENDER (from MyJKKN)
+			row.push(formatGender(student.gender))                // GENDER - first letter only (M/F)
 			row.push(student.date_of_birth)                       // DOB (from MyJKKN)
 			row.push(student.father_name)                         // FNAME (from MyJKKN)
-			row.push(student.mother_name)                         // MNAME (from MyJKKN)
+			row.push('')                                          // MNAME - empty (not fetched)
 			row.push(student.photo_url)                           // PHOTO (from MyJKKN)
-			row.push('C')                                         // MRKS_REC_STATUS (C=Complete)
-			row.push(student.overall_result)                      // RESULT
-			row.push(student.academic_year.split('-')[0] || '')   // YEAR
-			row.push('')                                          // CSV_MONTH
-			row.push(student.exam_session.split(' ')[0] || '')    // MONTH
-			row.push(student.percentage.toString())               // PERCENT
-			row.push(student.result_date)                         // DOI (Date of Issue)
-			row.push(student.folio_number)                        // CERT_NO (from semester_results.folio_number)
-			row.push(student.semester.toString())                 // SEM
+			row.push('O')                                         // MRKS_REC_STATUS - always "O"
+			row.push('')                                          // RESULT - empty (not fetched)
+			row.push(extractYear(student.exam_session))           // YEAR - extract year from exam session
+			row.push(extractMonth(student.exam_session))          // CSV_MONTH - month name from exam session
+			row.push(extractMonth(student.exam_session))          // MONTH - month name from exam session
+			row.push('')                                          // PERCENT - empty (not fetched)
+			row.push('')                                          // DOI - empty (not fetched)
+			row.push('')                                          // CERT_NO - empty (not fetched)
+			row.push(toRomanNumeral(student.semester))            // SEM - Roman numerals (I, II, III, etc.)
 			row.push('REGULAR')                                   // EXAM_TYPE
 			row.push(student.total_credits.toString())            // TOT_CREDIT
 			row.push(student.total_credit_points.toString())      // TOT_CREDIT_POINTS
-			row.push(student.cgpa.toFixed(2))                     // CGPA
+			row.push('')                                          // CGPA - empty (not fetched)
 			row.push(student.aadhar_number)                       // ABC_ACCOUNT_ID
 			row.push('SEMESTER')                                  // TERM_TYPE
-			row.push(student.overall_grade)                       // TOT_GRADE
-			row.push(student.department_name)                     // DEPARTMENT
+			row.push('')                                          // TOT_GRADE - empty (not fetched)
+			row.push('')                                          // DEPARTMENT - empty (not fetched)
 
 			// Subject columns
 			for (let i = 0; i < actualMaxSubjects; i++) {
@@ -507,16 +592,26 @@ export async function GET(req: NextRequest) {
 					const isTheory = subject.course_category === 'THEORY'
 					const isPractical = subject.course_category === 'PRACTICAL'
 
-					// Map raw_pass_status to REMARKS: Absent->AB, Reappear->RA, Pass->P
+					// Map raw_pass_status to REMARKS: Absent->RA, Reappear->RA, Pass->P
+					// Note: AB (Absent) should be mapped to RA per NAD requirements
 					let remarks = ''
 					const rawStatus = (subject.raw_pass_status || '').toLowerCase()
 					if (rawStatus.includes('absent')) {
-						remarks = 'AB'
+						remarks = 'RA'  // AB (Absent) → RA
 					} else if (rawStatus.includes('reappear') || rawStatus.includes('fail')) {
 						remarks = 'RA'
 					} else if (rawStatus.includes('pass') || subject.pass_status === 'PASS') {
 						remarks = 'P'
 					}
+
+					// Grade conversion: AAA → U
+					let grade = subject.letter_grade || ''
+					if (grade.toUpperCase() === 'AAA') {
+						grade = 'U'
+					}
+
+					// Credit: if grade_points = 0, credit should be 0
+					const credit = (subject.grade_points === 0 || subject.grade_points == null) ? 0 : subject.credit
 
 					// SUBnNM - Subject Name
 					row.push(subject.course_name)
@@ -562,16 +657,16 @@ export async function GET(req: NextRequest) {
 
 					// SUBn_TOT - Total Marks
 					row.push(subject.total_marks_obtained.toString())
-					// SUBn_GRADE - Grade
-					row.push(subject.letter_grade || '')
+					// SUBn_GRADE - Grade (AAA → U)
+					row.push(grade)
 					// SUBn_GRADE_POINTS - Grade Points
 					row.push(subject.grade_points?.toString() || '')
-					// SUBn_CREDIT - Credit
-					row.push(subject.credit.toString())
+					// SUBn_CREDIT - Credit (0 if grade_points = 0)
+					row.push(credit.toString())
 					// SUBn_CREDIT_POINTS - Credit Points
 					row.push(subject.credit_points?.toString() || '')
 
-					// SUBn_REMARKS - Remarks (Absent->AB, Reappear->RA, Pass->P)
+					// SUBn_REMARKS - Remarks (Absent->RA, Reappear->RA, Pass->P)
 					row.push(remarks)
 
 					// SUBn_VV_MIN - Viva Min
@@ -580,13 +675,19 @@ export async function GET(req: NextRequest) {
 					row.push('')
 					// SUBn_TH_CE_MRKS - Theory CE Marks
 					row.push('')
-					// SUBn_CREDIT_ELIGIBILITY - Credit Eligibility
-					row.push(subject.pass_status === 'PASS' ? 'Y' : 'N')
+					// SUBn_CREDIT_ELIGIBILITY - empty (not fetched)
+					row.push('')
 				} else {
 					// Empty subject columns
 					row.push(...Array(SUBJECT_FIELDS_COUNT).fill(''))
 				}
 			}
+
+			// Add end columns after all subjects
+			row.push(student.aadhaar_name)       // AADHAAR_NAME (from MyJKKN)
+			row.push(student.admission_year)    // ADMISSION_YEAR (from MyJKKN)
+			row.push('')                        // unsani_URI_data_key - empty
+			row.push('')                        // URI_data_key - empty
 
 			csvRows.push(row)
 		}

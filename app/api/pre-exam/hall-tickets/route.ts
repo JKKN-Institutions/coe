@@ -227,11 +227,59 @@ export async function GET(request: NextRequest) {
 		const semesterNumbersList = semester_ids ? semester_ids.split(',').map(s => parseInt(s.trim(), 10)).filter(n => !isNaN(n)) : []
 		const studentIdsList = student_ids ? student_ids.split(',').map(s => s.trim()) : []
 
+		// ====================================================================
+		// Fetch program name from MyJKKN API (to show "Code - Name" format)
+		// ====================================================================
+		const programNameMap = new Map<string, string>()
+		const myjkknIds: string[] = institution.myjkkn_institution_ids || []
+
+		if (myjkknIds.length > 0) {
+			try {
+				const myjkknApiUrl = process.env.MYJKKN_API_URL || 'https://www.jkkn.ai/api'
+				const myjkknApiKey = process.env.MYJKKN_API_KEY || ''
+
+				if (myjkknApiKey) {
+					for (const myjkknInstId of myjkknIds) {
+						const progParams = new URLSearchParams({
+							institution_id: myjkknInstId,
+							limit: '100',
+							is_active: 'true'
+						})
+						const progRes = await fetch(
+							`${myjkknApiUrl}/api-management/programs?${progParams.toString()}`,
+							{
+								method: 'GET',
+								headers: {
+									'Authorization': `Bearer ${myjkknApiKey}`,
+									'Accept': 'application/json',
+								},
+								cache: 'no-store',
+							}
+						)
+						if (progRes.ok) {
+							const progData = await progRes.json()
+							const programs = progData.data || []
+							for (const p of programs) {
+								const code = p.program_id || p.program_code
+								if (code && !programNameMap.has(code)) {
+									programNameMap.set(code, p.program_name || p.name || code)
+								}
+							}
+						}
+					}
+				}
+			} catch (progError) {
+				console.warn('[HallTickets] Failed to fetch program names from MyJKKN:', progError)
+			}
+		}
+		console.log(`[HallTickets] Program name map:`, Object.fromEntries(programNameMap))
+
 		// Group registrations by student (using stu_register_no as the key since student data is in exam_registrations)
 		const studentMap = new Map<string, {
 			stu_register_no: string,
 			student_name: string,
 			subjects: HallTicketSubject[],
+			programCode: string,
 			programName: string
 		}>()
 
@@ -254,13 +302,17 @@ export async function GET(request: NextRequest) {
 			}
 
 			const studentKey = reg.stu_register_no
+			const pCode = reg.program_code || 'N/A'
 
 			if (!studentMap.has(studentKey)) {
+				// Format program as "Code - Name" using MyJKKN program name
+				const pName = programNameMap.get(pCode) || ''
 				studentMap.set(studentKey, {
 					stu_register_no: reg.stu_register_no,
 					student_name: reg.student_name || '',
 					subjects: [],
-					programName: reg.program_code || 'N/A'
+					programCode: pCode,
+					programName: pName ? `${pCode} - ${pName}` : pCode
 				})
 			}
 
@@ -287,106 +339,92 @@ export async function GET(request: NextRequest) {
 			studentMap.get(studentKey)!.subjects.push(subject)
 		}
 
-		// Fetch learner profiles from local database to get date_of_birth and student_photo_url
-		// learners_profiles table is a fallback/mirror of MyJKKN /api-management/learners/profiles endpoint
+		// ====================================================================
+		// Fetch DOB and photos from MyJKKN API directly (like semester marksheet)
+		// ====================================================================
 		const registerNumbers = Array.from(studentMap.keys())
 		const learnerProfileMap = new Map<string, { date_of_birth: string | null; student_photo_url: string | null }>()
 
-		if (registerNumbers.length > 0) {
-			console.log(`[HallTickets] Fetching learner profiles for ${registerNumbers.length} students...`)
-			console.log(`[HallTickets] Register numbers to lookup:`, registerNumbers.slice(0, 5), '...')
+		if (registerNumbers.length > 0 && myjkknIds.length > 0) {
+			console.log(`[HallTickets] Fetching learner profiles from MyJKKN API for ${registerNumbers.length} students...`)
 
-			// Normalize register numbers to uppercase for consistent matching
-			const normalizedRegNumbers = registerNumbers.map(rn => rn.toUpperCase())
+			try {
+				const myjkknApiUrl = process.env.MYJKKN_API_URL || 'https://www.jkkn.ai/api'
+				const myjkknApiKey = process.env.MYJKKN_API_KEY || ''
 
-			// Fetch from local learners_profiles table (mirrors MyJKKN data)
-			// Register number is stored in register_number column
-			// First try exact match with normalized (uppercase) register numbers
-			const { data: learnerProfiles, error: lpError } = await supabase
-				.from('learners_profiles')
-				.select('register_number, date_of_birth, student_photo_url')
-				.in('register_number', normalizedRegNumbers)
+				if (myjkknApiKey) {
+					const registerNumberSet = new Set(registerNumbers)
 
-			if (lpError) {
-				console.warn('[HallTickets] Could not fetch learner profiles from local DB:', lpError.message)
-			} else if (learnerProfiles && learnerProfiles.length > 0) {
-				console.log(`[HallTickets] Found ${learnerProfiles.length} learner profiles (exact match)`)
-				for (const profile of learnerProfiles) {
-					if (profile.register_number) {
-						// Store with uppercase key for consistent lookup
-						learnerProfileMap.set(profile.register_number.toUpperCase(), {
-							date_of_birth: profile.date_of_birth,
-							student_photo_url: profile.student_photo_url
-						})
-						// Log if DOB or photo is missing
-						if (!profile.date_of_birth) {
-							console.log(`[HallTickets] Missing DOB for ${profile.register_number}`)
-						}
-						if (!profile.student_photo_url) {
-							console.log(`[HallTickets] Missing photo for ${profile.register_number}`)
-						}
-					}
-				}
-			} else {
-				console.log('[HallTickets] No learner profiles found in local DB (exact match)')
-			}
+					for (const myjkknInstId of myjkknIds) {
+						let page = 1
+						const pageSize = 200
+						let hasMorePages = true
 
-			// Check for missing profiles and try case-insensitive lookup
-			const missingRegNumbers = registerNumbers.filter(rn => !learnerProfileMap.has(rn.toUpperCase()))
-			if (missingRegNumbers.length > 0) {
-				console.log(`[HallTickets] ${missingRegNumbers.length} students missing from learners_profiles:`, missingRegNumbers.slice(0, 5))
+						while (hasMorePages) {
+							const profileParams = new URLSearchParams()
+							profileParams.set('institution_id', myjkknInstId)
+							profileParams.set('limit', String(pageSize))
+							profileParams.set('page', String(page))
 
-				// Try case-insensitive lookup for missing ones using ilike
-				for (const regNum of missingRegNumbers) {
-					const { data: profile } = await supabase
-						.from('learners_profiles')
-						.select('register_number, date_of_birth, student_photo_url')
-						.ilike('register_number', regNum)
-						.limit(1)
-						.single()
+							console.log(`[HallTickets] Querying MyJKKN API institution_id: ${myjkknInstId}, page: ${page}`)
 
-					if (profile && profile.register_number) {
-						console.log(`[HallTickets] Found case-insensitive match: "${profile.register_number}" for "${regNum}"`)
-						// Map using uppercase key for consistent lookup
-						learnerProfileMap.set(regNum.toUpperCase(), {
-							date_of_birth: profile.date_of_birth,
-							student_photo_url: profile.student_photo_url
-						})
-					}
-				}
-			}
+							const profileResponse = await fetch(
+								`${myjkknApiUrl}/api-management/learners/profiles?${profileParams.toString()}`,
+								{
+									method: 'GET',
+									headers: {
+										'Authorization': `Bearer ${myjkknApiKey}`,
+										'Accept': 'application/json',
+										'Content-Type': 'application/json',
+									},
+									cache: 'no-store',
+								}
+							)
 
-			console.log(`[HallTickets] Total profiles mapped: ${learnerProfileMap.size} of ${registerNumbers.length}`)
+							if (profileResponse.ok) {
+								const profileData = await profileResponse.json()
+								const profiles = profileData.data || []
+								console.log(`[HallTickets] MyJKKN institution ${myjkknInstId} page ${page} returned ${profiles.length} profiles`)
 
-			// Fallback: Fetch missing DOBs from MyJKKN API
-			const stillMissingDob = registerNumbers.filter(rn => {
-				const profile = learnerProfileMap.get(rn.toUpperCase())
-				return !profile?.date_of_birth
-			})
+								for (const lp of profiles) {
+									const regNo = lp.register_number
+									if (regNo && registerNumberSet.has(regNo) && !learnerProfileMap.has(regNo.toUpperCase())) {
+										const photoUrl = lp.student_photo_url || lp.photo_url || lp.profile_photo || lp.image_url || null
+										let dobFormatted: string | null = null
 
-			if (stillMissingDob.length > 0) {
-				console.log(`[HallTickets] Attempting MyJKKN API fallback for ${stillMissingDob.length} students missing DOB`)
-				try {
-					const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'
-					for (const regNo of stillMissingDob) {
-						const myjkknRes = await fetch(`${baseUrl}/api/myjkkn/learner-profiles?register_number=${regNo}&limit=1`)
-						if (myjkknRes.ok) {
-							const myjkknData = await myjkknRes.json()
-							const profiles = myjkknData.data || myjkknData || []
-							if (profiles.length > 0 && profiles[0].date_of_birth) {
-								const existing = learnerProfileMap.get(regNo.toUpperCase()) || { date_of_birth: null, student_photo_url: null }
-								learnerProfileMap.set(regNo.toUpperCase(), {
-									...existing,
-									date_of_birth: profiles[0].date_of_birth
-								})
-								console.log(`[HallTickets] Got DOB from MyJKKN for ${regNo}: ${profiles[0].date_of_birth}`)
+										if (lp.date_of_birth) {
+											try {
+												const dob = new Date(lp.date_of_birth)
+												if (!isNaN(dob.getTime())) {
+													dobFormatted = `${String(dob.getDate()).padStart(2, '0')}-${String(dob.getMonth() + 1).padStart(2, '0')}-${dob.getFullYear()}`
+												}
+											} catch {
+												dobFormatted = lp.date_of_birth
+											}
+										}
+
+										learnerProfileMap.set(regNo.toUpperCase(), {
+											date_of_birth: dobFormatted,
+											student_photo_url: photoUrl
+										})
+									}
+								}
+
+								hasMorePages = profiles.length === pageSize
+								page++
+							} else {
+								hasMorePages = false
 							}
 						}
 					}
-				} catch (myjkknError) {
-					console.warn('[HallTickets] Failed to fetch DOBs from MyJKKN:', myjkknError)
+				} else {
+					console.log('[HallTickets] No MyJKKN API key configured')
 				}
+			} catch (myjkknError) {
+				console.warn('[HallTickets] MyJKKN API error (non-critical):', myjkknError)
 			}
+
+			console.log(`[HallTickets] Final: ${learnerProfileMap.size} profiles mapped from MyJKKN for ${registerNumbers.length} students`)
 		}
 
 		// Convert map to array and sort
@@ -397,7 +435,6 @@ export async function GET(request: NextRequest) {
 			// Lookup using uppercase key for consistent matching
 			const learnerProfile = learnerProfileMap.get(stu_register_no.toUpperCase())
 
-			// Debug: Log profile lookup result
 			if (learnerProfile) {
 				console.log(`[HallTickets] Profile found for ${stu_register_no}: DOB=${learnerProfile.date_of_birth}, Photo=${learnerProfile.student_photo_url ? 'YES' : 'NO'}`)
 			} else {
@@ -407,7 +444,6 @@ export async function GET(request: NextRequest) {
 			// Sort subjects by semester (descending - higher semester first: 3, 2, 1)
 			// then by course_order (ascending) within same semester
 			subjects.sort((a, b) => {
-				// Extract semester number from semester string (e.g., "Semester 3" -> 3)
 				const getSemesterNum = (sem: string): number => {
 					const match = sem.match(/(\d+)/)
 					return match ? parseInt(match[1], 10) : 0
@@ -415,19 +451,12 @@ export async function GET(request: NextRequest) {
 				const semA = getSemesterNum(a.semester)
 				const semB = getSemesterNum(b.semester)
 
-				// Sort by semester descending (higher semester first)
-				if (semB !== semA) {
-					return semB - semA
-				}
+				if (semB !== semA) return semB - semA
 
-				// Within same semester, sort by course_order ascending
 				const orderA = a.course_order ?? 999
 				const orderB = b.course_order ?? 999
-				if (orderA !== orderB) {
-					return orderA - orderB
-				}
+				if (orderA !== orderB) return orderA - orderB
 
-				// Final fallback: sort by subject_code
 				return a.subject_code.localeCompare(b.subject_code)
 			})
 
@@ -436,43 +465,16 @@ export async function GET(request: NextRequest) {
 				s.serial_number = i + 1
 			})
 
-			// Format student data (student info comes from exam_registrations, enriched with learners_profiles)
-			// Format date_of_birth to DD/MM/YYYY if available
-			let formattedDob = ''
-			if (learnerProfile?.date_of_birth) {
-				try {
-					const dobValue = learnerProfile.date_of_birth
-					let dob: Date | null = null
-
-					// Check if it's an Excel serial date (numeric string like "38339")
-					if (/^\d+$/.test(dobValue)) {
-						// Excel serial date: days since 1900-01-01 (with Excel's leap year bug)
-						// Excel incorrectly considers 1900 as a leap year, so we subtract 2 days
-						const excelEpoch = new Date(1899, 11, 30) // Dec 30, 1899
-						const serialNumber = parseInt(dobValue, 10)
-						dob = new Date(excelEpoch.getTime() + serialNumber * 24 * 60 * 60 * 1000)
-					} else {
-						// Try standard date parsing
-						dob = new Date(dobValue)
-					}
-
-					if (dob && !isNaN(dob.getTime())) {
-						formattedDob = `${String(dob.getDate()).padStart(2, '0')}-${String(dob.getMonth() + 1).padStart(2, '0')}-${dob.getFullYear()}`
-					}
-				} catch {
-					formattedDob = learnerProfile.date_of_birth // Use as-is if parsing fails
-				}
-			}
-
+			// DOB is already formatted as DD-MM-YYYY from MyJKKN API
 			const hallTicketStudent: HallTicketStudent = {
 				register_number: stu_register_no,
 				student_name: student_name,
-				date_of_birth: formattedDob,
+				date_of_birth: learnerProfile?.date_of_birth || '',
 				program: programName,
-				emis: '', // Add EMIS if available in your schema
+				emis: '',
 				student_photo_url: learnerProfile?.student_photo_url || undefined,
 				subjects: subjects,
-				semester_group: undefined // Not available without students table join
+				semester_group: undefined
 			}
 
 			students.push(hallTicketStudent)

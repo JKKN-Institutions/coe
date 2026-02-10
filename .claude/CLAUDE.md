@@ -18,6 +18,17 @@ npm run lint         # Run ESLint
 - Types: `types/`
 - Migrations: `supabase/migrations/`
 
+## Database Architecture
+
+**CRITICAL:** When debugging database issues, always check BOTH databases:
+
+| Database | Contains | Key Tables |
+|----------|----------|------------|
+| **COE (Local Supabase)** | Exam data, registrations, marks, results | `exam_registrations`, `internal_marks`, `final_marks`, `course_offerings`, `institutions` |
+| **MyJKKN (External API)** | Learner profiles, photos, DOB, batches | `learners_profiles` (via API), `student_photo_url`, `date_of_birth` |
+
+**Common Mistake:** Assuming learner photos/DOB exist in COE - they don't! Always fetch from MyJKKN API.
+
 ## Project Overview
 
 JKKN COE (Controller of Examination) - Next.js 15 app with TypeScript, Supabase, and Tailwind CSS for managing examination systems.
@@ -156,6 +167,20 @@ const regulations = await fetchRegulations(myjkknIds)
 **Code Style:** Tabs, single quotes, no semicolons, strict equality (`===`)
 
 **Next.js:** Default Server Components, use `'use client'` only when needed
+
+## Data Requirements
+
+**Before testing or debugging marks generation:**
+
+| Course Type | Required Data | Notes |
+|-------------|---------------|-------|
+| Regular (External Exam) | `exam_registrations` + `exam_timetables` + `internal_marks` | Must have valid timetable entries |
+| CIA (Internal Only) | `exam_registrations` + `internal_marks` | No external exam - ensure `internal_marks` exist |
+
+**Checklist before final marks generation:**
+1. Verify `exam_registrations` exist for all learners in the course
+2. Verify `internal_marks` records exist (especially for CIA courses)
+3. Check course `exam_type` field to determine if external marks are expected
 
 ## Key Patterns
 
@@ -457,6 +482,24 @@ return NextResponse.json({
   data: hallTicketData,
   student_count: students.length
 })
+```
+
+## Debugging Guidelines
+
+**Before assuming data is missing, check status first:**
+
+| Symptom | Check This First |
+|---------|------------------|
+| Course missing from marksheet | Is `final_marks.status` = `Pending` instead of `Published`? |
+| Learner photo not showing | Is `student_photo_url` null in COE? → Fetch from MyJKKN API |
+| Marks not appearing in report | Is course `is_locked` = false (amber UI state)? |
+| Export showing wrong data | Are you filtering by correct `institution_id`? |
+
+**Data Status Workflow:**
+```
+Draft → Pending → Published → Locked
+         ↑                      ↑
+    (editable)            (read-only)
 ```
 
 ## Important Notes
