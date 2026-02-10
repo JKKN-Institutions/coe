@@ -86,7 +86,7 @@ export async function GET(request: Request) {
 					// Fetch programs with courses matching the status type
 					const sessionId = searchParams.get('sessionId')
 
-					// Step 1: Get course_offerings with courses to filter by evaluation_type
+					// Step 1: Get course_offerings with courses to filter by evaluation_type and result_type
 					let coQuery = supabase
 						.from('course_offerings')
 						.select(`
@@ -106,10 +106,11 @@ export async function GET(request: Request) {
 					const { data: courseOfferings, error: coError } = await coQuery.range(0, 9999)
 
 					if (coError) {
-						console.error('Error fetching programs:', coError)
-						console.error('Full error details:', JSON.stringify(coError, null, 2))
+						console.error('Error fetching course offerings for programs:', coError)
 						return NextResponse.json({ error: 'Failed to fetch programs' }, { status: 500 })
 					}
+
+					console.log(`[Programs API] Found ${courseOfferings?.length || 0} course offerings`)
 
 					// Filter program IDs based on statusType and evaluation_type
 					const programIdsSet = new Set<string>()
@@ -118,8 +119,11 @@ export async function GET(request: Request) {
 						const course = co.courses as any
 						if (!course || !co.program_id) continue
 
-						// Only include Status-type courses
-						if (course.result_type?.toUpperCase() !== 'STATUS') continue
+						// CRITICAL: Only include Status-type courses (result_type = 'Status')
+						const resultType = course.result_type?.toUpperCase() || ''
+						if (resultType !== 'STATUS') {
+							continue
+						}
 
 						// Filter by evaluation_type based on statusType
 						const evalType = course.evaluation_type?.toUpperCase() || ''
@@ -145,31 +149,44 @@ export async function GET(request: Request) {
 						}
 					}
 
+					console.log(`[Programs API] Filtered to ${programIdsSet.size} unique program IDs`)
+
 					// Step 2: Fetch actual program details from programs table
 					const programIds = Array.from(programIdsSet)
 					if (programIds.length === 0) {
+						console.log('[Programs API] No programs found after filtering')
 						return NextResponse.json([])
 					}
 
 					const { data: programs, error: programsError } = await supabase
 						.from('programs')
-						.select('id, program_code, program_name')
+						.select('id, program_code, program_name, institutions_id')
 						.in('id', programIds)
+						.eq('institutions_id', institutionId)
+						.range(0, 9999)
 
 					if (programsError) {
 						console.error('Error fetching program details:', programsError)
-						// Fallback: return program IDs as codes
-						const fallbackPrograms = programIds.map(id => ({
-							id,
-							program_code: id,
-							program_name: id
-						})).sort((a, b) => a.program_code.localeCompare(b.program_code))
-						return NextResponse.json(fallbackPrograms)
+						return NextResponse.json({ error: 'Failed to fetch program details' }, { status: 500 })
 					}
 
-					// Format response
-					const uniquePrograms = (programs || [])
+					console.log(`[Programs API] Fetched ${programs?.length || 0} programs from programs table`)
+
+					if (!programs || programs.length === 0) {
+						console.warn('[Programs API] No programs found in programs table for IDs:', programIds)
+						return NextResponse.json([])
+					}
+
+					// Format response with program_code and program_name
+					const uniquePrograms = programs
+						.map((p: any) => ({
+							id: p.id,
+							program_code: p.program_code,
+							program_name: p.program_name || p.program_code
+						}))
 						.sort((a: any, b: any) => a.program_code.localeCompare(b.program_code))
+
+					console.log('[Programs API] Returning programs:', uniquePrograms.map(p => p.program_code).join(', '))
 
 					return NextResponse.json(uniquePrograms)
 				}
