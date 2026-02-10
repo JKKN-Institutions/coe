@@ -83,10 +83,30 @@ export async function GET(request: Request) {
 						return NextResponse.json({ error: 'Institution ID is required' }, { status: 400 })
 					}
 
-					// Fetch programs with courses matching the status type
 					const sessionId = searchParams.get('sessionId')
 
-					// Step 1: Get course_offerings with courses to filter by evaluation_type and result_type
+					// Step 1: Get COE institution to access myjkkn_institution_ids
+					const { data: institution, error: instError } = await supabase
+						.from('institutions')
+						.select('id, institution_code, myjkkn_institution_ids')
+						.eq('id', institutionId)
+						.single()
+
+					if (instError || !institution) {
+						console.error('[Status Grades Programs API] Institution not found:', instError)
+						return NextResponse.json({ error: 'Institution not found' }, { status: 404 })
+					}
+
+					const myjkknInstitutionIds: string[] = institution.myjkkn_institution_ids || []
+
+					if (myjkknInstitutionIds.length === 0) {
+						console.log('[Status Grades Programs API] No myjkkn_institution_ids found')
+						return NextResponse.json([])
+					}
+
+					console.log('[Status Grades Programs API] Using MyJKKN institution IDs:', myjkknInstitutionIds)
+
+					// Step 2: Get course_offerings to find which programs have Status-type courses
 					let coQuery = supabase
 						.from('course_offerings')
 						.select(`
@@ -106,14 +126,14 @@ export async function GET(request: Request) {
 					const { data: courseOfferings, error: coError } = await coQuery.range(0, 9999)
 
 					if (coError) {
-						console.error('Error fetching course offerings for programs:', coError)
-						return NextResponse.json({ error: 'Failed to fetch programs' }, { status: 500 })
+						console.error('[Status Grades Programs API] Error fetching course offerings:', coError)
+						return NextResponse.json({ error: 'Failed to fetch course offerings' }, { status: 500 })
 					}
 
-					console.log(`[Programs API] Found ${courseOfferings?.length || 0} course offerings`)
+					console.log(`[Status Grades Programs API] Found ${courseOfferings?.length || 0} course offerings`)
 
-					// Filter program IDs based on statusType and evaluation_type
-					const programIdsSet = new Set<string>()
+					// Filter program_ids (codes) based on statusType and evaluation_type
+					const programCodesSet = new Set<string>()
 
 					for (const co of (courseOfferings || [])) {
 						const course = co.courses as any
@@ -121,9 +141,7 @@ export async function GET(request: Request) {
 
 						// CRITICAL: Only include Status-type courses (result_type = 'Status')
 						const resultType = course.result_type?.toUpperCase() || ''
-						if (resultType !== 'STATUS') {
-							continue
-						}
+						if (resultType !== 'STATUS') continue
 
 						// Filter by evaluation_type based on statusType
 						const evalType = course.evaluation_type?.toUpperCase() || ''
@@ -131,62 +149,86 @@ export async function GET(request: Request) {
 						let shouldInclude = false
 						if (statusType === 'Internal') {
 							// Only CIA courses
-							if (evalType === 'CIA' || evalType === 'CIA ONLY') {
-								shouldInclude = true
-							}
+							shouldInclude = evalType === 'CIA' || evalType === 'CIA ONLY'
 						} else if (statusType === 'External') {
 							// Only External/ESE courses
-							if (evalType === 'EXTERNAL' || evalType === 'ESE' || evalType === 'ESE ONLY') {
-								shouldInclude = true
-							}
+							shouldInclude = evalType === 'EXTERNAL' || evalType === 'ESE' || evalType === 'ESE ONLY'
 						} else {
 							// No status type filter - include all status courses
 							shouldInclude = true
 						}
 
 						if (shouldInclude) {
-							programIdsSet.add(co.program_id)
+							// program_id in course_offerings is the program CODE (like "PCH", "UCH")
+							programCodesSet.add(co.program_id)
 						}
 					}
 
-					console.log(`[Programs API] Filtered to ${programIdsSet.size} unique program IDs`)
+					console.log(`[Status Grades Programs API] Filtered to ${programCodesSet.size} unique program codes:`, Array.from(programCodesSet))
 
-					// Step 2: Fetch actual program details from programs table
-					const programIds = Array.from(programIdsSet)
-					if (programIds.length === 0) {
-						console.log('[Programs API] No programs found after filtering')
+					if (programCodesSet.size === 0) {
+						console.log('[Status Grades Programs API] No programs found after filtering')
 						return NextResponse.json([])
 					}
 
-					const { data: programs, error: programsError } = await supabase
-						.from('programs')
-						.select('id, program_code, program_name, institutions_id')
-						.in('id', programIds)
-						.eq('institutions_id', institutionId)
-						.range(0, 9999)
+					// Step 3: Fetch programs from MyJKKN API
+					const allPrograms: any[] = []
+					const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'
 
-					if (programsError) {
-						console.error('Error fetching program details:', programsError)
-						return NextResponse.json({ error: 'Failed to fetch program details' }, { status: 500 })
+					for (const myjkknInstId of myjkknInstitutionIds) {
+						try {
+							console.log(`[Status Grades Programs API] Fetching programs for MyJKKN inst: ${myjkknInstId}`)
+
+							const params = new URLSearchParams({
+								limit: '100',
+								is_active: 'true',
+								institution_id: myjkknInstId
+							})
+
+							const res = await fetch(`${baseUrl}/api/myjkkn/programs?${params.toString()}`)
+
+							if (!res.ok) {
+								console.error(`[Status Grades Programs API] HTTP error ${res.status} for inst ${myjkknInstId}`)
+								continue
+							}
+
+							const response = await res.json()
+							const programs = response.data || response || []
+
+							// Client-side filter by institution_id (MyJKKN API may not filter server-side)
+							const filteredPrograms = Array.isArray(programs)
+								? programs.filter((p: any) => p.institution_id === myjkknInstId && p.is_active !== false)
+								: []
+
+							console.log(`[Status Grades Programs API] Programs found for ${myjkknInstId}:`, filteredPrograms.length)
+							allPrograms.push(...filteredPrograms)
+						} catch (error) {
+							console.error(`[Status Grades Programs API] Error fetching programs for inst ${myjkknInstId}:`, error)
+						}
 					}
 
-					console.log(`[Programs API] Fetched ${programs?.length || 0} programs from programs table`)
+					// Step 4: Filter MyJKKN programs to only those with Status courses and deduplicate by program_code
+					const programMap = new Map<string, any>()
+					for (const prog of allPrograms) {
+						// MyJKKN returns program_id as the CODE (e.g., "PCH", "UCH"), NOT a UUID
+						const code = prog.program_id || prog.program_code
 
-					if (!programs || programs.length === 0) {
-						console.warn('[Programs API] No programs found in programs table for IDs:', programIds)
-						return NextResponse.json([])
+						// Only include programs that have Status-type courses in course_offerings
+						if (code && programCodesSet.has(code) && !programMap.has(code)) {
+							programMap.set(code, {
+								id: code, // Use code as ID for compatibility
+								program_code: code,
+								program_name: prog.program_name || prog.name || code
+							})
+						}
 					}
 
-					// Format response with program_code and program_name
-					const uniquePrograms = programs
-						.map((p: any) => ({
-							id: p.id,
-							program_code: p.program_code,
-							program_name: p.program_name || p.program_code
-						}))
-						.sort((a: any, b: any) => a.program_code.localeCompare(b.program_code))
+					// Sort by program_code
+					const uniquePrograms = Array.from(programMap.values()).sort((a, b) =>
+						a.program_code.localeCompare(b.program_code)
+					)
 
-					console.log('[Programs API] Returning programs:', uniquePrograms.map(p => p.program_code).join(', '))
+					console.log('[Status Grades Programs API] Returning', uniquePrograms.length, 'programs:', uniquePrograms.map(p => p.program_code).join(', '))
 
 					return NextResponse.json(uniquePrograms)
 				}

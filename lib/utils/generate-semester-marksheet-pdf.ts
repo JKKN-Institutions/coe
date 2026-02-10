@@ -187,7 +187,7 @@ export interface MarksheetPDFOptions {
 
 const A4_WIDTH = 210  // mm
 const A4_HEIGHT = 297 // mm
-const MARGIN = 8.5      // 0.8cm left/right margins
+const MARGIN = 9      // 0.8cm left/right margins
 const CONTENT_WIDTH = A4_WIDTH - 2 * MARGIN - 1 // 194mm
 
 // Colors matching reference - Blue theme
