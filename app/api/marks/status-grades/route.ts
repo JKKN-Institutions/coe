@@ -182,7 +182,7 @@ export async function GET(request: Request) {
 							courses:course_id (
 								id,
 								course_code,
-								course_title,
+								course_name,
 								evaluation_type,
 								result_type,
 								institutions_id
@@ -229,7 +229,7 @@ export async function GET(request: Request) {
 						statusCourses.push({
 							id: course.id,
 							course_code: course.course_code,
-							course_title: course.course_title,
+							course_title: course.course_name, // Use course_name from DB
 							evaluation_type: course.evaluation_type,
 							result_type: course.result_type
 						})
