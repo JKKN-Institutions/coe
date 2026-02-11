@@ -187,8 +187,8 @@ export interface MarksheetPDFOptions {
 
 const A4_WIDTH = 210  // mm
 const A4_HEIGHT = 297 // mm
-const MARGIN = 9      // 0.8cm left/right margins
-const CONTENT_WIDTH = A4_WIDTH - 2 * MARGIN - 1 // 194mm
+const MARGIN = 10     // 10mm (1.0cm) left/right margins
+const CONTENT_WIDTH = A4_WIDTH - 2 * MARGIN  // 190mm
 
 // Colors matching reference - Blue theme
 const COLORS = {
@@ -497,7 +497,7 @@ function addStudentMarksheetToDoc(
 	// JRXML line positions: x=134pt, x=368pt, x=456pt, total width=555pt
 	// Col1: 134pt=47mm, Col2: 234pt=83mm, Col3: 88pt=31mm, Col4: 99pt=35mm
 	const col1 = 46  // Label 1 (NAME OF THE CANDIDATE, REGISTER NO, PROGRAMME)
-	const col2 = 78  // Value 1 (student name, regno, program)
+	const col2 = 75  // Value 1 (student name, regno, program)
 	const col3 = 34  // Label 2 (DATE OF BIRTH, MONTH & YEAR, FOLIO NUMBER)
 	const col4 = CONTENT_WIDTH - col1 - col2 - col3  // Value 2 (remaining width = 35mm)
 
@@ -632,8 +632,8 @@ function addStudentMarksheetToDoc(
 	// UG: 14 columns with PART
 	// PG: 13 columns without PART (TITLE column gets extra width)
 	const colWidths = isPG
-		? [6, 18, 100, 6, 6, 6, 7, 7, 7, 7, 7, 7, 9]  // PG: 13 columns = 194mm (no PART)
-		: [6, 6, 18, 94, 6, 6, 6, 7, 7, 7, 7, 7, 7, 9]  // UG: 14 columns = 194mm (with PART)
+		? [6, 18, 97, 6, 6, 6, 7, 7, 7, 7, 7, 7, 9]  // PG: 13 columns = 194mm (no PART)
+		: [6, 6, 18, 91, 6, 6, 6, 7, 7, 7, 7, 7, 7, 9]  // UG: 14 columns = 194mm (with PART)
 
 	// ===== MANUALLY DRAW VERTICAL HEADER =====
 	const headerHeight = 25  // Total header height (two rows)
@@ -867,8 +867,8 @@ function addStudentMarksheetToDoc(
 
 	// ===== DRAW FIXED HEIGHT OUTER BORDER FOR SUBJECT TABLE =====
 	// Calculate height based on fixed positions to ensure 2mm gap before footnotes
-	// Footnotes at fixed Y position: A4_HEIGHT - MARGIN - 35 = 254mm from top
-	const footnoteYTarget = A4_HEIGHT - MARGIN - 35  // 254mm
+	// Footnotes at fixed Y position: A4_HEIGHT - MARGIN - 33 = 254mm from top (increased 2mm)
+	const footnoteYTarget = A4_HEIGHT - MARGIN - 32  // 254mm
 	// GPA table must end 1mm before footnotes
 	const targetGpaEndY = footnoteYTarget - 1  // 253mm
 	// GPA table height is 28mm (fixed)
@@ -1010,9 +1010,9 @@ function addStudentMarksheetToDoc(
 	// Fixed position: bottom margin + 3.5cm (35mm from bottom margin)
 	// Y = A4_HEIGHT - MARGIN - 35 = 297 - 8 - 35 = 254mm from top
 
-	const footnoteY = A4_HEIGHT - MARGIN - 33
+	const footnoteY = A4_HEIGHT - MARGIN - 30
 
-	doc.setFont('helvetica', 'normal')
+	doc.setFont('helvetica', 'bold')
 	doc.setFontSize(7)
 	doc.setTextColor(...COLORS.black)
 
@@ -1038,7 +1038,7 @@ function addStudentMarksheetToDoc(
 		// Y = footnoteY + (footnote lines * line height) + small gap
 		const footnoteLineHeight = 2.5  // Font size 6 = ~2.5mm line height
 		const dateY = footnoteY + (splitNote.length * footnoteLineHeight) + 6  // 1.5mm gap after footnote
-		doc.text(dateStr, MARGIN + 33, dateY)
+		doc.text(dateStr, MARGIN + 31, dateY)
 	}
 }
 
