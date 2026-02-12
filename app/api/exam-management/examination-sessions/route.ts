@@ -232,6 +232,7 @@ export async function POST(request: Request) {
 			institutions_id: body.institutions_id,
 			session_code: body.session_code,
 			session_name: body.session_name,
+			month_year: body.month_year || null,
 			exam_type_id: body.exam_type_id,
 			academic_year_id: body.academic_year_id,
 			semester_year: semesterYear,
@@ -444,6 +445,7 @@ export async function PUT(request: Request) {
 		const updatePayload: any = {
 			session_code: body.session_code,
 			session_name: body.session_name,
+			month_year: body.month_year || null,
 			exam_type_id: body.exam_type_id,
 			academic_year_id: body.academic_year_id,
 			semester_type: body.semester_type,

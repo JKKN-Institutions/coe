@@ -1391,55 +1391,77 @@ export async function POST(req: NextRequest) {
 			// Get unique student IDs from final marks
 			const studentIds = [...new Set(finalMarksData.map((fm: any) => fm.student_id))]
 
-			// Fetch student details including semester_id from students table
-			// Note: final_marks.student_id references users table, so we need to match via register_number
-			const registerNumbers = [...new Set(finalMarksData.map((fm: any) => fm.exam_registrations?.stu_register_no).filter(Boolean))]
+			// Get program_code from final_marks data (exam_registrations uses program_code, not program_id)
+			const programCodeFromData = finalMarksData && finalMarksData.length > 0
+				? finalMarksData[0].program_code
+				: null
 
-			const { data: studentsData, error: studentsError } = await supabase
-				.from('students')
-				.select('id, register_number, semester_id')
-				.in('register_number', registerNumbers)
+			console.log(`🔍 Program filter: programId=${programId}, programCode=${programCodeFromData}`)
 
-			if (studentsError) {
-				console.error('Students fetch error:', studentsError)
+			// Get student's regular (current) semester from exam_registrations + course_offerings
+			// Regular semester = MAX(course_offerings.semester) where is_regular = true
+			// If student has regular papers in sem 2 and arrear in sem 1, saves semester 2
+			let semesterQuery = supabase
+				.from('exam_registrations')
+				.select('student_id, stu_register_no, course_offerings(semester), program_code')
+				.eq('examination_session_id', sessionId)
+				.eq('is_regular', true)
+
+			// Filter by program_code if available (exam_registrations uses program_code, not program_id)
+			if (programCodeFromData) {
+				semesterQuery = semesterQuery.eq('program_code', programCodeFromData)
+				console.log(`🎯 Filtering semester query by program_code="${programCodeFromData}"`)
 			}
 
-			// Debug: Log students data
-			console.log('Students data:', JSON.stringify(studentsData, null, 2))
+			// Override default 1000-row limit
+			semesterQuery = semesterQuery.range(0, 9999)
 
-			// Get unique semester IDs and fetch display_order from semesters table
-			const semesterIds = [...new Set((studentsData || []).map((s: any) => s.semester_id).filter(Boolean))]
-			console.log('Semester IDs to lookup:', semesterIds)
+			const { data: studentSemesterData, error: semesterError } = await semesterQuery
 
-			let semestersMap: Record<string, number> = {}
-
-			if (semesterIds.length > 0) {
-				const { data: semestersData, error: semestersError } = await supabase
-					.from('semesters')
-					.select('id, display_order, semester_name')
-					.in('id', semesterIds)
-
-				console.log('Semesters data:', JSON.stringify(semestersData, null, 2))
-
-				if (semestersError) {
-					console.error('Semesters fetch error:', semestersError)
-				} else {
-					semestersData?.forEach((sem: any) => {
-						// Use display_order as the semester number
-						console.log(`Semester ${sem.id}: display_order=${sem.display_order}, name=${sem.semester_name}`)
-						semestersMap[sem.id] = sem.display_order || 1
-					})
-				}
+			if (semesterError) {
+				console.error('Student semester fetch error:', semesterError)
 			}
 
-			// Create a map of register_number to semester (from display_order)
+			// Debug: Log first few records to verify data structure
+			console.log(`Fetched ${studentSemesterData?.length || 0} semester records for regular registrations`)
+			console.log('Sample semester data (first 3):', JSON.stringify(studentSemesterData?.slice(0, 3), null, 2))
+
+			// Debug: Check if UG ENG students are in the data
+			const ugEngRecords = studentSemesterData?.filter((er: any) => er.stu_register_no?.startsWith('24JUGENG')) || []
+			console.log(`Found ${ugEngRecords.length} UG ENG student records (24JUGENG...)`)
+			if (ugEngRecords.length > 0) {
+				console.log('Sample UG ENG records:', JSON.stringify(ugEngRecords.slice(0, 3), null, 2))
+			}
+
+			// Build map: register_number -> highest regular semester
 			const studentSemesterMap: Record<string, number> = {}
-			studentsData?.forEach((s: any) => {
-				// Get display_order from the semesters lookup
-				const semesterNumber = s.semester_id ? (semestersMap[s.semester_id] || 1) : 1
-				console.log(`Student ${s.register_number}: semester_id=${s.semester_id}, resolved semester=${semesterNumber}`)
-				studentSemesterMap[s.register_number] = semesterNumber
+			let nullSemesterCount = 0
+			const nullSemesterSamples: any[] = []
+
+			studentSemesterData?.forEach((er: any) => {
+				const regNo = er.stu_register_no
+				const sem = er.course_offerings?.semester || 0
+
+				// Debug: Track records with null semester
+				if (!er.course_offerings?.semester) {
+					nullSemesterCount++
+					if (nullSemesterSamples.length < 5) {
+						nullSemesterSamples.push({ regNo, course_offerings: er.course_offerings })
+					}
+				}
+
+				if (regNo && sem > (studentSemesterMap[regNo] || 0)) {
+					studentSemesterMap[regNo] = sem
+				}
 			})
+
+			// Debug: Show records with null semester (missing course_offerings join)
+			if (nullSemesterCount > 0) {
+				console.log(`⚠️ Found ${nullSemesterCount} records with NULL semester (missing course_offerings join)`)
+				console.log('Sample records with NULL semester:', JSON.stringify(nullSemesterSamples, null, 2))
+			}
+
+			console.log('Student semester map (from regular registrations):', JSON.stringify(studentSemesterMap))
 
 			// Group final marks by student (NOT by semester - CGPA uses all subjects)
 			const studentMarksMap: Record<string, {
@@ -1515,11 +1537,16 @@ export async function POST(req: NextRequest) {
 			const semesterResultsToInsert: any[] = []
 			const results: { studentId: string; semester: number; semesterResultId: string | null; error?: string }[] = []
 
-			Object.values(studentMarksMap).forEach((studentData) => {
+			Object.values(studentMarksMap).forEach((studentData, index) => {
 				const { student_id, institutions_id, program_id, examination_session_id, register_no, program_code, marks } = studentData
 
-				// Get semester_number from students.semester_id -> semesters.semester_number
+				// Get student's highest regular semester from course_offerings
 				const currentSemester = studentSemesterMap[register_no] || 1
+
+				// Debug: Log first 3 lookups to see if register_no matches map keys
+				if (index < 3) {
+					console.log(`Lookup [${index}]: register_no="${register_no}", found in map: ${studentSemesterMap[register_no] !== undefined}, semester=${currentSemester}`)
+				}
 
 				// Calculate SGPA for THIS session only
 				let totalCreditsRegistered = 0
@@ -1578,7 +1605,7 @@ export async function POST(req: NextRequest) {
 					program_code,
 					program_type,
 					register_number: register_no,
-					semester: currentSemester, // Use student's current semester from students table
+					semester: currentSemester, // Student's highest regular semester from course_offerings
 					total_credits_registered: totalCreditsRegistered,
 					total_credits_earned: totalCreditsEarned,
 					total_credit_points: totalCreditPoints,
@@ -1591,6 +1618,9 @@ export async function POST(req: NextRequest) {
 					is_active: true
 				})
 			})
+
+			// Debug: Log first few semester values to verify
+			console.log('Semester values to insert (first 5):', semesterResultsToInsert.slice(0, 5).map(sr => ({ register_number: sr.register_number, semester: sr.semester })))
 
 			// Batch insert/upsert semester results
 			let successCount = 0
@@ -1959,7 +1989,10 @@ export async function POST(req: NextRequest) {
 						const { data: folioData, error: folioError } = await supabase.rpc('assign_folio_number', {
 							p_semester_result_id: sr.id,
 							p_institutions_id: sr.institutions_id,
-							p_program_type: programType
+							p_program_type: programType,
+							p_examination_session_id: sr.examination_session_id,
+							p_student_id: sr.student_id,
+							p_semester: sr.semester
 						})
 						if (folioError) {
 							console.warn('Folio assignment warning for student:', sr.student_id, folioError)
@@ -2006,7 +2039,7 @@ export async function POST(req: NextRequest) {
 			// Fetch all published semester_results without folio_number
 			let query = supabase
 				.from('semester_results')
-				.select('id, student_id, register_number, institutions_id, program_code, program_type')
+				.select('id, student_id, register_number, institutions_id, program_code, program_type, examination_session_id, semester')
 				.is('folio_number', null)
 				.eq('is_published', true)
 
@@ -2067,7 +2100,10 @@ export async function POST(req: NextRequest) {
 						const { data: folioData, error: folioError } = await supabase.rpc('assign_folio_number', {
 							p_semester_result_id: sr.id,
 							p_institutions_id: sr.institutions_id,
-							p_program_type: programType
+							p_program_type: programType,
+							p_examination_session_id: sr.examination_session_id,
+							p_student_id: sr.student_id,
+							p_semester: sr.semester
 						})
 						if (folioError) {
 							console.warn('[Backfill Folio] Assignment warning for:', sr.register_number, folioError)

@@ -28,6 +28,7 @@ interface ExaminationSession {
 	institutions_id: string
 	session_code: string
 	session_name: string
+	month_year: string | null
 	exam_type_id: string
 	academic_year_id: string
 	semester_year: number[]
@@ -122,6 +123,7 @@ export default function ExaminationSessionsPage() {
 		institutions_id: "",
 		session_code: "",
 		session_name: "",
+		month_year: "",
 		exam_type_id: "",
 		academic_year_id: "",
 		semester_year: [] as number[],
@@ -266,6 +268,7 @@ export default function ExaminationSessionsPage() {
 			institutions_id: autoInstitutionId,
 			session_code: "",
 			session_name: "",
+			month_year: "",
 			exam_type_id: "",
 			academic_year_id: "",
 			semester_year: [],
@@ -486,6 +489,7 @@ export default function ExaminationSessionsPage() {
 			institutions_id: session.institutions_id,
 			session_code: session.session_code,
 			session_name: session.session_name,
+			month_year: session.month_year || "",
 			exam_type_id: session.exam_type_id,
 			academic_year_id: session.academic_year_id,
 			semester_year: session.semester_year || [],
@@ -517,6 +521,7 @@ export default function ExaminationSessionsPage() {
 				(item) =>
 					item.session_code.toLowerCase().includes(searchTerm.toLowerCase()) ||
 					item.session_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+					(item.month_year || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
 					item.session_status.toLowerCase().includes(searchTerm.toLowerCase())
 			)
 		}
@@ -816,6 +821,7 @@ export default function ExaminationSessionsPage() {
 														<span className="ml-1">{getSortIcon("session_name")}</span>
 													</Button>
 												</TableHead>
+												<TableHead className="text-[11px]">Month & Year</TableHead>
 												<TableHead className="text-[11px]">Exam Type</TableHead>
 												<TableHead className="text-[11px]">Academic Year</TableHead>
 												<TableHead className="text-[11px]">Semester</TableHead>
@@ -831,11 +837,11 @@ export default function ExaminationSessionsPage() {
 										<TableBody>
 											{loading || isInstitutionLoading ? (
 												<TableRow>
-													<TableCell colSpan={mustSelectInstitution ? 8 : 7} className="h-24 text-center text-[11px]">Loading…</TableCell>
+													<TableCell colSpan={mustSelectInstitution ? 9 : 8} className="h-24 text-center text-[11px]">Loading…</TableCell>
 												</TableRow>
 											) : paginated.length === 0 ? (
 												<TableRow>
-													<TableCell colSpan={mustSelectInstitution ? 8 : 7} className="h-24 text-center text-[11px]">No data</TableCell>
+													<TableCell colSpan={mustSelectInstitution ? 9 : 8} className="h-24 text-center text-[11px]">No data</TableCell>
 												</TableRow>
 											) : (
 												paginated.map((session) => (
@@ -847,6 +853,7 @@ export default function ExaminationSessionsPage() {
 														)}
 														<TableCell className="text-[11px] font-medium">{session.session_code}</TableCell>
 														<TableCell className="text-[11px]">{session.session_name}</TableCell>
+														<TableCell className="text-[11px]">{session.month_year || '-'}</TableCell>
 														<TableCell className="text-[11px]">
 															{examTypes.find(et => et.id === session.exam_type_id)?.examination_name || 'N/A'}
 														</TableCell>
@@ -1000,6 +1007,48 @@ export default function ExaminationSessionsPage() {
 										placeholder="e.g., Arts college Nov-Dec Examination 2025"
 									/>
 									{errors.session_name && <p className="text-xs text-destructive">{errors.session_name}</p>}
+								</div>
+
+								{/* Month & Year */}
+								<div className="space-y-2">
+									<Label className="text-sm font-semibold">
+										Month & Year
+									</Label>
+									<div className="flex gap-2">
+										<Select
+											value={formData.month_year ? formData.month_year.split('-')[0] : ''}
+											onValueChange={(month) => {
+												const year = formData.month_year ? formData.month_year.split('-')[1] : ''
+												setFormData({ ...formData, month_year: year ? `${month}-${year}` : month })
+											}}
+										>
+											<SelectTrigger className={`h-10 flex-1 ${errors.month_year ? 'border-destructive' : ''}`}>
+												<SelectValue placeholder="Month" />
+											</SelectTrigger>
+											<SelectContent>
+												{['JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN', 'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC'].map((m) => (
+													<SelectItem key={m} value={m}>{m}</SelectItem>
+												))}
+											</SelectContent>
+										</Select>
+										<Select
+											value={formData.month_year ? formData.month_year.split('-')[1] || '' : ''}
+											onValueChange={(year) => {
+												const month = formData.month_year ? formData.month_year.split('-')[0] : ''
+												setFormData({ ...formData, month_year: month ? `${month}-${year}` : year })
+											}}
+										>
+											<SelectTrigger className={`h-10 flex-1 ${errors.month_year ? 'border-destructive' : ''}`}>
+												<SelectValue placeholder="Year" />
+											</SelectTrigger>
+											<SelectContent>
+												{Array.from({ length: 10 }, (_, i) => new Date().getFullYear() - 2 + i).map((y) => (
+													<SelectItem key={y} value={String(y)}>{y}</SelectItem>
+												))}
+											</SelectContent>
+										</Select>
+									</div>
+									{errors.month_year && <p className="text-xs text-destructive">{errors.month_year}</p>}
 								</div>
 
 								{/* Exam Type */}

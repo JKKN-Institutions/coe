@@ -11,6 +11,12 @@
  * - Course Table: Blue header with course details
  * - Summary: Part-wise credits and GPA at bottom
  *
+ * Arrear Papers Support:
+ * - Includes BOTH current semester courses AND arrear papers from previous semesters
+ * - Example: Semester II marksheet shows Semester II courses + failed Semester I papers
+ * - Courses sorted by semester ASC, then course_order ASC (arrears appear first)
+ * - Each course shows its actual semester number in the SEMESTER column (I, II, III, etc.)
+ *
  * Paper: A4 (210mm × 297mm)
  * Orientation: Portrait
  */
@@ -27,7 +33,7 @@ export interface MarksheetCourse {
 	courseName: string
 	part: string
 	partDescription?: string
-	semester: number
+	semester: number         // Actual semester of the course (I, II, III, etc.)
 	courseOrder: number
 	credits: number
 	eseMax: number
@@ -50,6 +56,7 @@ export interface MarksheetCourse {
 	isIneligible?: boolean   // Ineligible to appear
 	isTermFail?: boolean     // Failed in term
 	isFinalFail?: boolean    // Final fail status
+	isArrear?: boolean       // True if this is an arrear paper from a previous semester
 }
 
 export interface PartBreakdown {
@@ -87,13 +94,13 @@ export interface StudentMarksheetData {
 		gender?: string          // studGender
 		signature?: string       // studSign (base64)
 	}
-	semester: number
+	semester: number             // Current semester being examined (e.g., II for Semester II)
 	semesterName?: string        // studSemName
 	semesterCode?: string        // studSemCode
 	session: {
 		id: string
 		name: string
-		monthYear: string        // exmDtmmmyyyy
+		monthYear: string        // exam_session.month_year column
 	}
 	program: {
 		code: string             // studProgmId
@@ -132,6 +139,9 @@ export interface StudentMarksheetData {
 		facultyOfStudy?: string  // instFacOfStudy
 		parentName?: string      // entparentNm (university name)
 	}
+	// IMPORTANT: Include BOTH current semester courses AND arrear papers from previous semesters
+	// Example: For Semester II marksheet, include Semester II courses + any failed Semester I papers
+	// Each course shows its actual semester number in the SEMESTER column
 	courses: MarksheetCourse[]
 	partBreakdown: PartBreakdown[]
 	summary: {
@@ -807,6 +817,7 @@ function addStudentMarksheetToDoc(
 	// Body rows (no header - we drew it manually above)
 	// UG: 14 columns with PART
 	// PG: 13 columns without PART
+	// IMPORTANT: Courses from different semesters are supported (current + arrear papers)
 	const body: RowInput[] = data.courses.map(course => {
 		// Use enhanced result status (handles absent, malpractice, ineligible, etc.)
 		const resultStatus = getEnhancedResultStatus(course)
@@ -816,21 +827,31 @@ function addStudentMarksheetToDoc(
 		// PG programs don't have PART column, but if shown, always use "-"
 		const partDisplay = isPG ? '-' : (course.part ? partToRoman(course.part) : '-')
 
-		// Common columns (same for UG and PG)
+		// All courses display with white background (no visual distinction for arrears)
+		// Sorting ensures arrears appear first, grouped by semester
+		const baseStyles = {
+			halign: 'center' as const,
+			fontSize: 8
+		}
+		const leftAlignStyles = {
+			halign: 'left' as const,
+			fontSize: 8
+		}
+
 		const commonCols = [
-			{ content: toRoman(course.semester), styles: { halign: 'center' as const, fontSize: 8 } },
-			{ content: course.courseCode, styles: { halign: 'left' as const, fontSize: 8 } },
-			{ content: course.courseName.toUpperCase(), styles: { halign: 'left' as const, fontSize: 8 } },
-			{ content: course.credits.toString(), styles: { halign: 'center' as const, fontSize: 8 } },
-			{ content: course.eseMax.toString(), styles: { halign: 'center' as const, fontSize: 8 } },
-			{ content: course.ciaMax.toString(), styles: { halign: 'center' as const, fontSize: 8 } },
-			{ content: course.totalMax.toString(), styles: { halign: 'center' as const, fontSize: 8 } },
-			{ content: course.isAbsent ? 'AAA' : course.eseMarks.toString(), styles: { halign: 'center' as const, fontSize: 8 } },
-			{ content: course.ciaMarks.toString(), styles: { halign: 'center' as const, fontSize: 8 } },
-			{ content: course.isAbsent ? 'AAA' : course.totalMarks.toString(), styles: { halign: 'center' as const, fontSize: 8 } },
-			{ content: displayGradePoint, styles: { halign: 'center' as const, fontSize: 8 } },
-			{ content: displayGrade, styles: { halign: 'center' as const, fontSize: 8 } },
-			{ content: resultStatus, styles: { halign: 'center' as const, fontSize: 8 } }
+			{ content: toRoman(course.semester), styles: baseStyles },
+			{ content: course.courseCode, styles: leftAlignStyles },
+			{ content: course.courseName.toUpperCase(), styles: leftAlignStyles },
+			{ content: course.credits.toString(), styles: baseStyles },
+			{ content: course.eseMax.toString(), styles: baseStyles },
+			{ content: course.ciaMax.toString(), styles: baseStyles },
+			{ content: course.totalMax.toString(), styles: baseStyles },
+			{ content: course.isAbsent ? 'AAA' : course.eseMarks.toString(), styles: baseStyles },
+			{ content: course.ciaMarks.toString(), styles: baseStyles },
+			{ content: course.isAbsent ? 'AAA' : course.totalMarks.toString(), styles: baseStyles },
+			{ content: displayGradePoint, styles: baseStyles },
+			{ content: displayGrade, styles: baseStyles },
+			{ content: resultStatus, styles: baseStyles }
 		]
 
 		// PG: no PART column (13 columns)
@@ -839,7 +860,7 @@ function addStudentMarksheetToDoc(
 			return commonCols
 		} else {
 			return [
-				{ content: partDisplay, styles: { halign: 'center' as const, fontSize: 8 } },
+				{ content: partDisplay, styles: baseStyles },
 				...commonCols
 			]
 		}

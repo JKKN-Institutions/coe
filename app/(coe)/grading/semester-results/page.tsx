@@ -187,12 +187,14 @@ const PG_PARTS = [
 
 // Page size options
 const PAGE_SIZE_OPTIONS = [
-	{ value: 'all', label: 'All' },
 	{ value: '10', label: '10' },
-	{ value: '20', label: '20' },
 	{ value: '50', label: '50' },
 	{ value: '100', label: '100' },
-	{ value: '1000', label: '1000' }
+	{ value: '200', label: '200' },
+	{ value: '400', label: '400' },
+	{ value: '500', label: '500' },
+	{ value: '750', label: '750' },
+	{ value: '1000', label: '1000' },
 ]
 
 // =====================================================
@@ -234,7 +236,7 @@ function SearchableSelect({ options, value, onValueChange, placeholder, disabled
 					className={cn("w-full justify-between font-normal", className)}
 				>
 					<span className="truncate text-left flex-1">
-						{selectedOption ? `${selectedOption.code} - ${selectedOption.name}` : placeholder}
+						{selectedOption ? (selectedOption.code === selectedOption.name ? selectedOption.name : `${selectedOption.code} - ${selectedOption.name}`) : placeholder}
 					</span>
 					<ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
 				</Button>
@@ -511,10 +513,8 @@ function MultiSelectSemester({ semesters, selectedSemesters, onSelectionChange, 
 				>
 					<span className="truncate">
 						{selectedSemesters.length === 0
-							? "All Semesters"
-							: selectedSemesters.length === semesters.length
-								? "All Semesters"
-								: `Sem ${selectedSemesters.join(', ')}`}
+							? "Select semester(s)"
+								: `Sem ${selectedSemesters.join(", ")}`}
 					</span>
 					<ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
 				</Button>
@@ -813,6 +813,25 @@ export default function SemesterResultsPage() {
 		// eslint-disable-next-line react-hooks/exhaustive-deps
 	}, [selectedInstitution, fetchSessions, fetchPrograms])
 
+	// Refresh programs and clear data when session changes (for same institution)
+	useEffect(() => {
+		if (selectedSession && selectedInstitution) {
+			// Clear previous data
+			setSelectedPrograms([])
+			setSelectedSemesters([])
+			setSemesters([])
+			setLearnerResults([])
+			setSummary(null)
+			setStoredResults([])
+			setStoredSummary(null)
+			setSelectedStoredIds(new Set())
+			setProgramType(null)
+
+			// Refresh programs for the new session
+			fetchPrograms(selectedInstitution)
+		}
+	}, [selectedSession])
+
 	// Fetch semesters when programs and session change
 	useEffect(() => {
 		if (selectedPrograms.length > 0 && selectedSession && selectedInstitution) {
@@ -877,6 +896,17 @@ export default function SemesterResultsPage() {
 
 		checkExistingResults()
 	}, [selectedInstitution, selectedSession, selectedPrograms, selectedSemesters, programs])
+
+	// Auto-refresh stored results when switching to "Stored Results" tab or when filters change
+	useEffect(() => {
+		// Clear selection when filters change
+		setSelectedStoredIds(new Set())
+
+		// Auto-fetch if on stored tab and selections are made
+		if (mainTab === 'stored' && selectedInstitution && selectedSession && selectedPrograms.length > 0) {
+			fetchStoredResults()
+		}
+	}, [mainTab, selectedInstitution, selectedSession, selectedPrograms, selectedSemesters])
 
 	const fetchResults = async () => {
 		if (!selectedInstitution || !selectedSession || selectedPrograms.length === 0) {
@@ -1368,6 +1398,18 @@ export default function SemesterResultsPage() {
 		return Math.ceil(filteredStoredResults.length / parseInt(storedPageSize))
 	}, [filteredStoredResults.length, storedPageSize])
 
+	// Button visibility logic based on declaration/publication status
+	const allDeclared = useMemo(() => {
+		return storedResults.length > 0 && storedResults.every(r => r.result_declared_date !== null)
+	}, [storedResults])
+
+	const allPublished = useMemo(() => {
+		return storedResults.length > 0 && storedResults.every(r => r.is_published === true)
+	}, [storedResults])
+
+	const showDeclareButton = !allDeclared
+	const showPublishButton = allDeclared && !allPublished
+
 	// Export to Excel
 	const handleExport = () => {
 		if (learnerResults.length === 0) {
@@ -1534,7 +1576,24 @@ export default function SemesterResultsPage() {
 									/>
 								</div>
 								<div className="space-y-2">
-									<Label>Program(s) *</Label>
+									<div className="flex items-center justify-between">
+										<Label>Program(s) *</Label>
+										{selectedInstitution && (
+											<Button
+												variant="ghost"
+												size="sm"
+												onClick={() => {
+													setSelectedPrograms([])
+													setSelectedSemesters([])
+													fetchPrograms(selectedInstitution)
+												}}
+												disabled={programsLoading}
+												className="h-7 px-2"
+											>
+												<RefreshCw className={`h-3.5 w-3.5 ${programsLoading ? 'animate-spin' : ''}`} />
+											</Button>
+										)}
+									</div>
 									<MultiSelectProgram
 										options={programs}
 										selectedIds={selectedPrograms}
@@ -1602,7 +1661,12 @@ export default function SemesterResultsPage() {
 													<><Eye className="h-4 w-4 mr-2" /> Preview Results</>
 												)}
 											</Button>
-											{!resultsExist ? (
+											{resultsExist ? (
+												<Badge variant="outline" className="text-green-600 border-green-600 bg-green-50">
+													<CheckCircle2 className="h-3 w-3 mr-1" />
+													Results Already Generated
+												</Badge>
+											) : learnerResults.length > 0 ? (
 												<Button
 													variant="default"
 													onClick={handleGenerateResults}
@@ -1610,17 +1674,12 @@ export default function SemesterResultsPage() {
 													className="bg-green-600 hover:bg-green-700"
 												>
 													{generating ? (
-														<><Loader2 className="h-4 w-4 mr-2 animate-spin" /> Generating...</>
+														<><Loader2 className="h-4 w-4 mr-2 animate-spin" /> Saving...</>
 													) : (
-														<><Play className="h-4 w-4 mr-2" /> Generate & Store</>
+														<><Play className="h-4 w-4 mr-2" /> Save GPA</>
 													)}
 												</Button>
-											) : (
-												<Badge variant="outline" className="text-green-600 border-green-600 bg-green-50">
-													<CheckCircle2 className="h-3 w-3 mr-1" />
-													Results Already Generated
-												</Badge>
-											)}
+											) : null}
 										</div>
 									</div>
 								</CardContent>
@@ -2108,7 +2167,7 @@ export default function SemesterResultsPage() {
 											Select institution, session, and program, then click "Preview Results" to calculate GPA/CGPA.
 										</p>
 										<p className="text-xs text-muted-foreground">
-											Use "Generate & Store" to save results to the database.
+											After previewing, click "Save GPA" to store results to the database.
 										</p>
 									</CardContent>
 								</Card>
@@ -2146,47 +2205,53 @@ export default function SemesterResultsPage() {
 														<Check className="h-4 w-4 mr-1" />
 														Select All
 													</Button>
-													<Button
-														variant="outline"
-														size="sm"
-														onClick={clearStoredSelection}
-														className="bg-orange-50 hover:bg-orange-100 border-orange-200 text-orange-700 dark:bg-orange-900/20 dark:hover:bg-orange-900/30 dark:border-orange-800 dark:text-orange-300"
-													>
-														<X className="h-4 w-4 mr-1" />
-														Clear Selection
-													</Button>
 													{selectedStoredIds.size > 0 && (
-														<Badge className="bg-indigo-100 text-indigo-700 border-indigo-200 dark:bg-indigo-900/30 dark:text-indigo-300">
-															{selectedStoredIds.size} selected
-														</Badge>
+														<>
+															<Button
+																variant="outline"
+																size="sm"
+																onClick={clearStoredSelection}
+																className="bg-orange-50 hover:bg-orange-100 border-orange-200 text-orange-700 dark:bg-orange-900/20 dark:hover:bg-orange-900/30 dark:border-orange-800 dark:text-orange-300"
+															>
+																<X className="h-4 w-4 mr-1" />
+																Clear Selection
+															</Button>
+															<Badge className="bg-indigo-100 text-indigo-700 border-indigo-200 dark:bg-indigo-900/30 dark:text-indigo-300">
+																{selectedStoredIds.size} selected
+															</Badge>
+														</>
 													)}
 												</>
 											)}
 										</div>
 										<div className="flex items-center gap-2 flex-wrap">
-											<Button
-												variant="outline"
-												onClick={handleDeclareResults}
-												disabled={selectedStoredIds.size === 0 || declaring}
-											>
-												{declaring ? (
-													<><Loader2 className="h-4 w-4 mr-2 animate-spin" /> Declaring...</>
-												) : (
-													<><CheckCheck className="h-4 w-4 mr-2" /> Declare Selected</>
-												)}
-											</Button>
-											<Button
-												variant="default"
-												onClick={handlePublishResults}
-												disabled={selectedStoredIds.size === 0 || publishing}
-												className="bg-blue-600 hover:bg-blue-700"
-											>
-												{publishing ? (
-													<><Loader2 className="h-4 w-4 mr-2 animate-spin" /> Publishing...</>
-												) : (
-													<><Send className="h-4 w-4 mr-2" /> Publish Selected</>
-												)}
-											</Button>
+											{showDeclareButton && (
+												<Button
+													variant="outline"
+													onClick={handleDeclareResults}
+													disabled={selectedStoredIds.size === 0 || declaring}
+												>
+													{declaring ? (
+														<><Loader2 className="h-4 w-4 mr-2 animate-spin" /> Declaring...</>
+													) : (
+														<><CheckCheck className="h-4 w-4 mr-2" /> Declare Selected</>
+													)}
+												</Button>
+											)}
+											{showPublishButton && (
+												<Button
+													variant="default"
+													onClick={handlePublishResults}
+													disabled={selectedStoredIds.size === 0 || publishing}
+													className="bg-blue-600 hover:bg-blue-700"
+												>
+													{publishing ? (
+														<><Loader2 className="h-4 w-4 mr-2 animate-spin" /> Publishing...</>
+													) : (
+														<><Send className="h-4 w-4 mr-2" /> Publish Selected</>
+													)}
+												</Button>
+											)}
 											<Button
 												variant="secondary"
 												onClick={handleCreateBacklogs}
@@ -2422,7 +2487,7 @@ export default function SemesterResultsPage() {
 										</div>
 										<h3 className="text-lg font-semibold mb-2">No Stored Results</h3>
 										<p className="text-muted-foreground mb-4">
-											Click "Refresh" to fetch stored semester results, or use "Generate & Store" in the Calculate tab.
+											Click "Refresh" to fetch stored semester results, or use "Save GPA" in the Calculate tab.
 										</p>
 									</CardContent>
 								</Card>

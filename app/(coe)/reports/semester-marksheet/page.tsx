@@ -21,6 +21,7 @@ import Link from "next/link"
 import { useInstitutionFilter } from "@/hooks/use-institution-filter"
 import { useMyJKKNInstitutionFilter } from "@/hooks/use-myjkkn-institution-filter"
 import { downloadSemesterMarksheetPDF, downloadMergedMarksheetPDF, fetchImageAsBase64, type StudentMarksheetData } from "@/lib/utils/generate-semester-marksheet-pdf"
+import { PDFProgressModal } from "@/components/ui/pdf-progress-modal"
 
 // =====================================================
 // TYPE DEFINITIONS
@@ -174,6 +175,15 @@ export default function SemesterMarksheetPage() {
 	const [loadingMarksheet, setLoadingMarksheet] = useState(false)
 	const [generatingPDF, setGeneratingPDF] = useState(false)
 	const [generatingBatchPDF, setGeneratingBatchPDF] = useState(false)
+
+	// Progress tracking for PDF generation
+	const [pdfProgress, setPdfProgress] = useState({
+		isOpen: false,
+		currentStep: 0,
+		totalSteps: 0,
+		currentOperation: '',
+		operationType: 'single' as 'single' | 'batch'
+	})
 
 	// Popover open states
 	const [institutionOpen, setInstitutionOpen] = useState(false)
@@ -429,6 +439,16 @@ export default function SemesterMarksheetPage() {
 			const selectedInstitution = institutions.find(i => i.id === selectedInstitutionId)
 			const selectedSession = sessions.find(s => s.id === selectedSessionId)
 
+			// Step 1: Initialize progress modal
+			const totalSteps = 4 // photo + logo + prepare + generate
+			setPdfProgress({
+				isOpen: true,
+				currentStep: 0,
+				totalSteps,
+				currentOperation: 'Loading student photo...',
+				operationType: 'single'
+			})
+
 			// Convert photo URL to base64 for PDF (jsPDF needs base64, not URL)
 			let photoBase64: string | null = null
 			console.log('[handleDownloadPDF] Student photoUrl from API:', marksheetData.student.photoUrl)
@@ -438,6 +458,13 @@ export default function SemesterMarksheetPage() {
 			} else {
 				console.log('[handleDownloadPDF] No photo URL available for student')
 			}
+
+			// Step 2: Photo loaded
+			setPdfProgress(prev => ({
+				...prev,
+				currentStep: 1,
+				currentOperation: 'Loading institution logo...'
+			}))
 
 			// Fetch logo for header (only needed when withHeader is true)
 			let logoBase64: string | undefined = undefined
@@ -456,6 +483,13 @@ export default function SemesterMarksheetPage() {
 					console.warn('Logo not loaded:', e)
 				}
 			}
+
+			// Step 3: Logo loaded
+			setPdfProgress(prev => ({
+				...prev,
+				currentStep: 2,
+				currentOperation: 'Preparing marksheet data...'
+			}))
 
 			// Prepare data for PDF
 			const pdfData: StudentMarksheetData = {
@@ -485,6 +519,13 @@ export default function SemesterMarksheetPage() {
 				})
 			}
 
+			// Step 4: Data prepared
+			setPdfProgress(prev => ({
+				...prev,
+				currentStep: 3,
+				currentOperation: 'Generating PDF document...'
+			}))
+
 			// Download PDF directly with header option
 			const suffix = withHeader ? '_with_header' : ''
 			downloadSemesterMarksheetPDF(
@@ -493,6 +534,18 @@ export default function SemesterMarksheetPage() {
 				{ showHeader: withHeader }
 			)
 
+			// Step 5: Complete
+			setPdfProgress(prev => ({
+				...prev,
+				currentStep: totalSteps,
+				currentOperation: 'PDF generated successfully!'
+			}))
+
+			// Close modal after a brief delay
+			setTimeout(() => {
+				setPdfProgress(prev => ({ ...prev, isOpen: false }))
+			}, 1500)
+
 			toast({
 				title: '✅ PDF Downloaded',
 				description: withHeader ? 'Marksheet PDF (with header) has been downloaded' : 'Marksheet PDF has been downloaded',
@@ -500,6 +553,7 @@ export default function SemesterMarksheetPage() {
 			})
 		} catch (error) {
 			console.error('Error generating PDF:', error)
+			setPdfProgress(prev => ({ ...prev, isOpen: false }))
 			toast({
 				title: '❌ Error',
 				description: 'Failed to generate PDF',
@@ -536,6 +590,16 @@ export default function SemesterMarksheetPage() {
 			const selectedInstitution = institutions.find(i => i.id === selectedInstitutionId)
 			const selectedSession = sessions.find(s => s.id === selectedSessionId)
 
+			// Step 1: Initialize progress modal
+			const totalSteps = students.length + 3 // photos + data fetch + logo + PDF generation
+			setPdfProgress({
+				isOpen: true,
+				currentStep: 0,
+				totalSteps,
+				currentOperation: 'Fetching marksheet data...',
+				operationType: 'batch'
+			})
+
 			// Fetch batch marksheet data
 			const url = `/api/reports/semester-marksheet?action=batch-marksheet&institutionId=${selectedInstitutionId}&sessionId=${selectedSessionId}&programCode=${selectedProgramCode}&semester=${selectedSemester}`
 			const res = await fetch(url)
@@ -549,6 +613,7 @@ export default function SemesterMarksheetPage() {
 			const marksheets = batchData.marksheets || []
 
 			if (marksheets.length === 0) {
+				setPdfProgress(prev => ({ ...prev, isOpen: false }))
 				toast({
 					title: '❌ No Data',
 					description: 'No marksheet data available for the selected filters',
@@ -557,14 +622,38 @@ export default function SemesterMarksheetPage() {
 				return
 			}
 
-			// Convert all student photos to base64 (in parallel for better performance)
-			const photoPromises = marksheets.map(async (data: any) => {
+			// Step 2: Update progress - data fetched
+			setPdfProgress(prev => ({
+				...prev,
+				currentStep: 1,
+				currentOperation: `Loading student photos (0/${marksheets.length})...`
+			}))
+
+			// Convert all student photos to base64 (track progress for each)
+			const photoBase64Array: (string | null)[] = []
+			for (let i = 0; i < marksheets.length; i++) {
+				const data = marksheets[i]
 				if (data.student.photoUrl) {
-					return fetchImageAsBase64(data.student.photoUrl)
+					const photo = await fetchImageAsBase64(data.student.photoUrl)
+					photoBase64Array.push(photo)
+				} else {
+					photoBase64Array.push(null)
 				}
-				return null
-			})
-			const photoBase64Array = await Promise.all(photoPromises)
+
+				// Update progress for each student photo
+				setPdfProgress(prev => ({
+					...prev,
+					currentStep: 1 + i + 1,
+					currentOperation: `Loading student photos (${i + 1}/${marksheets.length})...`
+				}))
+			}
+
+			// Step 3: Update progress - fetch logo
+			setPdfProgress(prev => ({
+				...prev,
+				currentStep: 1 + marksheets.length,
+				currentOperation: 'Loading institution logo...'
+			}))
 
 			// Fetch logo for header (only needed when withHeader is true)
 			let logoBase64: string | undefined = undefined
@@ -583,6 +672,13 @@ export default function SemesterMarksheetPage() {
 					console.warn('Logo not loaded:', e)
 				}
 			}
+
+			// Step 4: Update progress - preparing PDF
+			setPdfProgress(prev => ({
+				...prev,
+				currentStep: 2 + marksheets.length,
+				currentOperation: `Preparing PDF (${marksheets.length} marksheets)...`
+			}))
 
 			// Prepare all student data for merged PDF
 			const allStudentData: StudentMarksheetData[] = marksheets.map((data: any, index: number) => ({
@@ -612,6 +708,13 @@ export default function SemesterMarksheetPage() {
 				})
 			}))
 
+			// Step 5: Update progress - generating PDF
+			setPdfProgress(prev => ({
+				...prev,
+				currentStep: 3 + marksheets.length,
+				currentOperation: 'Generating PDF document...'
+			}))
+
 			// Download single merged PDF with all marksheets
 			const suffix = withHeader ? '_with_header' : ''
 			downloadMergedMarksheetPDF(
@@ -619,6 +722,18 @@ export default function SemesterMarksheetPage() {
 				`Marksheets_${selectedProgramCode}_Sem${selectedSemester}_${marksheets.length}students${suffix}.pdf`,
 				{ showHeader: withHeader }
 			)
+
+			// Step 6: Complete
+			setPdfProgress(prev => ({
+				...prev,
+				currentStep: totalSteps,
+				currentOperation: 'PDF generated successfully!'
+			}))
+
+			// Close modal after a brief delay
+			setTimeout(() => {
+				setPdfProgress(prev => ({ ...prev, isOpen: false }))
+			}, 1500)
 
 			toast({
 				title: '✅ Download Complete',
@@ -629,6 +744,7 @@ export default function SemesterMarksheetPage() {
 			})
 		} catch (error) {
 			console.error('Error in batch download:', error)
+			setPdfProgress(prev => ({ ...prev, isOpen: false }))
 			toast({
 				title: '❌ Error',
 				description: error instanceof Error ? error.message : 'Failed to generate batch PDFs',
@@ -1188,6 +1304,15 @@ export default function SemesterMarksheetPage() {
 
 				<AppFooter />
 			</SidebarInset>
+
+			{/* PDF Generation Progress Modal */}
+			<PDFProgressModal
+				isOpen={pdfProgress.isOpen}
+				currentStep={pdfProgress.currentStep}
+				totalSteps={pdfProgress.totalSteps}
+				currentOperation={pdfProgress.currentOperation}
+				operationType={pdfProgress.operationType}
+			/>
 		</SidebarProvider>
 	)
 }

@@ -96,7 +96,8 @@
       "Bash(cmd.exe /c \"winget upgrade Anthropic.ClaudeCode --accept-source-agreements --accept-package-agreements\")",
       "Bash(git checkout:*)",
       "Bash(npx @anthropic-ai/claude-code:*)",
-      "WebFetch(domain:raw.githubusercontent.com)"
+      "WebFetch(domain:raw.githubusercontent.com)",
+      "Bash(powershell:*)"
     ],
     "deny": [
       "mcp__filesystem__*"

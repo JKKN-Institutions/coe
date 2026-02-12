@@ -178,9 +178,11 @@ export async function GET(req: NextRequest) {
 				.eq('examination_session_id', sessionId)
 				.eq('is_active', true)
 
-			if (semester) {
-				query = query.eq('course_offerings.semester', parseInt(semester))
-			}
+			// ARREAR PAPERS: Don't filter by semester to include arrear papers from previous semesters
+			// Example: Semester II marksheet will show Semester II courses + failed Semester I papers
+			// if (semester) {
+			// 	query = query.eq('course_offerings.semester', parseInt(semester))
+			// }
 
 			const { data: finalMarks, error: fmError } = await query
 
@@ -573,10 +575,11 @@ export async function GET(req: NextRequest) {
 				})
 			})
 
-			// Sort by part order, then course order
+			// Sort by semester ASC, then course order ASC
+			// This ensures arrear papers from previous semesters appear first
 			processedCourses.sort((a, b) => {
-				const partDiff = getPartOrder(a.part) - getPartOrder(b.part)
-				if (partDiff !== 0) return partDiff
+				const semesterDiff = a.semester - b.semester
+				if (semesterDiff !== 0) return semesterDiff
 				return a.courseOrder - b.courseOrder
 			})
 
@@ -764,25 +767,37 @@ export async function GET(req: NextRequest) {
 				query = query.eq('program_code', programCode)
 			}
 
-			if (semester) {
-				query = query.eq('course_offerings.semester', parseInt(semester))
-			}
+			// ARREAR PAPERS: Don't filter by semester to include arrear papers from previous semesters
+			// Example: Semester II marksheet will show Semester II courses + failed Semester I papers
+			// if (semester) {
+			// 	query = query.eq('course_offerings.semester', parseInt(semester))
+			// }
 
 			const { data: finalMarks, error } = await query
 
 			if (error) throw error
 
-			// Fetch program name from MyJKKN API for PG detection
-			let batchProgramName = ''
-			if (programCode) {
-				// Get institution to look up program
-				const { data: institution } = await supabase
+			// Fetch exam session and institution in parallel (performance optimization)
+			const [examSessionResult, institutionResult] = await Promise.all([
+				supabase
+					.from('examination_sessions')
+					.select('session_name, month_year')
+					.eq('id', sessionId)
+					.single(),
+				supabase
 					.from('institutions')
 					.select('myjkkn_institution_ids')
 					.eq('id', institutionId)
 					.single()
+			])
 
-				const myjkknIds: string[] = institution?.myjkkn_institution_ids || []
+			const sessionName = examSessionResult.data?.session_name || ''
+			const sessionMonthYear = examSessionResult.data?.month_year || ''
+			const myjkknIds: string[] = institutionResult.data?.myjkkn_institution_ids || []
+
+			// Fetch program name from MyJKKN API for PG detection
+			let batchProgramName = ''
+			if (programCode && myjkknIds.length > 0) {
 
 				if (myjkknIds.length > 0) {
 					try {
@@ -908,19 +923,12 @@ export async function GET(req: NextRequest) {
 					const myjkknApiUrl = process.env.MYJKKN_API_URL || 'https://www.jkkn.ai/api'
 					const myjkknApiKey = process.env.MYJKKN_API_KEY || ''
 
-					// Get myjkkn_institution_ids from the COE institution
-					const { data: batchInstitution } = await supabase
-						.from('institutions')
-						.select('myjkkn_institution_ids')
-						.eq('id', institutionId)
-						.single()
-
-					const batchMyjkknIds: string[] = batchInstitution?.myjkkn_institution_ids || []
-					console.log(`[Semester Marksheet Batch] Institution ${institutionId} has ${batchMyjkknIds.length} myjkkn_institution_ids:`, batchMyjkknIds)
+					// Reuse myjkkn_institution_ids fetched earlier (performance optimization)
+					console.log(`[Semester Marksheet Batch] Institution ${institutionId} has ${myjkknIds.length} myjkkn_institution_ids:`, myjkknIds)
 
 					// Query MyJKKN API for each institution ID with pagination
-					if (myjkknApiKey && batchMyjkknIds.length > 0) {
-						for (const myjkknInstId of batchMyjkknIds) {
+					if (myjkknApiKey && myjkknIds.length > 0) {
+						for (const myjkknInstId of myjkknIds) {
 							// Paginate through all profiles (API returns max ~200 per page)
 							let page = 1
 							const pageSize = 200
@@ -1046,10 +1054,11 @@ export async function GET(req: NextRequest) {
 
 			// Process each student's data into marksheet format
 			const marksheets = Object.values(studentMap).map((student: any) => {
-				// Sort courses
+				// Sort courses by semester ASC, then course order ASC
+				// This ensures arrear papers from previous semesters appear first
 				student.courses.sort((a: any, b: any) => {
-					const partDiff = getPartOrder(a.part) - getPartOrder(b.part)
-					if (partDiff !== 0) return partDiff
+					const semesterDiff = a.semester - b.semester
+					if (semesterDiff !== 0) return semesterDiff
 					return a.courseOrder - b.courseOrder
 				})
 
@@ -1120,8 +1129,8 @@ export async function GET(req: NextRequest) {
 					semester: parseInt(semester || '1'),
 					session: {
 						id: sessionId,
-						name: '',
-						monthYear: ''
+						name: sessionName,
+						monthYear: sessionMonthYear
 					},
 					program: {
 						code: programCode || '',
