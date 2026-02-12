@@ -1031,7 +1031,7 @@ function addStudentMarksheetToDoc(
 	// Fixed position: bottom margin + 3.5cm (35mm from bottom margin)
 	// Y = A4_HEIGHT - MARGIN - 35 = 297 - 8 - 35 = 254mm from top
 
-	const footnoteY = A4_HEIGHT - MARGIN - 28
+	const footnoteY = A4_HEIGHT - MARGIN - 29
 
 	doc.setFont('helvetica', 'bold')
 	doc.setFontSize(7)

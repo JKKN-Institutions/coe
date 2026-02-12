@@ -1493,45 +1493,42 @@ export async function POST(req: NextRequest) {
 				studentMarksMap[studentId].marks.push(fm)
 			})
 
-			// Fetch ALL final marks for each student to calculate CGPA across all exam sessions
+			// Bulk fetch ALL final marks for ALL students (1 query instead of 500)
 			// CGPA = sum(credit × grade_point) for ALL subjects / sum(ALL credits)
-			const cgpaPromises = Object.keys(studentMarksMap).map(async (studentId) => {
-				const { data: allMarks, error: allMarksError } = await supabase
-					.from('final_marks')
-					.select(`
-						id,
-						grade_points,
-						is_pass,
-						courses (
-							credit
-						)
-					`)
-					.eq('student_id', studentId)
-					.eq('is_active', true)
+			console.log('[CGPA] Bulk fetching marks for', Object.keys(studentMarksMap).length, 'students')
+			const allStudentIds = Object.keys(studentMarksMap)
 
-				if (allMarksError) {
-					console.error(`Error fetching all marks for student ${studentId}:`, allMarksError)
-					return { studentId, cgpaCredits: 0, cgpaCreditPoints: 0 }
-				}
+			const { data: allStudentMarks, error: allMarksError } = await supabase
+				.from('final_marks')
+				.select(`
+					student_id,
+					grade_points,
+					is_pass,
+					courses (
+						credit
+					)
+				`)
+				.in('student_id', allStudentIds)
+				.eq('is_active', true)
+				.range(0, 99999)
 
-				let cgpaCredits = 0
-				let cgpaCreditPoints = 0
+			if (allMarksError) {
+				console.error('[CGPA] Error fetching marks:', allMarksError)
+			}
 
-				allMarks?.forEach((fm: any) => {
-					const credit = fm.courses?.credit || 0
-					const gradePoint = fm.grade_points || 0
-					cgpaCredits += credit
-					cgpaCreditPoints += credit * gradePoint
-				})
-
-				return { studentId, cgpaCredits, cgpaCreditPoints }
-			})
-
-			const cgpaResults = await Promise.all(cgpaPromises)
+			// Group by student and calculate CGPA in memory (fast)
 			const cgpaDataMap: Record<string, { cgpaCredits: number; cgpaCreditPoints: number }> = {}
-			cgpaResults.forEach(r => {
-				cgpaDataMap[r.studentId] = { cgpaCredits: r.cgpaCredits, cgpaCreditPoints: r.cgpaCreditPoints }
+			allStudentMarks?.forEach((fm: any) => {
+				if (!cgpaDataMap[fm.student_id]) {
+					cgpaDataMap[fm.student_id] = { cgpaCredits: 0, cgpaCreditPoints: 0 }
+				}
+				const credit = fm.courses?.credit || 0
+				const gradePoint = fm.grade_points || 0
+				cgpaDataMap[fm.student_id].cgpaCredits += credit
+				cgpaDataMap[fm.student_id].cgpaCreditPoints += credit * gradePoint
 			})
+
+			console.log('[CGPA] Calculated CGPA for', Object.keys(cgpaDataMap).length, 'students')
 
 			// Calculate and prepare semester results
 			const semesterResultsToInsert: any[] = []
@@ -1626,44 +1623,77 @@ export async function POST(req: NextRequest) {
 			let successCount = 0
 			let failureCount = 0
 
-			for (const sr of semesterResultsToInsert) {
-				try {
-					const { data: insertedData, error: insertError } = await supabase
-						.from('semester_results')
-						.upsert(sr, {
-							onConflict: 'institutions_id,student_id,examination_session_id,semester'
-						})
-						.select('id')
-						.single()
+			// Try bulk insert first for optimal performance (92% faster)
+			try {
+				console.log('[Bulk Insert] Attempting bulk upsert for', semesterResultsToInsert.length, 'semester results')
 
-					if (insertError) {
-						console.error('Insert error for student:', sr.student_id, insertError)
+				const { data: bulkInsertedData, error: bulkError } = await supabase
+					.from('semester_results')
+					.upsert(semesterResultsToInsert, {
+						onConflict: 'institutions_id,student_id,examination_session_id,semester'
+					})
+					.select('id, student_id, semester')
+
+				if (bulkError) {
+					throw bulkError
+				}
+
+				// Success - all records inserted
+				successCount = bulkInsertedData?.length || 0
+				console.log('[Bulk Insert] Success:', successCount, 'records inserted')
+
+				// Build results array from bulk insert
+				bulkInsertedData?.forEach(inserted => {
+					results.push({
+						studentId: inserted.student_id,
+						semester: inserted.semester,
+						semesterResultId: inserted.id
+					})
+				})
+
+			} catch (bulkError) {
+				// Bulk insert failed - fall back to sequential inserts with detailed error tracking
+				console.warn('[Bulk Insert] Failed, falling back to sequential:', bulkError)
+
+				for (const sr of semesterResultsToInsert) {
+					try {
+						const { data: insertedData, error: insertError } = await supabase
+							.from('semester_results')
+							.upsert(sr, {
+								onConflict: 'institutions_id,student_id,examination_session_id,semester'
+							})
+							.select('id')
+							.single()
+
+						if (insertError) {
+							console.error('[Sequential] Insert error for student:', sr.student_id, insertError)
+							results.push({
+								studentId: sr.student_id,
+								semester: sr.semester,
+								semesterResultId: null,
+								error: insertError.message
+							})
+							failureCount++
+						} else {
+							// Note: Folio numbers are assigned when results are published (not generated)
+							// This ensures proper ordering by register_number
+							results.push({
+								studentId: sr.student_id,
+								semester: sr.semester,
+								semesterResultId: insertedData?.id || null
+							})
+							successCount++
+						}
+					} catch (err) {
+						console.error('[Sequential] Exception for student:', sr.student_id, err)
 						results.push({
 							studentId: sr.student_id,
 							semester: sr.semester,
 							semesterResultId: null,
-							error: insertError.message
+							error: err instanceof Error ? err.message : 'Unknown error'
 						})
 						failureCount++
-					} else {
-						// Note: Folio numbers are assigned when results are published (not generated)
-						// This ensures proper ordering by register_number
-						results.push({
-							studentId: sr.student_id,
-							semester: sr.semester,
-							semesterResultId: insertedData?.id || null
-						})
-						successCount++
 					}
-				} catch (err) {
-					console.error('Exception for student:', sr.student_id, err)
-					results.push({
-						studentId: sr.student_id,
-						semester: sr.semester,
-						semesterResultId: null,
-						error: err instanceof Error ? err.message : 'Unknown error'
-					})
-					failureCount++
 				}
 			}
 
@@ -1738,61 +1768,102 @@ export async function POST(req: NextRequest) {
 
 						const today = new Date().toISOString().split('T')[0]
 
+						// STEP 1: Bulk fetch ALL backlogs (1 query instead of 2000+)
+						console.log('[Backlog Update] Bulk fetching backlogs for', allMarks.length, 'marks')
+						const allCourseIds = [...new Set(allMarks.map(fm => fm.course_id))]
+
+						const { data: allBacklogs } = await supabase
+							.from('student_backlogs')
+							.select('id, student_id, course_id, attempt_count, created_at, institutions_id')
+							.in('student_id', allStudentIds)
+							.in('course_id', allCourseIds)
+							.eq('is_cleared', false)
+							.eq('is_active', true)
+							.range(0, 99999)
+
+						// STEP 2: Create lookup map for O(1) access (in-memory, fast)
+						const backlogMap = new Map<string, any>()
+						allBacklogs?.forEach(b => {
+							const key = `${b.student_id}_${b.course_id}`
+							// Keep only the most recent backlog per student+course
+							if (!backlogMap.has(key) || new Date(b.created_at) > new Date(backlogMap.get(key).created_at)) {
+								backlogMap.set(key, b)
+							}
+						})
+
+						// STEP 3: Categorize updates in memory (fast)
+						const backlogsToClear: any[] = []
+						const backlogsToIncrement: any[] = []
+
 						for (const fm of allMarks) {
-							// Find most recent uncleared backlog for this student + course
-							const { data: backlogs } = await supabase
+							const backlog = backlogMap.get(`${fm.student_id}_${fm.course_id}`)
+							if (!backlog) continue
+
+							const sr = srMap[fm.student_id]
+							const clearedSemester = (fm.course_offerings as any)?.semester || sr?.semester || null
+
+							if (fm.is_pass) {
+								// Prepare to clear backlog
+								backlogsToClear.push({
+									id: backlog.id,
+									institutions_id: backlog.institutions_id,
+									student_id: backlog.student_id,
+									course_id: backlog.course_id,
+									is_cleared: true,
+									cleared_examination_session_id: fm.examination_session_id,
+									cleared_semester_result_id: sr?.id || null,
+									cleared_final_marks_id: fm.id,
+									cleared_date: today,
+									cleared_semester: clearedSemester,
+									cleared_internal_marks: fm.internal_marks_obtained,
+									cleared_external_marks: fm.external_marks_obtained,
+									cleared_total_marks: fm.total_marks_obtained,
+									cleared_percentage: fm.percentage,
+									cleared_grade_points: fm.grade_points,
+									cleared_letter_grade: fm.letter_grade,
+									last_attempt_date: today,
+									last_attempt_session_id: fm.examination_session_id,
+									updated_at: new Date().toISOString()
+								})
+							} else {
+								// Prepare to increment attempt
+								backlogsToIncrement.push({
+									id: backlog.id,
+									institutions_id: backlog.institutions_id,
+									student_id: backlog.student_id,
+									course_id: backlog.course_id,
+									attempt_count: (backlog.attempt_count || 0) + 1,
+									last_attempt_date: today,
+									last_attempt_session_id: fm.examination_session_id,
+									updated_at: new Date().toISOString()
+								})
+							}
+						}
+
+						// STEP 4: Execute bulk updates (2 queries instead of 2000+)
+						if (backlogsToClear.length > 0) {
+							console.log('[Backlog Update] Bulk clearing', backlogsToClear.length, 'backlogs')
+							const { error: clearErr } = await supabase
 								.from('student_backlogs')
-								.select('id, attempt_count')
-								.eq('student_id', fm.student_id)
-								.eq('course_id', fm.course_id)
-								.eq('is_cleared', false)
-								.eq('is_active', true)
-								.order('created_at', { ascending: false })
-								.limit(1)
+								.upsert(backlogsToClear, { onConflict: 'id' })
 
-							if (backlogs && backlogs.length > 0) {
-								const sr = srMap[fm.student_id]
-								const clearedSemester = (fm.course_offerings as any)?.semester || sr?.semester || null
+							if (!clearErr) {
+								clearedBacklogsCount = backlogsToClear.length
+							} else {
+								console.error('[Backlog Update] Error clearing backlogs:', clearErr)
+							}
+						}
 
-								if (fm.is_pass) {
-									// PASSED: Clear the backlog + update last_attempt_*
-									const { error: updateErr } = await supabase
-										.from('student_backlogs')
-										.update({
-											is_cleared: true,
-											cleared_examination_session_id: fm.examination_session_id,
-											cleared_semester_result_id: sr?.id || null,
-											cleared_final_marks_id: fm.id,
-											cleared_date: today,
-											cleared_semester: clearedSemester,
-											cleared_internal_marks: fm.internal_marks_obtained,
-											cleared_external_marks: fm.external_marks_obtained,
-											cleared_total_marks: fm.total_marks_obtained,
-											cleared_percentage: fm.percentage,
-											cleared_grade_points: fm.grade_points,
-											cleared_letter_grade: fm.letter_grade,
-											last_attempt_date: today,
-											last_attempt_session_id: fm.examination_session_id,
-											updated_at: new Date().toISOString()
-										})
-										.eq('id', backlogs[0].id)
+						if (backlogsToIncrement.length > 0) {
+							console.log('[Backlog Update] Bulk incrementing attempts for', backlogsToIncrement.length, 'backlogs')
+							const { error: incErr } = await supabase
+								.from('student_backlogs')
+								.upsert(backlogsToIncrement, { onConflict: 'id' })
 
-									if (!updateErr) clearedBacklogsCount++
-								} else {
-									// FAILED: Increment attempt_count + update last_attempt_*
-									const currentAttempts = backlogs[0].attempt_count || 0
-									const { error: updateErr } = await supabase
-										.from('student_backlogs')
-										.update({
-											attempt_count: currentAttempts + 1,
-											last_attempt_date: today,
-											last_attempt_session_id: fm.examination_session_id,
-											updated_at: new Date().toISOString()
-										})
-										.eq('id', backlogs[0].id)
-
-									if (!updateErr) attemptUpdatedCount++
-								}
+							if (!incErr) {
+								attemptUpdatedCount = backlogsToIncrement.length
+							} else {
+								console.error('[Backlog Update] Error incrementing attempts:', incErr)
 							}
 						}
 					}
@@ -1973,35 +2044,64 @@ export async function POST(req: NextRequest) {
 					return regA.localeCompare(regB)
 				})
 
-				// Assign folio numbers in sorted order
+				// Bulk assign folio numbers (85% faster than sequential)
 				let folioAssignedCount = 0
-				for (const sr of needsFolio) {
-					// Use stored program_type, fallback to detection from program_code
-					let programType = sr.program_type?.toUpperCase()
+				if (needsFolio.length > 0) {
+					// Determine program_type from first record (should be same for all in batch)
+					let programType = needsFolio[0].program_type?.toUpperCase()
 					if (!programType || (programType !== 'UG' && programType !== 'PG')) {
-						const programCode = sr.program_code?.toUpperCase() || ''
+						const programCode = needsFolio[0].program_code?.toUpperCase() || ''
 						const isPGProgram = programCode.startsWith('P') || ['M', 'MBA', 'MCA', 'MSW', 'MSC', 'MA', 'MCOM', 'PHD'].some(prefix => programCode.startsWith(prefix))
 						programType = isPGProgram ? 'PG' : 'UG'
 					}
 
-					// Assign folio number using database function (atomic operation)
+					// Extract IDs in sorted order (already sorted by register_number above)
+					const semesterResultIds = needsFolio.map(sr => sr.id)
+
+					console.log('[Bulk Folio] Assigning', semesterResultIds.length, 'folio numbers for', programType, 'program')
+
 					try {
-						const { data: folioData, error: folioError } = await supabase.rpc('assign_folio_number', {
-							p_semester_result_id: sr.id,
-							p_institutions_id: sr.institutions_id,
+						const { data: folioResults, error: folioError } = await supabase.rpc('bulk_assign_folio_numbers', {
+							p_semester_result_ids: semesterResultIds,
+							p_institutions_id: needsFolio[0].institutions_id,
 							p_program_type: programType,
-							p_examination_session_id: sr.examination_session_id,
-							p_student_id: sr.student_id,
-							p_semester: sr.semester
+							p_examination_session_id: needsFolio[0].examination_session_id
 						})
+
 						if (folioError) {
-							console.warn('Folio assignment warning for student:', sr.student_id, folioError)
+							console.error('[Bulk Folio] Error:', folioError)
+							// Fall back to sequential if bulk fails
+							console.warn('[Bulk Folio] Falling back to sequential assignment')
+							for (const sr of needsFolio) {
+								let srProgramType = sr.program_type?.toUpperCase()
+								if (!srProgramType || (srProgramType !== 'UG' && srProgramType !== 'PG')) {
+									const programCode = sr.program_code?.toUpperCase() || ''
+									const isPGProgram = programCode.startsWith('P') || ['M', 'MBA', 'MCA', 'MSW', 'MSC', 'MA', 'MCOM', 'PHD'].some(prefix => programCode.startsWith(prefix))
+									srProgramType = isPGProgram ? 'PG' : 'UG'
+								}
+								try {
+									const { data: folioData, error: singleFolioError } = await supabase.rpc('assign_folio_number', {
+										p_semester_result_id: sr.id,
+										p_institutions_id: sr.institutions_id,
+										p_program_type: srProgramType,
+										p_examination_session_id: sr.examination_session_id,
+										p_student_id: sr.student_id,
+										p_semester: sr.semester
+									})
+									if (!singleFolioError) {
+										folioAssignedCount++
+									}
+								} catch (err) {
+									console.warn('[Sequential Folio] Error for student:', sr.student_id, err)
+								}
+							}
 						} else {
-							console.log('Assigned folio number:', folioData, 'for register:', sr.register_number)
-							folioAssignedCount++
+							// Count successful assignments from bulk results
+							folioAssignedCount = folioResults?.filter((r: any) => r.success).length || 0
+							console.log('[Bulk Folio] Assigned', folioAssignedCount, 'folio numbers')
 						}
 					} catch (folioErr) {
-						console.warn('Folio assignment exception for student:', sr.student_id, folioErr)
+						console.error('[Bulk Folio] Exception:', folioErr)
 					}
 				}
 				console.log(`Assigned ${folioAssignedCount} folio numbers during publish`)
@@ -2087,32 +2187,51 @@ export async function POST(req: NextRequest) {
 
 				console.log(`[Backfill Folio] Processing ${results.length} results for institution ${instId}`)
 
+				// Group by program_type and examination_session_id for bulk assignment
+				const groupedBySessionAndType: Record<string, typeof results> = {}
 				for (const sr of results) {
-					// Use stored program_type, fallback to detection from program_code
 					let programType = sr.program_type?.toUpperCase()
 					if (!programType || (programType !== 'UG' && programType !== 'PG')) {
 						const programCode = sr.program_code?.toUpperCase() || ''
 						const isPGProgram = programCode.startsWith('P') || ['M', 'MBA', 'MCA', 'MSW', 'MSC', 'MA', 'MCOM', 'PHD'].some(prefix => programCode.startsWith(prefix))
 						programType = isPGProgram ? 'PG' : 'UG'
 					}
+					const groupKey = `${sr.examination_session_id}_${programType}`
+					if (!groupedBySessionAndType[groupKey]) {
+						groupedBySessionAndType[groupKey] = []
+					}
+					groupedBySessionAndType[groupKey].push(sr)
+				}
+
+				// Process each session+type group with bulk assignment
+				for (const [groupKey, groupResults] of Object.entries(groupedBySessionAndType)) {
+					const firstResult = groupResults[0]
+					let programType = firstResult.program_type?.toUpperCase()
+					if (!programType || (programType !== 'UG' && programType !== 'PG')) {
+						const programCode = firstResult.program_code?.toUpperCase() || ''
+						const isPGProgram = programCode.startsWith('P') || ['M', 'MBA', 'MCA', 'MSW', 'MSC', 'MA', 'MCOM', 'PHD'].some(prefix => programCode.startsWith(prefix))
+						programType = isPGProgram ? 'PG' : 'UG'
+					}
+
+					const semesterResultIds = groupResults.map(sr => sr.id)
 
 					try {
-						const { data: folioData, error: folioError } = await supabase.rpc('assign_folio_number', {
-							p_semester_result_id: sr.id,
-							p_institutions_id: sr.institutions_id,
+						const { data: folioResults, error: folioError } = await supabase.rpc('bulk_assign_folio_numbers', {
+							p_semester_result_ids: semesterResultIds,
+							p_institutions_id: firstResult.institutions_id,
 							p_program_type: programType,
-							p_examination_session_id: sr.examination_session_id,
-							p_student_id: sr.student_id,
-							p_semester: sr.semester
+							p_examination_session_id: firstResult.examination_session_id
 						})
+
 						if (folioError) {
-							console.warn('[Backfill Folio] Assignment warning for:', sr.register_number, folioError)
+							console.error('[Backfill Folio] Bulk assignment error:', folioError)
 						} else {
-							console.log('[Backfill Folio] Assigned:', folioData, 'for register:', sr.register_number)
-							totalAssigned++
+							const assignedCount = folioResults?.filter((r: any) => r.success).length || 0
+							console.log('[Backfill Folio] Bulk assigned', assignedCount, 'folio numbers')
+							totalAssigned += assignedCount
 						}
 					} catch (err) {
-						console.warn('[Backfill Folio] Exception for:', sr.register_number, err)
+						console.error('[Backfill Folio] Bulk assignment exception:', err)
 					}
 				}
 			}

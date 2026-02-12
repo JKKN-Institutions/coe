@@ -1052,8 +1052,26 @@ export async function GET(req: NextRequest) {
 				console.log(`[Semester Marksheet Batch] Mapped ${Object.keys(folioMap).length} folio numbers from semester_results`)
 			}
 
+			// Filter students to only include those whose PRIMARY/CURRENT semester matches the selected semester
+			// A student's primary semester = their highest semester (current enrollment level)
+			// Then include ALL their courses (current semester courses + arrear papers from previous semesters)
+			// This matches the learner dropdown filtering behavior
+			const filteredStudentMap = semester
+				? Object.fromEntries(
+						Object.entries(studentMap).filter(([_, student]: [string, any]) => {
+							if (student.courses.length === 0) return false
+							// Determine student's primary/current semester (highest semester they're enrolled in)
+							const primarySemester = Math.max(...student.courses.map((c: any) => c.semester))
+							// Include only if primary semester matches selected semester
+							// Example: Semester II students appear in Semester II batch (even if they have Semester I arrears)
+							// Example: Semester III students do NOT appear in Semester II batch (even if they have Semester II arrears)
+							return primarySemester === parseInt(semester)
+						})
+				  )
+				: studentMap
+
 			// Process each student's data into marksheet format
-			const marksheets = Object.values(studentMap).map((student: any) => {
+			const marksheets = Object.values(filteredStudentMap).map((student: any) => {
 				// Sort courses by semester ASC, then course order ASC
 				// This ensures arrear papers from previous semesters appear first
 				student.courses.sort((a: any, b: any) => {

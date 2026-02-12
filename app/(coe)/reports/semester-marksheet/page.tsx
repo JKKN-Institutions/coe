@@ -591,11 +591,10 @@ export default function SemesterMarksheetPage() {
 			const selectedSession = sessions.find(s => s.id === selectedSessionId)
 
 			// Step 1: Initialize progress modal
-			const totalSteps = students.length + 3 // photos + data fetch + logo + PDF generation
 			setPdfProgress({
 				isOpen: true,
 				currentStep: 0,
-				totalSteps,
+				totalSteps: 4, // Initial placeholder (will update after fetch)
 				currentOperation: 'Fetching marksheet data...',
 				operationType: 'batch'
 			})
@@ -623,9 +622,12 @@ export default function SemesterMarksheetPage() {
 			}
 
 			// Step 2: Update progress - data fetched
+			// Use students.length (filtered count) for totalSteps to match expected progress
+			const totalSteps = students.length + 3 // photos + logo + preparing + generating
 			setPdfProgress(prev => ({
 				...prev,
 				currentStep: 1,
+				totalSteps, // Based on filtered student count
 				currentOperation: `Loading student photos (0/${marksheets.length})...`
 			}))
 
