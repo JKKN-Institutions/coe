@@ -56,7 +56,8 @@ import {
 	XCircle,
 	Check,
 	ChevronsUpDown,
-	X
+	X,
+	Trash2
 } from "lucide-react"
 import type { ProgramType, PartSummary } from "@/types/semester-results"
 import { cn } from "@/lib/utils"
@@ -622,6 +623,7 @@ export default function SemesterResultsPage() {
 	const [declaring, setDeclaring] = useState(false)
 	const [publishing, setPublishing] = useState(false)
 	const [creatingBacklogs, setCreatingBacklogs] = useState(false)
+	const [deleting, setDeleting] = useState(false)
 	const [resultsExist, setResultsExist] = useState(false)
 
 	// Helper function to infer UG/PG grade system from program code/name
@@ -1304,6 +1306,65 @@ export default function SemesterResultsPage() {
 		}
 	}
 
+	// Delete non-published semester results based on filters
+	const handleDeleteResults = async () => {
+		if (!selectedInstitution || !selectedSession || selectedPrograms.length === 0) {
+			toast({
+				title: 'Missing Selection',
+				description: 'Please select institution, session, and at least one program',
+				variant: 'destructive'
+			})
+			return
+		}
+
+		// Confirm deletion
+		const confirmDelete = window.confirm(
+			'Are you sure you want to delete all non-published semester results for the selected filters?\n\nThis action cannot be undone.'
+		)
+		if (!confirmDelete) return
+
+		setDeleting(true)
+
+		try {
+			const res = await fetch('/api/grading/semester-results', {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({
+					action: 'delete-results',
+					institutionId: selectedInstitution,
+					sessionId: selectedSession,
+					programIds: selectedPrograms,
+					semesters: selectedSemesters.length > 0 ? selectedSemesters : null
+				})
+			})
+
+			if (!res.ok) {
+				const errorData = await res.json()
+				throw new Error(errorData.error || 'Failed to delete results')
+			}
+
+			const data = await res.json()
+
+			toast({
+				title: '✅ Deleted',
+				description: data.message || `Deleted ${data.deleted_count || 0} semester results`,
+				className: 'bg-green-50 border-green-200 text-green-800'
+			})
+
+			// Refresh stored results
+			await fetchStoredResults()
+		} catch (e) {
+			console.error('Delete error:', e)
+			toast({
+				title: '❌ Delete Failed',
+				description: e instanceof Error ? e.message : 'Failed to delete results',
+				variant: 'destructive'
+			})
+		} finally {
+			setDeleting(false)
+		}
+	}
+
 	// Toggle selection
 	const toggleStoredSelection = (id: string) => {
 		setSelectedStoredIds(prev => {
@@ -1409,6 +1470,7 @@ export default function SemesterResultsPage() {
 
 	const showDeclareButton = !allDeclared
 	const showPublishButton = allDeclared && !allPublished
+	const showDeleteButton = storedResults.length > 0 && !allPublished
 
 	// Export to Excel
 	const handleExport = () => {
@@ -2264,6 +2326,20 @@ export default function SemesterResultsPage() {
 													<><AlertTriangle className="h-4 w-4 mr-2" /> Create Backlogs</>
 												)}
 											</Button>
+											{showDeleteButton && (
+												<Button
+													variant="destructive"
+													onClick={handleDeleteResults}
+													disabled={deleting}
+													className="bg-red-600 hover:bg-red-700"
+												>
+													{deleting ? (
+														<><Loader2 className="h-4 w-4 mr-2 animate-spin" /> Deleting...</>
+													) : (
+														<><Trash2 className="h-4 w-4 mr-2" /> Delete Results</>
+													)}
+												</Button>
+											)}
 										</div>
 									</div>
 								</CardContent>

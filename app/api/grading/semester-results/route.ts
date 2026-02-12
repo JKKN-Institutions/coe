@@ -2408,6 +2408,48 @@ export async function POST(req: NextRequest) {
 			})
 		}
 
+		// Delete non-published semester results based on filters
+		if (action === 'delete-results') {
+			const { institutionId, sessionId, programIds, semesters } = body
+
+			if (!institutionId || !sessionId || !programIds || !Array.isArray(programIds) || programIds.length === 0) {
+				return NextResponse.json({
+					error: 'institutionId, sessionId, and programIds array are required'
+				}, { status: 400 })
+			}
+
+			// Build delete query - only delete non-published results
+			let deleteQuery = supabase
+				.from('semester_results')
+				.delete()
+				.eq('institutions_id', institutionId)
+				.eq('examination_session_id', sessionId)
+				.eq('is_published', false) // Only delete non-published results
+
+			// Filter by program IDs (MyJKKN UUIDs)
+			if (programIds.length > 0) {
+				deleteQuery = deleteQuery.in('program_id', programIds)
+			}
+
+			// Filter by semesters if provided
+			if (semesters && Array.isArray(semesters) && semesters.length > 0) {
+				deleteQuery = deleteQuery.in('semester', semesters)
+			}
+
+			const { error, count } = await deleteQuery
+
+			if (error) {
+				console.error('Delete results error:', error)
+				throw error
+			}
+
+			return NextResponse.json({
+				success: true,
+				message: `Deleted ${count || 0} non-published semester result(s)`,
+				deleted_count: count || 0
+			})
+		}
+
 		return NextResponse.json({ error: 'Invalid action' }, { status: 400 })
 
 	} catch (error) {
