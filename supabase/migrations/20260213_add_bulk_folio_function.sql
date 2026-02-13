@@ -6,7 +6,13 @@
 -- for 500 students (85% faster).
 
 -- =====================================================
--- 1. Create Bulk Folio Assignment Function
+-- 1. Drop Existing Function (if exists)
+-- =====================================================
+
+DROP FUNCTION IF EXISTS bulk_assign_folio_numbers(UUID[], UUID, VARCHAR, UUID);
+
+-- =====================================================
+-- 2. Create Bulk Folio Assignment Function
 -- =====================================================
 
 CREATE OR REPLACE FUNCTION bulk_assign_folio_numbers(
@@ -17,7 +23,7 @@ CREATE OR REPLACE FUNCTION bulk_assign_folio_numbers(
 )
 RETURNS TABLE (
   semester_result_id UUID,
-  folio_number INT,
+  assigned_folio_number INT,
   success BOOLEAN,
   error_message TEXT
 ) AS $$
@@ -54,14 +60,14 @@ BEGIN
       IF FOUND THEN
         -- Successfully assigned folio
         semester_result_id := v_result.id;
-        folio_number := v_next_folio;
+        assigned_folio_number := v_next_folio;
         success := true;
         error_message := NULL;
         v_next_folio := v_next_folio + 1;
       ELSE
         -- Already has folio number (race condition)
         semester_result_id := v_result.id;
-        folio_number := NULL;
+        assigned_folio_number := NULL;
         success := false;
         error_message := 'Already has folio number';
       END IF;
@@ -71,7 +77,7 @@ BEGIN
     EXCEPTION WHEN OTHERS THEN
       -- Handle individual record errors without failing entire batch
       semester_result_id := v_result.id;
-      folio_number := NULL;
+      assigned_folio_number := NULL;
       success := false;
       error_message := SQLERRM;
       RETURN NEXT;
@@ -81,7 +87,7 @@ END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
 
 -- =====================================================
--- 2. Grant Permissions
+-- 3. Grant Permissions
 -- =====================================================
 
 GRANT EXECUTE ON FUNCTION bulk_assign_folio_numbers(UUID[], UUID, VARCHAR, UUID)
@@ -91,7 +97,7 @@ GRANT EXECUTE ON FUNCTION bulk_assign_folio_numbers(UUID[], UUID, VARCHAR, UUID)
   TO service_role;
 
 -- =====================================================
--- 3. Add Performance Indexes (Optional but Recommended)
+-- 4. Add Performance Indexes (Optional but Recommended)
 -- =====================================================
 
 -- Index for fast folio number lookup (speeds up MAX query)
@@ -105,7 +111,7 @@ CREATE INDEX IF NOT EXISTS idx_student_backlogs_bulk_fetch
   WHERE is_active = true;
 
 -- =====================================================
--- 4. Add Function Comment
+-- 5. Add Function Comment
 -- =====================================================
 
 COMMENT ON FUNCTION bulk_assign_folio_numbers(UUID[], UUID, VARCHAR, UUID) IS

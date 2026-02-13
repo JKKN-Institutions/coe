@@ -1774,7 +1774,7 @@ export async function POST(req: NextRequest) {
 
 						const { data: allBacklogs } = await supabase
 							.from('student_backlogs')
-							.select('id, student_id, course_id, attempt_count, created_at, institutions_id')
+							.select('id, student_id, course_id, attempt_count, created_at, institutions_id, program_id, course_offering_id, original_examination_session_id, original_final_marks_id, original_semester, register_number, program_code, original_internal_marks, original_external_marks, original_total_marks, original_percentage, original_grade_points, original_letter_grade, failure_reason, is_absent')
 							.in('student_id', allStudentIds)
 							.in('course_id', allCourseIds)
 							.eq('is_cleared', false)
@@ -1803,12 +1803,31 @@ export async function POST(req: NextRequest) {
 							const clearedSemester = (fm.course_offerings as any)?.semester || sr?.semester || null
 
 							if (fm.is_pass) {
-								// Prepare to clear backlog
+								// Prepare to clear backlog (include ALL required fields)
 								backlogsToClear.push({
 									id: backlog.id,
+									// Required NOT NULL fields from existing backlog
 									institutions_id: backlog.institutions_id,
 									student_id: backlog.student_id,
 									course_id: backlog.course_id,
+									program_id: backlog.program_id,
+									course_offering_id: backlog.course_offering_id,
+									original_examination_session_id: backlog.original_examination_session_id,
+									original_final_marks_id: backlog.original_final_marks_id,
+									original_semester: backlog.original_semester,
+									register_number: backlog.register_number,
+									program_code: backlog.program_code,
+									// Original marks (preserve from first failure)
+									original_internal_marks: backlog.original_internal_marks,
+									original_external_marks: backlog.original_external_marks,
+									original_total_marks: backlog.original_total_marks,
+									original_percentage: backlog.original_percentage,
+									original_grade_points: backlog.original_grade_points,
+									original_letter_grade: backlog.original_letter_grade,
+									failure_reason: backlog.failure_reason,
+									is_absent: backlog.is_absent,
+									attempt_count: backlog.attempt_count,
+									// Clear the backlog
 									is_cleared: true,
 									cleared_examination_session_id: fm.examination_session_id,
 									cleared_semester_result_id: sr?.id || null,
@@ -1826,12 +1845,30 @@ export async function POST(req: NextRequest) {
 									updated_at: new Date().toISOString()
 								})
 							} else {
-								// Prepare to increment attempt
+								// Prepare to increment attempt (include ALL required fields)
 								backlogsToIncrement.push({
 									id: backlog.id,
+									// Required NOT NULL fields from existing backlog
 									institutions_id: backlog.institutions_id,
 									student_id: backlog.student_id,
 									course_id: backlog.course_id,
+									program_id: backlog.program_id,
+									course_offering_id: backlog.course_offering_id,
+									original_examination_session_id: backlog.original_examination_session_id,
+									original_final_marks_id: backlog.original_final_marks_id,
+									original_semester: backlog.original_semester,
+									register_number: backlog.register_number,
+									program_code: backlog.program_code,
+									// Original marks (preserve from first failure)
+									original_internal_marks: backlog.original_internal_marks,
+									original_external_marks: backlog.original_external_marks,
+									original_total_marks: backlog.original_total_marks,
+									original_percentage: backlog.original_percentage,
+									original_grade_points: backlog.original_grade_points,
+									original_letter_grade: backlog.original_letter_grade,
+									failure_reason: backlog.failure_reason,
+									is_absent: backlog.is_absent,
+									// Increment attempt
 									attempt_count: (backlog.attempt_count || 0) + 1,
 									last_attempt_date: today,
 									last_attempt_session_id: fm.examination_session_id,
@@ -2125,10 +2162,173 @@ export async function POST(req: NextRequest) {
 				}
 			}
 
+			// Clear backlogs for students who passed in this session (ADDED for publish action)
+			let clearedBacklogsCount = 0
+			if (data && data.length > 0) {
+				const allStudentIds = [...new Set(data.map(sr => sr.student_id))]
+				const sessionId = data[0].examination_session_id
+
+				console.log('[Publish Backlog Clear] Checking backlogs for', allStudentIds.length, 'students')
+
+				// Fetch all final_marks for this session to find passing courses
+				const { data: allMarks } = await supabase
+					.from('final_marks')
+					.select('id, student_id, course_id, examination_session_id, internal_marks_obtained, external_marks_obtained, total_marks_obtained, is_pass, percentage, grade_points, letter_grade, course_offerings(semester)')
+					.eq('examination_session_id', sessionId)
+					.in('student_id', allStudentIds)
+					.eq('is_active', true)
+					.range(0, 99999)
+
+				if (allMarks && allMarks.length > 0) {
+					// Get all course IDs from marks
+					const allCourseIds = [...new Set(allMarks.map(fm => fm.course_id))]
+
+					// Build semester_result lookup map
+					const srMap: Record<string, { id: string; semester: number }> = {}
+					data.forEach(sr => { srMap[sr.student_id] = { id: sr.id, semester: sr.semester } })
+
+					const today = new Date().toISOString().split('T')[0]
+
+					// Bulk fetch ALL backlogs for these students and courses
+					const { data: allBacklogs } = await supabase
+						.from('student_backlogs')
+						.select('id, student_id, course_id, attempt_count, created_at, institutions_id, program_id, course_offering_id, original_examination_session_id, original_final_marks_id, original_semester, register_number, program_code, original_internal_marks, original_external_marks, original_total_marks, original_percentage, original_grade_points, original_letter_grade, failure_reason, is_absent')
+						.in('student_id', allStudentIds)
+						.in('course_id', allCourseIds)
+						.eq('is_cleared', false)
+						.eq('is_active', true)
+						.range(0, 99999)
+
+					// Create lookup map for O(1) access
+					const backlogMap = new Map<string, any>()
+					allBacklogs?.forEach(b => {
+						const key = `${b.student_id}_${b.course_id}`
+						// Keep only the most recent backlog per student+course
+						if (!backlogMap.has(key) || new Date(b.created_at) > new Date(backlogMap.get(key).created_at)) {
+							backlogMap.set(key, b)
+						}
+					})
+
+					// Prepare bulk updates
+					const backlogsToClear: any[] = []
+					const backlogsToIncrement: any[] = []
+
+					for (const fm of allMarks) {
+						const backlog = backlogMap.get(`${fm.student_id}_${fm.course_id}`)
+						if (!backlog) continue
+
+						const sr = srMap[fm.student_id]
+						const clearedSemester = (fm.course_offerings as any)?.semester || sr?.semester || null
+
+						if (fm.is_pass) {
+							// Prepare to clear backlog
+							backlogsToClear.push({
+								id: backlog.id,
+								// Required NOT NULL fields from existing backlog
+								institutions_id: backlog.institutions_id,
+								student_id: backlog.student_id,
+								course_id: backlog.course_id,
+								program_id: backlog.program_id,
+								course_offering_id: backlog.course_offering_id,
+								original_examination_session_id: backlog.original_examination_session_id,
+								original_final_marks_id: backlog.original_final_marks_id,
+								original_semester: backlog.original_semester,
+								register_number: backlog.register_number,
+								program_code: backlog.program_code,
+								// Original marks (preserve from first failure)
+								original_internal_marks: backlog.original_internal_marks,
+								original_external_marks: backlog.original_external_marks,
+								original_total_marks: backlog.original_total_marks,
+								original_percentage: backlog.original_percentage,
+								original_grade_points: backlog.original_grade_points,
+								original_letter_grade: backlog.original_letter_grade,
+								failure_reason: backlog.failure_reason,
+								is_absent: backlog.is_absent,
+								attempt_count: backlog.attempt_count,
+								// Clear the backlog
+								is_cleared: true,
+								cleared_examination_session_id: fm.examination_session_id,
+								cleared_semester_result_id: sr?.id || null,
+								cleared_final_marks_id: fm.id,
+								cleared_date: today,
+								cleared_semester: clearedSemester,
+								cleared_internal_marks: fm.internal_marks_obtained,
+								cleared_external_marks: fm.external_marks_obtained,
+								cleared_total_marks: fm.total_marks_obtained,
+								cleared_percentage: fm.percentage,
+								cleared_grade_points: fm.grade_points,
+								cleared_letter_grade: fm.letter_grade,
+								last_attempt_date: today,
+								last_attempt_session_id: fm.examination_session_id,
+								updated_at: new Date().toISOString()
+							})
+						} else {
+							// Prepare to increment attempt
+							backlogsToIncrement.push({
+								id: backlog.id,
+								// Required NOT NULL fields from existing backlog
+								institutions_id: backlog.institutions_id,
+								student_id: backlog.student_id,
+								course_id: backlog.course_id,
+								program_id: backlog.program_id,
+								course_offering_id: backlog.course_offering_id,
+								original_examination_session_id: backlog.original_examination_session_id,
+								original_final_marks_id: backlog.original_final_marks_id,
+								original_semester: backlog.original_semester,
+								register_number: backlog.register_number,
+								program_code: backlog.program_code,
+								// Original marks (preserve from first failure)
+								original_internal_marks: backlog.original_internal_marks,
+								original_external_marks: backlog.original_external_marks,
+								original_total_marks: backlog.original_total_marks,
+								original_percentage: backlog.original_percentage,
+								original_grade_points: backlog.original_grade_points,
+								original_letter_grade: backlog.original_letter_grade,
+								failure_reason: backlog.failure_reason,
+								is_absent: backlog.is_absent,
+								// Increment attempt
+								attempt_count: (backlog.attempt_count || 0) + 1,
+								last_attempt_date: today,
+								last_attempt_session_id: fm.examination_session_id,
+								updated_at: new Date().toISOString()
+							})
+						}
+					}
+
+					// Execute bulk updates
+					if (backlogsToClear.length > 0) {
+						console.log('[Publish Backlog Clear] Clearing', backlogsToClear.length, 'backlogs')
+						const { error: clearErr } = await supabase
+							.from('student_backlogs')
+							.upsert(backlogsToClear, { onConflict: 'id' })
+
+						if (!clearErr) {
+							clearedBacklogsCount = backlogsToClear.length
+						} else {
+							console.error('[Publish Backlog Clear] Error:', clearErr)
+						}
+					}
+
+					if (backlogsToIncrement.length > 0) {
+						console.log('[Publish Backlog Clear] Incrementing attempts for', backlogsToIncrement.length, 'backlogs')
+						const { error: incErr } = await supabase
+							.from('student_backlogs')
+							.upsert(backlogsToIncrement, { onConflict: 'id' })
+
+						if (incErr) {
+							console.error('[Publish Backlog Clear] Error incrementing:', incErr)
+						}
+					}
+
+					console.log('[Publish Backlog Clear] Cleared', clearedBacklogsCount, 'backlogs')
+				}
+			}
+
 			return NextResponse.json({
 				success: true,
-				message: `Published ${publishedCount} semester results.`,
-				published_count: publishedCount
+				message: `Published ${publishedCount} semester results.${clearedBacklogsCount > 0 ? ` Cleared ${clearedBacklogsCount} backlogs.` : ''}`,
+				published_count: publishedCount,
+				cleared_backlogs_count: clearedBacklogsCount
 			})
 		}
 
